@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 78">
+  <g transform="translate(182 4)">
+    <rect x="3" y="19" width="65" height="49" rx="13" fill="#1d6b4f"/>
+    <path d="M0 24h71L64 7H8z" fill="#f7c65d"/>
+    <path d="M0 24h71v7c0 8-6 14-14 14-6 0-11-4-13-10-2 6-7 10-13 10s-11-4-13-10c-2 6-7 10-13 10-8 0-14-6-14-14z" fill="#e96d45"/>
+    <path d="M26 68V48h20v20" fill="#fffaf2"/>
+  </g>
+  <text x="170" y="51" text-anchor="end" fill="#173f33" font-family="Tahoma, Arial" font-size="43" font-weight="800">دكانجي</text>
+  <text x="167" y="70" text-anchor="end" fill="#9a6b42" font-family="Tahoma, Arial" font-size="12">سوق الحي بين يديك</text>
+</svg>

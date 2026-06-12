@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 520">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8d677"/><stop offset="1" stop-color="#ef9a62"/></linearGradient>
+    <filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity=".14"/></filter>
+  </defs>
+  <circle cx="361" cy="252" r="230" fill="url(#bg)" opacity=".28"/>
+  <path d="M122 177h455l-32-91H158z" fill="#f7c65d" filter="url(#s)"/>
+  <rect x="146" y="177" width="409" height="258" rx="20" fill="#fffaf2" filter="url(#s)"/>
+  <path d="M106 177h487v39c0 41-33 74-74 74-32 0-59-21-69-49-10 28-37 49-69 49s-59-21-69-49c-10 28-37 49-69 49-41 0-74-33-74-74z" fill="#e96d45"/>
+  <path d="M180 177h92v49c0 29-21 54-49 60-25-8-43-31-43-60zM364 177h92v49c0 29-21 54-49 60-25-8-43-31-43-60z" fill="#fff0dc"/>
+  <rect x="190" y="323" width="120" height="112" rx="9" fill="#1d6b4f"/>
+  <rect x="347" y="319" width="161" height="77" rx="10" fill="#bde0cf"/>
+  <path d="M378 396c10-34 30-49 59-49 25 0 42 16 51 49z" fill="#65a977"/>
+  <circle cx="403" cy="351" r="17" fill="#e96d45"/>
+  <circle cx="447" cy="352" r="20" fill="#f7c65d"/>
+  <circle cx="473" cy="367" r="16" fill="#8cbf6d"/>
+  <rect x="217" y="348" width="66" height="87" rx="6" fill="#f7c65d"/>
+  <circle cx="270" cy="393" r="5" fill="#1d6b4f"/>
+  <path d="M109 458h481" stroke="#173f33" stroke-width="12" stroke-linecap="round" opacity=".12"/>
+  <circle cx="114" cy="111" r="14" fill="#1d6b4f" opacity=".35"/>
+  <circle cx="603" cy="334" r="17" fill="#e96d45" opacity=".4"/>
+  <path d="M78 310c26-12 35-33 25-63" fill="none" stroke="#1d6b4f" stroke-width="8" stroke-linecap="round" opacity=".3"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480">
+  <defs><linearGradient id="a" x2="1" y2="1"><stop stop-color="#fff0da"/><stop offset="1" stop-color="#f4c4b2"/></linearGradient></defs>
+  <rect width="800" height="480" rx="38" fill="url(#a)"/>
+  <rect x="130" y="135" width="540" height="275" rx="20" fill="#fffaf2"/>
+  <path d="M100 142h600L658 61H142z" fill="#9a553b"/>
+  <path d="M100 142h600v42c0 36-29 65-65 65-30 0-55-20-63-47-8 27-33 47-63 47s-55-20-63-47c-8 27-33 47-63 47s-55-20-63-47c-8 27-33 47-63 47s-55-20-63-47c-8 27-33 47-63 47-36 0-65-29-65-65z" fill="#e96d45"/>
+  <path d="M200 142h95v54c0 27-19 49-45 54-29-3-50-26-50-54zM390 142h95v54c0 27-19 49-45 54-29-3-50-26-50-54zM580 142h95v54c0 27-19 49-45 54-29-3-50-26-50-54z" fill="#fff0dc"/>
+  <rect x="185" y="300" width="155" height="110" rx="10" fill="#6d392e"/>
+  <rect x="399" y="287" width="175" height="90" rx="18" fill="#f4d29c"/>
+  <ellipse cx="444" cy="334" rx="31" ry="18" fill="#bc7248"/><ellipse cx="509" cy="330" rx="38" ry="21" fill="#d9985f"/>
+  <path d="M426 334h36M490 330h40" stroke="#fff0dc" stroke-width="4" stroke-linecap="round"/>
+  <path d="M91 437h620" stroke="#6d392e" stroke-width="13" stroke-linecap="round" opacity=".13"/>
+</svg>
