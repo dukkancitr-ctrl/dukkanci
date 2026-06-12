@@ -770,6 +770,25 @@ img {
   transform: scale(1.035);
 }
 
+.source-branded-store-card {
+  border-color: rgba(192, 154, 72, 0.28);
+  box-shadow: 0 14px 34px rgba(1, 80, 46, 0.08);
+}
+
+.source-branded-store-card:hover {
+  border-color: rgba(192, 154, 72, 0.55);
+  box-shadow: 0 20px 46px rgba(1, 80, 46, 0.14);
+}
+
+.source-branded-store-card .store-card__image::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 45%;
+  background: linear-gradient(transparent, rgba(0, 63, 38, 0.28));
+  pointer-events: none;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -784,6 +803,31 @@ img {
   position: absolute;
   top: 13px;
   right: 13px;
+  z-index: 1;
+}
+
+.official-branch-badge {
+  position: absolute;
+  left: 13px;
+  bottom: 13px;
+  z-index: 1;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 220, 135, 0.5);
+  border-radius: 20px;
+  background: rgba(0, 68, 40, 0.9);
+  color: #f6d98d;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  backdrop-filter: blur(8px);
+}
+
+.official-branch-badge .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .status-badge.open {
@@ -895,6 +939,16 @@ img {
 .store-avatar--logo img {
   padding: 3px;
   object-fit: contain;
+}
+
+.store-avatar--source-branded {
+  border: 1px solid rgba(192, 154, 72, 0.42);
+  background: #fdfbf4;
+  box-shadow: 0 7px 18px rgba(0, 70, 42, 0.13);
+}
+
+.store-avatar--source-branded img {
+  padding: 5px;
 }
 
 .store-avatar.large {
@@ -1806,10 +1860,31 @@ img {
   background: linear-gradient(transparent, rgba(18, 54, 45, 0.2));
 }
 
+.source-branded-store-cover {
+  border: 1px solid rgba(192, 154, 72, 0.35);
+  box-shadow: 0 24px 54px rgba(0, 68, 40, 0.16);
+}
+
+.source-branded-store-cover .store-cover__gradient {
+  inset: 35% 0 0;
+  background: linear-gradient(transparent, rgba(0, 58, 35, 0.56));
+}
+
 .store-cover .status-badge {
   position: absolute;
   right: 20px;
   top: 20px;
+}
+
+.store-cover .official-branch-badge {
+  left: 20px;
+  bottom: 20px;
+}
+
+.official-branch-badge.large {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 12px;
 }
 
 .status-badge.large {
@@ -1898,6 +1973,99 @@ img {
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 36px;
   align-items: start;
+}
+
+.branch-switcher {
+  margin-bottom: 24px;
+  padding: 22px;
+  border: 1px solid rgba(192, 154, 72, 0.3);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 5% 0%, rgba(216, 177, 89, 0.14), transparent 32%),
+    linear-gradient(135deg, #fffef9, #f7fbf8);
+}
+
+.branch-switcher > div:first-child {
+  margin-bottom: 15px;
+}
+
+.branch-switcher h2 {
+  margin: 3px 0 0;
+  color: #004b2e;
+  font-size: 20px;
+}
+
+.branch-switcher__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.branch-switcher__list button {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e5e9e5;
+  border-radius: 14px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  text-align: right;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.branch-switcher__list button:hover,
+.branch-switcher__list button.active {
+  border-color: #c7a34f;
+  box-shadow: 0 8px 20px rgba(0, 69, 42, 0.1);
+}
+
+.branch-switcher__list button.active {
+  background: #f2f8f4;
+}
+
+.branch-switcher__list img {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.branch-switcher__list span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.branch-switcher__list strong,
+.branch-switcher__list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-switcher__list small {
+  margin-top: 2px;
+  color: var(--muted);
+  direction: ltr;
+  text-align: right;
+  font-size: 9px;
+}
+
+.branch-switcher__list b {
+  color: #00663c;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+}
+
+.branch-switcher__list b .icon,
+.branch-switcher__list button > .icon {
+  width: 15px;
 }
 
 .store-offer-strip {
@@ -6249,6 +6417,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .branch-switcher__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .store-info-card {
     position: static;
   }
@@ -6602,6 +6774,14 @@ tbody tr:hover {
 
   .store-cover {
     height: 210px;
+  }
+
+  .branch-switcher {
+    padding: 17px;
+  }
+
+  .branch-switcher__list {
+    grid-template-columns: 1fr;
   }
 
   .store-profile {

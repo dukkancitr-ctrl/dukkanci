@@ -120,6 +120,7 @@ const stores = [
     phone: "+90 538 864 97 55",
     email: "heelal00@gmail.com",
     website: "https://alheelal-meat.com",
+    sourceUrl: "https://alheelal-meat.com/product",
     hours: "الطلب والتواصل متاحان عبر واتساب على مدار الساعة",
     areas: ["إسنيورت", "سليمانية محلسي", "مناطق إسطنبول حسب المسافة"],
     fulfillment: "توصيل واستلام وطلب مسبق",
@@ -127,6 +128,8 @@ const stores = [
     orderCount: 0
   }
 ];
+
+stores.push(...alsultanBranches);
 
 const products = [
   {
@@ -267,6 +270,7 @@ const products = [
 ];
 
 products.push(...heelalProducts);
+products.push(...alsultanProducts);
 
 const initialOrders = [
   { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
@@ -303,7 +307,8 @@ const initialDeliverySettings = {
   2: { mode: "distance", fixedFee: 20, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 80 },
   3: { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 60 },
   4: { mode: "fixed", fixedFee: 15, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 50 },
-  5: { mode: "distance", fixedFee: 40, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 100 }
+  5: { mode: "distance", fixedFee: 40, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 100 },
+  ...alsultanDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -348,6 +353,7 @@ const state = {
   deliveryQuote: null,
   checkoutLocation: null,
   merchantTab: "overview",
+  merchantStoreId: 1,
   adminTab: "overview",
   deferredInstall: null
 };
@@ -421,6 +427,10 @@ function dashboardDate() {
 
 function getStore(id) {
   return stores.find(store => store.id === Number(id));
+}
+
+function getMerchantStore() {
+  return getStore(state.merchantStoreId) || stores[0];
 }
 
 function getProduct(id) {
@@ -538,7 +548,7 @@ function hydrateIcons(root = document) {
 }
 
 function storeAvatar(store, extraClass = "") {
-  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""}"><img src="${store.logoImage || store.image}" alt="${store.name}"></span>`;
+  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""} ${store.sourceBranded ? "store-avatar--source-branded" : ""}"><img src="${store.logoImage || store.image}" alt="${store.name}"></span>`;
 }
 
 function categoryCard(name, image, caption) {
@@ -554,10 +564,11 @@ function categoryCard(name, image, caption) {
 function storeCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   return `
-    <article class="store-card">
+    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
         <span class="status-badge ${store.open ? "open" : "closed"}">${store.open ? "مفتوح" : "مغلق الآن"}</span>
+        ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : ""}
         ${store.hasOffer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
       </button>
       <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
@@ -583,7 +594,7 @@ function storeCard(store) {
 function productCard(product) {
   const isFavorite = state.favorites.includes(`product-${product.id}`);
   return `
-    <article class="product-card ${product.storeId === 5 ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
+    <article class="product-card ${product.storeId === 5 || product.sourceBranded ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
       <button class="product-card__image" data-action="open-product" data-id="${product.id}">
         <img src="${product.image}" alt="${product.name}" loading="lazy">
         ${product.oldPrice ? `<span class="discount-chip">وفر ${Math.round((1 - product.price / product.oldPrice) * 100)}%</span>` : ""}
@@ -803,6 +814,9 @@ function renderOffers() {
 function renderStorePage(id) {
   const store = getStore(id);
   if (!store) return renderNotFound();
+  const siblingBranches = store.branchGroup
+    ? stores.filter(branch => branch.branchGroup === store.branchGroup)
+    : [];
   const allStoreProducts = products.filter(product => product.storeId === store.id);
   const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
@@ -815,16 +829,17 @@ function renderStorePage(id) {
     <section class="store-page-head">
       <div class="container">
         <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${store.name}</strong></div>
-        <div class="store-cover">
+        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""}">
           <img src="${store.coverImage || store.image}" alt="${store.name}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
+          ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : ""}
         </div>
         <div class="store-profile">
           <div class="store-profile__main">
             ${storeAvatar(store, "large")}
             <div>
-              <span class="store-category">${store.category}</span>
+              <span class="store-category">${store.category}${store.branchName ? ` · فرع ${store.branchName}` : ""}</span>
               <h1>${store.name}</h1>
               <p>${store.description}</p>
               <div class="store-profile__meta">
@@ -845,6 +860,23 @@ function renderStorePage(id) {
     <section class="section store-content-section">
       <div class="container store-content-grid">
         <div>
+          ${siblingBranches.length > 1 ? `
+            <section class="branch-switcher">
+              <div>
+                <span class="section-kicker">اختر أقرب فرع</span>
+                <h2>فروع ${store.name.split(" - ")[0]} في إسطنبول</h2>
+              </div>
+              <div class="branch-switcher__list">
+                ${siblingBranches.map(branch => `
+                  <button class="${branch.id === store.id ? "active" : ""}" data-action="open-store" data-id="${branch.id}">
+                    <img src="${branch.coverImage || branch.image}" alt="">
+                    <span><strong>${branch.branchName}</strong><small>${branch.phone}</small></span>
+                    ${branch.id === store.id ? `<b>${icon("check")} الفرع الحالي</b>` : icon("arrowLeft")}
+                  </button>
+                `).join("")}
+              </div>
+            </section>
+          ` : ""}
           ${deliverySettings.mode === "distance" ? `
             <div class="distance-delivery-banner">
               <span>${icon("map")}</span>
@@ -886,7 +918,7 @@ function renderStorePage(id) {
           ${store.email ? `<div class="info-row">${icon("user")}<div><strong>البريد الإلكتروني</strong><span dir="ltr">${store.email}</span></div></div>` : ""}
           <div class="info-row">${icon("bike")}<div><strong>مناطق الخدمة</strong><span>${store.areas.join("، ")}</span></div></div>
           <div class="info-row">${icon("bag")}<div><strong>طرق الاستلام</strong><span>${store.fulfillment}</span></div></div>
-          ${store.website ? `<div class="official-source-note">${icon("shield")}<span><strong>بيانات موثقة</strong><small>الصور والأسعار مستوردة من الموقع الرسمي للمتجر.</small><a href="${store.website}/product" target="_blank" rel="noopener">زيارة المصدر الرسمي</a></span></div>` : ""}
+          ${store.website ? `<div class="official-source-note">${icon("shield")}<span><strong>بيانات موثقة</strong><small>الصور والأسعار مستوردة من الموقع الرسمي للمتجر.</small><a href="${store.sourceUrl || store.website}" target="_blank" rel="noopener">زيارة المصدر الرسمي</a></span></div>` : ""}
           <div class="store-minimum"><span>الحد الأدنى للطلب</span><strong>${money(store.minOrder)}</strong></div>
           <button class="whatsapp-button" data-action="whatsapp-store" data-id="${store.id}">${icon("whatsapp")} تواصل عبر واتساب</button>
         </aside>
@@ -1014,6 +1046,10 @@ function renderCustomerComplaints() {
 }
 
 function dashboardSidebar(type, active) {
+  const merchantStore = type === "merchant" ? getMerchantStore() : null;
+  const merchantOrderCount = merchantStore
+    ? state.orders.filter(order => order.storeId === merchantStore.id).length
+    : 0;
   const merchantItems = [
     ["overview", "chart", "نظرة عامة"],
     ["orders", "receipt", "الطلبات"],
@@ -1034,10 +1070,10 @@ function dashboardSidebar(type, active) {
   return `
     <aside class="dashboard-sidebar">
       <div class="dashboard-brand">${brandLogo("brand-on-dark")}<span>${type === "merchant" ? "لوحة المتجر" : "لوحة الإدارة"}</span></div>
-      <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? '<b class="nav-badge">3</b>' : ""}</button>`).join("")}</nav>
+      <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : 3}</b>` : ""}</button>`).join("")}</nav>
       <div class="dashboard-user">
-        <span class="avatar-mini dashboard-photo"><img src="${type === "merchant" ? stores[0].image : "/assets/dukkanci-mark.png"}" alt=""></span>
-        <span><strong>${type === "merchant" ? "سوق البركة" : "إدارة دكانجي"}</strong><small>${type === "merchant" ? "الخطة الاحترافية" : "مدير النظام"}</small></span>
+        <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png"}" alt=""></span>
+        <span><strong>${merchantStore ? merchantStore.name : "إدارة دكانجي"}</strong><small>${merchantStore ? `الخطة ${merchantStore.subscription || "الاحترافية"}` : "مدير النظام"}</small></span>
         ${icon("dots")}
       </div>
     </aside>
@@ -1049,13 +1085,17 @@ function statCard(iconName, label, value, trend, tone) {
 }
 
 function merchantOverview() {
-  const merchantOrders = state.orders.filter(order => order.storeId === 1);
+  const store = getMerchantStore();
+  const merchantOrders = state.orders.filter(order => order.storeId === store.id);
+  const orderCount = store.orderCount ?? merchantOrders.length;
+  const ratingLabel = store.newStore ? "جديد" : String(store.rating);
+  const ratingTrend = store.newStore ? "بانتظار أول تقييم" : `من ${store.reviews} تقييماً`;
   return `
     <div class="stats-grid">
-      ${statCard("receipt", "طلبات هذا الشهر", "١٢٨", "+ 12% عن الشهر الماضي", "green")}
-      ${statCard("wallet", "قيمة الطلبات", "٤٨,٦٢٠ ل.ت", "+ 8.4% عن الشهر الماضي", "orange")}
-      ${statCard("eye", "مشاهدات المتجر", "٣,٤٢٠", "+ 19% هذا الأسبوع", "blue")}
-      ${statCard("star", "متوسط التقييم", "٤.٩", "من 286 تقييماً", "yellow")}
+      ${statCard("receipt", "طلبات هذا الشهر", orderCount.toLocaleString("ar"), store.newStore ? "الحساب جاهز لاستقبال الطلبات" : "+ 12% عن الشهر الماضي", "green")}
+      ${statCard("wallet", "قيمة الطلبات", merchantOrders.length ? `${merchantOrders.reduce((sum, order) => sum + order.total, 0).toLocaleString("ar")} ل.ت` : "٠ ل.ت", store.newStore ? "لا توجد طلبات مكتملة بعد" : "+ 8.4% عن الشهر الماضي", "orange")}
+      ${statCard("eye", "منتجات المتجر", products.filter(product => product.storeId === store.id).length.toLocaleString("ar"), "الكتالوج المنشور حالياً", "blue")}
+      ${statCard("star", "متوسط التقييم", ratingLabel, ratingTrend, "yellow")}
     </div>
     <div class="dashboard-grid">
       <section class="dashboard-card chart-card">
@@ -1105,7 +1145,7 @@ function statusClass(status) {
 }
 
 function merchantOrders() {
-  const orders = state.orders.filter(order => order.storeId === 1);
+  const orders = state.orders.filter(order => order.storeId === getMerchantStore().id);
   return `
     <div class="dashboard-toolbar">
       <div class="dashboard-search">${icon("search")}<input placeholder="ابحث برقم الطلب أو اسم العميل"></div>
@@ -1117,7 +1157,7 @@ function merchantOrders() {
 }
 
 function merchantProducts() {
-  const merchantProducts = products.filter(product => product.storeId === 1);
+  const merchantProducts = products.filter(product => product.storeId === getMerchantStore().id);
   return `
     <div class="dashboard-toolbar">
       <div class="dashboard-search">${icon("search")}<input placeholder="ابحث في منتجاتك"></div>
@@ -1139,35 +1179,36 @@ function merchantProducts() {
 }
 
 function merchantOffers() {
+  const store = getMerchantStore();
+  const discountedProducts = products.filter(product => product.storeId === store.id && product.oldPrice);
   return `
     <div class="empty-dashboard">
       <span class="empty-dashboard__icon">${icon("megaphone")}</span>
-      <h3>أنشئ عرضاً جديداً لعملائك</h3>
+      <h3>${discountedProducts.length ? `عروض ${store.name}` : "أنشئ عرضاً جديداً لعملائك"}</h3>
       <p>حدد منتجاً وخصماً أو فعّل التوصيل المجاني فوق مبلغ معين.</p>
       <button class="primary-button" data-action="toast" data-message="تم فتح نموذج إنشاء العرض">${icon("plus")} إنشاء عرض</button>
     </div>
-    <div class="offer-management-grid">
-      <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>خصم 15% على الخضار</h3><p>ينتهي في 20 يونيو 2026</p><div><strong>1,240</strong><small>مشاهدة</small></div><button class="secondary-button compact">${icon("edit")} تعديل</button></article>
-      <article class="dashboard-card"><span class="status-pill gray">مجدول</span><h3>توصيل مجاني فوق 600 ل.ت</h3><p>يبدأ في 15 يونيو 2026</p><div><strong>0</strong><small>مشاهدة</small></div><button class="secondary-button compact">${icon("edit")} تعديل</button></article>
-    </div>
+    ${discountedProducts.length ? `<div class="offer-management-grid">${discountedProducts.map(product => `
+      <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>${product.name}</h3><p>السعر قبل الخصم ${money(product.oldPrice)}</p><div><strong>${Math.round((1 - product.price / product.oldPrice) * 100)}%</strong><small>خصم</small></div><button class="secondary-button compact" data-action="edit-product" data-id="${product.id}">${icon("edit")} تعديل</button></article>
+    `).join("")}</div>` : ""}
   `;
 }
 
 function merchantStore() {
-  const store = stores[0];
+  const store = getMerchantStore();
   const deliverySettings = getDeliverySettings(store.id);
   const storeLocation = getStoreLocation(store.id);
   return `
     <form class="dashboard-card form-card" id="merchant-store-form" data-store-id="${store.id}">
       <div class="card-heading"><div><h3>بيانات المتجر</h3><p>المعلومات الظاهرة للعملاء في صفحة متجرك</p></div><span class="status-pill green">المتجر مفتوح</span></div>
-      <div class="cover-uploader"><img src="${store.image}" alt=""><button type="button">${icon("upload")} تغيير صورة الواجهة</button></div>
+      <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""><button type="button">${icon("upload")} تغيير صورة الواجهة</button></div>
       <div class="form-grid">
         <label><span>اسم المتجر</span><input name="storeName" value="${store.name}"></label>
         <label><span>التصنيف</span><select><option>${store.category}</option></select></label>
         <label class="wide"><span>وصف قصير</span><textarea>${store.description}</textarea></label>
         <label class="wide"><span>العنوان</span><input value="${store.address}"></label>
         <label><span>رقم واتساب الطلبات</span><input dir="ltr" value="${store.phone}"></label>
-        <label><span>أوقات العمل</span><input value="08:00 - 23:00"></label>
+        <label><span>أوقات العمل</span><input value="${store.hours}"></label>
         <label><span>رسوم التوصيل الثابتة</span><input name="fixedFee" type="number" min="0" value="${deliverySettings.fixedFee}"></label>
         <label><span>الحد الأدنى للطلب</span><input value="${store.minOrder} ل.ت"></label>
       </div>
@@ -1209,7 +1250,9 @@ function merchantSubscription() {
   `;
 }
 
-function renderMerchant() {
+function renderMerchant(id) {
+  state.merchantStoreId = Number(id) || state.merchantStoreId || 1;
+  const store = getMerchantStore();
   const content = {
     overview: merchantOverview,
     orders: merchantOrders,
@@ -1218,7 +1261,7 @@ function renderMerchant() {
     store: merchantStore,
     subscription: merchantSubscription
   }[state.merchantTab]();
-  const titles = { overview: ["صباح الخير، سوق البركة", "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
   const [title, subtitle] = titles[state.merchantTab];
   return `
     <div class="dashboard-shell">
@@ -1233,7 +1276,7 @@ function renderMerchant() {
           <div class="dashboard-header__actions">
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
             <button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button>
-            <button class="view-store" data-action="open-store" data-id="1">${icon("eye")} عرض المتجر</button>
+            <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
           </div>
         </header>
         <div class="dashboard-content">${content}</div>
@@ -1422,7 +1465,7 @@ function render() {
     offers: renderOffers,
     store: () => renderStorePage(id),
     orders: renderOrders,
-    merchant: renderMerchant,
+    merchant: () => renderMerchant(id),
     admin: renderAdmin,
     checkout: renderCheckout
   };
