@@ -759,13 +759,46 @@ function renderHome() {
   `;
 }
 
+function normalizeAr(value) {
+  return (value || "")
+    .toString()
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ـ/g, "")
+    .replace(/[ً-ْ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getMatchingProducts(query, limit = 60) {
+  const q = normalizeAr(query);
+  if (!q) return [];
+  const terms = q.split(" ").filter(Boolean);
+  const out = [];
+  for (const product of products) {
+    if (product.available === false) continue;
+    const hay = normalizeAr(`${product.name} ${product.category} ${getStore(product.storeId)?.name || ""}`);
+    if (terms.every(t => hay.includes(t))) {
+      out.push(product);
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
 function getFilteredStores() {
+  const q = normalizeAr(state.search);
+  const terms = q.split(" ").filter(Boolean);
   let result = stores.filter(store => {
     const categoryMatch = state.storeFilter === "الكل"
       || store.category === state.storeFilter
       || (state.storeFilter === "ملاحم" && store.category.includes("ملحم"));
-    const text = `${store.name} ${store.category} ${store.description}`.toLowerCase();
-    return categoryMatch && text.includes(state.search.toLowerCase());
+    const text = normalizeAr(`${store.name} ${store.category} ${store.description}`);
+    return categoryMatch && terms.every(t => text.includes(t));
   });
 
   if (state.storeSort === "rating") result.sort((a, b) => b.rating - a.rating);
@@ -810,8 +843,16 @@ function renderStores() {
             </select>
           </label>
         </div>
+        ${state.search ? (() => {
+          const matched = getMatchingProducts(state.search);
+          return `
+        <div class="result-summary"><strong>${matched.length}${matched.length >= 60 ? "+" : ""} منتج</strong><span>نتائج البحث عن «${state.search}»</span></div>
+        ${matched.length ? `<div class="product-grid">${matched.map(productCard).join("")}</div>` : renderEmpty("لا توجد منتجات مطابقة", "جرّب كلمة أخرى مثل اسم المنتج أو الصنف.")}
+        <div class="result-summary" style="margin-top:32px"><strong>${result.length} متجر</strong><span>مطابق لبحثك</span></div>
+        ${result.length ? `<div class="store-grid">${result.map(storeCard).join("")}</div>` : ""}`;
+        })() : `
         <div class="result-summary"><strong>${result.length} متاجر</strong><span>ضمن منطقة التوصيل الحالية</span></div>
-        ${result.length ? `<div class="store-grid">${result.map(storeCard).join("")}</div>` : renderEmpty("لا توجد متاجر مطابقة", "جرّب البحث بكلمة أخرى أو اختر تصنيفاً مختلفاً.")}
+        ${result.length ? `<div class="store-grid">${result.map(storeCard).join("")}</div>` : renderEmpty("لا توجد متاجر مطابقة", "جرّب البحث بكلمة أخرى أو اختر تصنيفاً مختلفاً.")}`}
       </div>
     </section>
   `;
@@ -2078,6 +2119,21 @@ document.addEventListener("click", event => {
     } else showToast("من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» لتثبيت دكانجي");
   }
   if (action === "add-product-form" || action === "edit-product") showToast("تم فتح نموذج المنتج");
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key !== "Enter") return;
+  if (event.target.id === "hero-search") {
+    event.preventDefault();
+    state.search = event.target.value.trim();
+    state.storeFilter = "الكل";
+    location.hash = "stores";
+  } else if (event.target.id === "stores-search") {
+    event.preventDefault();
+    state.search = event.target.value.trim();
+    render();
+    setTimeout(() => document.getElementById("stores-search")?.focus(), 0);
+  }
 });
 
 document.addEventListener("change", event => {
