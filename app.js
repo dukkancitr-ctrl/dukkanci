@@ -370,9 +370,16 @@ const state = {
   checkoutLocation: null,
   merchantTab: "overview",
   merchantStoreId: 1,
+  merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
   deferredInstall: null
 };
+
+// Demo seller accounts (front-end only — for trying the merchant dashboard).
+const MERCHANT_ACCOUNTS = [
+  { username: "demo", password: "dukkanci2026", storeId: 1 },
+  { username: "baraka", password: "baraka123", storeId: 1 }
+];
 
 const app = document.getElementById("app");
 const cartDrawer = document.getElementById("cart-drawer");
@@ -383,6 +390,7 @@ const iconPaths = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   pin: '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  logout: '<path d="M15 12H4m11 0-3-3m3 3-3 3"/><path d="M9 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H9"/>',
   bag: '<path d="M6 8h12l1 13H5L6 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/>',
   instagram: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/>',
   whatsapp: '<path d="M20 11.5a8 8 0 0 1-12 7L3 20l1.5-4.5A8 8 0 1 1 20 11.5Z"/><path d="M8.5 8c.5 3 2.5 5 5.5 6l1.5-1.5"/>',
@@ -1505,8 +1513,31 @@ function merchantIntegrations() {
     </form>`;
 }
 
+function merchantLogin() {
+  return `
+    <div class="merchant-auth">
+      <form class="merchant-auth__card" id="merchant-login-form">
+        <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
+        <h2>لوحة المتجر</h2>
+        <p>سجّل دخولك لإدارة متجرك على دكانجي.</p>
+        <label class="input-label"><span>اسم المستخدم</span><input name="username" autocomplete="username" required placeholder="demo" dir="ltr"></label>
+        <label class="input-label"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"></label>
+        <p class="merchant-auth__error" id="merchant-login-error" hidden>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
+        <button class="primary-button full large" type="submit">${icon("store")} دخول لوحة المتجر</button>
+        <div class="merchant-auth__demo">
+          <strong>بيانات تجريبية للتجربة</strong>
+          <span>اسم المستخدم: <code>demo</code></span>
+          <span>كلمة المرور: <code>dukkanci2026</code></span>
+          <button type="button" class="text-button" data-action="fill-merchant-demo">تعبئة تلقائية</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
 function renderMerchant(id) {
-  state.merchantStoreId = Number(id) || state.merchantStoreId || 1;
+  if (!state.merchantAuth) return merchantLogin();
+  state.merchantStoreId = Number(id) || state.merchantAuth.storeId || state.merchantStoreId || 1;
   const store = getMerchantStore();
   const content = {
     overview: merchantOverview,
@@ -1534,6 +1565,7 @@ function renderMerchant(id) {
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
             <button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button>
             <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
+            <button class="icon-button" data-action="merchant-logout" aria-label="تسجيل الخروج" title="تسجيل الخروج">${icon("logout")}</button>
           </div>
         </header>
         <div class="dashboard-content">${content}</div>
@@ -2448,6 +2480,16 @@ document.addEventListener("click", event => {
   if (action === "edit-product") openProductForm(target.dataset.id);
   if (action === "delete-product") openDeleteProductConfirm(target.dataset.id);
   if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
+  if (action === "fill-merchant-demo") {
+    const f = document.getElementById("merchant-login-form");
+    if (f) { f.username.value = "demo"; f.password.value = "dukkanci2026"; }
+  }
+  if (action === "merchant-logout") {
+    state.merchantAuth = null;
+    localStorage.removeItem("dukkanci-merchant-auth");
+    showToast("تم تسجيل الخروج", "success");
+    render();
+  }
   if (action === "merchant-order-filter") { state.merchantOrderFilter = target.dataset.status; render(); }
   if (action === "create-offer") openOfferForm();
   if (action === "end-offer") {
@@ -2679,6 +2721,24 @@ document.addEventListener("submit", event => {
     if (addressId) state.customerAddresses = state.customerAddresses.map(address => address.id === addressId ? addressData : address);
     else state.customerAddresses.push(addressData);
     saveState(); closeModal(); render(); showToast(addressId ? "تم تحديث العنوان" : "تمت إضافة العنوان", "success");
+  }
+  if (event.target.id === "merchant-login-form") {
+    const f = event.target;
+    const username = f.username.value.trim().toLowerCase();
+    const password = f.password.value;
+    const account = MERCHANT_ACCOUNTS.find(a => a.username === username && a.password === password);
+    if (!account) {
+      const err = document.getElementById("merchant-login-error");
+      if (err) err.hidden = false;
+      return;
+    }
+    state.merchantAuth = { username: account.username, storeId: account.storeId };
+    localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
+    state.merchantStoreId = account.storeId;
+    state.merchantTab = "overview";
+    render();
+    showToast("مرحباً بك في لوحة متجرك", "success");
+    return;
   }
   if (event.target.id === "merchant-store-form") {
     const form = new FormData(event.target);
