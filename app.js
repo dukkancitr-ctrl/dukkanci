@@ -129,7 +129,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore);
 
 const products = [
   {
@@ -271,6 +271,14 @@ const products = [
 
 products.push(...heelalProducts);
 products.push(...alsultanProducts);
+products.push(...zaitouneProducts);
+products.push(...ezzedineProducts);
+products.push(...sallouraProducts);
+products.push(...nourProducts);
+products.push(...tihamaProducts);
+products.push(...afganProducts);
+products.push(...samProducts);
+products.push(...kadyProducts);
 
 const initialOrders = [
   { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
@@ -308,7 +316,15 @@ const initialDeliverySettings = {
   3: { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 60 },
   4: { mode: "fixed", fixedFee: 15, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 50 },
   5: { mode: "distance", fixedFee: 40, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 100 },
-  ...alsultanDeliverySettings
+  ...alsultanDeliverySettings,
+  ...zaitouneDeliverySettings,
+  ...ezzedineDeliverySettings,
+  ...sallouraDeliverySettings,
+  ...nourDeliverySettings,
+  ...tihamaDeliverySettings,
+  ...afganDeliverySettings,
+  ...samDeliverySettings,
+  ...kadyDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -548,7 +564,7 @@ function hydrateIcons(root = document) {
 }
 
 function storeAvatar(store, extraClass = "") {
-  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""} ${store.sourceBranded ? "store-avatar--source-branded" : ""}"><img src="${store.logoImage || store.image}" alt="${store.name}"></span>`;
+  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""} ${store.sourceBranded || store.officialStore ? "store-avatar--source-branded" : ""} ${store.brandTheme ? `store-avatar--${store.brandTheme}` : ""}"><img src="${store.logoImage || store.image}" alt="${store.name}"></span>`;
 }
 
 function categoryCard(name, image, caption) {
@@ -564,11 +580,11 @@ function categoryCard(name, image, caption) {
 function storeCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   return `
-    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""}">
+    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
         <span class="status-badge ${store.open ? "open" : "closed"}">${store.open ? "مفتوح" : "مغلق الآن"}</span>
-        ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : ""}
+        ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
         ${store.hasOffer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
       </button>
       <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
@@ -591,10 +607,17 @@ function storeCard(store) {
   `;
 }
 
+function waOrderLink(product) {
+  const store = getStore(product.storeId);
+  const num = (store.whatsapp || store.phone || "").replace(/\D/g, "");
+  const text = encodeURIComponent(`مرحباً ${store.name}، أرغب بالاستفسار عن سعر وتوفّر: ${product.name}`);
+  return `https://wa.me/${num}?text=${text}`;
+}
+
 function productCard(product) {
   const isFavorite = state.favorites.includes(`product-${product.id}`);
   return `
-    <article class="product-card ${product.storeId === 5 || product.sourceBranded ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
+    <article class="product-card ${product.storeId === 5 || (product.sourceBranded && product.imageFit !== "cover") ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
       <button class="product-card__image" data-action="open-product" data-id="${product.id}">
         <img src="${product.image}" alt="${product.name}" loading="lazy">
         ${product.oldPrice ? `<span class="discount-chip">وفر ${Math.round((1 - product.price / product.oldPrice) * 100)}%</span>` : ""}
@@ -606,10 +629,15 @@ function productCard(product) {
       <div class="product-card__body">
         <small>${product.category}</small>
         <button class="product-name" data-action="open-product" data-id="${product.id}">${product.name}</button>
+        ${product.priceOnRequest ? `
+        <div class="price-row price-row--request">
+          <span class="price-request">السعر عند الطلب</span>
+          <a class="quick-add quick-add--wa" href="${waOrderLink(product)}" target="_blank" rel="noopener" aria-label="اطلب عبر واتساب">${icon("whatsapp")}</a>
+        </div>` : `
         <div class="price-row">
-          <div><strong>${money(product.price)}</strong><span>/ ${product.unit}</span>${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}</div>
+          <div><strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}</div>
           <button class="quick-add" data-action="quick-add" data-id="${product.id}" ${!product.available ? "disabled" : ""}>${icon("plus")}</button>
-        </div>
+        </div>`}
       </div>
     </article>
   `;
@@ -660,6 +688,7 @@ function renderHome() {
         </div>
         <div class="category-grid">
           ${categoryCard("سوبر ماركت", "/assets/photos/store-market.jpg", "كل احتياجات البيت")}
+          ${categoryCard("مطاعم", "/assets/photos/store-restaurant.jpg", "ألذ الأطباق إلى بابك")}
           ${categoryCard("ملاحم", "/assets/photos/store-butcher.jpg", "لحوم طازجة يومياً")}
           ${categoryCard("حلويات", "/assets/photos/store-bakery.jpg", "لأحلى المناسبات")}
           ${categoryCard("مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان")}
@@ -749,7 +778,7 @@ function getFilteredStores() {
 
 function renderStores() {
   const result = getFilteredStores();
-  const categories = ["الكل", "سوبر ماركت", "ملاحم", "حلويات", "مكسرات وبهارات"];
+  const categories = ["الكل", "مطاعم", "سوبر ماركت", "ملاحم", "حلويات", "مكسرات وبهارات"];
   return `
     <section class="page-hero compact">
       <div class="container">
@@ -829,11 +858,11 @@ function renderStorePage(id) {
     <section class="store-page-head">
       <div class="container">
         <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${store.name}</strong></div>
-        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""}">
+        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""}">
           <img src="${store.coverImage || store.image}" alt="${store.name}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
-          ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : ""}
+          ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
         </div>
         <div class="store-profile">
           <div class="store-profile__main">
@@ -1629,14 +1658,16 @@ function openProductModal(id) {
         <h2>${product.name}</h2>
         <div class="product-status"><span class="${product.available ? "available" : "not-available"}">${product.available ? "متوفر" : "غير متوفر"}</span><span>${icon("star")} 4.8 (42 تقييماً)</span></div>
         <p>${product.description}</p>
-        <div class="modal-price"><strong>${money(product.price)}</strong><span>/ ${product.unit}</span>${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}</div>
+        <div class="modal-price">${product.priceOnRequest ? `<strong>السعر عند الطلب</strong>` : `<strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}`}</div>
         ${product.options.map((option, optionIndex) => `
           <fieldset class="option-group"><legend>${option.name}</legend><div>${option.values.map((value, valueIndex) => `<label><input type="radio" name="option-${optionIndex}" value="${valueIndex}" ${valueIndex === 0 ? "checked" : ""}><span>${value}${option.extra[valueIndex] ? `<small>${option.extra[valueIndex] > 0 ? "+" : ""}${money(option.extra[valueIndex])}</small>` : ""}</span></label>`).join("")}</div></fieldset>
         `).join("")}
         <label class="product-notes"><span>ملاحظات خاصة</span><textarea name="notes" placeholder="اكتب أي تفاصيل تهم المتجر..."></textarea></label>
         <div class="product-add-row">
+          ${product.priceOnRequest ? `
+          <a class="primary-button large wa-order-btn" href="${waOrderLink(product)}" target="_blank" rel="noopener">${icon("whatsapp")} اطلب عبر واتساب</a>` : `
           <div class="quantity-control large"><button type="button" data-action="modal-quantity-minus">${icon("minus")}</button><span id="modal-quantity">1</span><button type="button" data-action="modal-quantity-plus">${icon("plus")}</button></div>
-          <button class="primary-button large" type="submit" ${!product.available ? "disabled" : ""}>${icon("bag")} أضف للسلة · <span id="modal-total">${money(product.price)}</span></button>
+          <button class="primary-button large" type="submit" ${!product.available ? "disabled" : ""}>${icon("bag")} أضف للسلة · <span id="modal-total">${money(product.price)}</span></button>`}
         </div>
       </form>
     </div>
@@ -1648,7 +1679,10 @@ function updateProductModalPrice() {
   const form = document.getElementById("product-form");
   if (!form) return;
   const product = getProduct(form.dataset.id);
-  const quantity = Number(document.getElementById("modal-quantity").textContent);
+  const quantityEl = document.getElementById("modal-quantity");
+  const totalEl = document.getElementById("modal-total");
+  if (!quantityEl || !totalEl) return;
+  const quantity = Number(quantityEl.textContent);
   let price = product.price;
   product.options.forEach((option, index) => {
     const selected = form.querySelector(`input[name="option-${index}"]:checked`);
@@ -1791,6 +1825,7 @@ function captureStoreLocation() {
 function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   const product = getProduct(productId);
   if (!product.available) return;
+  if (product.priceOnRequest) { showToast("هذا المنتج بسعر عند الطلب — تواصل عبر واتساب"); return; }
   const currentStoreId = state.cart[0]?.storeId;
   if (currentStoreId && currentStoreId !== product.storeId) {
     const currentStore = getStore(currentStoreId);
@@ -1850,7 +1885,7 @@ function openJoinModal() {
     <form id="join-form" class="join-form">
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي</span><input required placeholder="مثال: سوق البركة"></label>
-        <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option></select></label>
+        <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option></select></label>
         <label><span>اسم صاحب المتجر</span><input required placeholder="الاسم الكامل"></label>
         <label><span>رقم واتساب</span><input required dir="ltr" placeholder="+90 555 000 00 00"></label>
         <label class="wide"><span>عنوان المتجر</span><input required placeholder="الحي، الشارع، رقم البناء"></label>
@@ -2029,7 +2064,8 @@ document.addEventListener("click", event => {
   if (action === "map") {
     const store = getStore(parseRoute().id);
     const location = store && getStoreLocation(store.id);
-    if (location) window.open(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`, "_blank", "noopener");
+    if (store?.mapUrl) window.open(store.mapUrl, "_blank", "noopener");
+    else if (location) window.open(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`, "_blank", "noopener");
   }
   if (action === "location") {
     state.accountTab = "addresses";
@@ -2083,6 +2119,7 @@ document.addEventListener("submit", event => {
   event.preventDefault();
   if (event.target.id === "product-form") {
     const product = getProduct(event.target.dataset.id);
+    if (product.priceOnRequest) return;
     const selections = product.options.map((_, index) => Number(event.target.querySelector(`input[name="option-${index}"]:checked`)?.value || 0));
     const quantity = Number(document.getElementById("modal-quantity").textContent);
     const notes = event.target.elements.notes?.value || "";

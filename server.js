@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const port = Number(process.env.PORT) || 4173;
+const host = process.env.HOST || "0.0.0.0";
 const root = __dirname;
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -164,11 +165,11 @@ http.createServer(async (request, response) => {
 
       response.writeHead(200, {
         "Content-Type": types[path.extname(target)] || "application/octet-stream",
-        "Cache-Control": path.basename(target) === "sw.js" ? "no-cache" : "public, max-age=300"
+        "Cache-Control": /^(sw\.js|index\.html)$/.test(path.basename(target)) ? "no-cache" : "public, max-age=300"
       });
       response.end(data);
     });
   });
-}).listen(port, "127.0.0.1", () => {
-  console.log(`Dukkanci is running at http://127.0.0.1:${port}`);
+}).listen(port, host, () => {
+  console.log(`Dukkanci is running at http://${host}:${port}`);
 });
