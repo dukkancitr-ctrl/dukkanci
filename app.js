@@ -283,6 +283,13 @@ products.push(...yemenchefProducts);
 products.push(...alwadiProducts);
 products.push(...kadibyProducts);
 
+// Keep the bundled fallback catalog in sync with the cloud: drop unavailable
+// or image-less products. Filtering in place preserves the remaining ids.
+for (let i = products.length - 1; i >= 0; i--) {
+  const p = products[i];
+  if (p.available === false || !p.image) products.splice(i, 1);
+}
+
 const initialOrders = [
   { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
   { id: "DK-1047", customer: "سارة خليل", storeId: 2, total: 720, status: "قيد التجهيز", time: "منذ 18 دقيقة", items: 3 },
