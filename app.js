@@ -2224,6 +2224,31 @@ function escAttr(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+// Read an uploaded image, downscale it (so it stays light for storage), return a JPEG data URL.
+function readImageFileResized(file, maxDim = 900) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) { reject(new Error("ليس ملف صورة")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("تعذّر قراءة الصورة"));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/jpeg", 0.85)); }
+        catch (e) { resolve(reader.result); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function openProductForm(id) {
   const editing = id ? getProduct(id) : null;
   const store = getMerchantStore();
@@ -2238,7 +2263,17 @@ function openProductForm(id) {
         <label class="input-label"><span>السعر (ل.ت)</span><input name="price" type="number" min="0" step="1" required value="${editing ? editing.price : ""}"></label>
         <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
         <label class="input-label"><span>التصنيف</span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
-        <label class="input-label wide"><span>رابط الصورة</span><input name="image" placeholder="/assets/... أو https://..." value="${editing ? escAttr(editing.image) : ""}"></label>
+        <div class="input-label wide image-input-group">
+          <span>صورة المنتج</span>
+          <div class="image-upload-row">
+            <div class="image-preview" id="product-image-preview">${(editing && editing.image) ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+            <div class="image-upload-controls">
+              <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
+              <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
+            </div>
+          </div>
+          <input type="hidden" name="imageData">
+        </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
       </div>
       <label class="form-check"><input type="checkbox" name="available" ${!editing || editing.available !== false ? "checked" : ""}><span>متوفر للبيع الآن</span></label>
@@ -2543,6 +2578,22 @@ document.addEventListener("change", event => {
     fields.classList.toggle("active", event.target.checked);
     event.target.closest(".delivery-toggle").querySelector("b").textContent = event.target.checked ? "مفعّل" : "غير مفعّل";
   }
+  if (event.target.id === "product-image-file") {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const form = event.target.closest("form");
+    const preview = document.getElementById("product-image-preview");
+    if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
+    readImageFileResized(file).then(dataUrl => {
+      form.imageData.value = dataUrl;
+      form.image.value = "";
+      if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      showToast(`تم اختيار "${file.name}"`, "success");
+    }).catch(() => {
+      if (preview) preview.innerHTML = icon("box");
+      showToast("تعذّر رفع الصورة، جرّب صورة أخرى");
+    });
+  }
   if (event.target.closest("#product-form")) updateProductModalPrice();
   if (event.target.matches('.choice-card input')) {
     event.target.closest(".choice-grid").querySelectorAll(".choice-card").forEach(card => card.classList.remove("active"));
@@ -2567,6 +2618,13 @@ document.addEventListener("input", event => {
       const text = normalizeAr(row.textContent);
       row.style.display = !q || text.includes(q) ? "" : "none";
     });
+  }
+  if (event.target.name === "image" && event.target.closest("#merchant-product-form")) {
+    const form = event.target.closest("form");
+    form.imageData.value = "";
+    const preview = document.getElementById("product-image-preview");
+    const url = event.target.value.trim();
+    if (preview) preview.innerHTML = url ? `<img src="${escAttr(url)}" alt="" onerror="this.parentNode.innerHTML='&#9888;'">` : icon("box");
   }
   if (event.target.id === "merchant-product-search") {
     state.merchantProductSearch = event.target.value;
@@ -2610,7 +2668,7 @@ document.addEventListener("submit", event => {
       price: Math.max(0, Math.round(Number(f.price.value) || 0)),
       unit: f.unit.value.trim(),
       category: f.category.value.trim() || "منتجات",
-      image: f.image.value.trim() || "/assets/photos/store-market.jpg",
+      image: (f.imageData.value || f.image.value.trim()) || "/assets/photos/store-market.jpg",
       description: f.description.value.trim(),
       available: f.available.checked
     };
