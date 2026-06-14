@@ -129,7 +129,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore);
 
 const products = [
   {
@@ -280,6 +280,7 @@ products.push(...afganProducts);
 products.push(...samProducts);
 products.push(...kadyProducts);
 products.push(...yemenchefProducts);
+products.push(...alwadiProducts);
 
 const initialOrders = [
   { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
@@ -326,7 +327,8 @@ const initialDeliverySettings = {
   ...afganDeliverySettings,
   ...samDeliverySettings,
   ...kadyDeliverySettings,
-  ...yemenchefDeliverySettings
+  ...yemenchefDeliverySettings,
+  ...alwadiDeliverySettings
 };
 
 function loadCustomerAddresses() {

@@ -26,7 +26,11 @@ window.__supabaseReady = (async () => {
     }
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && window.supabase?.createClient) {
       window.SUPABASE_URL = window.SUPABASE_URL.replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
-      window.supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      // Force fresh reads: the catalog changes when merchants edit products, so we must
+      // never serve browser-cached REST responses (otherwise updates don't appear).
+      window.supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+        global: { fetch: (input, init = {}) => fetch(input, { ...init, cache: "no-store" }) }
+      });
       console.info("Supabase: connected");
       return true;
     }
