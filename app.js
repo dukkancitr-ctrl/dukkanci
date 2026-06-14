@@ -464,6 +464,101 @@ function saveState() {
   localStorage.setItem("dukkanci-store-locations", JSON.stringify(state.storeLocations));
 }
 
+// ---- Local persistence for merchant catalog changes (no backend needed) ----
+const PRODUCT_OVERRIDES_KEY = "dukkanci-product-overrides";
+const CUSTOM_PRODUCTS_KEY = "dukkanci-custom-products";
+
+function loadJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function saveProductOverride(id, fields) {
+  const all = loadJSON(PRODUCT_OVERRIDES_KEY, {});
+  all[id] = { ...(all[id] || {}), ...fields };
+  localStorage.setItem(PRODUCT_OVERRIDES_KEY, JSON.stringify(all));
+}
+function saveCustomProduct(product) {
+  const all = loadJSON(CUSTOM_PRODUCTS_KEY, []);
+  const idx = all.findIndex(p => p.id === product.id);
+  if (idx >= 0) all[idx] = product; else all.push(product);
+  localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(all));
+}
+function applyProductPersistence() {
+  for (const p of loadJSON(CUSTOM_PRODUCTS_KEY, [])) {
+    if (!products.some(x => x.id === p.id)) products.push(p);
+  }
+  const overrides = loadJSON(PRODUCT_OVERRIDES_KEY, {});
+  for (const id of Object.keys(overrides)) {
+    const p = products.find(x => x.id === Number(id));
+    if (p) Object.assign(p, overrides[id]);
+  }
+}
+
+// ---- Supabase cloud catalog (read + write) ----
+function mapDbStore(r) {
+  return {
+    id: r.id, name: r.name, category: r.category, image: r.image, coverImage: r.cover_image,
+    logoImage: r.logo_image, logo: r.logo, rating: r.rating, reviews: r.reviews, newStore: r.new_store,
+    delivery: r.delivery, minOrder: r.min_order, time: r.time, distance: r.distance,
+    location: (r.lat != null && r.lng != null) ? { lat: r.lat, lng: r.lng } : undefined, mapUrl: r.map_url,
+    open: r.open, featured: r.featured, hasOffer: r.has_offer, offer: r.offer, priceOnRequest: r.price_on_request,
+    description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
+    website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
+    subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
+    branchGroup: r.branch_group, brandTheme: r.brand_theme
+  };
+}
+function mapDbProduct(r) {
+  return {
+    id: r.id, storeId: r.store_id, sourceId: r.source_id, name: r.name, image: r.image,
+    price: Number(r.price), oldPrice: r.old_price != null ? Number(r.old_price) : undefined,
+    priceOnRequest: r.price_on_request, unit: r.unit, category: r.category, available: r.available,
+    featured: r.featured, description: r.description, imageFit: r.image_fit, options: r.options || []
+  };
+}
+function toDbProduct(p) {
+  return {
+    id: p.id, store_id: p.storeId, source_id: p.sourceId ?? null, name: p.name, image: p.image ?? null,
+    price: p.price ?? 0, old_price: p.oldPrice ?? null, price_on_request: !!p.priceOnRequest,
+    unit: p.unit ?? null, category: p.category ?? null, available: p.available !== false, featured: !!p.featured,
+    description: p.description ?? null, image_fit: p.imageFit ?? null, options: p.options ?? []
+  };
+}
+async function loadCatalogFromSupabase() {
+  const sb = window.supabaseClient;
+  if (!sb) return false;
+  try {
+    const { data: st, error: e1 } = await sb.from("stores").select("*");
+    if (e1 || !st || !st.length) return false;
+    let all = [], from = 0;
+    for (;;) {
+      const { data, error } = await sb.from("products").select("*").range(from, from + 999);
+      if (error) return false;
+      all = all.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    if (!all.length) return false;
+    stores.length = 0; st.forEach(r => stores.push(mapDbStore(r)));
+    products.length = 0; all.forEach(r => products.push(mapDbProduct(r)));
+    console.info(`Supabase: loaded ${stores.length} stores, ${products.length} products`);
+    return true;
+  } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
+}
+function pushProductCloud(product) {
+  const sb = window.supabaseClient;
+  if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => { if (error) console.warn("product cloud save:", error.message); });
+}
+function pushOrderCloud(order) {
+  const sb = window.supabaseClient;
+  if (sb) sb.from("orders").upsert({ id: order.id, store_id: order.storeId, customer: order.customer, total: order.total, status: order.status, time: order.time, items: order.items, delivery_details: order.deliveryDetails ?? null }, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
+}
+async function initCatalog() {
+  await window.__supabaseReady;
+  const ok = await loadCatalogFromSupabase();
+  if (ok) render();
+  else { applyProductPersistence(); render(); }
+}
+
 function getDeliverySettings(storeId) {
   return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)];
 }
@@ -1126,6 +1221,7 @@ function dashboardSidebar(type, active) {
     ["products", "box", "المنتجات"],
     ["offers", "megaphone", "العروض"],
     ["store", "store", "بيانات المتجر"],
+    ["integrations", "settings", "التكاملات"],
     ["subscription", "wallet", "الاشتراك"]
   ];
   const adminItems = [
@@ -1256,7 +1352,7 @@ function merchantOffers() {
       <span class="empty-dashboard__icon">${icon("megaphone")}</span>
       <h3>${discountedProducts.length ? `عروض ${store.name}` : "أنشئ عرضاً جديداً لعملائك"}</h3>
       <p>حدد منتجاً وخصماً أو فعّل التوصيل المجاني فوق مبلغ معين.</p>
-      <button class="primary-button" data-action="toast" data-message="تم فتح نموذج إنشاء العرض">${icon("plus")} إنشاء عرض</button>
+      <button class="primary-button" data-action="create-offer">${icon("plus")} إنشاء عرض</button>
     </div>
     ${discountedProducts.length ? `<div class="offer-management-grid">${discountedProducts.map(product => `
       <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>${product.name}</h3><p>السعر قبل الخصم ${money(product.oldPrice)}</p><div><strong>${Math.round((1 - product.price / product.oldPrice) * 100)}%</strong><small>خصم</small></div><button class="secondary-button compact" data-action="edit-product" data-id="${product.id}">${icon("edit")} تعديل</button></article>
@@ -1320,6 +1416,43 @@ function merchantSubscription() {
   `;
 }
 
+function merchantIntegrations() {
+  const I = window.DUKKANCI_INTEGRATIONS;
+  const s = (I && I.settings) || {};
+  const get = k => (s[k] && s[k].setting_value) || "";
+  const on = k => !!(s[k] && s[k].is_enabled);
+  const field = (key, label, ph) => `
+    <div class="integration-field">
+      <label class="input-label"><span>${label}</span><input name="${key}" value="${escAttr(get(key))}" placeholder="${ph || ""}" dir="ltr"></label>
+      <label class="form-check"><input type="checkbox" name="${key}__on" ${on(key) ? "checked" : ""}><span>تفعيل</span></label>
+    </div>`;
+  return `
+    <form id="merchant-integrations-form">
+      <section class="dashboard-card form-card">
+        <h3>${icon("megaphone")} وسائل التواصل والإعلانات</h3>
+        <div class="form-grid">
+          ${field("meta_pixel_id", "Meta Pixel ID", "123456789012345")}
+          ${field("meta_capi_token", "Meta CAPI Token", "EAAB...")}
+          ${field("meta_test_event_code", "Meta Test Event Code", "TEST12345")}
+          ${field("tiktok_pixel_id", "TikTok Pixel ID", "Cxxxxxxxxxxxx")}
+          ${field("snapchat_pixel_id", "Snapchat Pixel ID", "")}
+          ${field("pinterest_tag_id", "Pinterest Tag ID", "")}
+        </div>
+      </section>
+      <section class="dashboard-card form-card">
+        <h3>${icon("store")} منتجات جوجل والتحليلات</h3>
+        <div class="form-grid">
+          ${field("google_tag_manager_id", "Google Tag Manager ID", "GTM-XXXXXX")}
+          ${field("ga4_measurement_id", "GA4 Measurement ID", "G-XXXXXXX")}
+          ${field("google_ads_conversion_id", "Google Ads Conversion ID", "AW-XXXXXXX")}
+          ${field("google_ads_conversion_label", "Google Ads Conversion Label", "")}
+        </div>
+        <div class="review-note">${icon("shield")} <span><strong>تُحقن السكربتات فقط عند التفعيل ووجود المعرّف</strong><small>تُحفظ في قاعدة البيانات وتُطبّق على كل الزوار. حدث PageView يُطلق تلقائيًا عند كل تنقّل في الموقع.</small></span></div>
+        <button class="primary-button full" type="submit">${icon("check")} حفظ التكاملات</button>
+      </section>
+    </form>`;
+}
+
 function renderMerchant(id) {
   state.merchantStoreId = Number(id) || state.merchantStoreId || 1;
   const store = getMerchantStore();
@@ -1329,9 +1462,10 @@ function renderMerchant(id) {
     products: merchantProducts,
     offers: merchantOffers,
     store: merchantStore,
+    integrations: merchantIntegrations,
     subscription: merchantSubscription
   }[state.merchantTab]();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
   const [title, subtitle] = titles[state.merchantTab];
   return `
     <div class="dashboard-shell">
@@ -1415,7 +1549,7 @@ function adminOrders() {
 
 function adminComplaints() {
   const complaints = [["SH-142", "تأخر وصول الطلب", "محمود درويش", "سوق البركة", "شكوى جديدة"], ["SH-141", "منتج غير مطابق", "ليلى أحمد", "ملحمة الأمانة", "قيد المراجعة"], ["SH-140", "طلب ناقص", "سارة خليل", "حلويات الشام", "تم الحل"]];
-  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div><button class="secondary-button compact" data-action="export-csv" data-kind="complaints">${icon("download")} تصدير</button></div><section class="dashboard-card complaint-list">${complaints.map(item => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${item[1]}</strong><small>${item[0]} · ${item[2]} ضد ${item[3]}</small></div><span class="status-pill ${statusClass(item[4])}">${item[4]}</span><button class="secondary-button compact" data-action="toast" data-message="تم فتح تفاصيل الشكوى">مراجعة</button></article>`).join("")}</section>`;
+  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div><button class="secondary-button compact" data-action="export-csv" data-kind="complaints">${icon("download")} تصدير</button></div><section class="dashboard-card complaint-list">${complaints.map(item => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${item[1]}</strong><small>${item[0]} · ${item[2]} ضد ${item[3]}</small></div><span class="status-pill ${statusClass(item[4])}">${item[4]}</span><button class="secondary-button compact" data-action="complaint-detail" data-id="${item[0]}" data-subject="${escAttr(item[1])}" data-customer="${escAttr(item[2])}" data-store="${escAttr(item[3])}" data-status="${escAttr(item[4])}">مراجعة</button></article>`).join("")}</section>`;
 }
 
 function adminContent() {
@@ -1521,14 +1655,61 @@ function renderNotFound() {
 }
 
 function parseRoute() {
-  const hash = location.hash.replace(/^#/, "") || "home";
-  const [route, id] = hash.split("/");
-  return { route, id };
+  const path = location.pathname.replace(/^\/+|\/+$/g, "");
+  if (!path) return { route: "home", id: null };
+  const [route, id] = path.split("/");
+  return { route, id: id ? decodeURIComponent(id) : undefined };
+}
+
+// History API navigation (real URLs, no hash). Accepts "stores", "store/5", "home", "/stores".
+function navigate(to) {
+  const path = (!to || to === "home") ? "/" : (to.startsWith("/") ? to : "/" + to);
+  if (location.pathname !== path) history.pushState({}, "", path);
+  closeDrawers();
+  render();
+  window.dispatchEvent(new CustomEvent("dukkanci:navigate"));
+}
+
+function setMetaTag(selector, attr, value) {
+  let el = document.head.querySelector(selector);
+  if (!el) {
+    el = document.createElement(selector.startsWith("link") ? "link" : "meta");
+    const m = selector.match(/\[(name|property|rel)="([^"]+)"\]/);
+    if (m) el.setAttribute(m[1], m[2]);
+    document.head.appendChild(el);
+  }
+  el.setAttribute(attr, value);
+}
+
+function updateHead(route, id) {
+  const base = "https://dukkanci.vercel.app";
+  const canonical = base + (location.pathname === "/" ? "/" : location.pathname);
+  let title = "دكانجي | سوق الحي بين يديك";
+  let desc = "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.";
+  let image = base + "/assets/dukkanci-app-icon-512.png";
+  if (route === "store" && id) {
+    const s = getStore(id);
+    if (s) {
+      title = `${s.name} | دكانجي`;
+      desc = s.description || desc;
+      const img = s.coverImage || s.image;
+      if (img) image = img.startsWith("http") ? img : base + img;
+    }
+  } else if (route === "stores") { title = "كل المتاجر والمطاعم | دكانجي"; desc = "تصفّح متاجر ومطاعم حيك في إسطنبول واطلب أونلاين."; }
+  else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
+  document.title = title;
+  setMetaTag('meta[name="description"]', "content", desc);
+  setMetaTag('link[rel="canonical"]', "href", canonical);
+  setMetaTag('meta[property="og:title"]', "content", title);
+  setMetaTag('meta[property="og:description"]', "content", desc);
+  setMetaTag('meta[property="og:image"]', "content", image);
+  setMetaTag('meta[property="og:url"]', "content", canonical);
 }
 
 function render() {
   const { route, id } = parseRoute();
   state.route = route;
+  updateHead(route, id);
   const routes = {
     home: renderHome,
     stores: renderStores,
@@ -1690,6 +1871,7 @@ function openComplaintDetails(complaintId) {
 function openProductModal(id) {
   const product = getProduct(id);
   const store = getStore(product.storeId);
+  window.DUKKANCI_INTEGRATIONS?.track("ViewContent", { ids: [product.id], value: product.price });
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="product-modal-grid">
@@ -1894,6 +2076,7 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), notes });
   saveState();
   updateCartBadges();
+  window.DUKKANCI_INTEGRATIONS?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity });
   showToast(`تمت إضافة ${product.name} إلى السلة`, "success");
 }
 
@@ -1952,6 +2135,61 @@ function openOrderManager(orderId) {
   `, "order-modal");
 }
 
+function escAttr(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function openProductForm(id) {
+  const editing = id ? getProduct(id) : null;
+  const store = getMerchantStore();
+  const cats = [...new Set(products.filter(p => p.storeId === store.id).map(p => p.category))];
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">${store.name}</span>
+    <h2>${editing ? "تعديل منتج" : "إضافة منتج جديد"}</h2>
+    <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}">
+      <div class="form-grid">
+        <label class="input-label wide"><span>اسم المنتج</span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
+        <label class="input-label"><span>السعر (ل.ت)</span><input name="price" type="number" min="0" step="1" required value="${editing ? editing.price : ""}"></label>
+        <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
+        <label class="input-label"><span>التصنيف</span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label wide"><span>رابط الصورة</span><input name="image" placeholder="/assets/... أو https://..." value="${editing ? escAttr(editing.image) : ""}"></label>
+        <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
+      </div>
+      <label class="form-check"><input type="checkbox" name="available" ${!editing || editing.available !== false ? "checked" : ""}><span>متوفر للبيع الآن</span></label>
+      <button class="primary-button full" type="submit">${icon(editing ? "check" : "plus")} ${editing ? "حفظ التعديلات" : "إضافة المنتج"}</button>
+    </form>
+  `, "product-form-modal");
+}
+
+function openOfferForm() {
+  const store = getMerchantStore();
+  const list = products.filter(p => p.storeId === store.id && !p.priceOnRequest && p.price > 0);
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">${store.name}</span>
+    <h2>إنشاء عرض / خصم</h2>
+    <form class="modal-form" id="merchant-offer-form">
+      <label class="input-label"><span>اختر المنتج</span><select name="product" required>${list.map(p => `<option value="${p.id}">${escAttr(p.name)} — ${money(p.price)}</option>`).join("")}</select></label>
+      <label class="input-label"><span>نسبة الخصم %</span><input name="discount" type="number" min="5" max="80" step="5" value="15" required></label>
+      <div class="review-note">${icon("megaphone")} <span><strong>سيظهر العرض</strong><small>سيُحسب السعر الجديد تلقائياً ويظهر مع شارة الخصم في المتجر.</small></span></div>
+      <button class="primary-button full" type="submit">${icon("megaphone")} تفعيل العرض</button>
+    </form>
+  `, "offer-modal");
+}
+
+function openComplaintDetail(data) {
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">شكوى ${data.id}</span>
+    <h2>${data.subject}</h2>
+    <div class="order-manager-summary"><span><small>العميل</small><strong>${data.customer}</strong></span><span><small>ضد متجر</small><strong>${data.store}</strong></span><span><small>الحالة</small><strong>${data.status}</strong></span></div>
+    <label class="input-label"><span>تحديث حالة الشكوى</span><select id="complaint-status-select"><option ${data.status === "شكوى جديدة" ? "selected" : ""}>شكوى جديدة</option><option ${data.status === "قيد المراجعة" ? "selected" : ""}>قيد المراجعة</option><option ${data.status === "تم الحل" ? "selected" : ""}>تم الحل</option></select></label>
+    <label class="input-label"><span>رد على العميل</span><textarea placeholder="اكتب رد الإدارة..."></textarea></label>
+    <button class="primary-button full" data-action="close-modal-toast" data-message="تم حفظ الرد وإشعار العميل">حفظ الرد</button>
+  `, "complaint-modal");
+}
+
 function exportCsv(kind) {
   let rows = [];
   if (kind === "stores") rows = [["المتجر", "التصنيف", "التقييم", "رسوم التوصيل"], ...stores.map(store => [store.name, store.category, store.rating, deliveryPriceLabel(store)])];
@@ -1967,15 +2205,19 @@ function exportCsv(kind) {
   showToast("تم تجهيز ملف التصدير", "success");
 }
 
+// Internal-link navigation via History API (handles data-route nav + plain #/... anchors)
 document.addEventListener("click", event => {
-  const target = event.target.closest("[data-action], [data-route]");
+  const a = event.target.closest("a[href]");
+  if (!a) return;
+  const href = a.getAttribute("href");
+  if (!href || a.target === "_blank" || /^(https?:|tel:|mailto:|wa\.me)/i.test(href)) return;
+  if (href.startsWith("#")) { event.preventDefault(); navigate(href.replace(/^#/, "") || "home"); return; }
+  if (href.startsWith("/") && !href.startsWith("//") && !/\.[a-z0-9]+(\?|$)/i.test(href)) { event.preventDefault(); navigate(href); }
+});
+
+document.addEventListener("click", event => {
+  const target = event.target.closest("[data-action]");
   if (!target) return;
-  if (target.dataset.route) {
-    event.preventDefault();
-    location.hash = target.dataset.route;
-    closeDrawers();
-    return;
-  }
   const action = target.dataset.action;
   if (action === "open-cart") openCart();
   if (action === "close-drawers") closeDrawers();
@@ -1984,7 +2226,7 @@ document.addEventListener("click", event => {
     state.storeProductFilter = "الكل";
     closeModal();
     closeDrawers();
-    location.hash = `store/${target.dataset.id}`;
+    navigate(`store/${target.dataset.id}`);
   }
   if (action === "open-product") openProductModal(target.dataset.id);
   if (action === "quick-add") {
@@ -2001,7 +2243,7 @@ document.addEventListener("click", event => {
   if (action === "category") {
     state.storeFilter = target.dataset.category;
     state.search = "";
-    location.hash = "stores";
+    navigate("stores");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "product-category") {
@@ -2012,11 +2254,11 @@ document.addEventListener("click", event => {
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
     state.storeFilter = "الكل";
-    location.hash = "stores";
+    navigate("stores");
   }
   if (action === "run-store-search") { state.search = document.getElementById("stores-search").value.trim(); render(); }
   if (action === "focus-search") {
-    if (state.route !== "home") location.hash = "home";
+    if (state.route !== "home") navigate("home");
     setTimeout(() => document.getElementById("hero-search")?.focus(), 100);
   }
   if (action === "cart-plus" || action === "cart-minus") {
@@ -2026,7 +2268,12 @@ document.addEventListener("click", event => {
     else state.cart.splice(index, 1);
     saveState(); updateCartBadges(); renderCart();
   }
-  if (action === "checkout") { closeDrawers(); location.hash = "checkout"; }
+  if (action === "checkout") {
+    closeDrawers();
+    const t = cartTotals();
+    window.DUKKANCI_INTEGRATIONS?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
+    navigate("checkout");
+  }
   if (action === "modal-quantity-plus" || action === "modal-quantity-minus") {
     const el = document.getElementById("modal-quantity");
     const next = Math.max(1, Number(el.textContent) + (action.endsWith("plus") ? 1 : -1));
@@ -2077,12 +2324,13 @@ document.addEventListener("click", event => {
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
   if (action === "admin-tab") { state.adminTab = target.dataset.tab; render(); }
-  if (action === "route-home") location.hash = "home";
+  if (action === "route-home") navigate("home");
   if (action === "manage-order") openOrderManager(target.dataset.id);
   if (action === "view-order") showToast(`تم فتح الطلب ${target.dataset.id}`);
   if (action === "save-order-status") {
     const order = state.orders.find(item => item.id === target.dataset.id);
     order.status = document.getElementById("order-status-select").value;
+    pushOrderCloud(order);
     saveState(); closeModal(); render(); showToast("تم تحديث حالة الطلب وإعداد إشعار العميل", "success");
   }
   if (action === "approve-store" || action === "reject-store") {
@@ -2110,7 +2358,7 @@ document.addEventListener("click", event => {
   }
   if (action === "location") {
     state.accountTab = "addresses";
-    location.hash = "orders";
+    navigate("orders");
   }
   if (action === "install-app") {
     if (state.deferredInstall) {
@@ -2118,7 +2366,11 @@ document.addEventListener("click", event => {
       state.deferredInstall.userChoice.then(() => { state.deferredInstall = null; });
     } else showToast("من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» لتثبيت دكانجي");
   }
-  if (action === "add-product-form" || action === "edit-product") showToast("تم فتح نموذج المنتج");
+  if (action === "add-product-form") openProductForm();
+  if (action === "edit-product") openProductForm(target.dataset.id);
+  if (action === "create-offer") openOfferForm();
+  if (action === "complaint-detail") openComplaintDetail(target.dataset);
+  if (action === "close-modal-toast") { closeModal(); showToast(target.dataset.message || "تم الحفظ", "success"); }
 });
 
 document.addEventListener("keydown", event => {
@@ -2127,7 +2379,7 @@ document.addEventListener("keydown", event => {
     event.preventDefault();
     state.search = event.target.value.trim();
     state.storeFilter = "الكل";
-    location.hash = "stores";
+    navigate("stores");
   } else if (event.target.id === "stores-search") {
     event.preventDefault();
     state.search = event.target.value.trim();
@@ -2156,6 +2408,8 @@ document.addEventListener("change", event => {
   if (event.target.dataset.action === "toggle-product") {
     const product = getProduct(event.target.dataset.id);
     product.available = event.target.checked;
+    saveProductOverride(product.id, { available: product.available });
+    pushProductCloud(product);
     showToast(`أصبح المنتج ${product.available ? "متوفراً" : "غير متوفر"}`, "success");
     render();
   }
@@ -2181,6 +2435,60 @@ document.addEventListener("submit", event => {
     const notes = event.target.elements.notes?.value || "";
     closeModal(); addToCart(product.id, quantity, selections, notes);
   }
+  if (event.target.id === "merchant-product-form") {
+    const f = event.target;
+    const data = {
+      name: f.name.value.trim(),
+      price: Math.max(0, Math.round(Number(f.price.value) || 0)),
+      unit: f.unit.value.trim(),
+      category: f.category.value.trim() || "منتجات",
+      image: f.image.value.trim() || "/assets/photos/store-market.jpg",
+      description: f.description.value.trim(),
+      available: f.available.checked
+    };
+    if (!data.name) { showToast("يرجى إدخال اسم المنتج"); return; }
+    if (f.dataset.id) {
+      const edited = getProduct(f.dataset.id);
+      Object.assign(edited, data);
+      saveProductOverride(f.dataset.id, data);
+      pushProductCloud(edited);
+      showToast("تم حفظ تعديلات المنتج", "success");
+    } else {
+      const store = getMerchantStore();
+      const newId = Math.max(0, ...products.map(p => p.id)) + 1;
+      const newProduct = { id: newId, storeId: store.id, sourceId: `m-${newId}`, imageFit: "cover", options: [], featured: false, ...data };
+      products.push(newProduct);
+      saveCustomProduct(newProduct);
+      pushProductCloud(newProduct);
+      showToast("تمت إضافة المنتج بنجاح", "success");
+    }
+    state.merchantTab = "products";
+    closeModal(); render();
+  }
+  if (event.target.id === "merchant-integrations-form") {
+    const f = event.target;
+    const map = {};
+    (window.DUKKANCI_INTEGRATIONS?.SETTING_KEYS || []).forEach(k => {
+      if (f.elements[k]) map[k] = { setting_value: f.elements[k].value.trim(), is_enabled: !!(f.elements[k + "__on"] && f.elements[k + "__on"].checked) };
+    });
+    window.DUKKANCI_INTEGRATIONS?.save(map);
+    showToast("تم حفظ إعدادات التكاملات وتطبيقها", "success");
+    render();
+    return;
+  }
+  if (event.target.id === "merchant-offer-form") {
+    const product = getProduct(event.target.product.value);
+    const discount = Math.min(80, Math.max(5, Number(event.target.discount.value) || 0));
+    if (product) {
+      const base = product.oldPrice && product.oldPrice > product.price ? product.oldPrice : product.price;
+      product.oldPrice = base;
+      product.price = Math.max(1, Math.round(base * (1 - discount / 100)));
+      saveProductOverride(product.id, { price: product.price, oldPrice: product.oldPrice });
+      pushProductCloud(product);
+    }
+    state.merchantTab = "offers";
+    closeModal(); render(); showToast("تم تفعيل العرض ويظهر الآن في المتجر", "success");
+  }
   if (event.target.id === "checkout-form") {
     if (!event.target.elements.terms.checked) { showToast("يرجى الموافقة على سياسة الطلب أولاً"); return; }
     if (!event.target.elements.address.value && event.target.elements.fulfillment.value === "delivery") { showToast("يرجى اختيار عنوان التوصيل"); return; }
@@ -2203,6 +2511,8 @@ document.addEventListener("submit", event => {
       deliveryDetails: event.target.elements.fulfillment.value === "delivery" ? totals.quote : null
     };
     state.orders.unshift(newOrder);
+    pushOrderCloud(newOrder);
+    window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
     state.cart = [];
     state.deliveryQuote = null;
     state.checkoutLocation = null;
@@ -2280,10 +2590,10 @@ document.addEventListener("submit", event => {
 });
 
 document.addEventListener("click", event => {
-  if (event.target.closest('[data-action="go-orders"]')) { closeModal(); location.hash = "orders"; }
+  if (event.target.closest('[data-action="go-orders"]')) { closeModal(); navigate("orders"); }
 });
 
-window.addEventListener("hashchange", render);
+window.addEventListener("popstate", () => { render(); window.dispatchEvent(new CustomEvent("dukkanci:navigate")); });
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   state.deferredInstall = event;
@@ -2293,5 +2603,11 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
+// Backward-compat: convert old shared #routes (e.g. /#store/5) to real paths
+if (location.hash && location.hash.length > 1) {
+  const h = location.hash.replace(/^#/, "");
+  history.replaceState({}, "", h === "home" ? "/" : "/" + h);
+}
 hydrateIcons();
 render();
+initCatalog();

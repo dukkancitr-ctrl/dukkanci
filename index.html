@@ -6,15 +6,45 @@
     <meta name="theme-color" content="#e30613">
     <meta name="description" content="دكانجي - اطلب من متاجر حيك بسهولة">
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" href="/assets/favicon.ico?v=42" sizes="any">
-    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=42">
-    <link rel="icon" type="image/png" sizes="192x192" href="/assets/dukkanci-app-icon-192.png?v=42">
-    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=42">
+    <link rel="icon" href="/assets/favicon.ico?v=50" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=50">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/dukkanci-app-icon-192.png?v=50">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=50">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=42">
+    <link rel="stylesheet" href="/styles.css?v=50">
     <title>دكانجي | سوق الحي بين يديك</title>
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="دكانجي | سوق الحي بين يديك">
+    <meta property="og:description" content="اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.">
+    <meta property="og:image" content="/assets/dukkanci-app-icon-512.png">
+    <meta property="og:locale" content="ar_AR">
+    <meta name="twitter:card" content="summary_large_image">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "دكانجي",
+      "alternateName": "Dukkanci Marketplace",
+      "url": "https://dukkanci.vercel.app",
+      "logo": "https://dukkanci.vercel.app/assets/dukkanci-app-icon-512.png",
+      "description": "منصة سوق الحي: توصيل من متاجر ومطاعم الحي في إسطنبول."
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "دكانجي",
+      "url": "https://dukkanci.vercel.app",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://dukkanci.vercel.app/stores?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
   </head>
   <body>
     <div class="app-shell">
@@ -31,7 +61,7 @@
         </div>
         <div class="container nav-row">
           <a class="brand" href="#home" data-route="home" aria-label="دكانجي - الصفحة الرئيسية">
-            <img class="brand-logo" src="/assets/dukkanci-logo.png?v=42" alt="دكانجي - Dukkanci Marketplace" width="719" height="733">
+            <img class="brand-logo" src="/assets/dukkanci-logo.png?v=50" alt="دكانجي - Dukkanci Marketplace" width="719" height="733">
           </a>
           <nav class="desktop-nav" aria-label="التنقل الرئيسي">
             <a href="#home" data-route="home" class="active">الرئيسية</a>
@@ -62,7 +92,7 @@
         <div class="container footer-grid">
           <div class="footer-brand">
             <a class="brand footer-logo" href="#home" data-route="home" aria-label="دكانجي">
-              <img class="brand-logo" src="/assets/dukkanci-logo.png?v=42" alt="دكانجي - Dukkanci Marketplace" width="719" height="733">
+              <img class="brand-logo" src="/assets/dukkanci-logo.png?v=50" alt="دكانجي - Dukkanci Marketplace" width="719" height="733">
             </a>
             <p>منصة تجمعك بمتاجر حيك وتسهّل طلب احتياجاتك اليومية بكل وضوح وراحة.</p>
             <div class="social-row">
@@ -75,6 +105,8 @@
             <h3>دكانجي</h3>
             <a href="#about">من نحن</a>
             <a href="#join" data-action="join-merchant">انضم كتاجر</a>
+            <a href="#merchant" data-route="merchant">لوحة المتجر</a>
+            <a href="#admin" data-route="admin">لوحة الإدارة</a>
             <a href="#contact">تواصل معنا</a>
           </div>
           <div>
@@ -112,17 +144,20 @@
     <div class="modal-root" id="modal-root"></div>
     <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
-    <script src="/heelal-products.js?v=42"></script>
-    <script src="/alsultan-data.js?v=42"></script>
-    <script src="/zaitoune-data.js?v=42"></script>
-    <script src="/ezzedine-data.js?v=42"></script>
-    <script src="/salloura-data.js?v=42"></script>
-    <script src="/nour-data.js?v=42"></script>
-    <script src="/tihama-data.js?v=42"></script>
-    <script src="/afgan-data.js?v=42"></script>
-    <script src="/sam-data.js?v=42"></script>
-    <script src="/kady-data.js?v=42"></script>
-    <script src="/app.js?v=42"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/supabase-config.js?v=50"></script>
+    <script src="/heelal-products.js?v=50"></script>
+    <script src="/alsultan-data.js?v=50"></script>
+    <script src="/zaitoune-data.js?v=50"></script>
+    <script src="/ezzedine-data.js?v=50"></script>
+    <script src="/salloura-data.js?v=50"></script>
+    <script src="/nour-data.js?v=50"></script>
+    <script src="/tihama-data.js?v=50"></script>
+    <script src="/afgan-data.js?v=50"></script>
+    <script src="/sam-data.js?v=50"></script>
+    <script src="/kady-data.js?v=50"></script>
+    <script src="/app.js?v=50"></script>
+    <script src="/integrations.js?v=50"></script>
   </body>
 </html>
 

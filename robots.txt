@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# صفحات خاصة لا تحتاج فهرسة
+Disallow: /account
+Disallow: /cart
+Disallow: /orders
+Disallow: /merchant
+Disallow: /admin
+
+Sitemap: https://dukkanci.vercel.app/sitemap.xml

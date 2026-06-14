@@ -1893,6 +1893,22 @@ img {
   width: 18px;
 }
 
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 14px 0 18px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.form-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--green-800);
+}
+
 .quick-add--wa {
   background: linear-gradient(135deg, #25d366, #1da955);
   text-decoration: none;
