@@ -2,8 +2,11 @@
 // Reads stores from Supabase via the public REST API (env vars set in Vercel).
 module.exports = async (req, res) => {
   const BASE = "https://dukkanci.vercel.app";
-  let url = (process.env.SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
-  const key = process.env.SUPABASE_ANON_KEY || "";
+  // Public Supabase values (anon key is public by design). Env vars override if set.
+  const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
+  const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
+  let url = (process.env.SUPABASE_URL || PUB_URL).replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
+  const key = process.env.SUPABASE_ANON_KEY || PUB_KEY;
   const staticUrls = [`${BASE}/`, `${BASE}/stores`, `${BASE}/offers`];
   let storeUrls = [];
   try {
