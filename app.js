@@ -482,6 +482,15 @@ function saveCustomProduct(product) {
   if (idx >= 0) all[idx] = product; else all.push(product);
   localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(all));
 }
+function deleteProductLocal(id) {
+  const numId = Number(id);
+  const custom = loadJSON(CUSTOM_PRODUCTS_KEY, []).filter(p => p.id !== numId);
+  localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(custom));
+  const overrides = loadJSON(PRODUCT_OVERRIDES_KEY, {});
+  delete overrides[numId];
+  delete overrides[String(id)];
+  localStorage.setItem(PRODUCT_OVERRIDES_KEY, JSON.stringify(overrides));
+}
 function applyProductPersistence() {
   for (const p of loadJSON(CUSTOM_PRODUCTS_KEY, [])) {
     if (!products.some(x => x.id === p.id)) products.push(p);
@@ -547,6 +556,27 @@ async function loadCatalogFromSupabase() {
 function pushProductCloud(product) {
   const sb = window.supabaseClient;
   if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => { if (error) console.warn("product cloud save:", error.message); });
+}
+function toDbStore(s) {
+  return {
+    id: s.id, name: s.name, category: s.category, image: s.image, cover_image: s.coverImage,
+    logo_image: s.logoImage, logo: s.logo, rating: s.rating, reviews: s.reviews, new_store: !!s.newStore,
+    delivery: s.delivery, min_order: s.minOrder, time: s.time, distance: s.distance,
+    lat: s.location?.lat ?? null, lng: s.location?.lng ?? null, map_url: s.mapUrl, open: s.open !== false,
+    featured: !!s.featured, has_offer: !!s.hasOffer, offer: s.offer ?? null, price_on_request: !!s.priceOnRequest,
+    description: s.description ?? null, address: s.address ?? null, phone: s.phone ?? null, whatsapp: s.whatsapp ?? null,
+    email: s.email ?? null, website: s.website ?? null, source_url: s.sourceUrl ?? null, hours: s.hours ?? null,
+    areas: s.areas ?? [], fulfillment: s.fulfillment ?? null, subscription: s.subscription ?? null,
+    order_count: s.orderCount ?? 0, official_store: !!s.officialStore, branch_group: s.branchGroup ?? null, brand_theme: s.brandTheme ?? null
+  };
+}
+function pushStoreCloud(store) {
+  const sb = window.supabaseClient;
+  if (sb) sb.from("stores").upsert(toDbStore(store), { onConflict: "id" }).then(({ error }) => { if (error) console.warn("store cloud save:", error.message); });
+}
+function deleteProductCloud(id) {
+  const sb = window.supabaseClient;
+  if (sb) sb.from("products").delete().eq("id", Number(id)).then(({ error }) => { if (error) console.warn("product delete:", error.message); });
 }
 function pushOrderCloud(order) {
   const sb = window.supabaseClient;
@@ -1253,14 +1283,18 @@ function statCard(iconName, label, value, trend, tone) {
 function merchantOverview() {
   const store = getMerchantStore();
   const merchantOrders = state.orders.filter(order => order.storeId === store.id);
-  const orderCount = store.orderCount ?? merchantOrders.length;
+  const storeProducts = products.filter(product => product.storeId === store.id);
+  const availableCount = storeProducts.filter(product => product.available !== false).length;
+  const offersCount = storeProducts.filter(product => product.oldPrice).length;
+  const revenue = merchantOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+  const openOrders = merchantOrders.filter(order => !["مكتمل", "ملغى", "مرفوضة"].includes(order.status)).length;
   const ratingLabel = store.newStore ? "جديد" : String(store.rating);
   const ratingTrend = store.newStore ? "بانتظار أول تقييم" : `من ${store.reviews} تقييماً`;
   return `
     <div class="stats-grid">
-      ${statCard("receipt", "طلبات هذا الشهر", orderCount.toLocaleString("ar"), store.newStore ? "الحساب جاهز لاستقبال الطلبات" : "+ 12% عن الشهر الماضي", "green")}
-      ${statCard("wallet", "قيمة الطلبات", merchantOrders.length ? `${merchantOrders.reduce((sum, order) => sum + order.total, 0).toLocaleString("ar")} ل.ت` : "٠ ل.ت", store.newStore ? "لا توجد طلبات مكتملة بعد" : "+ 8.4% عن الشهر الماضي", "orange")}
-      ${statCard("eye", "منتجات المتجر", products.filter(product => product.storeId === store.id).length.toLocaleString("ar"), "الكتالوج المنشور حالياً", "blue")}
+      ${statCard("receipt", "طلبات المتجر", merchantOrders.length.toLocaleString("ar"), openOrders ? `${openOrders.toLocaleString("ar")} طلب يحتاج متابعتك` : "لا طلبات قيد التنفيذ", "green")}
+      ${statCard("wallet", "إجمالي قيمة الطلبات", `${revenue.toLocaleString("ar")} ل.ت`, merchantOrders.length ? `من ${merchantOrders.length.toLocaleString("ar")} طلب` : "لا توجد طلبات بعد", "orange")}
+      ${statCard("box", "منتجات المتجر", storeProducts.length.toLocaleString("ar"), `${availableCount.toLocaleString("ar")} متوفر · ${offersCount.toLocaleString("ar")} عليه عرض`, "blue")}
       ${statCard("star", "متوسط التقييم", ratingLabel, ratingTrend, "yellow")}
     </div>
     <div class="dashboard-grid">
@@ -1311,35 +1345,50 @@ function statusClass(status) {
 }
 
 function merchantOrders() {
-  const orders = state.orders.filter(order => order.storeId === getMerchantStore().id);
+  const storeOrders = state.orders.filter(order => order.storeId === getMerchantStore().id);
+  const activeFilter = state.merchantOrderFilter || "الكل";
+  const tabs = ["الكل", "طلب جديد", "بانتظار الدفع", "قيد التجهيز", "خرج للتوصيل", "مكتمل"];
+  const filtered = activeFilter === "الكل" ? storeOrders : storeOrders.filter(order => order.status === activeFilter);
   return `
     <div class="dashboard-toolbar">
-      <div class="dashboard-search">${icon("search")}<input placeholder="ابحث برقم الطلب أو اسم العميل"></div>
-      <div class="toolbar-actions"><button class="secondary-button compact">${icon("filter")} تصفية</button><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div>
+      <div class="dashboard-search">${icon("search")}<input id="merchant-order-search" placeholder="ابحث برقم الطلب أو اسم العميل" value="${escAttr(state.merchantOrderSearch || "")}"></div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div>
     </div>
-    <div class="order-status-tabs">${["الكل", "طلب جديد", "بانتظار الدفع", "قيد التجهيز", "خرج للتوصيل", "مكتمل"].map((status, i) => `<button class="${i === 0 ? "active" : ""}">${status}${i === 1 ? "<b>1</b>" : ""}</button>`).join("")}</div>
-    <section class="dashboard-card orders-table-card">${renderOrdersTable(orders, "merchant")}</section>
+    <div class="order-status-tabs">${tabs.map(status => {
+      const count = status === "الكل" ? storeOrders.length : storeOrders.filter(o => o.status === status).length;
+      return `<button class="${status === activeFilter ? "active" : ""}" data-action="merchant-order-filter" data-status="${escAttr(status)}">${status}${count ? `<b>${count.toLocaleString("ar")}</b>` : ""}</button>`;
+    }).join("")}</div>
+    <section class="dashboard-card orders-table-card">${filtered.length ? renderOrdersTable(filtered, "merchant") : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات ${activeFilter === "الكل" ? "بعد" : `بحالة "${activeFilter}"`}</p></div>`}</section>
   `;
 }
 
 function merchantProducts() {
-  const merchantProducts = products.filter(product => product.storeId === getMerchantStore().id);
+  const allStoreProducts = products.filter(product => product.storeId === getMerchantStore().id);
+  const query = (state.merchantProductSearch || "").trim();
+  const normQuery = normalizeAr(query);
+  const merchantProducts = normQuery
+    ? allStoreProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery))
+    : allStoreProducts;
+  const rows = merchantProducts.map(product => `
+        <article>
+          <img src="${product.image}" alt="${escAttr(product.name)}" loading="lazy">
+          <div class="managed-product-name"><strong>${product.name}</strong><small>${product.category} · ${product.unit}</small></div>
+          <strong>${money(product.price)}${product.oldPrice ? ` <s class="managed-old-price">${money(product.oldPrice)}</s>` : ""}</strong>
+          <label class="toggle"><input type="checkbox" ${product.available !== false ? "checked" : ""} data-action="toggle-product" data-id="${product.id}"><span></span><small>${product.available !== false ? "متوفر" : "غير متوفر"}</small></label>
+          <span class="status-pill ${product.oldPrice ? "orange" : "gray"}">${product.oldPrice ? "عرض" : "عادي"}</span>
+          <div class="managed-product-actions">
+            <button class="table-action" data-action="edit-product" data-id="${product.id}" title="تعديل">${icon("edit")}</button>
+            <button class="table-action danger" data-action="delete-product" data-id="${product.id}" title="حذف">${icon("trash")}</button>
+          </div>
+        </article>
+      `).join("");
   return `
     <div class="dashboard-toolbar">
-      <div class="dashboard-search">${icon("search")}<input placeholder="ابحث في منتجاتك"></div>
-      <div class="toolbar-actions"><button class="secondary-button compact" data-action="toast" data-message="يمكنك رفع ملف CSV وفق النموذج المحدد">${icon("upload")} رفع CSV</button><button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button></div>
+      <div class="dashboard-search">${icon("search")}<input id="merchant-product-search" placeholder="ابحث في منتجاتك" value="${escAttr(query)}"></div>
+      <div class="toolbar-actions"><span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span><button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button></div>
     </div>
     <section class="dashboard-card product-management">
-      ${merchantProducts.map(product => `
-        <article>
-          <img src="${product.image}" alt="${product.name}">
-          <div class="managed-product-name"><strong>${product.name}</strong><small>${product.category} · ${product.unit}</small></div>
-          <strong>${money(product.price)}</strong>
-          <label class="toggle"><input type="checkbox" ${product.available ? "checked" : ""} data-action="toggle-product" data-id="${product.id}"><span></span><small>${product.available ? "متوفر" : "غير متوفر"}</small></label>
-          <span class="status-pill ${product.featured ? "orange" : "gray"}">${product.featured ? "مميز" : "عادي"}</span>
-          <button class="table-action" data-action="edit-product" data-id="${product.id}">${icon("edit")}</button>
-        </article>
-      `).join("")}
+      ${rows || `<div class="empty-managed">${icon("box")}<p>${query ? "لا منتجات مطابقة لبحثك" : "لا توجد منتجات بعد. ابدأ بإضافة أول منتج."}</p></div>`}
     </section>
   `;
 }
@@ -1355,7 +1404,7 @@ function merchantOffers() {
       <button class="primary-button" data-action="create-offer">${icon("plus")} إنشاء عرض</button>
     </div>
     ${discountedProducts.length ? `<div class="offer-management-grid">${discountedProducts.map(product => `
-      <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>${product.name}</h3><p>السعر قبل الخصم ${money(product.oldPrice)}</p><div><strong>${Math.round((1 - product.price / product.oldPrice) * 100)}%</strong><small>خصم</small></div><button class="secondary-button compact" data-action="edit-product" data-id="${product.id}">${icon("edit")} تعديل</button></article>
+      <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>${product.name}</h3><p>السعر قبل الخصم ${money(product.oldPrice)} · الآن ${money(product.price)}</p><div><strong>${Math.round((1 - product.price / product.oldPrice) * 100)}%</strong><small>خصم</small></div><div class="offer-card-actions"><button class="secondary-button compact" data-action="edit-product" data-id="${product.id}">${icon("edit")} تعديل</button><button class="table-action danger" data-action="end-offer" data-id="${product.id}" title="إنهاء العرض">${icon("trash")}</button></div></article>
     `).join("")}</div>` : ""}
   `;
 }
@@ -1366,17 +1415,20 @@ function merchantStore() {
   const storeLocation = getStoreLocation(store.id);
   return `
     <form class="dashboard-card form-card" id="merchant-store-form" data-store-id="${store.id}">
-      <div class="card-heading"><div><h3>بيانات المتجر</h3><p>المعلومات الظاهرة للعملاء في صفحة متجرك</p></div><span class="status-pill green">المتجر مفتوح</span></div>
-      <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""><button type="button">${icon("upload")} تغيير صورة الواجهة</button></div>
+      <div class="card-heading"><div><h3>بيانات المتجر</h3><p>المعلومات الظاهرة للعملاء في صفحة متجرك</p></div>
+        <label class="delivery-toggle"><input type="checkbox" name="storeOpen" ${store.open !== false ? "checked" : ""}><span></span><b>${store.open !== false ? "المتجر مفتوح" : "المتجر مغلق"}</b></label>
+      </div>
+      <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""></div>
       <div class="form-grid">
-        <label><span>اسم المتجر</span><input name="storeName" value="${store.name}"></label>
-        <label><span>التصنيف</span><select><option>${store.category}</option></select></label>
-        <label class="wide"><span>وصف قصير</span><textarea>${store.description}</textarea></label>
-        <label class="wide"><span>العنوان</span><input value="${store.address}"></label>
-        <label><span>رقم واتساب الطلبات</span><input dir="ltr" value="${store.phone}"></label>
-        <label><span>أوقات العمل</span><input value="${store.hours}"></label>
+        <label><span>اسم المتجر</span><input name="storeName" required value="${escAttr(store.name || "")}"></label>
+        <label><span>التصنيف</span><select name="category">${[...new Set([store.category, ...stores.map(s => s.category)])].filter(Boolean).map(c => `<option ${c === store.category ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+        <label class="wide"><span>وصف قصير</span><textarea name="description">${escAttr(store.description || "")}</textarea></label>
+        <label class="wide"><span>رابط صورة الواجهة</span><input name="coverImage" dir="ltr" placeholder="/assets/... أو https://..." value="${escAttr(store.coverImage || store.image || "")}"></label>
+        <label class="wide"><span>العنوان</span><input name="address" value="${escAttr(store.address || "")}"></label>
+        <label><span>رقم واتساب الطلبات</span><input name="phone" dir="ltr" value="${escAttr(store.phone || "")}"></label>
+        <label><span>أوقات العمل</span><input name="hours" value="${escAttr(store.hours || "")}"></label>
         <label><span>رسوم التوصيل الثابتة</span><input name="fixedFee" type="number" min="0" value="${deliverySettings.fixedFee}"></label>
-        <label><span>الحد الأدنى للطلب</span><input value="${store.minOrder} ل.ت"></label>
+        <label><span>الحد الأدنى للطلب (ل.ت)</span><input name="minOrder" type="number" min="0" value="${Number(store.minOrder) || 0}"></label>
       </div>
       <section class="merchant-delivery-settings">
         <div class="merchant-delivery-settings__heading">
@@ -1478,6 +1530,7 @@ function renderMerchant(id) {
             <p>${subtitle}</p>
           </div>
           <div class="dashboard-header__actions">
+            <label class="store-switcher" title="اختر المتجر الذي تديره">${icon("store")}<select id="merchant-store-switch">${[...stores].sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s => `<option value="${s.id}" ${s.id === store.id ? "selected" : ""}>${s.name}</option>`).join("")}</select></label>
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
             <button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button>
             <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
@@ -2162,6 +2215,31 @@ function openProductForm(id) {
   `, "product-form-modal");
 }
 
+function openDeleteProductConfirm(id) {
+  const product = getProduct(id);
+  if (!product) return;
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="conflict-modal-icon">${icon("trash")}</div>
+    <h2>حذف "${product.name}"؟</h2>
+    <p class="modal-note">سيُزال المنتج نهائياً من متجرك ومن واجهة العملاء. لا يمكن التراجع عن هذا الإجراء.</p>
+    <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="danger-button" data-action="confirm-delete-product" data-id="${product.id}">نعم، احذف المنتج</button></div>
+  `, "confirm-modal");
+}
+
+function deleteProduct(id) {
+  const numId = Number(id);
+  const index = products.findIndex(p => p.id === numId);
+  if (index === -1) { closeModal(); return; }
+  const name = products[index].name;
+  products.splice(index, 1);
+  deleteProductLocal(numId);
+  deleteProductCloud(numId);
+  closeModal();
+  render();
+  showToast(`تم حذف "${name}"`, "success");
+}
+
 function openOfferForm() {
   const store = getMerchantStore();
   const list = products.filter(p => p.storeId === store.id && !p.priceOnRequest && p.price > 0);
@@ -2368,7 +2446,21 @@ document.addEventListener("click", event => {
   }
   if (action === "add-product-form") openProductForm();
   if (action === "edit-product") openProductForm(target.dataset.id);
+  if (action === "delete-product") openDeleteProductConfirm(target.dataset.id);
+  if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
+  if (action === "merchant-order-filter") { state.merchantOrderFilter = target.dataset.status; render(); }
   if (action === "create-offer") openOfferForm();
+  if (action === "end-offer") {
+    const product = getProduct(target.dataset.id);
+    if (product && product.oldPrice) {
+      product.price = product.oldPrice;
+      delete product.oldPrice;
+      saveProductOverride(product.id, { price: product.price, oldPrice: null });
+      pushProductCloud(product);
+      render();
+      showToast(`تم إنهاء العرض على "${product.name}"`, "success");
+    }
+  }
   if (action === "complaint-detail") openComplaintDetail(target.dataset);
   if (action === "close-modal-toast") { closeModal(); showToast(target.dataset.message || "تم الحفظ", "success"); }
 });
@@ -2390,9 +2482,19 @@ document.addEventListener("keydown", event => {
 
 document.addEventListener("change", event => {
   if (event.target.id === "store-sort") { state.storeSort = event.target.value; render(); }
+  if (event.target.id === "merchant-store-switch") {
+    state.merchantStoreId = Number(event.target.value);
+    state.merchantProductSearch = "";
+    saveState();
+    render();
+  }
   if (event.target.id === "checkout-address") {
     state.deliveryQuote = null;
     requestDeliveryQuote();
+  }
+  if (event.target.name === "storeOpen") {
+    const label = event.target.closest(".delivery-toggle").querySelector("b");
+    if (label) label.textContent = event.target.checked ? "المتجر مفتوح" : "المتجر مغلق";
   }
   if (event.target.name === "distanceEnabled") {
     const fields = event.target.closest(".merchant-delivery-settings").querySelector(".distance-settings-fields");
@@ -2416,6 +2518,30 @@ document.addEventListener("change", event => {
 });
 
 document.addEventListener("input", event => {
+  if (event.target.id === "merchant-order-search") {
+    state.merchantOrderSearch = event.target.value;
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".orders-table-card tbody tr").forEach(row => {
+      const text = normalizeAr(row.textContent);
+      row.style.display = !q || text.includes(q) ? "" : "none";
+    });
+  }
+  if (event.target.id === "merchant-product-search") {
+    state.merchantProductSearch = event.target.value;
+    const q = normalizeAr(event.target.value.trim());
+    const section = document.querySelector(".product-management");
+    if (section) {
+      let visible = 0;
+      section.querySelectorAll("article").forEach(article => {
+        const nameEl = article.querySelector(".managed-product-name");
+        const match = !q || normalizeAr(nameEl ? nameEl.textContent : "").includes(q);
+        article.style.display = match ? "" : "none";
+        if (match) visible++;
+      });
+      const countEl = document.querySelector(".toolbar-count");
+      if (countEl) countEl.textContent = `${visible.toLocaleString("ar")} منتج`;
+    }
+  }
   if (event.target.name === "ratePerKm") {
     const rate = Math.min(20, Math.max(10, Number(event.target.value) || 10));
     const exampleRate = document.getElementById("delivery-example-rate");
@@ -2557,6 +2683,23 @@ document.addEventListener("submit", event => {
   if (event.target.id === "merchant-store-form") {
     const form = new FormData(event.target);
     const storeId = Number(event.target.dataset.storeId);
+    const store = getStore(storeId);
+    if (store) {
+      const newName = (form.get("storeName") || "").toString().trim();
+      if (!newName) { showToast("يرجى إدخال اسم المتجر"); return; }
+      store.name = newName;
+      store.category = (form.get("category") || store.category).toString().trim();
+      store.description = (form.get("description") || "").toString().trim();
+      store.address = (form.get("address") || "").toString().trim();
+      store.phone = (form.get("phone") || "").toString().trim();
+      store.whatsapp = store.phone;
+      store.hours = (form.get("hours") || "").toString().trim();
+      store.minOrder = Math.max(0, Number(form.get("minOrder")) || 0);
+      store.open = form.get("storeOpen") === "on";
+      const cover = (form.get("coverImage") || "").toString().trim();
+      if (cover) store.coverImage = cover;
+      pushStoreCloud(store);
+    }
     const ratePerKm = Math.min(20, Math.max(10, Number(form.get("ratePerKm")) || 15));
     state.deliverySettings[storeId] = {
       mode: form.get("distanceEnabled") === "on" ? "distance" : "fixed",
@@ -2572,7 +2715,7 @@ document.addEventListener("submit", event => {
     state.deliveryQuote = null;
     saveState();
     render();
-    showToast("تم حفظ إعدادات التوصيل وموقع المتجر", "success");
+    showToast("تم حفظ بيانات المتجر وإعدادات التوصيل", "success");
   }
   if (event.target.id === "customer-complaint-form") {
     const form = new FormData(event.target);
