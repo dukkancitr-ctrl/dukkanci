@@ -129,7 +129,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore);
 
 const products = [
   {
@@ -281,6 +281,7 @@ products.push(...samProducts);
 products.push(...kadyProducts);
 products.push(...yemenchefProducts);
 products.push(...alwadiProducts);
+products.push(...kadibyProducts);
 
 const initialOrders = [
   { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
@@ -328,7 +329,8 @@ const initialDeliverySettings = {
   ...samDeliverySettings,
   ...kadyDeliverySettings,
   ...yemenchefDeliverySettings,
-  ...alwadiDeliverySettings
+  ...alwadiDeliverySettings,
+  ...kadibyDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -552,7 +554,7 @@ async function loadCatalogFromSupabase() {
     if (e1 || !st || !st.length) return false;
     let all = [], from = 0;
     for (;;) {
-      const { data, error } = await sb.from("products").select("*").range(from, from + 999);
+      const { data, error } = await sb.from("products").select("*").order("id").range(from, from + 999);
       if (error) return false;
       all = all.concat(data);
       if (data.length < 1000) break;
