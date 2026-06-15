@@ -7,7 +7,10 @@
   },
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/sitemap-stores.xml", "destination": "/api/sitemap-stores" },
+    { "source": "/sitemap-products.xml", "destination": "/api/sitemap-products" },
     { "source": "/store/:id", "destination": "/api/store?id=:id" },
+    { "source": "/product/:slug", "destination": "/api/product?slug=:slug" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

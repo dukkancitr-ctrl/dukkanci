@@ -8,4 +8,4 @@ Disallow: /orders
 Disallow: /merchant
 Disallow: /admin
 
-Sitemap: https://dukkanci.vercel.app/sitemap.xml
+Sitemap: https://www.dukkanci.com.tr/sitemap.xml

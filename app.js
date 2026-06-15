@@ -359,7 +359,7 @@ function mapDbStore(r) {
 }
 function mapDbProduct(r) {
   return {
-    id: r.id, storeId: r.store_id, sourceId: r.source_id, name: r.name, image: r.image,
+    id: r.id, storeId: r.store_id, sourceId: r.source_id, name: r.name, image: r.image, slug: r.slug,
     price: Number(r.price), oldPrice: r.old_price != null ? Number(r.old_price) : undefined,
     priceOnRequest: r.price_on_request, unit: r.unit, category: r.category, available: r.available,
     featured: r.featured, description: r.description, imageFit: r.image_fit, options: r.options || []
@@ -1803,6 +1803,14 @@ function updateHead(route, id) {
       const img = s.coverImage || s.image;
       if (img) image = img.startsWith("http") ? img : base + img;
     }
+  } else if (route === "product" && id) {
+    const p = getProductBySlug(id);
+    if (p) {
+      const st = getStore(p.storeId);
+      title = `${p.name} — ${st ? st.name : "دكانجي"} | دكانجي`;
+      desc = p.description || `${p.name}${st ? ` من ${st.name}` : ""} على دكانجي.`;
+      if (p.image) image = p.image.startsWith("http") ? p.image : base + p.image;
+    }
   } else if (route === "stores") { title = "كل المتاجر والمطاعم | دكانجي"; desc = "تصفّح متاجر ومطاعم حيك في إسطنبول واطلب أونلاين."; }
   else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
   document.title = title;
@@ -1814,6 +1822,39 @@ function updateHead(route, id) {
   setMetaTag('meta[property="og:url"]', "content", canonical);
 }
 
+function getProductBySlug(slugOrId) {
+  if (slugOrId == null) return undefined;
+  const s = String(slugOrId);
+  return products.find(p => p.slug === s) || products.find(p => String(p.id) === s);
+}
+
+// Standalone product page for /product/<slug> (deep links + hydration over SSR).
+function renderProductPage(slugOrId) {
+  const product = getProductBySlug(slugOrId);
+  if (!product) {
+    return `<section class="section empty-page">${renderEmpty("المنتج غير موجود", "ربما حُذف المنتج أو تغيّر رابطه.", "تصفح المتاجر", "stores")}</section>`;
+  }
+  const store = getStore(product.storeId);
+  const storeSeg = store ? storeParam(store) : product.storeId;
+  const priceLine = product.priceOnRequest || !product.price ? "السعر عند الطلب" : money(product.price);
+  return `
+    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span>${store ? `<a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a><span>/</span>` : ""}<strong>${product.name}</strong></div></div></section>
+    <section class="section">
+      <div class="container product-page-grid">
+        <div class="product-page-media"><img src="${product.image}" alt="${product.name}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}"></div>
+        <div class="product-page-info">
+          <h1>${product.name}</h1>
+          ${product.category ? `<span class="cat">${product.category}</span>` : ""}
+          <p>${product.description || ""}</p>
+          <div class="product-page-price"><strong>${priceLine}</strong></div>
+          ${store ? `<p class="product-page-store">${storeAvatar(store)} من متجر <a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a></p>` : ""}
+          <button class="primary-button large" data-action="open-product" data-id="${product.id}">${icon("bag")} أضف إلى السلة</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function render() {
   const { route, id } = parseRoute();
   state.route = route;
@@ -1823,6 +1864,7 @@ function render() {
     stores: renderStores,
     offers: renderOffers,
     store: () => renderStorePage(id),
+    product: () => renderProductPage(id),
     orders: renderOrders,
     merchant: () => renderMerchant(id),
     admin: renderAdmin,

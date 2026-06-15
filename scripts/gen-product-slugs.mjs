@@ -66,7 +66,9 @@ async function upsertChunk(rows) {
     let slug = base, n = 1;
     while (used.has(slug)) { n += 1; slug = `${base}-${n}`; }
     used.add(slug);
-    return { id: p.id, slug };
+    // Include name: upsert validates NOT NULL columns on the insert-shape even
+    // when only the conflict-update path runs, so we resend the (unchanged) name.
+    return { id: p.id, name: p.name, slug };
   });
   console.log(`Generated ${updates.length} unique slugs. Sample:`, updates.slice(0, 3));
 
