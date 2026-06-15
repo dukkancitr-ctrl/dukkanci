@@ -2,6 +2,7 @@
 // appears in the served HTML — link previews/unfurls, search engines, and the browser
 // tab all show "دكانجي - {store name}" instead of the generic site title. The SPA's
 // client-side JS still runs and keeps everything in sync during in-app navigation.
+const { STORE_SLUGS, STORE_SLUG_TO_ID } = require("../store-slugs.js");
 const BASE = "https://dukkanci.vercel.app";
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
@@ -10,7 +11,9 @@ const esc = s => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 module.exports = async (req, res) => {
-  const id = Number(req.query && req.query.id);
+  // The :id segment may be a numeric id (legacy) or an English slug.
+  const raw = req.query && req.query.id != null ? String(req.query.id) : "";
+  const id = /^\d+$/.test(raw) ? Number(raw) : (STORE_SLUG_TO_ID[raw] || 0);
   // Always start from the real static shell (served directly, bypassing the SPA rewrite).
   let html = "";
   try {
@@ -38,7 +41,7 @@ module.exports = async (req, res) => {
     const desc = (store.description || "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.").slice(0, 200);
     let img = store.cover_image || store.image || "/assets/dukkanci-app-icon-512.png";
     if (img && !/^https?:\/\//.test(img)) img = BASE + img;
-    const canonical = `${BASE}/store/${id}`;
+    const canonical = `${BASE}/store/${STORE_SLUGS[id] || id}`;
     const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical);
 
     html = html

@@ -262,7 +262,21 @@ function dashboardDate() {
   }).format(new Date());
 }
 
+// Slug helpers: URLs use /store/<english-slug> (see store-slugs.js), but numeric
+// /store/<id> still resolves for backward compatibility.
+const SLUG_MAP = (typeof STORE_SLUGS !== "undefined") ? STORE_SLUGS : {};
+const SLUG_TO_ID = (typeof STORE_SLUG_TO_ID !== "undefined") ? STORE_SLUG_TO_ID : {};
+
+// The URL segment for a store: its English slug if defined, else the numeric id.
+function storeParam(store) {
+  return (store && SLUG_MAP[store.id]) || (store && store.id) || "";
+}
+
 function getStore(id) {
+  if (typeof id === "string" && !/^\d+$/.test(id)) {
+    const mapped = SLUG_TO_ID[id];
+    return mapped != null ? stores.find(store => store.id === mapped) : undefined;
+  }
   return stores.find(store => store.id === Number(id));
 }
 
@@ -2452,7 +2466,8 @@ document.addEventListener("click", event => {
     state.storeProductFilter = "الكل";
     closeModal();
     closeDrawers();
-    navigate(`store/${target.dataset.id}`);
+    const s = getStore(target.dataset.id);
+    navigate(`store/${s ? storeParam(s) : target.dataset.id}`);
   }
   if (action === "open-product") openProductModal(target.dataset.id);
   if (action === "quick-add") {

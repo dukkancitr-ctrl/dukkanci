@@ -1,5 +1,6 @@
 // Dynamic sitemap.xml — lists real, indexable URLs (home, stores, offers, each store).
 // Reads stores from Supabase via the public REST API (env vars set in Vercel).
+const { STORE_SLUGS } = require("../store-slugs.js");
 module.exports = async (req, res) => {
   const BASE = "https://dukkanci.vercel.app";
   // Public Supabase values (anon key is public by design). Env vars override if set.
@@ -16,7 +17,7 @@ module.exports = async (req, res) => {
       });
       if (r.ok) {
         const rows = await r.json();
-        storeUrls = rows.map(s => `${BASE}/store/${s.id}`);
+        storeUrls = rows.map(s => `${BASE}/store/${STORE_SLUGS[s.id] || s.id}`);
       }
     }
   } catch (e) { /* fall back to static urls only */ }
