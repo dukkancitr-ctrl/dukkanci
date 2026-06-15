@@ -443,7 +443,9 @@ function updateAccountButton() {
   const u = state.user;
   const name = u ? (state.customerProfile.name || u.email || "حسابي") : "حسابي";
   const initial = (name && name.trim()[0]) || "م";
-  const avatar = state.customerProfile.avatar;
+  // Only show the saved avatar while signed in — otherwise a logged-out header
+  // would keep the previous user's picture and look "still logged in".
+  const avatar = u ? state.customerProfile.avatar : null;
   btn.innerHTML = `<span class="avatar-mini">${avatar ? `<img src="${escAttr(avatar)}" alt="">` : initial}</span><span class="account-copy"><small>${u ? "مرحباً" : "مرحباً بك"}</small><strong>${u ? name.split(" ")[0] : "حسابي"}</strong></span>`;
 }
 
@@ -459,6 +461,7 @@ async function initAuth() {
   sb.auth.onAuthStateChange((event, session) => {
     state.user = session ? session.user : null;
     if (state.user) applyUserToProfile(state.user);
+    else if (event === "SIGNED_OUT") clearUserIdentity();
     updateAccountButton();
     if (event === "SIGNED_IN") { closeModal(); showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success"); }
     if (event === "SIGNED_OUT") showToast("تم تسجيل الخروج", "success");
@@ -478,10 +481,18 @@ async function signInWithGoogle() {
   }
 }
 
+// Reset the signed-in identity (name/email/avatar) so nothing from the previous
+// user lingers in the header, account page, or checkout prefill after logout.
+function clearUserIdentity() {
+  state.customerProfile = { ...initialCustomerProfile };
+  saveState();
+}
+
 async function signOutUser() {
   const sb = window.supabaseClient;
   if (sb && sb.auth) await sb.auth.signOut();
   state.user = null;
+  clearUserIdentity();
   updateAccountButton();
   render();
 }
@@ -620,6 +631,12 @@ function collapseBranchGroups(list) {
   return out;
 }
 
+// Delivery-fee policy: a 150 ل.ت minimum (covers the nearest/shortest trip),
+// and anything above is rounded UP to the next multiple of 50 (160 → 200).
+function normalizeDeliveryFee(rawFee) {
+  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+}
+
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
   if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
@@ -638,6 +655,7 @@ function estimateDeliveryQuote(store, address) {
   const oneWayKm = Math.max(0.5, haversineKm(origin, address) * 1.28);
   const roundTripKm = oneWayKm * 2;
   const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
+  const rawFee = Math.round(roundTripKm * settings.ratePerKm);
   return {
     storeId: store.id,
     addressId: address.id,
@@ -645,7 +663,8 @@ function estimateDeliveryQuote(store, address) {
     roundTripKm,
     routeMinutes,
     estimatedMinutes: settings.prepMinutes + routeMinutes,
-    fee: Math.round(roundTripKm * settings.ratePerKm),
+    rawFee,
+    fee: normalizeDeliveryFee(rawFee),
     ratePerKm: settings.ratePerKm,
     provider: "estimate",
     exceedsMaxDistance: roundTripKm > settings.maxRoundTripKm
@@ -1651,7 +1670,12 @@ function renderDeliveryQuoteDetails(store, quote, status = "") {
         <span><small>سعر الكيلومتر</small><strong>${money(quote.ratePerKm)}</strong></span>
         <span><small>الوصول المتوقع</small><strong>${quote.estimatedMinutes} دقيقة</strong></span>
       </div>
-      <div class="delivery-equation">${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = <strong>${money(quote.fee)}</strong></div>
+      <div class="delivery-equation">${(() => {
+        const raw = quote.rawFee ?? quote.fee;
+        return raw === quote.fee
+          ? `${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = <strong>${money(quote.fee)}</strong>`
+          : `${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = ${money(raw)} → <strong>${money(quote.fee)}</strong> <small>(الحد الأدنى 150 وتقريب لأعلى 50)</small>`;
+      })()}</div>
     </div>
   `;
 }

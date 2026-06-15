@@ -15,13 +15,22 @@ function haversineKm(origin, destination) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Delivery-fee policy: a 150 ل.ت minimum (nearest/shortest trip), and anything
+// above is rounded UP to the next multiple of 50 (160 → 200). Keep in sync with
+// normalizeDeliveryFee() in app.js.
+function normalizeDeliveryFee(rawFee) {
+  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+}
+
 function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provider) {
   const roundTripKm = oneWayKm * 2;
+  const rawFee = Math.round(roundTripKm * ratePerKm);
   return {
     oneWayKm,
     roundTripKm,
     routeMinutes,
-    fee: Math.round(roundTripKm * ratePerKm),
+    rawFee,
+    fee: normalizeDeliveryFee(rawFee),
     provider,
     exceedsMaxDistance: roundTripKm > maxRoundTripKm
   };
