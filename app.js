@@ -33,7 +33,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore);
 
 const products = [];
 
@@ -56,6 +56,8 @@ products.push(...bitehausProducts);
 products.push(...alagarProducts);
 products.push(...khawaliProducts);
 products.push(...ademsefProducts);
+products.push(...babtomaProducts);
+products.push(...orangeProducts);
 
 // Keep the bundled fallback catalog in sync with the cloud: drop unavailable
 // or image-less products. Filtering in place preserves the remaining ids.
@@ -98,7 +100,9 @@ const initialDeliverySettings = {
   ...bitehausDeliverySettings,
   ...alagarDeliverySettings,
   ...khawaliDeliverySettings,
-  ...ademsefDeliverySettings
+  ...ademsefDeliverySettings,
+  ...babtomaDeliverySettings,
+  ...orangeDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -730,6 +734,7 @@ function renderHome() {
           ${categoryCard("ملاحم", "/assets/photos/store-butcher.jpg", "لحوم طازجة يومياً")}
           ${categoryCard("حلويات", "/assets/photos/store-bakery.jpg", "لأحلى المناسبات")}
           ${categoryCard("مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان")}
+          ${categoryCard("عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات")}
         </div>
       </div>
     </section>
@@ -849,7 +854,7 @@ function getFilteredStores() {
 
 function renderStores() {
   const result = getFilteredStores();
-  const categories = ["الكل", "مطاعم", "سوبر ماركت", "ملاحم", "حلويات", "مكسرات وبهارات"];
+  const categories = ["الكل", "مطاعم", "سوبر ماركت", "ملاحم", "حلويات", "مكسرات وبهارات", "عصائر"];
   return `
     <section class="page-hero compact">
       <div class="container">
@@ -2076,7 +2081,7 @@ function openJoinModal() {
     <form id="join-form" class="join-form">
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي</span><input required placeholder="مثال: متجر الحي"></label>
-        <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option></select></label>
+        <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option><option>عصائر</option></select></label>
         <label><span>اسم صاحب المتجر</span><input required placeholder="الاسم الكامل"></label>
         <label><span>رقم واتساب</span><input required dir="ltr" placeholder="+90 555 000 00 00"></label>
         <label class="wide"><span>عنوان المتجر</span><input required placeholder="الحي، الشارع، رقم البناء"></label>
