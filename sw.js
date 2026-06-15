@@ -1,26 +1,26 @@
-const CACHE = "dukkanci-v65";
+const CACHE = "dukkanci-v74";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=65",
-  "/heelal-products.js?v=65",
-  "/alsultan-data.js?v=65",
-  "/zaitoune-data.js?v=65",
-  "/ezzedine-data.js?v=65",
-  "/salloura-data.js?v=65",
-  "/nour-data.js?v=65",
-  "/tihama-data.js?v=65",
-  "/afgan-data.js?v=65",
-  "/sam-data.js?v=65",
-  "/kady-data.js?v=65",
-  "/yemenchef-data.js?v=65",
-  "/alwadi-data.js?v=65",
-  "/kadiby-data.js?v=65",
-  "/azal-data.js?v=65",
-  "/abou-data.js?v=65",
-  "/app.js?v=65",
+  "/styles.css?v=74",
+  "/heelal-products.js?v=74",
+  "/alsultan-data.js?v=74",
+  "/zaitoune-data.js?v=74",
+  "/ezzedine-data.js?v=74",
+  "/salloura-data.js?v=74",
+  "/nour-data.js?v=74",
+  "/tihama-data.js?v=74",
+  "/afgan-data.js?v=74",
+  "/sam-data.js?v=74",
+  "/kady-data.js?v=74",
+  "/yemenchef-data.js?v=74",
+  "/alwadi-data.js?v=74",
+  "/kadiby-data.js?v=74",
+  "/azal-data.js?v=74",
+  "/abou-data.js?v=74",
+  "/app.js?v=74",
   "/manifest.json",
-  "/assets/dukkanci-logo.png?v=65",
+  "/assets/dukkanci-logo.png?v=74",
   "/assets/photos/ezzedine/cover.jpg",
   "/assets/photos/ezzedine/logo.png",
   "/assets/photos/salloura/cover.jpg",
@@ -97,6 +97,7 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
+  // Navigations: network-first, fall back to the cached shell when offline.
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
@@ -110,6 +111,23 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // App code (JS/CSS): network-first so a new deploy is always picked up, even
+  // if this service worker version lingers; fall back to cache only when offline.
+  const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && /\.(js|css)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request).then(c => c || caches.match("/index.html")))
+    );
+    return;
+  }
+
+  // Static assets (images, fonts, manifest): cache-first for speed.
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
