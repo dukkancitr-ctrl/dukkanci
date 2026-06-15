@@ -33,7 +33,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore);
 
 const products = [];
 
@@ -54,6 +54,7 @@ products.push(...azalProducts);
 products.push(...abouProducts);
 products.push(...bitehausProducts);
 products.push(...alagarProducts);
+products.push(...khawaliProducts);
 
 // Keep the bundled fallback catalog in sync with the cloud: drop unavailable
 // or image-less products. Filtering in place preserves the remaining ids.
@@ -94,7 +95,8 @@ const initialDeliverySettings = {
   ...azalDeliverySettings,
   ...abouDeliverySettings,
   ...bitehausDeliverySettings,
-  ...alagarDeliverySettings
+  ...alagarDeliverySettings,
+  ...khawaliDeliverySettings
 };
 
 function loadCustomerAddresses() {
