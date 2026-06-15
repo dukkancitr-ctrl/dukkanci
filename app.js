@@ -424,6 +424,64 @@ async function signOutUser() {
   render();
 }
 
+// ---- WhatsApp OTP login via Supabase phone auth ----
+function normalizePhone(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.startsWith("90")) d = d.slice(2);
+  d = d.replace(/^0+/, "");
+  return "+90" + d;
+}
+
+async function sendWhatsappOtp(form) {
+  const sb = window.supabaseClient;
+  const errEl = document.getElementById("login-error");
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  const phone = normalizePhone(form.phone.value);
+  if (phone.length < 12) { showErr("يرجى إدخال رقم واتساب صحيح."); return; }
+  if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return; }
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.textContent = "جارٍ الإرسال..."; }
+  const { error } = await sb.auth.signInWithOtp({ phone, options: { channel: "whatsapp" } });
+  if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "إرسال رمز التحقق"; }
+  if (error) {
+    showErr(/provider|not enabled|not configured|sms/i.test(error.message)
+      ? "خدمة إرسال الرمز غير مُفعّلة بعد في إعدادات Supabase."
+      : (error.message || "تعذّر إرسال الرمز، حاول مجدداً."));
+    return;
+  }
+  openOtpModal(phone);
+}
+
+function openOtpModal(phone) {
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
+    <h2>أدخل رمز التحقق</h2><p>أرسلنا رمزاً عبر واتساب إلى <strong dir="ltr">${escAttr(phone)}</strong></p>
+    <form id="otp-form" data-phone="${escAttr(phone)}">
+      <label class="input-label"><span>رمز التحقق</span><input name="token" inputmode="numeric" autocomplete="one-time-code" required placeholder="######" dir="ltr" maxlength="8"></label>
+      <p class="auth-error" id="otp-error" hidden></p>
+      <button class="primary-button full large" type="submit">${icon("check")} تأكيد الدخول</button>
+    </form>
+    <button class="text-button" data-action="resend-otp" data-phone="${escAttr(phone)}">إعادة إرسال الرمز</button>
+  `, "auth-modal");
+}
+
+async function verifyWhatsappOtp(form) {
+  const sb = window.supabaseClient;
+  const errEl = document.getElementById("otp-error");
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  const phone = form.dataset.phone;
+  const token = form.token.value.trim();
+  if (!token) { showErr("يرجى إدخال الرمز."); return; }
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; }
+  const { error } = await sb.auth.verifyOtp({ phone, token, type: "sms" });
+  if (btn) { btn.disabled = false; }
+  if (error) showErr(/expired|invalid|token/i.test(error.message) ? "الرمز غير صحيح أو منتهي الصلاحية." : (error.message || "تعذّر التحقق."));
+  // success -> onAuthStateChange (SIGNED_IN) closes the modal and updates the UI
+}
+
 function getDeliverySettings(storeId) {
   return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)];
 }
@@ -1987,7 +2045,7 @@ function openLoginModal() {
     <h2>أهلاً بك في دكانجي</h2><p>سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك.</p>
     <button class="google-button" data-action="google-login"><b>G</b> المتابعة باستخدام Google</button>
     <div class="or-line"><span>أو</span></div>
-    <form id="login-form"><label class="input-label"><span>رقم واتساب</span><div class="phone-input"><span dir="ltr">+90</span><input type="tel" required placeholder="555 000 00 00" dir="ltr"></div></label><button class="primary-button full large" type="submit">إرسال رمز التحقق</button></form>
+    <form id="login-form"><label class="input-label"><span>رقم واتساب</span><div class="phone-input"><span dir="ltr">+90</span><input name="phone" type="tel" required placeholder="555 000 00 00" dir="ltr"></div></label><p class="auth-error" id="login-error" hidden></p><button class="primary-button full large" type="submit">${icon("whatsapp")} إرسال رمز التحقق</button></form>
     <small class="auth-terms">بالمتابعة أنت توافق على الشروط وسياسة الخصوصية.</small>
   `, "auth-modal");
 }
@@ -2234,6 +2292,10 @@ document.addEventListener("click", event => {
   }
   if (action === "login") { if (state.user) navigate("orders"); else openLoginModal(); }
   if (action === "google-login") signInWithGoogle();
+  if (action === "resend-otp") {
+    const sb = window.supabaseClient;
+    if (sb && sb.auth) sb.auth.signInWithOtp({ phone: target.dataset.phone, options: { channel: "whatsapp" } }).then(({ error }) => showToast(error ? "تعذّر إعادة الإرسال" : "تم إرسال الرمز مجدداً", error ? "" : "success"));
+  }
   if (action === "logout") signOutUser();
   if (action === "join-merchant") openJoinModal();
   if (action === "account-tab") { state.accountTab = target.dataset.tab; render(); }
@@ -2553,7 +2615,10 @@ document.addEventListener("submit", event => {
     showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2><p>طلبك رقم <strong>${newOrder.id}</strong> وصل إلى ${getStore(storeId).name}. سنخبرك عبر واتساب فور تأكيده.</p><div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">متابعة الطلب</button></div>`, "success-modal");
   }
   if (event.target.id === "login-form") {
-    closeModal(); showToast("تم إرسال رمز تحقق تجريبي عبر واتساب", "success");
+    sendWhatsappOtp(event.target);
+  }
+  if (event.target.id === "otp-form") {
+    verifyWhatsappOtp(event.target);
   }
   if (event.target.id === "join-form") {
     closeModal(); showToast("وصل طلب انضمامك وسيتواصل معك فريق دكانجي", "success");

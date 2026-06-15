@@ -5639,6 +5639,13 @@ tr:last-child td {
   margin: 0 0 12px;
 }
 
+.auth-error {
+  color: var(--red);
+  font-size: 13px;
+  margin: 4px 0 10px;
+  text-align: center;
+}
+
 .account-button .avatar-mini img {
   width: 100%;
   height: 100%;
