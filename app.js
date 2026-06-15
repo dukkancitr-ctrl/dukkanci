@@ -153,6 +153,17 @@ function loadStoreLocations() {
   ]));
 }
 
+function loadUserLocation() {
+  const saved = JSON.parse(localStorage.getItem("dukkanci-user-location") || "null");
+  if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) return saved;
+  return null;
+}
+
+function saveUserLocation() {
+  if (state.userLocation) localStorage.setItem("dukkanci-user-location", JSON.stringify(state.userLocation));
+  else localStorage.removeItem("dukkanci-user-location");
+}
+
 const state = {
   route: "home",
   cart: JSON.parse(localStorage.getItem("dukkanci-cart") || "[]"),
@@ -167,6 +178,8 @@ const state = {
   customerComplaints: JSON.parse(localStorage.getItem("dukkanci-complaints") || "null") || initialCustomerComplaints,
   deliverySettings: loadDeliverySettings(),
   storeLocations: loadStoreLocations(),
+  userLocation: loadUserLocation(),
+  locatingUser: false,
   storeProductFilter: "الكل",
   deliveryQuote: null,
   checkoutLocation: null,
@@ -539,13 +552,21 @@ function getStoreLocation(storeId) {
   return state.storeLocations[Number(storeId)] || getStore(storeId)?.location;
 }
 
+// The auto-detected location acts as a virtual address ("موقعي الحالي") so
+// delivery is priced from it by default, before the user saves any address.
+function getUserLocationAddress() {
+  const u = state.userLocation;
+  if (!u || !Number.isFinite(u.lat) || !Number.isFinite(u.lng)) return null;
+  return { id: "current", label: "موقعي الحالي", address: u.area || "موقعي الحالي", details: "", lat: u.lat, lng: u.lng, isCurrent: true };
+}
+
 function getCheckoutAddress(addressId) {
-  if (String(addressId) === "current") return state.checkoutLocation;
+  if (String(addressId) === "current") return state.checkoutLocation || getUserLocationAddress();
   return state.customerAddresses.find(address => String(address.id) === String(addressId));
 }
 
 function getDefaultAddress() {
-  return state.customerAddresses.find(address => address.isDefault) || state.customerAddresses[0];
+  return state.customerAddresses.find(address => address.isDefault) || state.customerAddresses[0] || getUserLocationAddress();
 }
 
 function haversineKm(origin, destination) {
@@ -1610,7 +1631,7 @@ function renderCheckout() {
           <section class="checkout-card">
             <div class="checkout-card__title"><span>٢</span><div><h2>العنوان والموعد</h2><p>أين ومتى تريد استلام الطلب؟</p></div></div>
             <div class="form-grid">
-              <label class="wide"><span>عنوان التوصيل</span><select name="address" id="checkout-address" required><option value="">اختر عنواناً محفوظاً</option>${state.customerAddresses.map(address => `<option value="${address.id}" ${String(address.id) === String(selectedAddressId) ? "selected" : ""}>${address.label} - ${address.address}</option>`).join("")}${state.checkoutLocation ? '<option value="current" selected>موقعي الحالي</option>' : ""}</select></label>
+              <label class="wide"><span>عنوان التوصيل</span><select name="address" id="checkout-address" required><option value="">اختر عنواناً محفوظاً</option>${state.customerAddresses.map(address => `<option value="${address.id}" ${String(address.id) === String(selectedAddressId) ? "selected" : ""}>${address.label} - ${address.address}</option>`).join("")}${(state.checkoutLocation || getUserLocationAddress()) ? `<option value="current" ${selectedAddressId === "current" ? "selected" : ""}>📍 ${escAttr((state.checkoutLocation || getUserLocationAddress()).address)}</option>` : ""}</select></label>
               <label><span>اليوم</span><select name="day"><option>اليوم، 12 يونيو</option><option>غداً، 13 يونيو</option></select></label>
               <label><span>الوقت</span><select name="time"><option>في أقرب وقت</option><option>14:00 - 15:00</option><option>17:00 - 18:00</option></select></label>
             </div>
@@ -2043,6 +2064,82 @@ function captureStoreLocation() {
   });
 }
 
+// --- Auto user location (header pill + default delivery destination) ---
+
+async function reverseGeocodeArea(lat, lng) {
+  try {
+    const res = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.area || null;
+  } catch {
+    return null;
+  }
+}
+
+// Renders the header location pill from state.userLocation. The pill lives in
+// index.html (outside #app), so it persists across render() and is updated here.
+function updateLocationPill() {
+  const textEl = document.getElementById("location-pill-text");
+  if (!textEl) return;
+  if (state.locatingUser && !state.userLocation) {
+    textEl.innerHTML = "جارٍ تحديد موقعك…";
+  } else if (state.userLocation) {
+    textEl.innerHTML = `التوصيل إلى <strong>${escAttr(state.userLocation.area || "موقعي الحالي")}</strong>`;
+  } else {
+    textEl.innerHTML = "<strong>حدّد موقعك</strong>";
+  }
+}
+
+// Resolves a geolocation fix into state.userLocation + area label, then
+// refreshes the header and any location-based prices on screen.
+async function applyUserPosition(coords, { silent = false } = {}) {
+  state.locatingUser = true;
+  updateLocationPill();
+  const area = await reverseGeocodeArea(coords.lat, coords.lng);
+  state.userLocation = { lat: coords.lat, lng: coords.lng, area };
+  state.locatingUser = false;
+  saveUserLocation();
+  // A freshly detected location replaces a stale "current location" quote.
+  if (state.deliveryQuote?.addressId === "current") state.deliveryQuote = null;
+  updateLocationPill();
+  render();
+  if (!silent) showToast(area ? `تم تحديد موقعك: ${area}` : "تم تحديد موقعك", "success");
+}
+
+// Called by the header pill. Always prompts (per product decision: auto on load
+// and on tap); the browser remembers a prior denial and won't re-prompt.
+function captureUserLocation() {
+  if (!navigator.geolocation) {
+    showToast("تحديد الموقع غير مدعوم في هذا المتصفح");
+    return;
+  }
+  state.locatingUser = true;
+  updateLocationPill();
+  navigator.geolocation.getCurrentPosition(
+    position => applyUserPosition({ lat: position.coords.latitude, lng: position.coords.longitude }),
+    () => {
+      state.locatingUser = false;
+      updateLocationPill();
+      showToast("تعذّر تحديد الموقع. فعّل إذن الموقع من المتصفح وحاول مجدداً.");
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+  );
+}
+
+// On every page open we attempt to detect the location automatically. If the
+// permission is already granted this resolves silently; if denied/unavailable
+// the pill falls back to "حدّد موقعك" (or the last saved location).
+function initUserLocation() {
+  updateLocationPill();
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    position => applyUserPosition({ lat: position.coords.latitude, lng: position.coords.longitude }, { silent: true }),
+    () => { state.locatingUser = false; updateLocationPill(); },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+  );
+}
+
 function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   const product = getProduct(productId);
   if (!product.available) return;
@@ -2421,8 +2518,7 @@ document.addEventListener("click", event => {
     else if (location) window.open(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`, "_blank", "noopener");
   }
   if (action === "location") {
-    state.accountTab = "addresses";
-    navigate("orders");
+    captureUserLocation();
   }
   if (action === "install-app") {
     if (state.deferredInstall) {
@@ -2796,3 +2892,4 @@ hydrateIcons();
 render();
 initCatalog();
 initAuth();
+initUserLocation();
