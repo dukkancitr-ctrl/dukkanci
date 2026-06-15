@@ -3605,11 +3605,14 @@ const abouProductCatalog = [
  }
 ];
 
-const abouProducts = abouProductCatalog.map((product, index) => ({
-  ...product,
-  id: 35001 + index,
-  storeId: abouStore.id
-}));
+const abouProducts = abouProductCatalog
+  .map((product, index) => ({
+    ...product,
+    id: 35001 + index,
+    storeId: abouStore.id
+  }))
+  // الأراكيل category removed by request; filter after id-map so remaining ids stay aligned with the cloud
+  .filter(product => product.category !== "الأراكيل");
 
 const abouDeliverySettings = {
   [abouStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 120 }
