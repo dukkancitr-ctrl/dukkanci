@@ -1359,7 +1359,7 @@ function merchantStore() {
       </div>
       <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""></div>
       <div class="form-grid">
-        <label><span>اسم المتجر</span><input name="storeName" required value="${escAttr(store.name || "")}"></label>
+        <label><span>اسم المتجر</span><input name="storeName" required value="${escAttr(store.name || "")}"><small class="field-hint">يظهر في عنوان التبويب هكذا: «دكانجي - ${escAttr(store.name || "")}»</small></label>
         <label><span>التصنيف</span><select name="category">${[...new Set([store.category, ...stores.map(s => s.category)])].filter(Boolean).map(c => `<option ${c === store.category ? "selected" : ""}>${c}</option>`).join("")}</select></label>
         <label class="wide"><span>وصف قصير</span><textarea name="description">${escAttr(store.description || "")}</textarea></label>
         <label class="wide"><span>رابط صورة الواجهة</span><input name="coverImage" dir="ltr" placeholder="/assets/... أو https://..." value="${escAttr(store.coverImage || store.image || "")}"></label>
@@ -1688,7 +1688,7 @@ function updateHead(route, id) {
   if (route === "store" && id) {
     const s = getStore(id);
     if (s) {
-      title = `${s.name} | دكانجي`;
+      title = `دكانجي - ${s.name}`;
       desc = s.description || desc;
       const img = s.coverImage || s.image;
       if (img) image = img.startsWith("http") ? img : base + img;
