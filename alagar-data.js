@@ -1,5 +1,6 @@
 // Generated from the official Ala Gardoner (الأغر شاورما) menu site http://menu.alagardoner.com on 2026-06-15.
 // 5 branches in Istanbul sharing one menu (30 items). Each branch is its own store with its own WhatsApp number.
+// Coordinates geocoded (street-level, OpenStreetMap) on 2026-06-15; mapUrl is a precise coordinate pin.
 const alagarBranches = [
  {
   "id": 26,
@@ -18,8 +19,11 @@ const alagarBranches = [
   "minOrder": 150,
   "time": "40 - 70 دقيقة",
   "distance": 14,
-  "location": null,
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=KAYABA%C5%9EI%20MAHALLESI%20ADNAN%20MENDERES%20BULVARI%20PARK%20MAVERA%201%20A03%20BLOK%20NO%3A%2010%20CO%2C%2034494%20Ba%C5%9Fak%C5%9Fehir%2F%C4%B0stanbul%2C%20%D8%AA%D8%B1%D9%83%D9%8A%D8%A7",
+  "location": {
+   "lat": 41.123853,
+   "lng": 28.772243
+  },
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.123853,28.772243",
   "open": true,
   "featured": true,
   "hasOffer": false,
@@ -59,8 +63,11 @@ const alagarBranches = [
   "minOrder": 150,
   "time": "30 - 55 دقيقة",
   "distance": 16,
-  "location": null,
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=Merkez%2C%201103.%20Sk.%20NO%3A11%2C%2034517%20Esenyurt%2F%C4%B0stanbul%2C%20%D8%AA%D8%B1%D9%83%D9%8A%D8%A7",
+  "location": {
+   "lat": 41.034901,
+   "lng": 28.678696
+  },
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.034901,28.678696",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -100,8 +107,11 @@ const alagarBranches = [
   "minOrder": 150,
   "time": "30 - 55 دقيقة",
   "distance": 17,
-  "location": null,
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=Cumhuriyet%2C%20Necip%20Faz%C4%B1l%20K%C4%B1sak%C3%BCrek%20Cd%20No%3A75%2C%2034515%20Esenyurt%2F%C4%B0stanbul%2C%20%D8%AA%D8%B1%D9%83%D9%8A%D8%A7",
+  "location": {
+   "lat": 41.024084,
+   "lng": 28.644626
+  },
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.024084,28.644626",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -141,8 +151,11 @@ const alagarBranches = [
   "minOrder": 150,
   "time": "35 - 60 دقيقة",
   "distance": 6,
-  "location": null,
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=Ak%C5%9Femsettin%2C%20Akdeniz%20Cd.%2082%2FA%2C%2034080%20Fatih%2F%C4%B0stanbul%2C%20%D8%AA%D8%B1%D9%83%D9%8A%D8%A7",
+  "location": {
+   "lat": 41.019002,
+   "lng": 28.946256
+  },
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.019002,28.946256",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -182,8 +195,11 @@ const alagarBranches = [
   "minOrder": 150,
   "time": "35 - 60 دقيقة",
   "distance": 9,
-  "location": null,
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=%C5%9E%C4%B0R%C4%B0NEVLER%20MAH.%20GED%C4%B0Z%20SK.%20%C3%9CNAL%20APT%20NO%3A%207%20B%2C%20BAH%C3%87EL%C4%B0EVLER%2F%C4%B0STANBUL%2C%20%D8%AA%D8%B1%D9%83%D9%8A%D8%A7",
+  "location": {
+   "lat": 40.992854,
+   "lng": 28.844323
+  },
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.992854,28.844323",
   "open": true,
   "featured": false,
   "hasOffer": false,
