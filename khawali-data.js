@@ -15,15 +15,15 @@ const khawaliStore = {
  "time": "40 - 70 دقيقة",
  "distance": 14,
  "location": {
-  "lat": 41.0186,
-  "lng": 28.9419
+  "lat": 41.024171,
+  "lng": 28.659568
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=Alkhawali+Restaurant+Fatih+Istanbul",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.024171,28.659568",
  "open": true,
  "featured": true,
  "hasOffer": false,
- "description": "مطعم الخوالي في الفاتح بإسطنبول: متخصّص بالشاورما العربية على أنواعها وساندويتشاتها ووجباتها، مع الدجاج المشوي والساندويتشات الغربية والمقبلات والشاميات والمشروبات. أسماء الأصناف والأسعار كما في القائمة الرسمية للمطعم.",
- "address": "الفاتح، إسطنبول، تركيا",
+ "description": "مطعم الخوالي في إسنيورت بإسطنبول: متخصّص بالشاورما العربية على أنواعها وساندويتشاتها ووجباتها، مع الدجاج المشوي والساندويتشات الغربية والمقبلات والشاميات والمشروبات. أسماء الأصناف والأسعار كما في القائمة الرسمية للمطعم.",
+ "address": "Yeşilkent Mah. 1880. Sk. No:50 A, 34515 Esenyurt/İstanbul",
  "phone": "+90 538 744 81 94",
  "whatsapp": "+90 538 744 81 94",
  "email": "",
@@ -31,7 +31,7 @@ const khawaliStore = {
  "sourceUrl": "https://tillymenu.com/75/alkhawali",
  "hours": "يومياً على مدار الساعة",
  "areas": [
-  "الفاتح",
+  "إسنيورت",
   "إسطنبول",
   "مناطق التوصيل حسب المسافة"
  ],
