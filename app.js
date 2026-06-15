@@ -1786,7 +1786,7 @@ function setMetaTag(selector, attr, value) {
 }
 
 function updateHead(route, id) {
-  const base = "https://dukkanci.vercel.app";
+  const base = "https://www.dukkanci.com.tr";
   const canonical = base + (location.pathname === "/" ? "/" : location.pathname);
   let title = "دكانجي | سوق الحي بين يديك";
   let desc = "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.";

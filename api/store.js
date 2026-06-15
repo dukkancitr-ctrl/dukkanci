@@ -3,7 +3,8 @@
 // tab all show "دكانجي - {store name}" instead of the generic site title. The SPA's
 // client-side JS still runs and keeps everything in sync during in-app navigation.
 const { STORE_SLUGS, STORE_SLUG_TO_ID } = require("../store-slugs.js");
-const BASE = "https://dukkanci.vercel.app";
+const BASE = "https://dukkanci.vercel.app";          // stable origin for fetching the shell
+const SITE = "https://www.dukkanci.com.tr";          // public canonical origin (for og:url/canonical/image)
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
 
@@ -40,8 +41,8 @@ module.exports = async (req, res) => {
     const title = `دكانجي - ${store.name}`;
     const desc = (store.description || "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.").slice(0, 200);
     let img = store.cover_image || store.image || "/assets/dukkanci-app-icon-512.png";
-    if (img && !/^https?:\/\//.test(img)) img = BASE + img;
-    const canonical = `${BASE}/store/${STORE_SLUGS[id] || id}`;
+    if (img && !/^https?:\/\//.test(img)) img = SITE + img;
+    const canonical = `${SITE}/store/${STORE_SLUGS[id] || id}`;
     const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical);
 
     html = html
