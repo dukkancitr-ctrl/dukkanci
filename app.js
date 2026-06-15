@@ -138,6 +138,7 @@ const state = {
   merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
+  user: null,
   deferredInstall: null
 };
 
@@ -358,6 +359,69 @@ async function initCatalog() {
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
   else { applyProductPersistence(); render(); }
+}
+
+// ---- Google sign-in via Supabase Auth ----
+function applyUserToProfile(user) {
+  if (!user) return;
+  const meta = user.user_metadata || {};
+  const name = meta.full_name || meta.name || (state.customerProfile.name || "");
+  state.customerProfile = {
+    ...state.customerProfile,
+    name: name || state.customerProfile.name,
+    email: user.email || state.customerProfile.email,
+    avatar: meta.avatar_url || meta.picture || state.customerProfile.avatar
+  };
+  saveState();
+}
+
+function updateAccountButton() {
+  const btn = document.querySelector(".account-button");
+  if (!btn) return;
+  const u = state.user;
+  const name = u ? (state.customerProfile.name || u.email || "حسابي") : "حسابي";
+  const initial = (name && name.trim()[0]) || "م";
+  const avatar = state.customerProfile.avatar;
+  btn.innerHTML = `<span class="avatar-mini">${avatar ? `<img src="${escAttr(avatar)}" alt="">` : initial}</span><span class="account-copy"><small>${u ? "مرحباً" : "مرحباً بك"}</small><strong>${u ? name.split(" ")[0] : "حسابي"}</strong></span>`;
+}
+
+async function initAuth() {
+  await window.__supabaseReady;
+  const sb = window.supabaseClient;
+  if (!sb || !sb.auth) return;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) { state.user = data.session.user; applyUserToProfile(state.user); }
+  } catch (e) { /* ignore */ }
+  updateAccountButton();
+  sb.auth.onAuthStateChange((event, session) => {
+    state.user = session ? session.user : null;
+    if (state.user) applyUserToProfile(state.user);
+    updateAccountButton();
+    if (event === "SIGNED_IN") { closeModal(); showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success"); }
+    if (event === "SIGNED_OUT") showToast("تم تسجيل الخروج", "success");
+    if (state.route === "orders") render();
+  });
+}
+
+async function signInWithGoogle() {
+  const sb = window.supabaseClient;
+  if (!sb || !sb.auth) { showToast("الخدمة غير متاحة حالياً"); return; }
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: location.origin + location.pathname }
+  });
+  if (error) {
+    showToast(/provider is not enabled|not enabled/i.test(error.message) ? "تسجيل Google غير مُفعّل بعد في إعدادات Supabase" : "تعذّر بدء تسجيل الدخول عبر Google");
+  }
+}
+
+async function signOutUser() {
+  const sb = window.supabaseClient;
+  if (sb && sb.auth) await sb.auth.signOut();
+  state.user = null;
+  updateAccountButton();
+  render();
 }
 
 function getDeliverySettings(storeId) {
@@ -914,7 +978,10 @@ function renderAccountMenu() {
     ["favorites", "heart", "المفضلة"],
     ["complaints", "megaphone", "الشكاوى"]
   ];
-  return `<aside class="account-menu">${items.map(([key, iconName, label]) => `<button class="${state.accountTab === key ? "active" : ""}" data-action="account-tab" data-tab="${key}">${icon(iconName)} ${label}</button>`).join("")}</aside>`;
+  const authBtn = state.user
+    ? `<button class="account-logout" data-action="logout">${icon("logout")} تسجيل الخروج</button>`
+    : `<button class="account-login-cta" data-action="login">${icon("user")} تسجيل الدخول</button>`;
+  return `<aside class="account-menu">${items.map(([key, iconName, label]) => `<button class="${state.accountTab === key ? "active" : ""}" data-action="account-tab" data-tab="${key}">${icon(iconName)} ${label}</button>`).join("")}${authBtn}</aside>`;
 }
 
 function renderCustomerOrders() {
@@ -1918,7 +1985,7 @@ function openLoginModal() {
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
     <h2>أهلاً بك في دكانجي</h2><p>سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك.</p>
-    <button class="google-button" data-action="toast" data-message="سيتم ربط تسجيل Google عند إعداد مفاتيح المشروع"><b>G</b> المتابعة باستخدام Google</button>
+    <button class="google-button" data-action="google-login"><b>G</b> المتابعة باستخدام Google</button>
     <div class="or-line"><span>أو</span></div>
     <form id="login-form"><label class="input-label"><span>رقم واتساب</span><div class="phone-input"><span dir="ltr">+90</span><input type="tel" required placeholder="555 000 00 00" dir="ltr"></div></label><button class="primary-button full large" type="submit">إرسال رمز التحقق</button></form>
     <small class="auth-terms">بالمتابعة أنت توافق على الشروط وسياسة الخصوصية.</small>
@@ -2165,7 +2232,9 @@ document.addEventListener("click", event => {
   if (action === "replace-cart") {
     state.cart = []; saveState(); closeModal(); addToCart(target.dataset.id); updateCartBadges();
   }
-  if (action === "login") openLoginModal();
+  if (action === "login") { if (state.user) navigate("orders"); else openLoginModal(); }
+  if (action === "google-login") signInWithGoogle();
+  if (action === "logout") signOutUser();
   if (action === "join-merchant") openJoinModal();
   if (action === "account-tab") { state.accountTab = target.dataset.tab; render(); }
   if (action === "customer-order-details") openCustomerOrderDetails(target.dataset.id);
@@ -2602,11 +2671,13 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
-// Backward-compat: convert old shared #routes (e.g. /#store/5) to real paths
-if (location.hash && location.hash.length > 1) {
+// Backward-compat: convert old shared #routes (e.g. /#store/5) to real paths.
+// Skip OAuth callback hashes (#access_token=...) so Supabase can read the session first.
+if (location.hash && location.hash.length > 1 && !/(access_token|provider_token|error)=/.test(location.hash)) {
   const h = location.hash.replace(/^#/, "");
   history.replaceState({}, "", h === "home" ? "/" : "/" + h);
 }
 hydrateIcons();
 render();
 initCatalog();
+initAuth();
