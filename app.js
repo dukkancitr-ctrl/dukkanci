@@ -1,101 +1,5 @@
 const stores = [
   {
-    id: 1,
-    name: "سوق البركة",
-    category: "سوبر ماركت",
-    image: "/assets/photos/store-market.jpg",
-    logo: "ب",
-    rating: 4.9,
-    reviews: 286,
-    delivery: 25,
-    minOrder: 150,
-    time: "30 - 45 دقيقة",
-    distance: 1.2,
-    location: { lat: 41.0183, lng: 28.9495 },
-    open: true,
-    featured: true,
-    hasOffer: true,
-    offer: "خصم 15% على الخضار",
-    description: "سوبر ماركت متكامل يوفر احتياجات البيت اليومية ومنتجات طازجة مختارة بعناية.",
-    address: "شارع وطن، حي الفاتح، إسطنبول",
-    phone: "+90 555 123 45 67",
-    hours: "يومياً من 08:00 صباحاً حتى 11:00 مساءً",
-    areas: ["الفاتح", "إسطنبول المركز", "أكسراي"],
-    fulfillment: "توصيل واستلام"
-  },
-  {
-    id: 2,
-    name: "حلويات الشام",
-    category: "حلويات",
-    image: "/assets/photos/store-bakery.jpg",
-    logo: "ش",
-    rating: 4.8,
-    reviews: 194,
-    delivery: 20,
-    minOrder: 120,
-    time: "25 - 40 دقيقة",
-    distance: 2.1,
-    location: { lat: 41.0217, lng: 28.9378 },
-    open: true,
-    featured: true,
-    hasOffer: true,
-    offer: "توصيل مجاني فوق 500 ل.ت",
-    description: "حلويات شرقية طازجة تُحضّر يومياً بمكونات أصيلة ووصفات شامية محبوبة.",
-    address: "شارع فوزي باشا، حي الفاتح، إسطنبول",
-    phone: "+90 555 234 56 78",
-    hours: "يومياً من 09:00 صباحاً حتى 12:00 ليلاً",
-    areas: ["الفاتح", "بلاط", "أكسراي"],
-    fulfillment: "توصيل واستلام"
-  },
-  {
-    id: 3,
-    name: "ملحمة الأمانة",
-    category: "ملاحم",
-    image: "/assets/photos/store-butcher.jpg",
-    logo: "أ",
-    rating: 4.7,
-    reviews: 152,
-    delivery: 35,
-    minOrder: 250,
-    time: "40 - 55 دقيقة",
-    distance: 2.8,
-    location: { lat: 41.0258, lng: 28.9528 },
-    open: true,
-    featured: false,
-    hasOffer: false,
-    offer: "",
-    description: "لحوم طازجة يومياً مع خيارات تقطيع وتجهيز حسب الطلب وتغليف صحي محكم.",
-    address: "شارع هرقلي، حي الفاتح، إسطنبول",
-    phone: "+90 555 345 67 89",
-    hours: "السبت - الخميس من 08:00 صباحاً حتى 09:30 مساءً",
-    areas: ["الفاتح", "أيوب", "زيتون بورنو"],
-    fulfillment: "توصيل واستلام"
-  },
-  {
-    id: 4,
-    name: "بيت البهارات",
-    category: "مكسرات وبهارات",
-    image: "/assets/photos/store-spices.jpg",
-    logo: "ب",
-    rating: 4.6,
-    reviews: 98,
-    delivery: 15,
-    minOrder: 100,
-    time: "25 - 35 دقيقة",
-    distance: 1.7,
-    location: { lat: 41.0124, lng: 28.957 },
-    open: false,
-    featured: true,
-    hasOffer: true,
-    offer: "اشترِ كيلو واحصل على 250غ هدية",
-    description: "تشكيلة واسعة من المكسرات الطازجة والبهارات المطحونة يومياً والقهوة المختصة.",
-    address: "سوق مالطا، حي الفاتح، إسطنبول",
-    phone: "+90 555 456 78 90",
-    hours: "يومياً من 10:00 صباحاً حتى 08:00 مساءً",
-    areas: ["الفاتح", "أكسراي"],
-    fulfillment: "استلام وتوصيل"
-  },
-  {
     id: 5,
     name: "ملحمة الهلال",
     category: "ملحمة ومشاوي",
@@ -131,143 +35,7 @@ const stores = [
 
 stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore);
 
-const products = [
-  {
-    id: 101,
-    storeId: 1,
-    name: "طماطم بلدية طازجة",
-    image: "/assets/photos/product-tomatoes.jpg",
-    price: 38,
-    oldPrice: 45,
-    unit: "الكيلو",
-    category: "خضار وفواكه",
-    available: true,
-    featured: true,
-    description: "طماطم بلدية حمراء، منتقاة يومياً من السوق ومناسبة للسلطة والطبخ.",
-    options: [{ name: "الوزن", values: ["كيلو", "نصف كيلو", "2 كيلو"], extra: [0, -19, 38] }]
-  },
-  {
-    id: 102,
-    storeId: 1,
-    name: "سلة خضار الأسبوع",
-    image: "/assets/photos/product-vegetable-basket.jpg",
-    price: 279,
-    oldPrice: 325,
-    unit: "السلة",
-    category: "عروض",
-    available: true,
-    featured: true,
-    description: "سلة متنوعة تكفي عائلة صغيرة لأسبوع، تشمل 8 أصناف موسمية.",
-    options: [{ name: "الحجم", values: ["صغيرة", "عائلية"], extra: [0, 160] }]
-  },
-  {
-    id: 103,
-    storeId: 1,
-    name: "زيت زيتون بكر",
-    image: "/assets/photos/product-olive-oil.jpg",
-    price: 245,
-    oldPrice: null,
-    unit: "1 لتر",
-    category: "زيوت",
-    available: true,
-    featured: false,
-    description: "زيت زيتون بكر ممتاز بعصرة أولى ونكهة متوازنة.",
-    options: []
-  },
-  {
-    id: 201,
-    storeId: 2,
-    name: "بقلاوة فستق حلبي",
-    image: "/assets/photos/product-baklava.jpg",
-    price: 420,
-    oldPrice: 480,
-    unit: "الكيلو",
-    category: "حلويات شرقية",
-    available: true,
-    featured: true,
-    description: "بقلاوة هشة محشوة بالفستق الحلبي الفاخر ومحلاة باعتدال.",
-    options: [
-      { name: "الوزن", values: ["كيلو", "نصف كيلو"], extra: [0, -210] },
-      { name: "التغليف", values: ["عادي", "علبة هدية"], extra: [0, 35] }
-    ]
-  },
-  {
-    id: 202,
-    storeId: 2,
-    name: "معمول مشكل فاخر",
-    image: "/assets/photos/product-cookies.jpg",
-    price: 260,
-    oldPrice: null,
-    unit: "الكيلو",
-    category: "معمول",
-    available: true,
-    featured: false,
-    description: "معمول هش بتشكيلة تمر وفستق وجوز، محضر بالسمن العربي.",
-    options: [{ name: "الحشوة", values: ["مشكل", "تمر", "فستق"], extra: [0, -25, 45] }]
-  },
-  {
-    id: 301,
-    storeId: 3,
-    name: "لحم غنم طازج",
-    image: "/assets/photos/product-meat.jpg",
-    price: 690,
-    oldPrice: null,
-    unit: "الكيلو",
-    category: "لحوم حمراء",
-    available: true,
-    featured: true,
-    description: "لحم غنم طازج مختار بعناية مع تجهيز مجاني حسب رغبتك.",
-    options: [
-      { name: "التقطيع", values: ["قطع وسط", "قطع صغيرة", "مفروم"], extra: [0, 0, 15] },
-      { name: "الكمية", values: ["كيلو", "نصف كيلو"], extra: [0, -345] }
-    ]
-  },
-  {
-    id: 302,
-    storeId: 3,
-    name: "كفتة جاهزة للشواء",
-    image: "/assets/photos/product-kofta.jpg",
-    price: 460,
-    oldPrice: 510,
-    unit: "الكيلو",
-    category: "تجهيزات",
-    available: true,
-    featured: false,
-    description: "خلطة كفتة متبلة باعتدال وجاهزة للشواء مباشرة.",
-    options: [{ name: "التتبيل", values: ["عادي", "حار", "بدون بصل"], extra: [0, 0, 0] }]
-  },
-  {
-    id: 401,
-    storeId: 4,
-    name: "مكسرات مشكلة محمصة",
-    image: "/assets/photos/product-nuts.jpg",
-    price: 390,
-    oldPrice: 450,
-    unit: "الكيلو",
-    category: "مكسرات",
-    available: true,
-    featured: true,
-    description: "تشكيلة كاجو ولوز وفستق وبندق محمصة يومياً.",
-    options: [
-      { name: "الوزن", values: ["كيلو", "نصف كيلو"], extra: [0, -195] },
-      { name: "التحميص", values: ["محمص مملح", "محمص بدون ملح", "ني"], extra: [0, 0, -20] }
-    ]
-  },
-  {
-    id: 402,
-    storeId: 4,
-    name: "بهارات مشكلة للطبخ",
-    image: "/assets/photos/product-spices.jpg",
-    price: 95,
-    oldPrice: null,
-    unit: "250 غ",
-    category: "بهارات",
-    available: false,
-    featured: false,
-    description: "خلطة متوازنة من سبع بهارات مطحونة حديثاً.",
-    options: [{ name: "الطحن", values: ["ناعم", "خشن"], extra: [0, 0] }]
-  }
-];
+const products = [];
 
 products.push(...heelalProducts);
 products.push(...alsultanProducts);
@@ -292,41 +60,22 @@ for (let i = products.length - 1; i >= 0; i--) {
   if (p.available === false || !p.image) products.splice(i, 1);
 }
 
-const initialOrders = [
-  { id: "DK-1048", customer: "محمود درويش", storeId: 1, total: 486, status: "طلب جديد", time: "منذ 4 دقائق", items: 4 },
-  { id: "DK-1047", customer: "سارة خليل", storeId: 2, total: 720, status: "قيد التجهيز", time: "منذ 18 دقيقة", items: 3 },
-  { id: "DK-1046", customer: "عمر الحسن", storeId: 1, total: 324, status: "بانتظار الدفع", time: "منذ 31 دقيقة", items: 5 },
-  { id: "DK-1045", customer: "ليلى أحمد", storeId: 3, total: 1065, status: "خرج للتوصيل", time: "منذ 48 دقيقة", items: 2 },
-  { id: "DK-1044", customer: "يوسف علي", storeId: 1, total: 278, status: "مكتمل", time: "أمس، 08:40 م", items: 6 }
-];
+const initialOrders = [];
 
-const customerOrders = [
-  { id: "DK-1039", storeId: 1, date: "10 يونيو 2026", total: 486, status: "خرج للتوصيل", color: "blue", steps: 4, items: [{ productId: 101, quantity: 2 }, { productId: 103, quantity: 1 }] },
-  { id: "DK-1022", storeId: 2, date: "28 مايو 2026", total: 720, status: "مكتمل", color: "green", steps: 5, items: [{ productId: 201, quantity: 1 }, { productId: 202, quantity: 1 }] },
-  { id: "DK-0986", storeId: 3, date: "12 مايو 2026", total: 1065, status: "مكتمل", color: "green", steps: 5, items: [{ productId: 301, quantity: 1 }, { productId: 302, quantity: 1 }] }
-];
+const customerOrders = [];
 
 const initialCustomerProfile = {
-  name: "محمود درويش",
-  phone: "+90 555 111 22 33",
-  email: "mahmoud@example.com",
+  name: "",
+  phone: "",
+  email: "",
   notifications: true
 };
 
-const initialCustomerAddresses = [
-  { id: 1, label: "المنزل", address: "شارع وطن، حي الفاتح، إسطنبول", details: "البناء 18، الطابق الثالث، شقة 7", lat: 41.0179, lng: 28.9477, isDefault: true },
-  { id: 2, label: "العمل", address: "ميدان تقسيم، حي بيوغلو، إسطنبول", details: "مكتب 12، الطابق الثاني", lat: 41.0369, lng: 28.9851, isDefault: false }
-];
+const initialCustomerAddresses = [];
 
-const initialCustomerComplaints = [
-  { id: "SH-143", subject: "تأخر وصول الطلب", orderId: "DK-1039", message: "تجاوز الطلب وقت التوصيل المتوقع وأرغب بمعرفة موقعه الحالي.", status: "قيد المتابعة", date: "11 يونيو 2026" }
-];
+const initialCustomerComplaints = [];
 
 const initialDeliverySettings = {
-  1: { mode: "fixed", fixedFee: 25, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 },
-  2: { mode: "distance", fixedFee: 20, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 80 },
-  3: { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 60 },
-  4: { mode: "fixed", fixedFee: 15, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 50 },
   5: { mode: "distance", fixedFee: 40, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 100 },
   ...alsultanDeliverySettings,
   ...zaitouneDeliverySettings,
@@ -386,17 +135,14 @@ const state = {
   deliveryQuote: null,
   checkoutLocation: null,
   merchantTab: "overview",
-  merchantStoreId: 1,
+  merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
   deferredInstall: null
 };
 
 // Demo seller accounts (front-end only — for trying the merchant dashboard).
-const MERCHANT_ACCOUNTS = [
-  { username: "demo", password: "dukkanci2026", storeId: 1 },
-  { username: "baraka", password: "baraka123", storeId: 1 }
-];
+const MERCHANT_ACCOUNTS = [];
 
 const app = document.getElementById("app");
 const cartDrawer = document.getElementById("cart-drawer");
@@ -643,6 +389,7 @@ function haversineKm(origin, destination) {
 
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
+  if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
   if (settings.mode !== "distance") {
     return {
       storeId: store.id,
@@ -1021,11 +768,6 @@ function renderOffers() {
       <div class="container">
         <div class="section-heading"><div><span class="section-kicker">لفترة محدودة</span><h2>خصومات اليوم</h2></div><span class="count-chip">${offerProducts.length} عروض متاحة</span></div>
         <div class="product-grid">${offerProducts.map(productCard).join("")}</div>
-        <div class="delivery-offer">
-          <span class="delivery-offer__icon">${icon("bike")}</span>
-          <div><span>عرض خاص</span><h3>توصيل مجاني من حلويات الشام</h3><p>للطلبات التي تزيد قيمتها عن 500 ليرة تركية.</p></div>
-          <button class="primary-button" data-action="open-store" data-id="2">تسوق الآن ${icon("arrowLeft")}</button>
-        </div>
       </div>
     </section>
   `;
@@ -1124,10 +866,7 @@ function renderStorePage(id) {
                 ${[5, 4, 3, 2, 1].map((n, index) => `<div><span>${n}</span><span class="bar"><i style="width:${[82, 13, 4, 1, 0][index]}%"></i></span><small>${[82, 13, 4, 1, 0][index]}%</small></div>`).join("")}
               </div>
             </div>
-            <div class="review-list">
-              <article><div><span class="avatar-mini">س</span><strong>سارة خليل</strong><small>منذ 3 أيام</small></div><span class="review-stars">${icon("star")}${icon("star")}${icon("star")}${icon("star")}${icon("star")}</span><p>الطلب وصل مرتب والمنتجات طازجة، والتواصل كان ممتازاً. سأكرر الطلب بالتأكيد.</p></article>
-              <article><div><span class="avatar-mini">م</span><strong>محمد ياسين</strong><small>منذ أسبوع</small></div><span class="review-stars">${icon("star")}${icon("star")}${icon("star")}${icon("star")}${icon("star")}</span><p>أسعار واضحة وتغليف جيد جداً، ووصل الطلب ضمن الوقت المحدد.</p></article>
-            </div>
+            <div class="review-list"><p class="muted-note">لا توجد تقييمات بعد — كن أول من يقيّم هذا المتجر بعد طلبك.</p></div>
           </section>`}
         </div>
         <aside class="store-info-card">
@@ -1157,7 +896,7 @@ function renderOrders() {
   };
   const current = tabs[state.accountTab] || tabs.orders;
   return `
-    <section class="page-hero compact account-hero"><div class="container"><span class="section-kicker">أهلاً ${state.customerProfile.name.split(" ")[0]}</span><h1>${current.title}</h1><p>${current.description}</p></div></section>
+    <section class="page-hero compact account-hero"><div class="container"><span class="section-kicker">أهلاً ${state.customerProfile.name ? state.customerProfile.name.split(" ")[0] : "بك"}</span><h1>${current.title}</h1><p>${current.description}</p></div></section>
     <section class="section">
       <div class="container account-layout">
         ${renderAccountMenu()}
@@ -1291,7 +1030,7 @@ function dashboardSidebar(type, active) {
   return `
     <aside class="dashboard-sidebar">
       <div class="dashboard-brand">${brandLogo("brand-on-dark")}<span>${type === "merchant" ? "لوحة المتجر" : "لوحة الإدارة"}</span></div>
-      <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : 3}</b>` : ""}</button>`).join("")}</nav>
+      <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}</button>`).join("")}</nav>
       <div class="dashboard-user">
         <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png"}" alt=""></span>
         <span><strong>${merchantStore ? merchantStore.name : "إدارة دكانجي"}</strong><small>${merchantStore ? `الخطة ${merchantStore.subscription || "الاحترافية"}` : "مدير النظام"}</small></span>
@@ -1541,12 +1280,7 @@ function merchantLogin() {
         <label class="input-label"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"></label>
         <p class="merchant-auth__error" id="merchant-login-error" hidden>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
         <button class="primary-button full large" type="submit">${icon("store")} دخول لوحة المتجر</button>
-        <div class="merchant-auth__demo">
-          <strong>بيانات تجريبية للتجربة</strong>
-          <span>اسم المستخدم: <code>demo</code></span>
-          <span>كلمة المرور: <code>dukkanci2026</code></span>
-          <button type="button" class="text-button" data-action="fill-merchant-demo">تعبئة تلقائية</button>
-        </div>
+        <p class="merchant-auth__note">${icon("shield")} الدخول متاح لأصحاب المتاجر المسجّلين. لطلب حساب تاجر تواصل مع إدارة دكانجي.</p>
       </form>
     </div>
   `;
@@ -1554,7 +1288,7 @@ function merchantLogin() {
 
 function renderMerchant(id) {
   if (!state.merchantAuth) return merchantLogin();
-  state.merchantStoreId = Number(id) || state.merchantAuth.storeId || state.merchantStoreId || 1;
+  state.merchantStoreId = Number(id) || state.merchantAuth.storeId || state.merchantStoreId || (stores[0] && stores[0].id);
   const store = getMerchantStore();
   const content = {
     overview: merchantOverview,
@@ -1592,37 +1326,25 @@ function renderMerchant(id) {
 }
 
 function adminOverview() {
+  const orderCount = state.orders.length;
+  const revenue = state.orders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const catCount = new Set(stores.map(s => s.category)).size;
+  const openComplaints = state.customerComplaints.filter(c => c.status !== "تم الحل").length;
   return `
     <div class="stats-grid admin-stats">
-      ${statCard("store", "إجمالي المتاجر", "٨٤", "+ 6 هذا الشهر", "green")}
-      ${statCard("users", "إجمالي العملاء", "٤,٢٨١", "+ 184 هذا الشهر", "blue")}
-      ${statCard("receipt", "الطلبات هذا الشهر", "٢,٦٤٠", "+ 18% عن السابق", "orange")}
-      ${statCard("wallet", "الاشتراكات النشطة", "٧٦", "8 تنتهي قريباً", "yellow")}
-    </div>
-    <div class="dashboard-grid admin-overview-grid">
-      <section class="dashboard-card chart-card">
-        <div class="card-heading"><div><h3>نمو الطلبات</h3><p>آخر 6 أشهر</p></div><span class="trend positive">+ 24.6%</span></div>
-        <div class="line-chart">
-          <svg viewBox="0 0 600 230" preserveAspectRatio="none"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e30613" stop-opacity=".24"/><stop offset="1" stop-color="#e30613" stop-opacity="0"/></linearGradient></defs><path d="M0 190 C70 165 86 170 130 135 S210 170 260 100 S355 125 395 70 S490 95 600 25 V230 H0Z" fill="url(#area)"/><path d="M0 190 C70 165 86 170 130 135 S210 170 260 100 S355 125 395 70 S490 95 600 25" fill="none" stroke="#e30613" stroke-width="5" stroke-linecap="round"/></svg>
-          <div><span>يناير</span><span>فبراير</span><span>مارس</span><span>أبريل</span><span>مايو</span><span>يونيو</span></div>
-        </div>
-      </section>
-      <section class="dashboard-card">
-        <div class="card-heading"><div><h3>حالة الطلبات</h3><p>هذا الشهر</p></div></div>
-        <div class="donut-wrap"><div class="donut"><span><strong>٢,٦٤٠</strong><small>طلب</small></span></div><div class="donut-legend"><span><i class="green"></i> مكتمل <b>68%</b></span><span><i class="orange"></i> قيد التنفيذ <b>21%</b></span><span><i class="red"></i> ملغى <b>11%</b></span></div></div>
-      </section>
+      ${statCard("store", "إجمالي المتاجر", stores.length.toLocaleString("ar"), `${catCount.toLocaleString("ar")} تصنيفاً`, "green")}
+      ${statCard("box", "إجمالي المنتجات", products.length.toLocaleString("ar"), "منشورة على المنصة", "blue")}
+      ${statCard("receipt", "الطلبات", orderCount.toLocaleString("ar"), orderCount ? `${revenue.toLocaleString("ar")} ل.ت` : "لا طلبات بعد", "orange")}
+      ${statCard("megaphone", "الشكاوى المفتوحة", openComplaints.toLocaleString("ar"), openComplaints ? "تحتاج متابعة" : "لا شكاوى", "yellow")}
     </div>
     <div class="admin-panels">
       <section class="dashboard-card">
-        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>تحتاج إلى المراجعة</p></div><button class="text-button" data-action="admin-tab" data-tab="stores">عرض الكل</button></div>
-        <div class="join-requests">
-          <article><span class="store-avatar"><img src="/assets/photos/store-market.jpg" alt=""></span><div><strong>روابي الشام</strong><small>سوبر ماركت · منذ ساعتين</small></div><button class="approve" data-action="approve-store">قبول</button><button class="reject" data-action="reject-store">رفض</button></article>
-          <article><span class="store-avatar"><img src="/assets/photos/store-spices.jpg" alt=""></span><div><strong>قهوة البيت</strong><small>مكسرات وقهوة · منذ 5 ساعات</small></div><button class="approve" data-action="approve-store">قبول</button><button class="reject" data-action="reject-store">رفض</button></article>
-        </div>
+        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>تحتاج إلى المراجعة</p></div></div>
+        <div class="empty-managed">${icon("store")}<p>لا توجد طلبات انضمام جديدة حالياً.</p></div>
       </section>
       <section class="dashboard-card">
-        <div class="card-heading"><div><h3>تنبيهات تحتاج انتباهك</h3><p>آخر تحديث الآن</p></div></div>
-        <div class="alert-list"><article class="red">${icon("megaphone")}<div><strong>3 شكاوى جديدة</strong><small>شكويان بانتظار أكثر من 24 ساعة</small></div></article><article class="orange">${icon("wallet")}<div><strong>8 اشتراكات تنتهي قريباً</strong><small>خلال الأيام السبعة القادمة</small></div></article><article class="blue">${icon("store")}<div><strong>4 متاجر غير نشطة</strong><small>لم تستقبل طلبات منذ 30 يوماً</small></div></article></div>
+        <div class="card-heading"><div><h3>أحدث الطلبات</h3><p>على مستوى المنصة</p></div><button class="text-button" data-action="admin-tab" data-tab="orders">عرض الكل ${icon("arrowLeft")}</button></div>
+        ${orderCount ? renderOrdersTable(state.orders.slice(0, 5), "admin") : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات بعد.</p></div>`}
       </section>
     </div>
   `;
@@ -1632,16 +1354,15 @@ function adminStores() {
   return `
     <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث باسم المتجر أو صاحبه"></div><div class="toolbar-actions"><button class="secondary-button compact">${icon("filter")} تصفية</button><button class="secondary-button compact" data-action="export-csv" data-kind="stores">${icon("download")} تصدير Excel</button></div></div>
     <section class="dashboard-card admin-store-list">
-      ${stores.map(store => `<article>${storeAvatar(store)}<div><strong>${store.name}</strong><small>${store.category} · ${store.address.split("،")[1]}</small></div><span class="status-pill ${store.open ? "green" : "gray"}">${store.open ? "نشط" : "متوقف"}</span><span><small>الاشتراك</small><strong>${store.subscription || (store.id === 4 ? "منتهي" : "احترافي")}</strong></span><span><small>الطلبات</small><strong>${store.orderCount ?? [128, 94, 72, 35][store.id - 1] ?? 0}</strong></span><button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`).join("")}
+      ${stores.map(store => `<article>${storeAvatar(store)}<div><strong>${store.name}</strong><small>${store.category}${store.address && store.address.includes("،") ? " · " + store.address.split("،").pop().trim() : ""}</small></div><span class="status-pill ${store.open ? "green" : "gray"}">${store.open ? "نشط" : "متوقف"}</span><span><small>الاشتراك</small><strong>${store.subscription || "احترافي"}</strong></span><span><small>الطلبات</small><strong>${(store.orderCount ?? 0).toLocaleString("ar")}</strong></span><button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`).join("")}
     </section>
   `;
 }
 
 function adminCustomers() {
-  const customers = [["محمود درويش", "+90 555 111 22 33", "24", "12 يونيو 2026"], ["سارة خليل", "+90 555 222 33 44", "18", "11 يونيو 2026"], ["عمر الحسن", "+90 555 333 44 55", "31", "11 يونيو 2026"], ["ليلى أحمد", "+90 555 444 55 66", "12", "10 يونيو 2026"]];
   return `
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div><button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير العملاء</button></div>
-    <section class="dashboard-card orders-table-card"><div class="table-wrap"><table><thead><tr><th>العميل</th><th>رقم الهاتف</th><th>عدد الطلبات</th><th>آخر طلب</th><th>الحالة</th><th></th></tr></thead><tbody>${customers.map((customer, index) => `<tr><td><div class="table-person"><span class="avatar-mini">${customer[0][0]}</span><strong>${customer[0]}</strong></div></td><td dir="ltr">${customer[1]}</td><td>${customer[2]}</td><td>${customer[3]}</td><td><span class="status-pill green">نشط</span></td><td><button class="table-action">${icon("dots")}</button></td></tr>`).join("")}</tbody></table></div></section>
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
+    <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء مسجّلون بعد. ستظهر بيانات العملاء هنا بعد ربط نظام تسجيل الدخول.</p></div></section>
   `;
 }
 
@@ -1650,8 +1371,8 @@ function adminOrders() {
 }
 
 function adminComplaints() {
-  const complaints = [["SH-142", "تأخر وصول الطلب", "محمود درويش", "سوق البركة", "شكوى جديدة"], ["SH-141", "منتج غير مطابق", "ليلى أحمد", "ملحمة الأمانة", "قيد المراجعة"], ["SH-140", "طلب ناقص", "سارة خليل", "حلويات الشام", "تم الحل"]];
-  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div><button class="secondary-button compact" data-action="export-csv" data-kind="complaints">${icon("download")} تصدير</button></div><section class="dashboard-card complaint-list">${complaints.map(item => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${item[1]}</strong><small>${item[0]} · ${item[2]} ضد ${item[3]}</small></div><span class="status-pill ${statusClass(item[4])}">${item[4]}</span><button class="secondary-button compact" data-action="complaint-detail" data-id="${item[0]}" data-subject="${escAttr(item[1])}" data-customer="${escAttr(item[2])}" data-store="${escAttr(item[3])}" data-status="${escAttr(item[4])}">مراجعة</button></article>`).join("")}</section>`;
+  const complaints = state.customerComplaints || [];
+  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div></div><section class="dashboard-card complaint-list">${complaints.length ? complaints.map(c => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${c.subject}</strong><small>${c.id} · ${c.orderId || "شكوى عامة"} · ${c.date}</small></div><span class="status-pill ${statusClass(c.status)}">${c.status}</span></article>`).join("") : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد شكاوى حالياً.</p></div>`}</section>`;
 }
 
 function adminContent() {
@@ -2210,7 +1931,7 @@ function openJoinModal() {
     <div class="join-modal-head"><span>${icon("store")}</span><div><h2>انضم إلى دكانجي</h2><p>ابدأ باستقبال طلبات جديدة من عملاء منطقتك.</p></div></div>
     <form id="join-form" class="join-form">
       <div class="form-grid">
-        <label><span>اسم المتجر الحقيقي</span><input required placeholder="مثال: سوق البركة"></label>
+        <label><span>اسم المتجر الحقيقي</span><input required placeholder="مثال: متجر الحي"></label>
         <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option></select></label>
         <label><span>اسم صاحب المتجر</span><input required placeholder="الاسم الكامل"></label>
         <label><span>رقم واتساب</span><input required dir="ltr" placeholder="+90 555 000 00 00"></label>
@@ -2355,9 +2076,9 @@ function openComplaintDetail(data) {
 function exportCsv(kind) {
   let rows = [];
   if (kind === "stores") rows = [["المتجر", "التصنيف", "التقييم", "رسوم التوصيل"], ...stores.map(store => [store.name, store.category, store.rating, deliveryPriceLabel(store)])];
-  else if (kind === "customers") rows = [["العميل", "الهاتف", "الطلبات"], ["محمود درويش", "+90 555 111 22 33", 24], ["سارة خليل", "+90 555 222 33 44", 18]];
-  else if (kind === "complaints") rows = [["الرقم", "العنوان", "الحالة"], ["SH-142", "تأخر وصول الطلب", "جديدة"], ["SH-141", "منتج غير مطابق", "قيد المراجعة"]];
-  else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId).name, order.total, order.status])];
+  else if (kind === "customers") rows = [["العميل", "الهاتف", "الطلبات"]];
+  else if (kind === "complaints") rows = [["الرقم", "العنوان", "الحالة"], ...(state.customerComplaints || []).map(c => [c.id, c.subject, c.status])];
+  else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId)?.name || "-", order.total, order.status])];
   const csv = "\uFEFF" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -2745,7 +2466,7 @@ document.addEventListener("submit", event => {
     const storeId = state.cart[0].storeId;
     const newOrder = {
       id: `DK-${1050 + state.orders.length}`,
-      customer: "محمود درويش",
+      customer: state.customerProfile.name || "عميل دكانجي",
       storeId,
       total: finalTotal,
       status: "بانتظار تأكيد المتجر",

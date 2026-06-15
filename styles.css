@@ -5639,6 +5639,27 @@ tr:last-child td {
   margin: 0 0 12px;
 }
 
+.merchant-auth__note {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  text-align: right;
+  line-height: 1.6;
+}
+
+.merchant-auth__note .icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
 .merchant-auth__demo {
   display: flex;
   flex-direction: column;
