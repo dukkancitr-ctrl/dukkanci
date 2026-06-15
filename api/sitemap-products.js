@@ -10,17 +10,24 @@ module.exports = async (req, res) => {
   const page = Math.max(0, parseInt(req.query && req.query.page, 10) || 0);
   const url = (process.env.SUPABASE_URL || PUB_URL).replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
   const key = process.env.SUPABASE_ANON_KEY || PUB_KEY;
-  const from = page * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  const start = page * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
 
+  // Supabase caps each REST response at ~1000 rows, so fetch the page in 1000-row
+  // batches until we have the full 45000-slot page (or run out of products).
   let rows = [];
   try {
-    const r = await fetch(
-      `${url}/rest/v1/products?select=slug,created_at&slug=not.is.null&available=eq.true&order=id`,
-      { headers: { apikey: key, Authorization: `Bearer ${key}`, Range: `${from}-${to}`, "Range-Unit": "items" } }
-    );
-    if (r.ok) rows = await r.json();
-  } catch (e) { /* empty sitemap on failure */ }
+    for (let offset = start; offset < end; offset += 1000) {
+      const r = await fetch(
+        `${url}/rest/v1/products?select=slug,created_at&slug=not.is.null&available=eq.true&order=id&limit=1000&offset=${offset}`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+      );
+      if (!r.ok) break;
+      const batch = await r.json();
+      rows = rows.concat(batch);
+      if (batch.length < 1000) break;
+    }
+  } catch (e) { /* partial/empty sitemap on failure */ }
 
   const urls = rows.map(p => {
     const lastmod = (p.created_at || "").slice(0, 10) || undefined;
