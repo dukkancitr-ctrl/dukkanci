@@ -401,9 +401,23 @@ async function loadCatalogFromSupabase() {
     return true;
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
+// Fire-and-forget: ask the server to notify Google's Indexing API about a URL.
+// No-ops on the server when credentials aren't configured.
+function notifyGoogleIndex(path) {
+  try {
+    fetch("/api/notify-google", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: location.origin + path })
+    }).catch(() => {});
+  } catch (e) { /* ignore */ }
+}
+
 function pushProductCloud(product) {
   const sb = window.supabaseClient;
-  if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => { if (error) console.warn("product cloud save:", error.message); });
+  if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => {
+    if (error) console.warn("product cloud save:", error.message);
+    else notifyGoogleIndex(`/product/${product.slug || product.id}`);
+  });
 }
 function toDbStore(s) {
   return {
@@ -420,7 +434,10 @@ function toDbStore(s) {
 }
 function pushStoreCloud(store) {
   const sb = window.supabaseClient;
-  if (sb) sb.from("stores").upsert(toDbStore(store), { onConflict: "id" }).then(({ error }) => { if (error) console.warn("store cloud save:", error.message); });
+  if (sb) sb.from("stores").upsert(toDbStore(store), { onConflict: "id" }).then(({ error }) => {
+    if (error) console.warn("store cloud save:", error.message);
+    else notifyGoogleIndex(`/store/${storeParam(store)}`);
+  });
 }
 function deleteProductCloud(id) {
   const sb = window.supabaseClient;
@@ -644,6 +661,16 @@ function collapseBranchGroups(list) {
   }
   return out;
 }
+// Order stores by the visitor's TRUE distance (from geolocation), nearest first.
+// Stores we can't measure — no coordinates, or the visitor hasn't shared their
+// location yet — fall back to the static distance hint and sort last.
+function compareStoresByDistance(a, b) {
+  const da = branchDistanceKm(a), db = branchDistanceKm(b);
+  if (da != null && db != null) return da - db;
+  if (da != null) return -1;
+  if (db != null) return 1;
+  return (a.distance || 0) - (b.distance || 0);
+}
 
 // Delivery-fee policy: a 150 ل.ت minimum (covers the nearest/shortest trip),
 // and anything above is rounded UP to the next multiple of 50 (160 → 200).
@@ -762,7 +789,7 @@ function storeCard(store) {
           ${store.newStore ? `${icon("store")} <strong>متجر جديد</strong><span>موثق البيانات</span>` : `${icon("star")} <strong>${store.rating}</strong><span>(${store.reviews} تقييم)</span>`}
         </div>
         <div class="store-meta">
-          <span>${icon("clock")} ${store.time}</span>
+          ${branchDistanceKm(store) != null ? `<span>${icon("pin")} ${formatDistance(branchDistanceKm(store))}</span>` : `<span>${icon("clock")} ${store.time}</span>`}
           <span>${icon("bike")} ${deliveryPriceLabel(store)}</span>
         </div>
       </div>
@@ -811,7 +838,10 @@ function renderHome() {
   // location (from geolocation) instead of a fixed "main" branch — on desktop and
   // mobile alike (the store grid is shared/responsive). Falls back to the featured
   // branch until the browser location is known.
-  const featuredStores = collapseBranchGroups(stores.filter(store => store.featured));
+  let featuredStores = collapseBranchGroups(stores.filter(store => store.featured));
+  // When the visitor's location is known, show the nearest featured stores first
+  // so "متاجر مميزة بالقرب منك" is literally true.
+  if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
   const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 4);
   return `
     <section class="hero">
@@ -969,12 +999,21 @@ function getFilteredStores() {
     return categoryMatch && terms.every(t => text.includes(t));
   });
 
+  // Collapse branch groups to their nearest branch FIRST, then sort the
+  // representative cards — so distance ordering reflects the actual closest shop.
+  result = collapseBranchGroups(result);
+
   if (state.storeSort === "rating") result.sort((a, b) => b.rating - a.rating);
-  if (state.storeSort === "delivery") result.sort((a, b) => deliverySortValue(a) - deliverySortValue(b));
-  if (state.storeSort === "distance") result.sort((a, b) => a.distance - b.distance);
-  if (state.storeSort === "open") result.sort((a, b) => Number(b.open) - Number(a.open));
-  if (state.storeSort === "offers") result.sort((a, b) => Number(b.hasOffer) - Number(a.hasOffer));
-  return collapseBranchGroups(result);
+  else if (state.storeSort === "delivery") result.sort((a, b) => deliverySortValue(a) - deliverySortValue(b));
+  else if (state.storeSort === "distance") result.sort(compareStoresByDistance);
+  else if (state.storeSort === "open") result.sort((a, b) => Number(b.open) - Number(a.open));
+  else if (state.storeSort === "offers") result.sort((a, b) => Number(b.hasOffer) - Number(a.hasOffer));
+  else if (state.userLocation) {
+    // Default "recommended" view: once we know where the visitor is, surface the
+    // genuinely nearest stores (open ones first) instead of the bundled order.
+    result.sort((a, b) => Number(b.open) - Number(a.open) || compareStoresByDistance(a, b));
+  }
+  return result;
 }
 
 function renderStores() {
@@ -1811,6 +1850,9 @@ function updateHead(route, id) {
       desc = p.description || `${p.name}${st ? ` من ${st.name}` : ""} على دكانجي.`;
       if (p.image) image = p.image.startsWith("http") ? p.image : base + p.image;
     }
+  } else if (route === "category" && id && CATEGORY_MAP[id]) {
+    title = `${CATEGORY_MAP[id]} | دكانجي`;
+    desc = `تصفّح ${CATEGORY_MAP[id]} في إسطنبول على دكانجي واطلب أونلاين بتوصيل سريع.`;
   } else if (route === "stores") { title = "كل المتاجر والمطاعم | دكانجي"; desc = "تصفّح متاجر ومطاعم حيك في إسطنبول واطلب أونلاين."; }
   else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
   document.title = title;
@@ -1855,6 +1897,28 @@ function renderProductPage(slugOrId) {
   `;
 }
 
+const CATEGORY_MAP = (typeof CATEGORY_SLUGS !== "undefined") ? CATEGORY_SLUGS : {};
+
+// Main-category landing page for /category/<slug>: stores in the category + a
+// sample of their products, all as links.
+function renderCategoryPage(slug) {
+  const catText = CATEGORY_MAP[slug];
+  if (!catText) {
+    return `<section class="section empty-page">${renderEmpty("الفئة غير موجودة", "تصفح كل المتاجر بدلاً من ذلك.", "تصفح المتاجر", "stores")}</section>`;
+  }
+  const catStores = stores.filter(s => s.category === catText);
+  const storeIds = new Set(catStores.map(s => s.id));
+  const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
+  return `
+    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length} متجراً في إسطنبول على دكانجي.</p></div></section>
+    <section class="section"><div class="container">
+      <div class="section-heading small"><h2>المتاجر</h2></div>
+      <div class="store-grid">${catStores.map(storeCard).join("")}</div>
+      ${catProducts.length ? `<div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div>` : ""}
+    </div></section>
+  `;
+}
+
 function render() {
   const { route, id } = parseRoute();
   state.route = route;
@@ -1865,6 +1929,7 @@ function render() {
     offers: renderOffers,
     store: () => renderStorePage(id),
     product: () => renderProductPage(id),
+    category: () => renderCategoryPage(id),
     orders: renderOrders,
     merchant: () => renderMerchant(id),
     admin: renderAdmin,

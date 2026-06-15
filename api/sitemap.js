@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
 
   const pages = Math.max(1, Math.ceil(productCount / PAGE_SIZE));
   const today = new Date().toISOString().slice(0, 10);
-  const entries = [`${SITE}/sitemap-stores.xml`];
+  const entries = [`${SITE}/sitemap-stores.xml`, `${SITE}/sitemap-categories.xml`];
   for (let p = 0; p < pages; p++) entries.push(`${SITE}/sitemap-products.xml?page=${p}`);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
