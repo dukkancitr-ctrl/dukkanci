@@ -1,7 +1,9 @@
-// Generated from the official Zaitoune store on 2026-06-12.
+// حلويات زيتونة — 9 فروع في إسطنبول تشترك في نفس المنتجات. الفرع الأساسي (بهجة ليفلر)
+// هو المتجر 12؛ الفروع الجديدة (35..42) تشترك في نفس `zaitouneProductCatalog`.
+// branchGroup = "zaitoune" يربط الفروع؛ اسم المنطقة بعد " - " في الاسم يُشتق منه branchName.
 const zaitouneStore = {
   "id": 12,
-  "name": "حلويات زيتونة",
+  "name": "حلويات زيتونة - بهجة ليفلر",
   "category": "حلويات",
   "image": "/assets/photos/zaitoune/cover.jpg",
   "coverImage": "/assets/photos/zaitoune/cover.jpg",
@@ -39,8 +41,357 @@ const zaitouneStore = {
   "subscription": "احترافي",
   "orderCount": 0,
   "officialStore": true,
-  "brandTheme": "zaitoune"
+  "brandTheme": "zaitoune",
+  "branchName": "بهجة ليفلر",
+  "branchGroup": "zaitoune"
 };
+
+const zaitouneBranches = [
+  {
+    "id": 35,
+    "name": "حلويات زيتونة - بيليك دوزو",
+    "branchName": "بيليك دوزو",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.016188,
+      "lng": 28.647687
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.016188,28.647687",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "بيليك دوزو، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "بيليك دوزو",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 36,
+    "name": "حلويات زيتونة - باشاك شهير",
+    "branchName": "باشاك شهير",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.102312,
+      "lng": 28.803313
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.102312,28.803313",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "باشاك شهير، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "باشاك شهير",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 37,
+    "name": "حلويات زيتونة - كاياشهير",
+    "branchName": "كاياشهير",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.124938,
+      "lng": 28.769562
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.124938,28.769562",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "كاياشهير، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "كاياشهير",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 38,
+    "name": "حلويات زيتونة - أفجلار",
+    "branchName": "أفجلار",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 40.982063,
+      "lng": 28.723312
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.982063,28.723312",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "أفجلار، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "أفجلار",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 39,
+    "name": "حلويات زيتونة - فندق زاده",
+    "branchName": "فندق زاده",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.012312,
+      "lng": 28.940187
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.012312,28.940187",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "فندق زاده، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "فندق زاده",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 40,
+    "name": "حلويات زيتونة - فلوريا",
+    "branchName": "فلوريا",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 40.966938,
+      "lng": 28.797062
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.966938,28.797062",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "فلوريا، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "فلوريا",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 41,
+    "name": "حلويات زيتونة - الفاتح",
+    "branchName": "الفاتح",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.020688,
+      "lng": 28.942312
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.020688,28.942312",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "الفاتح، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "الفاتح",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  },
+  {
+    "id": 42,
+    "name": "حلويات زيتونة - زيتونة أوغلو",
+    "branchName": "زيتونة أوغلو",
+    "branchGroup": "zaitoune",
+    "category": "حلويات",
+    "image": "/assets/photos/zaitoune/cover.jpg",
+    "coverImage": "/assets/photos/zaitoune/cover.jpg",
+    "logoImage": "/assets/photos/zaitoune/logo.png",
+    "logo": "ز",
+    "rating": 0,
+    "reviews": 0,
+    "newStore": true,
+    "delivery": 30,
+    "minOrder": 250,
+    "time": "35 - 55 دقيقة",
+    "distance": 7.8,
+    "location": {
+      "lat": 41.023438,
+      "lng": 28.810813
+    },
+    "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.023438,28.810813",
+    "open": true,
+    "featured": false,
+    "hasOffer": true,
+    "offer": "خصم 10% على المنتجات المختارة",
+    "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
+    "address": "زيتونة أوغلو، إسطنبول، تركيا",
+    "phone": "+90 505 567 90 00",
+    "email": "info@baklava.com",
+    "website": "https://www.zaitoune.co/ar",
+    "sourceUrl": "https://www.zaitoune.co/ar/products",
+    "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
+    "areas": [
+      "زيتونة أوغلو",
+      "إسطنبول",
+      "مناطق التوصيل حسب المسافة"
+    ],
+    "fulfillment": "توصيل واستلام",
+    "subscription": "احترافي",
+    "orderCount": 0,
+    "officialStore": true
+  }
+];
 
 const zaitouneProductCatalog = [
   {
@@ -597,12 +948,18 @@ const zaitouneProductCatalog = [
   }
 ];
 
-const zaitouneProducts = zaitouneProductCatalog.map((product, index) => ({
-  ...product,
-  id: 12001 + index,
-  storeId: zaitouneStore.id
-}));
+// نفس المنتجات لكل الفروع: المتجر 12 يحتفظ بكتلته (12001+)، والفروع الجديدة كتلة 1200001+.
+const zaitouneProducts = [
+  ...zaitouneProductCatalog.map((product, index) => ({ ...product, id: 12001 + index, storeId: zaitouneStore.id })),
+  ...zaitouneBranches.flatMap((branch, branchIndex) =>
+    zaitouneProductCatalog.map((product, productIndex) => ({
+      ...product,
+      id: 1200001 + branchIndex * 1000 + productIndex,
+      storeId: branch.id,
+    }))
+  ),
+];
 
-const zaitouneDeliverySettings = {
-  [zaitouneStore.id]: { mode: "distance", fixedFee: 30, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 100 }
-};
+const zaitouneDeliverySettings = Object.fromEntries(
+  [zaitouneStore, ...zaitouneBranches].map(s => [s.id, { mode: "distance", fixedFee: 30, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 100 }])
+);

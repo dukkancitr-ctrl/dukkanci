@@ -34,7 +34,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore);
 
 const products = [];
 
@@ -579,6 +579,47 @@ function haversineKm(origin, destination) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// --- Multi-branch helpers --------------------------------------------------
+// A branch group = several stores (same brand, same products) in different areas.
+// When a buyer enters we surface the branch NEAREST to them, so fulfillment and
+// distance-based delivery pricing come from the closest shop.
+function branchGroupStores(branchGroup) {
+  return stores.filter(s => s.branchGroup === branchGroup);
+}
+function branchDistanceKm(store) {
+  const u = state.userLocation;
+  if (!u || u.lat == null || !store.location || store.location.lat == null) return null;
+  return haversineKm(u, store.location);
+}
+function nearestBranchId(branchGroup, fallbackId) {
+  const list = branchGroupStores(branchGroup).filter(s => s.location && s.location.lat != null);
+  if (!list.length) return fallbackId;
+  const u = state.userLocation;
+  if (!u || u.lat == null) return fallbackId != null ? fallbackId : list[0].id;
+  let best = list[0], bestKm = Infinity;
+  for (const b of list) {
+    const km = haversineKm(u, b.location);
+    if (km < bestKm) { bestKm = km; best = b; }
+  }
+  return best.id;
+}
+// Collapse each branch group to a single representative card (its nearest branch)
+// so the brand appears once in listings; opening it lands on the closest branch.
+function collapseBranchGroups(list) {
+  const seen = new Set();
+  const out = [];
+  for (const s of list) {
+    if (s.branchGroup) {
+      if (seen.has(s.branchGroup)) continue;
+      seen.add(s.branchGroup);
+      out.push(getStore(nearestBranchId(s.branchGroup, s.id)) || s);
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
   if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
@@ -896,7 +937,7 @@ function getFilteredStores() {
   if (state.storeSort === "distance") result.sort((a, b) => a.distance - b.distance);
   if (state.storeSort === "open") result.sort((a, b) => Number(b.open) - Number(a.open));
   if (state.storeSort === "offers") result.sort((a, b) => Number(b.hasOffer) - Number(a.hasOffer));
-  return result;
+  return collapseBranchGroups(result);
 }
 
 function renderStores() {
@@ -971,7 +1012,9 @@ function renderStorePage(id) {
   if (!store) return renderNotFound();
   const siblingBranches = store.branchGroup
     ? stores.filter(branch => branch.branchGroup === store.branchGroup)
+        .sort((a, b) => (branchDistanceKm(a) ?? Infinity) - (branchDistanceKm(b) ?? Infinity))
     : [];
+  const nearestSiblingId = store.branchGroup ? nearestBranchId(store.branchGroup, store.id) : null;
   const allStoreProducts = products.filter(product => product.storeId === store.id);
   const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
@@ -1020,15 +1063,19 @@ function renderStorePage(id) {
               <div>
                 <span class="section-kicker">اختر أقرب فرع</span>
                 <h2>فروع ${store.name.split(" - ")[0]} في إسطنبول</h2>
+                <p class="branch-switcher__hint">${state.userLocation ? `الفروع مرتّبة حسب الأقرب إلى موقعك (${escAttr(state.userLocation.area || "موقعك الحالي")}).` : "حدّد موقعك من الأعلى لترتيب الفروع حسب الأقرب إليك تلقائياً."}</p>
               </div>
               <div class="branch-switcher__list">
-                ${siblingBranches.map(branch => `
+                ${siblingBranches.map(branch => {
+                  const km = branchDistanceKm(branch);
+                  const isNearest = branch.id === nearestSiblingId;
+                  return `
                   <button class="${branch.id === store.id ? "active" : ""}" data-action="open-store" data-id="${branch.id}">
                     <img src="${branch.coverImage || branch.image}" alt="">
-                    <span><strong>${branch.branchName}</strong><small>${branch.phone}</small></span>
+                    <span><strong>${branch.branchName}${isNearest ? ` <em class="branch-near-tag">${icon("pin")} الأقرب إليك</em>` : ""}</strong><small>${km != null ? `${formatDistance(km)} · ` : ""}${branch.phone}</small></span>
                     ${branch.id === store.id ? `<b>${icon("check")} الفرع الحالي</b>` : icon("arrowLeft")}
-                  </button>
-                `).join("")}
+                  </button>`;
+                }).join("")}
               </div>
             </section>
           ` : ""}
