@@ -807,7 +807,11 @@ function productCard(product) {
 }
 
 function renderHome() {
-  const featuredStores = stores.filter(store => store.featured);
+  // For brands with several branches, surface the branch nearest the visitor's
+  // location (from geolocation) instead of a fixed "main" branch — on desktop and
+  // mobile alike (the store grid is shared/responsive). Falls back to the featured
+  // branch until the browser location is known.
+  const featuredStores = collapseBranchGroups(stores.filter(store => store.featured));
   const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 4);
   return `
     <section class="hero">
