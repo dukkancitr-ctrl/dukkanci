@@ -1,9 +1,9 @@
-// حلويات زيتونة — 9 فروع في إسطنبول تشترك في نفس المنتجات. الفرع الأساسي (بهجة ليفلر)
+// حلويات زيتونة — 9 فروع في إسطنبول تشترك في نفس المنتجات. الفرع الأساسي (بهشة ايفلر)
 // هو المتجر 12؛ الفروع الجديدة (35..42) تشترك في نفس `zaitouneProductCatalog`.
 // branchGroup = "zaitoune" يربط الفروع؛ اسم المنطقة بعد " - " في الاسم يُشتق منه branchName.
 const zaitouneStore = {
   "id": 12,
-  "name": "حلويات زيتونة - بهجة ليفلر",
+  "name": "حلويات زيتونة - بهشة ايفلر",
   "category": "حلويات",
   "image": "/assets/photos/zaitoune/cover.jpg",
   "coverImage": "/assets/photos/zaitoune/cover.jpg",
@@ -26,14 +26,14 @@ const zaitouneStore = {
   "hasOffer": true,
   "offer": "خصم 10% على المنتجات المختارة",
   "description": "حلويات زيتونة متخصصة في البقلاوة التركية والحلويات التقليدية، مع الفستق الفاخر وخيارات متنوعة من النواشف والحلقوم والقهوة.",
-  "address": "بهجة ليفلر، إسطنبول، تركيا",
+  "address": "بهشة ايفلر، إسطنبول، تركيا",
   "phone": "+90 505 567 90 00",
   "email": "info@baklava.com",
   "website": "https://www.zaitoune.co/ar",
   "sourceUrl": "https://www.zaitoune.co/ar/products",
   "hours": "يرجى تأكيد أوقات العمل مباشرة عبر واتساب",
   "areas": [
-    "بهجة ليفلر",
+    "بهشة ايفلر",
     "إسطنبول",
     "مناطق التوصيل حسب المسافة"
   ],
@@ -42,7 +42,7 @@ const zaitouneStore = {
   "orderCount": 0,
   "officialStore": true,
   "brandTheme": "zaitoune",
-  "branchName": "بهجة ليفلر",
+  "branchName": "بهشة ايفلر",
   "branchGroup": "zaitoune"
 };
 
