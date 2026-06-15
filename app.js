@@ -33,7 +33,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore);
+stores.push(...alsultanBranches, zaitouneStore, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches);
 
 const products = [];
 
@@ -53,6 +53,7 @@ products.push(...kadibyProducts);
 products.push(...azalProducts);
 products.push(...abouProducts);
 products.push(...bitehausProducts);
+products.push(...alagarProducts);
 
 // Keep the bundled fallback catalog in sync with the cloud: drop unavailable
 // or image-less products. Filtering in place preserves the remaining ids.
@@ -92,7 +93,8 @@ const initialDeliverySettings = {
   ...kadibyDeliverySettings,
   ...azalDeliverySettings,
   ...abouDeliverySettings,
-  ...bitehausDeliverySettings
+  ...bitehausDeliverySettings,
+  ...alagarDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -310,11 +312,16 @@ async function loadCatalogFromSupabase() {
   const sb = window.supabaseClient;
   if (!sb) return false;
   try {
-    const { data: st, error: e1 } = await sb.from("stores").select("*");
+    // Cloudflare edge-caches REST GET responses by URL and ignores the client's
+    // Cache-Control/no-store, so a newly added store or product can stay missing until
+    // the cached entry expires. A per-load, always-true id filter (ids are positive, so
+    // id > -cb matches every row) varies the URL each load, forcing a fresh read.
+    const cb = Date.now();
+    const { data: st, error: e1 } = await sb.from("stores").select("*").order("id").gt("id", -cb);
     if (e1 || !st || !st.length) return false;
     let all = [], from = 0;
     for (;;) {
-      const { data, error } = await sb.from("products").select("*").order("id").range(from, from + 999);
+      const { data, error } = await sb.from("products").select("*").order("id").gt("id", -cb).range(from, from + 999);
       if (error) return false;
       all = all.concat(data);
       if (data.length < 1000) break;
@@ -1335,8 +1342,8 @@ function merchantStore() {
         </div>
         <div class="store-location-fields">
           <div><strong>${icon("pin")} موقع المتجر</strong><small>يُحفظ الموقع كنقطة بداية لجميع حسابات التوصيل.</small></div>
-          <label><span>خط العرض</span><input name="storeLat" type="number" step="any" required value="${storeLocation.lat}"></label>
-          <label><span>خط الطول</span><input name="storeLng" type="number" step="any" required value="${storeLocation.lng}"></label>
+          <label><span>خط العرض</span><input name="storeLat" type="number" step="any" required value="${storeLocation?.lat ?? ""}"></label>
+          <label><span>خط الطول</span><input name="storeLng" type="number" step="any" required value="${storeLocation?.lng ?? ""}"></label>
           <button type="button" class="secondary-button compact" data-action="capture-store-location">${icon("pin")} استخدام موقعي الحالي</button>
         </div>
         <p class="maps-integration-note">${icon("shield")} يتم إرسال الإحداثيات من الخادم إلى Google Routes API عند توفر مفتاح الخدمة، ولا يظهر المفتاح داخل الموقع.</p>
