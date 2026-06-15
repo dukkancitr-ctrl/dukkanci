@@ -280,8 +280,14 @@ function applyProductPersistence() {
 
 // ---- Supabase cloud catalog (read + write) ----
 function mapDbStore(r) {
+  // branch_name isn't a DB column; for branch groups the area is embedded in the
+  // store name ("Brand - Area"), so derive branchName from it (else the branch
+  // picker shows "undefined").
+  const branchName = (r.branch_group && typeof r.name === "string" && r.name.includes(" - "))
+    ? r.name.split(" - ").pop().trim()
+    : undefined;
   return {
-    id: r.id, name: r.name, category: r.category, image: r.image, coverImage: r.cover_image,
+    id: r.id, name: r.name, category: r.category, image: r.image, coverImage: r.cover_image, branchName,
     logoImage: r.logo_image, logo: r.logo, rating: r.rating, reviews: r.reviews, newStore: r.new_store,
     delivery: r.delivery, minOrder: r.min_order, time: r.time, distance: r.distance,
     location: (r.lat != null && r.lng != null) ? { lat: r.lat, lng: r.lng } : undefined, mapUrl: r.map_url,
