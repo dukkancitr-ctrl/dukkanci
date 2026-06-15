@@ -18,16 +18,16 @@ const ademsefStore = {
  "time": "40 - 70 دقيقة",
  "distance": 16,
  "location": {
-  "lat": 41.0082,
-  "lng": 28.9784
+  "lat": 41.017618,
+  "lng": 28.653228
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=Adem+Sef+Restaurant+Istanbul",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.017618,28.653228",
  "open": true,
  "featured": true,
  "hasOffer": false,
  "priceOnRequest": true,
  "description": "مطعم آدم شيف في إسطنبول: قائمة واسعة تشمل الشوربات والسلطات والمقبلات الباردة والساخنة، الوجبات والسندويشات الغربية، الطبخ الشرقي والمشاوي والفخارات والبيتزا والمعجنات، إضافة إلى الفطور والتواصي والحلويات وتشكيلة كبيرة من المشروبات والعصائر. الأسعار عند الطلب — يرجى التواصل مع المطعم.",
- "address": "إسطنبول، تركيا",
+ "address": "Cumhuriyet, 1979. Sk. No:16, 34515 Esenyurt/İstanbul",
  "phone": "+90 553 552 82 76",
  "whatsapp": "+90 553 552 82 76",
  "email": "",
@@ -35,6 +35,7 @@ const ademsefStore = {
  "sourceUrl": "https://ademsef.com/shopping.php",
  "hours": "يومياً — يرجى التأكيد عبر الاتصال",
  "areas": [
+  "إسنيورت",
   "إسطنبول",
   "مناطق التوصيل حسب المسافة"
  ],

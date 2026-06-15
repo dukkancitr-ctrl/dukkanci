@@ -3,7 +3,7 @@
 // branded images; a few items without their own photo fall back to the store cover.
 const orangeStore = {
  "id": 34,
- "name": "عصائر أورنج تركيا",
+ "name": "Orange Turkey 🇹🇷",
  "category": "عصائر",
  "image": "/assets/photos/orange/cover.jpg",
  "coverImage": "/assets/photos/orange/cover.jpg",
@@ -17,15 +17,15 @@ const orangeStore = {
  "time": "30 - 55 دقيقة",
  "distance": 12,
  "location": {
-  "lat": 41.0082,
-  "lng": 28.9784
+  "lat": 41.024084,
+  "lng": 28.644626
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=Orange+Turkey+juice+Istanbul",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.024084,28.644626",
  "open": true,
  "featured": true,
  "hasOffer": false,
  "description": "عصائر أورنج تركيا: عصائر طبيعية طازجة باللتر وبالكأس، أفوكادو، كريب ووافل وبان كيك، ميلك شيك وكوكتيلات وموهيتو، سلطات فواكه ومشروبات ساخنة وباردة. كل المنتجات بأسعارها كما في القائمة الرسمية.",
- "address": "إسطنبول، تركيا",
+ "address": "Piri Reis, Necip Fazıl Kısakürek Cd No:75, 34515 Esenyurt/İstanbul",
  "phone": "+90 555 553 52 53",
  "whatsapp": "+90 555 553 52 53",
  "email": "",
@@ -33,6 +33,7 @@ const orangeStore = {
  "sourceUrl": "https://app.trybany.com/ar/orange-turkey-166/",
  "hours": "يومياً — يرجى التأكيد عبر الاتصال",
  "areas": [
+  "إسنيورت",
   "إسطنبول",
   "مناطق التوصيل حسب المسافة"
  ],
