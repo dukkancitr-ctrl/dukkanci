@@ -3,8 +3,8 @@ const bitehausStore = {
  "id": 25,
  "name": "مطعم بايت هاوس",
  "category": "مطاعم",
- "image": "/assets/photos/bitehaus/cover.png",
- "coverImage": "/assets/photos/bitehaus/cover.png",
+ "image": "/assets/photos/bitehaus/cover.jpg",
+ "coverImage": "/assets/photos/bitehaus/cover.jpg",
  "logoImage": "/assets/photos/bitehaus/logo.png",
  "logo": "ب",
  "rating": 0,
@@ -630,7 +630,7 @@ const bitehausProductCatalog = [
  {
   "sourceId": "a1a46d81-77b2-41b1-b153-53789ebeb16f",
   "name": "شاورما سوبر  1/5",
-  "image": "/assets/photos/bitehaus/cover.png",
+  "image": "/assets/photos/bitehaus/cover.jpg",
   "price": 370,
   "unit": "",
   "category": "الشاورما",
@@ -890,7 +890,7 @@ const bitehausProductCatalog = [
  {
   "sourceId": "97a6aa79-e813-499e-a880-ca195dabab28",
   "name": "صودا توت",
-  "image": "/assets/photos/bitehaus/cover.png",
+  "image": "/assets/photos/bitehaus/cover.jpg",
   "price": 45,
   "unit": "",
   "category": "المشروبات",
@@ -942,7 +942,7 @@ const bitehausProductCatalog = [
  {
   "sourceId": "c3d1a3dc-0861-410e-9c3a-8dd9902ddb5f",
   "name": "ببسي",
-  "image": "/assets/photos/bitehaus/cover.png",
+  "image": "/assets/photos/bitehaus/cover.jpg",
   "price": 60,
   "unit": "",
   "category": "المشروبات",
@@ -981,7 +981,7 @@ const bitehausProductCatalog = [
  {
   "sourceId": "b89b8596-726e-4f44-81a5-f2383fc8f0ac",
   "name": "صودا ليمون",
-  "image": "/assets/photos/bitehaus/cover.png",
+  "image": "/assets/photos/bitehaus/cover.jpg",
   "price": 45,
   "unit": "",
   "category": "المشروبات",
