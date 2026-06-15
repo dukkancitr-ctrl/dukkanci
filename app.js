@@ -59,11 +59,34 @@ products.push(...ademsefProducts);
 products.push(...babtomaProducts);
 products.push(...orangeProducts);
 
-// Keep the bundled fallback catalog in sync with the cloud: drop unavailable
-// or image-less products. Filtering in place preserves the remaining ids.
-for (let i = products.length - 1; i >= 0; i--) {
-  const p = products[i];
-  if (p.available === false || !p.image) products.splice(i, 1);
+// Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
+// Never publish a product that is (1) unavailable, (2) has no real image (empty or a
+// known placeholder), or (3) reuses an image already used by another product in the
+// SAME store (a duplicate = a fallback/placeholder, not the product's own photo).
+// The same product photo reused across branches of one brand is NOT a duplicate, so
+// duplicate detection is scoped per store.
+function isPlaceholderImage(img) {
+  return !img || /placeholder|generic-cover/i.test(String(img));
+}
+function applyPublishingRules(list) {
+  const imageUses = new Map(); // `${storeId}|${image}` -> count, real images only
+  for (const p of list) {
+    if (isPlaceholderImage(p.image)) continue;
+    const k = p.storeId + "|" + String(p.image).trim();
+    imageUses.set(k, (imageUses.get(k) || 0) + 1);
+  }
+  return list.filter(p => {
+    if (p.available === false) return false;          // rule 1: unavailable
+    if (isPlaceholderImage(p.image)) return false;     // rule 2: no real image
+    const k = p.storeId + "|" + String(p.image).trim();
+    return imageUses.get(k) === 1;                      // rule 3: unique within its store
+  });
+}
+// Apply to the bundled fallback in place (preserve the array identity/reference).
+{
+  const kept = applyPublishingRules(products);
+  products.length = 0;
+  kept.forEach(p => products.push(p));
 }
 
 const initialOrders = [];
@@ -343,8 +366,10 @@ async function loadCatalogFromSupabase() {
     }
     if (!all.length) return false;
     stores.length = 0; st.forEach(r => stores.push(mapDbStore(r)));
-    products.length = 0; all.forEach(r => products.push(mapDbProduct(r)));
-    console.info(`Supabase: loaded ${stores.length} stores, ${products.length} products`);
+    const mapped = all.map(mapDbProduct);
+    const published = applyPublishingRules(mapped);
+    products.length = 0; published.forEach(p => products.push(p));
+    console.info(`Supabase: loaded ${stores.length} stores, ${published.length}/${mapped.length} products (publishing rules dropped ${mapped.length - published.length})`);
     return true;
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
