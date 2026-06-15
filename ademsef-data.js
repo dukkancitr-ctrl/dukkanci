@@ -552,7 +552,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B9143EE8-B02C-4A3A-9857-890DCCF744A9",
   "name": "كساديا لحم",
-  "image": "/assets/photos/ademsef/cats/E165C225-DA81-4D91-95B2-34A9FBE5DD15.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -636,7 +636,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6014D8C0-58C4-48FD-96A7-B2D79F93DCEF",
   "name": "دجاج بورتوفيو",
-  "image": "/assets/photos/ademsef/cats/E165C225-DA81-4D91-95B2-34A9FBE5DD15.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -650,7 +650,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "287440E2-BA16-42AC-B62B-CA6527A7E679",
   "name": "وجبة كوردون بلو",
-  "image": "/assets/photos/ademsef/cats/E165C225-DA81-4D91-95B2-34A9FBE5DD15.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -664,7 +664,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "25D43B9E-9D6A-4EAC-8D30-2ED9A115DD01",
   "name": "وجبة فرانسيشكو",
-  "image": "/assets/photos/ademsef/cats/E165C225-DA81-4D91-95B2-34A9FBE5DD15.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -692,7 +692,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0E03C7B2-DF9D-4DD2-9E2E-4E1F60FF99E7",
   "name": "كساديا دجاح",
-  "image": "/assets/photos/ademsef/cats/E165C225-DA81-4D91-95B2-34A9FBE5DD15.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -706,7 +706,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "18E36E86-5661-4B1C-BFFD-06CDF43069E8",
   "name": "برغر دجاج",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -720,7 +720,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "39567CB7-0297-4E04-AAA6-5531B92C5D21",
   "name": "سندويش تويستر",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -734,7 +734,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5304FB64-7305-4B7C-8D53-C73BBD7A2C86",
   "name": "سندويش ماكسيكانو",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -748,7 +748,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5AE76D21-574F-4A1B-8D08-991A6465A20B",
   "name": "تشيز برغر دجاج",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -762,7 +762,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "805150D2-0E68-4DD4-948B-F9E70F01FF89",
   "name": "سندويش فلادلفيا",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -776,7 +776,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "867A8C9E-01D1-4242-89F4-EB7804B5BA7F",
   "name": "سندويش فرانسيشكو",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -790,7 +790,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8AB4938F-C3BC-4916-80C3-8C23EE001EA7",
   "name": "سندويش كرانشي",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -804,7 +804,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AB6C62CD-610B-4AB9-B339-CAB5A2189E91",
   "name": "سندويش سوبريم",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -818,7 +818,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AE7FDBCF-3683-4611-9632-C4E9F6D2638A",
   "name": "سندويش زنجر",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -832,7 +832,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AFE90BD1-7A40-4A62-8ECE-D76859AE3AF6",
   "name": "تشيز برغر لحم",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -846,7 +846,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B0CEACAD-460E-4778-B8AF-0A96E737096A",
   "name": "برغر لحم",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -860,7 +860,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "CE379333-BA05-48F5-97A7-F2B6AC81F21E",
   "name": "سندويش فاهيتا",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -874,7 +874,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E419DAB3-8085-408D-9B9C-9D1123D9FCCC",
   "name": "سندويش كرسبي",
-  "image": "/assets/photos/ademsef/cats/3D98ADCC-DF62-4BD5-810F-28AA8C468580.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -888,7 +888,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A9E16D05-0EFD-4D84-9680-A0AE526C3D30",
   "name": "وجبة اليوم",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -902,7 +902,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "48FF5182-5C03-4524-B485-059C94413F39",
   "name": "يبرق مع شرحات لحم",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -916,7 +916,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "FD157A39-4CB9-4002-A29F-FDDFA3CCE2A9",
   "name": "كبة لبنية",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -930,7 +930,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2147AD1F-367E-4351-A096-D2F11E070B25",
   "name": "شاكرية",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -944,7 +944,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "98F449F6-D30F-43CB-8296-100657F76B91",
   "name": "مندي لحم",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -958,7 +958,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4DF08EEA-F9C1-40B9-B018-3B1ACA753B55",
   "name": "كبسة لحم",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -972,7 +972,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "367F0049-B75E-422B-BAD8-9BA1B24C6C23",
   "name": "فريكة لحم",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -986,7 +986,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "54FA25B9-AC61-4C68-863F-E5721E4AB740",
   "name": "شيش برك",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1000,7 +1000,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "148EB701-C6FC-44C5-9D8E-30E4167E15EC",
   "name": "مندي دجاج",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1014,7 +1014,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "127FC4C0-D3CD-4F26-B31C-344B81ACA5AF",
   "name": "كبسة دجاج",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1028,7 +1028,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C1131D2F-27DF-45B8-B3FD-1DEE99789E43",
   "name": "ملوخية دجاج",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1042,7 +1042,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E71E4824-CE57-4BD6-90AA-A82AB81A06E9",
   "name": "طبق فرريكة سادة",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1056,7 +1056,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0046FC3D-3FE2-4AD9-8A5E-B9C5E67212B2",
   "name": "رز ابيض سادة",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1070,7 +1070,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2C1BF598-1FE9-49FA-97D1-127B3B6F52AD",
   "name": "رز مندي سادة",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1084,7 +1084,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9BF78F06-3D0F-410B-8549-2F68165E81B1",
   "name": "رز كبسة سادة",
-  "image": "/assets/photos/ademsef/cats/41FE25CF-36DF-4E5E-BB5A-1FF93951F94A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1210,7 +1210,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4F5BB41B-E0FD-4FD2-A163-E8EF02FB98C1",
   "name": "بيتزا دجاج باربكيو وسط",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1224,7 +1224,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6EBE6D0B-EA4C-4F27-90C2-9C7C6EAEDE34",
   "name": "بيتزا دجاج باربكيو كبير",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1238,7 +1238,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "383C4FAF-93A0-488F-8881-DD28DA538133",
   "name": "محمرة سادة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1252,7 +1252,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5A0CD3DE-8EFB-4E4E-ADDC-6D13AFDF6F1A",
   "name": "محمرة قشقوان",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1266,7 +1266,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3E6C688A-D84E-48E9-B375-5B8695CE5F06",
   "name": "زعتر",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1280,7 +1280,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "25EFA886-E327-4FEE-9C6B-D388F5B6FBFF",
   "name": "زعتر قشقوان",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1294,7 +1294,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "691A589F-CBB3-4FEC-B43B-CA3C24FBB75F",
   "name": "جبنة شامية",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1308,7 +1308,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "F510BA77-E8A4-4E64-A551-5F721D6E5718",
   "name": "جبنة نعناع",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1322,7 +1322,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B1B9F13D-F675-446A-A485-BA4B3E4E1B62",
   "name": "قشقوان سادة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1336,7 +1336,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "99CAFB6C-8836-4175-A85F-04114FF5ACFF",
   "name": "قشقوان مع زيتون",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1350,7 +1350,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "01028964-ED09-4420-815C-CEFD2338A57A",
   "name": "قشقوان مع فطر",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1364,7 +1364,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "09B9BBBC-8406-4604-A225-DD87DF6DBF6C",
   "name": "سجق",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1378,7 +1378,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8BCE5AAA-5773-47F7-BCBE-E60A9CD2B4A7",
   "name": "فطيرة توشكا",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1392,7 +1392,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6CE6A77E-C5E9-413E-B0CA-6532E958AFA0",
   "name": "سبانغ",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1406,7 +1406,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "DEC00E26-1BAA-4EFF-AB3D-7953CD4D9068",
   "name": "زيتون اخضر",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1420,7 +1420,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "DC02D1CB-60A9-4B3F-A0DF-70D70EB5C786",
   "name": "مرتديلا سادة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1434,7 +1434,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "06F375C5-276A-4ECB-9601-379254278E7F",
   "name": "مرتديلا قشقوان",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1448,7 +1448,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9B0759E2-4DCB-47B6-8330-E29F7AF5BF3F",
   "name": "كيري سادة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1462,7 +1462,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "ABA0B318-3715-44BE-BCAC-5594DB8F2CD0",
   "name": "كيري قشقوان",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1476,7 +1476,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "98A9723A-65A7-4279-8EF7-97993F4F75C0",
   "name": "بيتزا سواريه",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1490,7 +1490,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B383B0EE-32EF-49C8-8E4A-6DC68FAD2683",
   "name": "قرص صفيحة شامية بندورة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1504,7 +1504,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "60C5FB6C-FB08-4F25-9B46-03E0C3A63F54",
   "name": "قرص صفيحة شامية لبن",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1518,7 +1518,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1EC90624-AA5B-4526-910F-4BF57FF1DF13",
   "name": "قرص لحم بعجين",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1532,7 +1532,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D140E54E-5B55-422A-83F6-67F3409AD2D8",
   "name": "شيش سلدة",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1546,7 +1546,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3497D588-B3DF-45E9-A272-7FD1F6D42686",
   "name": "شيش قشقوان",
-  "image": "/assets/photos/ademsef/cats/FE187DF3-566C-43EE-A2D7-23D10E5C8F83.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1560,7 +1560,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "91D54C2D-7023-43A8-88C1-8C189861F3BD",
   "name": "كباب حلبي",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1574,7 +1574,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "71400623-A02B-442D-8468-794F8CC45AE0",
   "name": "كباب شامي",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1588,7 +1588,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E09A2480-A2C7-44CF-B3F7-4BAC1FFFDC87",
   "name": "كباب خشخاش",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1602,7 +1602,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3599EC68-E77F-4170-B19D-B263BC92309D",
   "name": "كباب ازمرلي",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1616,7 +1616,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "472F1659-C5EE-4986-9DC2-E11567509D93",
   "name": "كباب فطر",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1630,7 +1630,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8972DC8A-E33A-45A6-8902-0EA3FF2FFFB8",
   "name": "كباب مع فستق",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1644,7 +1644,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "359F7E99-A9CA-4C16-853F-FE853B9C1BFF",
   "name": "كباب باذنجان",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1658,7 +1658,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A47DFCB1-B02A-4C9C-B9B6-570C2807CE7A",
   "name": "وجبة مشاوي مشكلة",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1672,7 +1672,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C3F7D825-82EB-4CE0-95A3-85AA640C3DB0",
   "name": "شقف لحم",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1686,7 +1686,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "483784D9-CEE0-4F69-81F4-BBAA26C2CD26",
   "name": "وجبة مشاوي ادم شيف",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1700,7 +1700,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "447146CF-445F-4A9B-9EF7-B9DDF2C2D632",
   "name": "كبة عالسيخ",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1714,7 +1714,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "84A3F958-CC71-4893-8563-72A563964D2A",
   "name": "شيش طاووق",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1728,7 +1728,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C73B87DA-C29E-4F9B-B91A-AAAEF97BF230",
   "name": "نصف دجاج فحم",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1742,7 +1742,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "744BA9EB-353E-4619-8104-646CF23EDC07",
   "name": "ماريا",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1756,7 +1756,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AF7684F4-3A59-4BC9-96EF-EA67377A9304",
   "name": "طوشكا",
-  "image": "/assets/photos/ademsef/cats/D8914938-1C67-4DFA-B864-B4DA4251919A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1770,7 +1770,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4588AABC-AB8F-4369-BA70-9A8BDF19AEE1",
   "name": "لحمة بالصينية بندورة",
-  "image": "/assets/photos/ademsef/cats/05AB2E61-DD99-4F1C-921E-A244A94DAEE3.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1784,7 +1784,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "FFB7C5F4-7103-472D-A55B-6DE7E288784C",
   "name": "لحمة بالصينية طحينة",
-  "image": "/assets/photos/ademsef/cats/05AB2E61-DD99-4F1C-921E-A244A94DAEE3.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1798,7 +1798,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5F690738-06EF-4A99-B4A6-05F836869706",
   "name": "كباب هندي مع رز",
-  "image": "/assets/photos/ademsef/cats/05AB2E61-DD99-4F1C-921E-A244A94DAEE3.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1840,7 +1840,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E355DE90-8B08-49A0-A733-9E1064BC2CCC",
   "name": "شرحات مطفاية لحم",
-  "image": "/assets/photos/ademsef/cats/05AB2E61-DD99-4F1C-921E-A244A94DAEE3.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1854,7 +1854,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2F6BF706-706E-4166-9003-A5ABAF470023",
   "name": "منقوشة ميكس عائلي",
-  "image": "/assets/photos/ademsef/cats/249E983D-F482-448E-AE6C-351BC254585C.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1868,7 +1868,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "FC8DB19B-2A2E-40B1-9A71-A15A64C6A113",
   "name": "فطور",
-  "image": "/assets/photos/ademsef/cats/249E983D-F482-448E-AE6C-351BC254585C.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1882,7 +1882,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "62F4CB09-8FEE-4F32-9A96-5BC2DB708DCF",
   "name": "سحور عرض",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1896,7 +1896,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A0A0652D-43EA-4973-B36E-96B4293F3CD8",
   "name": "عصير عرايسي",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1910,7 +1910,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "FC5CF3B2-90A4-49C3-BCF6-B9CBADCF9948",
   "name": "سحور",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1924,7 +1924,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8C5812E1-4C4E-4825-9ADC-719858F84F64",
   "name": "خاروف محشي",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1938,7 +1938,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1473F923-183A-467C-B045-FE04B4FC4412",
   "name": "منسف اردني",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1952,7 +1952,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "22AB73C1-E327-41EC-96AA-0E4D02D1BAA5",
   "name": "صيادية سمك",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1966,7 +1966,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D43A0413-A73A-43CC-BFA6-006A789162E6",
   "name": "سمك جوبرا مشوي",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1980,7 +1980,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "ACEE93AC-4691-4FFB-A385-9B615CC770A7",
   "name": "محاشي مشكلة",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -1994,7 +1994,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C3CDABB0-E9AC-4D59-B342-3E4454EB4E89",
   "name": "لحمة بكرز",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2008,7 +2008,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4D367BD0-62EA-4359-B236-D78932C74E90",
   "name": "سفرجلية",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2022,7 +2022,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D3EA0150-2EE6-4415-8A16-99E3983F507D",
   "name": "سماقية",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2036,7 +2036,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6870695C-7912-443F-8341-1673A3DBBF48",
   "name": "بامية بالموزات",
-  "image": "/assets/photos/ademsef/cats/BB344653-578E-4C48-A4FE-99F8EED5CFE7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2050,7 +2050,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4AF7C236-E528-4BC3-877F-4BC095443506",
   "name": "ماء",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2064,7 +2064,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "18AFB6BE-A8E1-4BEC-8266-C321E2B6EE34",
   "name": "كولا",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2078,7 +2078,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "88F59B85-979C-48EF-AD97-04DFF2E847EA",
   "name": "فانتا",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2092,7 +2092,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "CF257A51-0916-488C-85F7-DEB0EE4A33F0",
   "name": "سبرايت",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2106,7 +2106,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A4434938-A663-439D-9C2E-AD9165D8F01A",
   "name": "كولا زيرو",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2120,7 +2120,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B339089E-AF07-4893-8DFC-B64F0766F67C",
   "name": "عيران",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2134,7 +2134,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A48DAECC-6139-4CFB-95C5-C96FEF3C7FE7",
   "name": "ريد بول",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2148,7 +2148,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "27B48089-4C18-4214-B382-7E724266F158",
   "name": "صودا ليمون",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2162,7 +2162,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D720968F-DBF7-4CD6-B463-C5158CEB0A30",
   "name": "صودا تفاح",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2176,7 +2176,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4B58ECC8-FA50-400B-AAA5-3AE61E81172E",
   "name": "ايس تي دراق",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2190,7 +2190,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "FDF97470-C4EB-4407-BCE3-0447BBC3ED9C",
   "name": "ايس تي ليمون",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2204,7 +2204,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "40B5E775-38A8-4BC6-86A9-12009EFE9986",
   "name": "صودا ساده",
-  "image": "/assets/photos/ademsef/cats/17719542-7C97-4BBC-8B3D-5BB005169020.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2218,7 +2218,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4190D1F3-B0C4-4564-8935-9D37B946B6BE",
   "name": "قهوة سورية",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2232,7 +2232,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2D7C35BF-23D3-40BB-A88F-64C4CEB5EEE5",
   "name": "قهوة سورية دبل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2246,7 +2246,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "53EE7374-677B-4E0B-B9DA-158642D777DD",
   "name": "اسبريسو سولو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2260,7 +2260,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1B1B1901-84BB-4C17-893B-1EE19BD34C16",
   "name": "اسبريسو رستريتو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2274,7 +2274,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "278480F9-6B93-4D7C-9946-8649E9044EF9",
   "name": "قهوة تركية",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2288,7 +2288,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "ABCED2CE-293F-4DC6-BE30-9B5696EB3513",
   "name": "قهوة تركي دبل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2302,7 +2302,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9FA67FCB-2ED0-4108-9F6A-7C483E7437E4",
   "name": "اسبريسو ادام شيف",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2316,7 +2316,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D770A84D-954F-4CB9-86E4-C8A9E9DD4231",
   "name": "اسبريسو دبل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2330,7 +2330,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "355AC164-E4F0-4E0C-8395-FC48BFD6B3B7",
   "name": "اسبريسو سيمفريدو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2344,7 +2344,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2B121836-7698-49B2-9AB2-1A16C5D7DD8D",
   "name": "اسبريسو كون بانا",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2358,7 +2358,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "10887CD8-978F-4A98-88ED-7AC2B2BDB9A5",
   "name": "اسبريسو لونغو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2372,7 +2372,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "F7962046-322B-416C-B16D-7FE8FC2F3ED1",
   "name": "اسبريسو مكياتو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2386,7 +2386,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B2801FD4-F059-4B27-AEFA-2213810B237E",
   "name": "امريكانو",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2400,7 +2400,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B225331B-0B87-4825-B08B-4478EB394535",
   "name": "كاباتشينو فانيل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2414,7 +2414,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "71F8158D-D6E2-42DD-8EAA-5BDCD2D1ECD8",
   "name": "كاباتشينو موكا",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2428,7 +2428,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0D0E1BAB-F352-4A97-BA1E-24A2EFB27413",
   "name": "كابتشينو كراميل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2442,7 +2442,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B529947D-23F9-4E99-AA25-3BA13C1C7DA3",
   "name": "كابتشينو كلاسيك",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2456,7 +2456,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "490521FA-C93F-46B0-991C-9AB239BE4AB2",
   "name": "كافيه لاتتيه عسل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2470,7 +2470,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "60C08307-BC7E-438F-982F-28623DBD095C",
   "name": "كافيه لاتيه ادم شيف",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2484,7 +2484,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "BCD76D36-2B10-4D82-A025-8D815422813A",
   "name": "كافيه لاتيه كراميل",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2498,7 +2498,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D5E6FAA0-38FC-46F3-A2E2-DA164DB86D30",
   "name": "كافيه لاتيه كلاسيك",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2512,7 +2512,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B74455FB-DFD7-4543-9CE8-671A4E7136C6",
   "name": "كافيه لاتيه موكا",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2526,7 +2526,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "F5399A28-D053-4DF6-95B2-C061871DE15A",
   "name": "نسكافه حليب",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2540,7 +2540,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B0ADED87-7AB7-4CF1-A00C-60F52F8617F2",
   "name": "نسكافيه بلاك",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2554,7 +2554,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "DB418DA0-1B60-4074-ACDB-637386BDF888",
   "name": "فلات وايت",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2568,7 +2568,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E9C8D57C-580F-4D04-84B3-E7298D927F20",
   "name": "فلتر كوفي",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2582,7 +2582,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E8BCDF34-5E34-4252-AF06-91E3FC7F3ABC",
   "name": "فلتر كوفي مع حليبب",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2596,7 +2596,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "29E49357-32A3-4EBF-BB3D-A0A5E8564AB6",
   "name": "هوت شوكلت",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2610,7 +2610,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "35FE7E0C-B567-44C9-B353-FB9DCC95DB98",
   "name": "هوت شوكلت سويت مت",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2624,7 +2624,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AFCE78CC-E7EB-42AF-B402-F8DFC21F56D0",
   "name": "وايت كافيه لاتيه",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2638,7 +2638,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9E363C38-DB14-462E-BCA9-D4B09CDAC1CB",
   "name": "سحلب",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2652,7 +2652,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E8C18658-9584-47DC-96A5-E79729EE1723",
   "name": "سحلب مع مكسرات",
-  "image": "/assets/photos/ademsef/cats/E7751F20-4558-4C8F-B494-1EC67E689417.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2666,7 +2666,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2C2FC84D-41EA-46E6-BB97-90789BC961E6",
   "name": "شاي",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2680,7 +2680,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8CA1B7E8-5D44-4897-A658-5D158A46DAB4",
   "name": "فنجان شاي",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2694,7 +2694,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9DD9CFE9-C859-4334-ADF7-E767ACAE9B4E",
   "name": "شاي الشتاء",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2708,7 +2708,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A873BEE7-B77C-4167-A8F6-27E01534A3E4",
   "name": "شاي اخضر",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2722,7 +2722,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "ED11735E-C35D-4F4B-ADDA-2EB0A50E9938",
   "name": "اهلامور",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2736,7 +2736,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0C9E38F1-D300-4E84-ABEF-A9F47C9BF8AF",
   "name": "زهورات شامية",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2750,7 +2750,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AF744E31-0F31-4E54-AE9E-383F346F8C6A",
   "name": "نعناع و ليمون",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2764,7 +2764,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A2F4BE48-F406-401E-84F9-49D456729EC2",
   "name": "كمون و ليمون",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2778,7 +2778,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5CC00BF6-7E5A-4244-B9B6-F8D8327C8D67",
   "name": "زنجبيل و ليمون",
-  "image": "/assets/photos/ademsef/cats/10D5F44F-336C-4D1E-99E8-C112BADC690D.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2792,7 +2792,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "15B50797-E068-422E-8F47-4CD262766E64",
   "name": "برتقال",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2806,7 +2806,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3C39167D-82B3-43E5-97EF-E47C20173068",
   "name": "ليمون",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2820,7 +2820,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "26AC386F-838B-479A-B84B-FD8FF4D3A377",
   "name": "اناناس سبيشال",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2834,7 +2834,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8A49E355-0F8E-426D-A792-4CCECDBD628C",
   "name": "رمان",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2848,7 +2848,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4E5EF84C-90B2-4532-8F91-167FFCB792C1",
   "name": "فراوله",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2862,7 +2862,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "28DD2795-30DA-4C33-BF6F-CEBAAF36C21F",
   "name": "بولو",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2876,7 +2876,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "EBA69F1A-36D8-4E03-8514-C33537226FBE",
   "name": "ليموناضه",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2890,7 +2890,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2D869BA4-9693-4950-8633-76461E6EE7D3",
   "name": "عصير مانجو",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2904,7 +2904,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "00774A3B-B67A-4496-8E34-88F9C7F85A5B",
   "name": "بطيخ فريش",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2918,7 +2918,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AD3A4A51-C6C0-48B0-91C4-7560267F5C8D",
   "name": "عصير كيوي",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2932,7 +2932,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "82A66054-A678-4F3A-A774-A77E98FF9171",
   "name": "اناناس",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2946,7 +2946,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "BEA7C8A1-9745-4E89-9E89-CE22248EA625",
   "name": "تفاح",
-  "image": "/assets/photos/ademsef/cats/7CA2D044-D990-4083-AD00-3304C776DCA8.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2960,7 +2960,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4208BEC5-D8A0-4031-A18D-D3B09040F036",
   "name": "فرابيه موكا",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2974,7 +2974,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "97A7D5F9-09FD-481E-8DF0-AA984936789E",
   "name": "فرابيه كراميل",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -2988,7 +2988,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3DF72B80-70DB-474E-B079-F35C444AEB56",
   "name": "فرابيه فانيل",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3002,7 +3002,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "90B6DBFF-3426-4088-8BD5-D1B2C6DF191E",
   "name": "ايس كوفي موكا",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3016,7 +3016,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "996581E2-AA83-4B59-BD08-FDE4AA44F266",
   "name": "ايس كوفي كراميل",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3030,7 +3030,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "39EB4A4C-9E18-48E1-B7A9-170ACA1EB031",
   "name": "ايس كوفي كلاسيك",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3044,7 +3044,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "75F4018E-0507-49C8-A249-CE2F7186B432",
   "name": "ايس كافي فانيل",
-  "image": "/assets/photos/ademsef/cats/AF7C3BB9-7C4C-421D-9DBE-64C29699B6A7.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3058,7 +3058,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "00EFE640-F0E9-4959-8331-F948313B3D68",
   "name": "ميلك شيك شوكولا",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3072,7 +3072,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "078310B1-60A4-4330-9259-B2535D8B7858",
   "name": "ميلك شيك سنيكرز",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3086,7 +3086,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0C3018FD-CA66-4137-BEBC-99DB79407A8A",
   "name": "ميلك شيك فانيل",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3100,7 +3100,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "179621CF-B31F-45F8-AC08-2F4E9F0153AB",
   "name": "ميلك شيك اوريو",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3114,7 +3114,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "349AAD1B-9D11-4D72-AE0E-EEC4F6A1D542",
   "name": "ميلك شيك ادم شيف",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3128,7 +3128,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "5DC38CEC-536D-4CF9-ACC6-72D7BF5F7E75",
   "name": "ميلك شيك لوتس",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3142,7 +3142,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "68656EA7-6C15-460F-8E25-A6D6C20FA933",
   "name": "ميلك شيك فراوله",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3156,7 +3156,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "9C573941-3812-4196-BEF7-B1F96C47A118",
   "name": "ميلك شيك بيستاشيو",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3170,7 +3170,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D5E2EE0F-4A78-4A60-8356-A5172A1693AF",
   "name": "بينا كولادا",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3184,7 +3184,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E260B2CF-9064-40A1-A9D3-6F0A029A3BD8",
   "name": "ميلك شيك كراميل",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3198,7 +3198,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E73D81AE-EBA4-4C7C-9D34-4C8229BF3B23",
   "name": "ميلك شيك تويكس",
-  "image": "/assets/photos/ademsef/cats/FEACA933-82AC-4151-AB52-3DC661E1573E.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3212,7 +3212,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3ACD8707-8FE6-4865-93FB-27D93231CB6A",
   "name": "كوكتيل ادم شيف",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3226,7 +3226,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "631A2E11-8DCC-4DA0-B3C6-BB5B3DEBE86C",
   "name": "كوكتيل فواكه",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3240,7 +3240,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1B3A6EF9-4510-4EEA-A70F-9D13888F8E06",
   "name": "افوكادو",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3254,7 +3254,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "573DE2B5-5BD3-41FD-A1A8-5D4FE521E325",
   "name": "افوكادو بالقشطه والمكسرات",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3268,7 +3268,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "F6FF0BFC-109B-406E-99F8-13CDF0FDAFBB",
   "name": "موز وحليب",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3282,7 +3282,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8FDA4804-6E40-487B-A37F-78F55F0EDB21",
   "name": "موز وحليب و فراوله",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3296,7 +3296,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "44F6FCC2-6CE6-431B-8031-A6892BD780EB",
   "name": "موز و حليب و شوكولا",
-  "image": "/assets/photos/ademsef/cats/997CB2D7-BA9C-4331-85F2-1C02C19CFE16.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3310,7 +3310,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2E81011E-2CEB-4C6B-80E7-81CF3090F956",
   "name": "ريد بول بلاك بيري",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3324,7 +3324,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "39B103B9-F267-4EDA-8265-6D3AA669C474",
   "name": "ريد بول استروبيري",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3338,7 +3338,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8F1E850C-B91E-4039-8D38-7CC618F90FB9",
   "name": "ريد بول بولو",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3352,7 +3352,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "90F73A8D-A07E-4F8C-B60E-85991B225981",
   "name": "ريد بول مكسيكي",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3366,7 +3366,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0DE30492-30C8-464A-B482-5B69DD2A52B5",
   "name": "موهيتو",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3380,7 +3380,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3A4405EA-9408-441B-8654-1CE8EEE31DAB",
   "name": "موهيتو فراوله",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3394,7 +3394,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "BBAD5A7F-B6D9-4F87-9BB2-93592DE4D15C",
   "name": "موهيتو توت",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3408,7 +3408,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D12F7C2B-A129-4C47-8012-C96D042491C2",
   "name": "مكسيكي تشور شيل",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3422,7 +3422,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "90C0DD92-50E7-4BC0-9DD5-07BB1E937679",
   "name": "صودة بلو هاواي",
-  "image": "/assets/photos/ademsef/cats/871B1998-2D7F-4E8D-95C6-514257AA5F28.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3436,7 +3436,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4DF3D454-D908-4445-8DC5-C4313C7E70D4",
   "name": "كنافة عائلية",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3450,7 +3450,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "CF52FD08-5C24-4952-A2A3-D71E1554A160",
   "name": "كنافة",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3464,7 +3464,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "387118EB-B46E-42AD-9312-C71A4C2D6AD5",
   "name": "معمول جبنة",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3478,7 +3478,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A2EEFCF9-450B-4DEE-8F1E-792757EEF124",
   "name": "كريب شوكولا",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3492,7 +3492,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "BD4EE7DE-500F-477E-B45C-4DB3498EA4C0",
   "name": "كريب فواكه",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3506,7 +3506,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "44B3786F-283A-4C01-8A32-D57FCD4AADEE",
   "name": "كريب رول",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3520,7 +3520,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6EEE93F5-53AD-4C1F-B227-04B903577F40",
   "name": "كريب فوتشيني",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3534,7 +3534,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "CB26040A-FCFF-4499-978B-EC290E7AE5C2",
   "name": "كريب ايس كريم",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3548,7 +3548,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C32D0C06-429B-42E9-84B3-8BEE1A15B0D0",
   "name": "كريب سوشي",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3562,7 +3562,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D5F2A766-8429-44CC-8464-DAA8455995AA",
   "name": "كريب بيستاشيو",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3576,7 +3576,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4AD2D120-C947-4E63-B949-7B3F6270ED9B",
   "name": "كريب لوتوس",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3590,7 +3590,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "017CA7EC-A76A-46AB-9B77-6AA624CACFB0",
   "name": "وافل ادم شيف",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3604,7 +3604,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "A4AA3767-764D-43D1-9FD8-A9C1B8510A72",
   "name": "وافل بيستاشيو",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3618,7 +3618,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "3FFCFDF5-577C-47CE-BEE9-B524E7AA7EA9",
   "name": "وافل ايس كريم",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3632,7 +3632,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2E347658-F1C8-4927-899D-A84503A67C46",
   "name": "وافل فواكه",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3646,7 +3646,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "E08B2A03-94DF-469B-BFC1-F0551F74EC72",
   "name": "وافل شوكولا",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3660,7 +3660,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1BAA5140-96E8-44B1-821E-4EBEBCE57AA0",
   "name": "براوني شوكولا",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3674,7 +3674,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "0517E148-6F7C-4759-82C5-D26D0CC55046",
   "name": "وافل لوتوس",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3688,7 +3688,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "2E30B092-1E76-4F7A-BE4A-A4A59EB5D56E",
   "name": "براوني ادم شيف",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3702,7 +3702,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "6A2D5D07-D0D2-49C7-846B-F711B10955E4",
   "name": "صحن مكسرات",
-  "image": "/assets/photos/ademsef/cats/F1787836-9BF7-4F88-AE20-8C6E0F0500B2.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3716,7 +3716,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "10FFEC40-E2C2-4EF3-9ADC-E77C18EAEB56",
   "name": "سلطه فواكه ادم شيف",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3730,7 +3730,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1D6CF986-CE7D-4CA8-B8D5-5B95E0584B75",
   "name": "سلطه فواكه تويكس",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3744,7 +3744,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "4C233390-A8AB-41D4-B040-6B8100C04969",
   "name": "امبراطور ادم شيف",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3758,7 +3758,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "55F3C9A5-C870-4EC8-A993-4F9AE41F6B28",
   "name": "جاط فواكه",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3772,7 +3772,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "70DF1510-CEE0-45E3-9529-81F3528F45ED",
   "name": "سلطه فواكه كلاسيك",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3786,7 +3786,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "7BCBAF1E-4239-4D69-BE7B-E8975C44B1BF",
   "name": "سلطه فواكه سنيكرز",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3800,7 +3800,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "7E0FBE34-2A41-4B51-9BCC-BD3574794245",
   "name": "سلطه فواكه كرانش",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3814,7 +3814,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "AB44330C-6F97-4357-96FB-4D6149312BF8",
   "name": "امبراطور كبير",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3828,7 +3828,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "C05E1C5C-982F-4F02-8C88-13AD5A5FE57D",
   "name": "امبراطور صغير",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3842,7 +3842,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "CFFAF197-6D08-4C50-8A75-23BB0C9D9BCD",
   "name": "قشاطي كبير",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3856,7 +3856,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "D0FB1258-3F86-48BA-808C-10313BC9756D",
   "name": "سلطه فواكه نوتيلا",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3870,7 +3870,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "F66DD463-738C-44E1-AC93-62AFB395822E",
   "name": "قشاطي صغير",
-  "image": "/assets/photos/ademsef/cats/1501D0C5-480B-4E81-9021-DF2A7F68BD1B.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3884,7 +3884,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "12961EBB-A0FB-422C-83B9-95FAC623C928",
   "name": "سموثي كيوي",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3898,7 +3898,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "1EF7E63C-CD8E-4B28-B217-4E1C9BCE58E6",
   "name": "سموثي توت",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3912,7 +3912,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "7888C056-A4C2-44FC-BE47-F18356057204",
   "name": "سموثي بطيخ",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3926,7 +3926,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "8DBF6CFC-2917-4199-8A48-DC9AE5BB70A1",
   "name": "سموثي شمام",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3940,7 +3940,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "973F6798-6EF5-4BB8-9019-E7416CE147B7",
   "name": "ايس كريم مشكل",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3954,7 +3954,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "ABEBA678-0B98-47FF-9B1E-04EC5E6BEA42",
   "name": "ايس كريم ادم شيف",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3968,7 +3968,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "B2C43B17-AD7A-459D-97DA-45402CE025ED",
   "name": "شوكولامو",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3982,7 +3982,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "BA6971F7-BBB5-4808-BECC-8F213126AA9A",
   "name": "وايت شوكولامو",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
@@ -3996,7 +3996,7 @@ const ademsefProductCatalog = [
  {
   "sourceId": "EB8EAC67-4DE6-4A74-B6E2-40833D9819D8",
   "name": "سموثي فراولة",
-  "image": "/assets/photos/ademsef/cats/D9A7F992-C73E-4836-AAB8-0DF17FE17E1A.jpg",
+  "image": "/assets/photos/ademsef/placeholder.jpg",
   "price": 0,
   "priceOnRequest": true,
   "unit": "",
