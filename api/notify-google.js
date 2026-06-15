@@ -46,7 +46,12 @@ module.exports = async (req, res) => {
       keyLength: k.length,
       keyHasHeader: k.includes("BEGIN PRIVATE KEY"),
       keyHasEscapedNewlines: k.includes("\\n"),
-      hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL
+      hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
+      // Non-secret Vercel system info: which project/commit is actually live here.
+      vercelEnv: process.env.VERCEL_ENV || null,
+      gitRepo: process.env.VERCEL_GIT_REPO_SLUG || null,
+      gitOwner: process.env.VERCEL_GIT_REPO_OWNER || null,
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7) || null
     });
   }
 
