@@ -191,6 +191,11 @@ const state = {
   merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
+  adminKey: sessionStorage.getItem("dukkanci-admin-key") || null,
+  adminThreads: [],
+  adminActiveWa: null,
+  adminThread: null,
+  adminThreadLoading: false,
   user: null,
   deferredInstall: null
 };
@@ -1480,6 +1485,7 @@ function dashboardSidebar(type, active) {
     ["stores", "store", "المتاجر"],
     ["customers", "users", "العملاء"],
     ["orders", "receipt", "الطلبات"],
+    ["messages", "whatsapp", "المحادثات"],
     ["complaints", "megaphone", "الشكاوى"],
     ["content", "settings", "المحتوى"]
   ];
@@ -1487,7 +1493,7 @@ function dashboardSidebar(type, active) {
   return `
     <aside class="dashboard-sidebar">
       <div class="dashboard-brand">${brandLogo("brand-on-dark")}<span>${type === "merchant" ? "لوحة المتجر" : "لوحة الإدارة"}</span></div>
-      <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}</button>`).join("")}</nav>
+      <nav>${items.map(([key, iconName, label]) => { const waUnread = (state.adminThreads || []).reduce((s, t) => s + (t.unread || 0), 0); return `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}${key === "messages" && waUnread ? `<b class="nav-badge">${waUnread}</b>` : ""}</button>`; }).join("")}</nav>
       <div class="dashboard-user">
         <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png?v=86"}" alt=""></span>
         <span><strong>${merchantStore ? merchantStore.name : "إدارة دكانجي"}</strong><small>${merchantStore ? `الخطة ${merchantStore.subscription || "الاحترافية"}` : "مدير النظام"}</small></span>
@@ -1853,15 +1859,200 @@ function adminContent() {
   return `<div class="content-management-grid">${[["megaphone", "بنرات الصفحة الرئيسية", "إدارة الصور الإعلانية وترتيب ظهورها"], ["filter", "التصنيفات", "ترتيب وإخفاء تصنيفات المتاجر"], ["star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية"], ["wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات"], ["edit", "النصوص الرئيسية", "تعديل نصوص صفحات المنصة"], ["users", "صفحة انضم كتاجر", "تعديل المحتوى ومتطلبات الانضمام"]].map(item => `<article class="dashboard-card"><span>${icon(item[0])}</span><h3>${item[1]}</h3><p>${item[2]}</p><button class="secondary-button compact" data-action="toast" data-message="تم فتح قسم ${item[1]}">إدارة القسم ${icon("arrowLeft")}</button></article>`).join("")}</div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Admin WhatsApp inbox (two-way customer chat over the Cloud API).
+// All reads/writes go THROUGH the server (/api/notify-order) with the admin
+// password as the x-admin-key header, so customer PII is never exposed to the
+// public Supabase key.
+// ---------------------------------------------------------------------------
+async function adminApi(action, { method = "GET", params = {}, body = null } = {}) {
+  const qs = new URLSearchParams({ action, ...params }).toString();
+  const opts = { method, headers: { "x-admin-key": state.adminKey || "" } };
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(`/api/notify-order?${qs}`, opts);
+  if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
+  if (!res.ok) throw new Error(`request failed (${res.status})`);
+  return res.json().catch(() => ({}));
+}
+
+function lockAdmin() {
+  state.adminKey = null;
+  sessionStorage.removeItem("dukkanci-admin-key");
+}
+
+async function loadAdminThreads(silent) {
+  try {
+    const data = await adminApi("threads");
+    state.adminThreads = data.threads || [];
+    if (!silent) render();
+    else updateThreadListDOM();
+  } catch (e) { if (!silent) render(); }
+}
+
+async function loadAdminThread(wa, silent) {
+  if (!silent) { state.adminThreadLoading = true; render(); }
+  try {
+    const data = await adminApi("thread", { params: { wa } });
+    state.adminActiveWa = wa;
+    state.adminThread = data;
+    // The open conversation's unread is now cleared server-side; reflect locally.
+    const t = state.adminThreads.find(x => x.wa_id === wa);
+    if (t) t.unread = 0;
+  } catch (e) { state.adminThread = null; }
+  state.adminThreadLoading = false;
+  render();
+}
+
+async function sendAdminReply(text) {
+  const wa = state.adminActiveWa;
+  if (!wa || !text.trim()) return;
+  // Optimistic echo.
+  if (state.adminThread && Array.isArray(state.adminThread.messages)) {
+    state.adminThread.messages.push({ id: "tmp" + Date.now(), direction: "out", body: text, msg_type: "text", status: "sending", created_at: new Date().toISOString() });
+    renderAdminThreadOnly();
+  }
+  try {
+    await adminApi("reply", { method: "POST", body: { to: wa, text } });
+  } catch (e) {
+    showToast("تعذّر إرسال الرسالة", "");
+  }
+  await loadAdminThread(wa, true);
+}
+
+function adminThreadName(t) {
+  return (t.name && t.name.trim()) || `+${t.wa_id}`;
+}
+
+function chatTime(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" });
+  } catch (e) { return ""; }
+}
+
+// Re-render just the thread list (used during silent polling so the reply box
+// keeps focus and the typed draft isn't wiped).
+function updateThreadListDOM() {
+  const el = document.getElementById("wa-thread-list");
+  if (el) el.innerHTML = adminThreadListHTML();
+}
+function renderAdminThreadOnly() {
+  const el = document.getElementById("wa-chat-pane");
+  if (el) el.innerHTML = adminChatPaneHTML();
+  scrollChatToBottom();
+}
+function scrollChatToBottom() {
+  const sc = document.getElementById("wa-chat-scroll");
+  if (sc) sc.scrollTop = sc.scrollHeight;
+}
+
+// Silent refresh of the open conversation — patches only the message area so a
+// half-typed reply and input focus are preserved. Keeps the view pinned to the
+// bottom only if the user was already there.
+async function refreshActiveThreadSilent() {
+  const wa = state.adminActiveWa;
+  if (!wa) return;
+  try {
+    const data = await adminApi("thread", { params: { wa } });
+    state.adminThread = data;
+    const t = (state.adminThreads || []).find(x => x.wa_id === wa);
+    if (t) t.unread = 0;
+    const sc = document.getElementById("wa-chat-scroll");
+    if (sc) {
+      const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60;
+      sc.innerHTML = chatBubblesHTML(data.messages) || `<div class="wa-empty"><p>لا رسائل.</p></div>`;
+      if (atBottom) sc.scrollTop = sc.scrollHeight;
+    }
+  } catch (e) {}
+}
+
+// Poll the inbox while the Messages tab is open (the webhook can't push to the
+// browser). Threads list refreshes every tick; the open thread too.
+let _waPollTimer = null;
+function startInboxPolling() {
+  if (_waPollTimer) return;
+  _waPollTimer = setInterval(() => {
+    const onInbox = state.adminKey && document.getElementById("wa-thread-list");
+    if (!onInbox) { clearInterval(_waPollTimer); _waPollTimer = null; return; }
+    loadAdminThreads(true);
+    if (state.adminActiveWa) refreshActiveThreadSilent();
+  }, 7000);
+}
+
+function adminThreadListHTML() {
+  const threads = state.adminThreads || [];
+  if (!threads.length) return `<div class="wa-empty">${icon("whatsapp")}<p>لا توجد محادثات بعد.<br>ستظهر هنا فور أن يراسلك عميل على رقم واتساب.</p></div>`;
+  return threads.map(t => `
+    <button class="wa-thread ${t.wa_id === state.adminActiveWa ? "active" : ""}" data-action="wa-open" data-wa="${escAttr(t.wa_id)}">
+      <span class="wa-thread__avatar">${icon("whatsapp")}</span>
+      <span class="wa-thread__body">
+        <span class="wa-thread__top"><strong>${escAttr(adminThreadName(t))}</strong><time>${chatTime(t.last_at)}</time></span>
+        <span class="wa-thread__preview">${t.last_dir === "out" ? "↩ " : ""}${escAttr((t.last_body || "").slice(0, 48))}</span>
+      </span>
+      ${t.unread ? `<b class="wa-unread">${t.unread}</b>` : ""}
+    </button>`).join("");
+}
+
+function chatBubblesHTML(messages) {
+  return (messages || []).map(m => {
+    const out = m.direction === "out";
+    const tick = out ? `<span class="wa-tick ${m.status === "failed" ? "failed" : ""}">${m.status === "failed" ? "✕ لم تُرسل" : m.status === "read" ? "✓✓" : m.status === "sending" ? "…" : "✓"}</span>` : "";
+    return `<div class="wa-msg ${out ? "out" : "in"}"><div class="wa-bubble">${escAttr(m.body || "")}<span class="wa-meta">${chatTime(m.created_at)} ${tick}</span></div></div>`;
+  }).join("");
+}
+
+function adminChatPaneHTML() {
+  if (!state.adminActiveWa) return `<div class="wa-empty wa-chat-empty">${icon("whatsapp")}<p>اختر محادثة لعرض الرسائل والرد عليها.</p></div>`;
+  if (state.adminThreadLoading && !state.adminThread) return `<div class="wa-empty wa-chat-empty"><p>جارٍ التحميل…</p></div>`;
+  const data = state.adminThread || { messages: [], canFreeform: false };
+  const t = (state.adminThreads || []).find(x => x.wa_id === state.adminActiveWa);
+  const title = t ? adminThreadName(t) : `+${state.adminActiveWa}`;
+  const bubbles = chatBubblesHTML(data.messages);
+  const composer = data.canFreeform
+    ? `<form id="wa-reply-form" class="wa-composer"><input id="wa-reply-input" autocomplete="off" placeholder="اكتب ردّك…"><button type="submit" class="wa-send" aria-label="إرسال">${icon("arrowLeft")}</button></form>`
+    : `<div class="wa-window-closed">${icon("bell")} مرّت أكثر من 24 ساعة على آخر رسالة من العميل، فلا يمكن إرسال نص حر الآن. يحتاج العميل أن يراسلك أولاً، أو يلزم إرسال قالب معتمد.</div>`;
+  return `
+    <header class="wa-chat-head"><span class="wa-thread__avatar">${icon("whatsapp")}</span><div><strong>${escAttr(title)}</strong><small dir="ltr">+${escAttr(state.adminActiveWa)}</small></div></header>
+    <div id="wa-chat-scroll" class="wa-chat-scroll">${bubbles || `<div class="wa-empty"><p>لا رسائل.</p></div>`}</div>
+    ${composer}`;
+}
+
+function adminMessages() {
+  if (!state._adminThreadsFetched) {
+    state._adminThreadsFetched = true;
+    loadAdminThreads(false);
+  }
+  return `<div class="wa-inbox">
+    <aside class="wa-list"><div class="wa-list-head"><strong>المحادثات</strong><button class="text-button compact" data-action="wa-refresh" aria-label="تحديث">⟳ تحديث</button></div><div id="wa-thread-list" class="wa-thread-list">${adminThreadListHTML()}</div></aside>
+    <section id="wa-chat-pane" class="wa-chat">${adminChatPaneHTML()}</section>
+  </div>`;
+}
+
+function adminLoginScreen() {
+  return `<div class="dashboard-shell admin-shell admin-locked"><main class="dashboard-main"><div class="admin-login-card">
+    <span class="admin-login-logo">${brandLogo("")}</span>
+    <h1>لوحة إدارة دكانجي</h1>
+    <p>أدخل كلمة المرور للمتابعة.</p>
+    <form id="admin-login-form" class="admin-login-form">
+      <input id="admin-login-input" type="password" autocomplete="current-password" placeholder="كلمة المرور" required>
+      <button type="submit" class="primary-button">دخول</button>
+    </form>
+    <a class="text-button" data-action="route-home">${icon("arrowLeft")} العودة للموقع</a>
+  </div></main></div>`;
+}
+
 function renderAdmin() {
+  // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
+  if (!state.adminKey) return adminLoginScreen();
+
   // Pull EVERY store's orders from the cloud once per session so the platform's
   // reports/totals reflect all activity (not just this browser's local orders).
   if (!state._adminOrdersFetched) {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, customers: adminCustomers, orders: adminOrders, complaints: adminComplaints, content: adminContent }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
+  const content = { overview: adminOverview, stores: adminStores, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, content: adminContent }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -2109,6 +2300,9 @@ function render() {
   updateCartBadges();
   window.scrollTo({ top: 0, behavior: "instant" });
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
+  if (route === "admin" && state.adminTab === "messages" && state.adminKey) {
+    setTimeout(() => { startInboxPolling(); scrollChatToBottom(); }, 0);
+  }
 }
 
 function renderCart() {
@@ -2869,6 +3063,8 @@ document.addEventListener("click", event => {
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
   if (action === "admin-tab") { state.adminTab = target.dataset.tab; render(); }
+  if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
+  if (action === "wa-refresh") loadAdminThreads(false);
   if (action === "route-home") navigate("home");
   if (action === "manage-order") openOrderManager(target.dataset.id);
   if (action === "view-order") showToast(`تم فتح الطلب ${target.dataset.id}`);
@@ -3056,6 +3252,38 @@ document.addEventListener("input", event => {
 
 document.addEventListener("submit", event => {
   event.preventDefault();
+  if (event.target.id === "admin-login-form") {
+    const input = document.getElementById("admin-login-input");
+    const pwd = (input?.value || "").trim();
+    if (!pwd) return;
+    const btn = event.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ التحقق…"; }
+    adminApi("login", { method: "POST", body: { key: pwd }, params: { key: pwd } })
+      .then(() => {
+        state.adminKey = pwd;
+        sessionStorage.setItem("dukkanci-admin-key", pwd);
+        render();
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = "دخول"; }
+        const card = event.target.closest(".admin-login-card");
+        if (card && !card.querySelector(".admin-login-error")) {
+          const p = document.createElement("p");
+          p.className = "admin-login-error";
+          p.textContent = "كلمة المرور غير صحيحة.";
+          event.target.after(p);
+        }
+      });
+    return;
+  }
+  if (event.target.id === "wa-reply-form") {
+    const input = document.getElementById("wa-reply-input");
+    const text = (input?.value || "").trim();
+    if (!text) return;
+    if (input) input.value = "";
+    sendAdminReply(text);
+    return;
+  }
   if (event.target.id === "product-form") {
     const product = getProduct(event.target.dataset.id);
     if (product.priceOnRequest) return;
