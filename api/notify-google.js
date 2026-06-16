@@ -45,30 +45,6 @@ async function getAccessToken(clientEmail, privateKey) {
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
-  // Temporary, secret-safe diagnostic: reports only PRESENCE/shape of env vars
-  // (never their values) to debug configuration. Remove after verification.
-  if (req.method === "GET" && req.query && req.query.debug) {
-    const k = process.env.GOOGLE_INDEXING_PRIVATE_KEY || "";
-    let keyParseable = false, keyParseError = null;
-    try { crypto.createPrivateKey(normalizePrivateKey(k)); keyParseable = true; }
-    catch (e) { keyParseError = e.message; }
-    return res.status(200).json({
-      hasEmail: !!process.env.GOOGLE_INDEXING_CLIENT_EMAIL,
-      hasKey: !!k,
-      keyLength: k.length,
-      keyHasHeader: k.includes("BEGIN PRIVATE KEY"),
-      keyHasEscapedNewlines: k.includes("\\n"),
-      keyParseable,
-      keyParseError,
-      hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
-      // Non-secret Vercel system info: which project/commit is actually live here.
-      vercelEnv: process.env.VERCEL_ENV || null,
-      gitRepo: process.env.VERCEL_GIT_REPO_SLUG || null,
-      gitOwner: process.env.VERCEL_GIT_REPO_OWNER || null,
-      commit: (process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7) || null
-    });
-  }
-
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
