@@ -169,6 +169,10 @@ const state = {
   cart: JSON.parse(localStorage.getItem("dukkanci-cart") || "[]"),
   favorites: JSON.parse(localStorage.getItem("dukkanci-favorites") || "[]"),
   orders: JSON.parse(localStorage.getItem("dukkanci-orders") || "null") || initialOrders,
+  // The customer's OWN placed orders (kept separate from `orders`, which the
+  // merchant/admin dashboards overwrite from the cloud).
+  myOrders: JSON.parse(localStorage.getItem("dukkanci-my-orders") || "[]"),
+  myOrdersFetched: false,
   storeFilter: "الكل",
   storeSort: "recommended",
   search: "",
@@ -247,7 +251,7 @@ function icon(name, className = "") {
 }
 
 function brandLogo(extraClass = "") {
-  return `<span class="brand brand-inline ${extraClass}"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt=""></span><span class="brand-wordmark"><strong>دكانجي</strong><small>سوق الحي بين يديك</small></span></span>`;
+  return `<span class="brand brand-inline ${extraClass}"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt=""></span><span class="brand-wordmark"><strong>دكانجي</strong><small>سوق الحي بين يديك</small></span></span>`;
 }
 
 function money(value) {
@@ -292,6 +296,7 @@ function saveState() {
   localStorage.setItem("dukkanci-cart", JSON.stringify(state.cart));
   localStorage.setItem("dukkanci-favorites", JSON.stringify(state.favorites));
   localStorage.setItem("dukkanci-orders", JSON.stringify(state.orders));
+  localStorage.setItem("dukkanci-my-orders", JSON.stringify(state.myOrders));
   localStorage.setItem("dukkanci-profile", JSON.stringify(state.customerProfile));
   localStorage.setItem("dukkanci-addresses", JSON.stringify(state.customerAddresses));
   localStorage.setItem("dukkanci-complaints", JSON.stringify(state.customerComplaints));
@@ -455,11 +460,16 @@ function pushOrderCloud(order) {
     delivery_details: {
       quote: order.deliveryDetails ?? null,
       phone: order.customerPhone || "",
+      phoneKey: (order.customerPhone || "").replace(/\D/g, ""),
       fulfillment: order.fulfillment || "delivery",
       address: order.address || "",
       addressDetails: order.addressDetails || "",
       lineItems: order.lineItems || [],
       notes: order.notes || "",
+      substitution: order.substitution || "",
+      payment: order.payment || "",
+      scheduleDay: order.scheduleDay || "",
+      scheduleTime: order.scheduleTime || "",
       createdAt: order.createdAt || ""
     }
   };
@@ -475,8 +485,49 @@ function mapDbOrder(r) {
     customerPhone: dd.phone || "", fulfillment: dd.fulfillment || (quote ? "delivery" : "pickup"),
     address: dd.address || "", addressDetails: dd.addressDetails || "",
     lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [], notes: dd.notes || "",
+    substitution: dd.substitution || "", payment: dd.payment || "",
+    scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || "",
     deliveryDetails: quote, createdAt: dd.createdAt || r.created_at || ""
   };
+}
+// Customer-facing: load THIS customer's orders (matched by phone) from the cloud,
+// so "طلباتي" shows real orders and tracks them across devices.
+async function loadCustomerOrdersFromSupabase(phoneKey) {
+  const sb = window.supabaseClient;
+  if (!sb || !phoneKey) return false;
+  try {
+    const cb = Date.now();
+    const { data, error } = await sb.from("orders").select("*")
+      .eq("delivery_details->>phoneKey", phoneKey)
+      .order("created_at", { ascending: false }).neq("id", "__cb" + cb);
+    if (error || !data) return false;
+    const mapped = data.map(mapDbOrder);
+    // Merge cloud orders with any local guest orders not yet synced.
+    const localOnly = state.myOrders.filter(o => !mapped.some(m => m.id === o.id));
+    state.myOrders = [...mapped, ...localOnly];
+    return true;
+  } catch (e) { console.warn("customer orders load failed:", e.message); return false; }
+}
+// Map an order status to the 5-step tracking progress shown to the customer.
+function orderProgress(status) {
+  const map = {
+    "طلب جديد": { steps: 1, color: "orange" },
+    "بانتظار الدفع": { steps: 1, color: "orange" },
+    "تم القبول": { steps: 2, color: "green" },
+    "قيد التجهيز": { steps: 3, color: "blue" },
+    "جاهز للاستلام": { steps: 4, color: "green" },
+    "خرج للتوصيل": { steps: 4, color: "blue" },
+    "مكتمل": { steps: 5, color: "green" },
+    "تم التوصيل": { steps: 5, color: "green" },
+    "مرفوضة": { steps: 0, color: "red" },
+    "ملغى": { steps: 0, color: "red" }
+  };
+  return map[status] || { steps: 1, color: "gray" };
+}
+function formatOrderDate(iso) {
+  if (!iso) return "";
+  try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)); }
+  catch (e) { return ""; }
 }
 // Merchants must see orders placed from ANY device, so the dashboard reads them
 // back from the cloud (the previous version only pushed, never loaded).
@@ -609,7 +660,7 @@ async function sendWhatsappOtp(form) {
 function openOtpModal(phone) {
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
     <h2>أدخل رمز التحقق</h2><p>أرسلنا رمزاً عبر واتساب إلى <strong dir="ltr">${escAttr(phone)}</strong></p>
     <form id="otp-form" data-phone="${escAttr(phone)}">
       <label class="input-label"><span>رمز التحقق</span><input name="token" inputmode="numeric" autocomplete="one-time-code" required placeholder="######" dir="ltr" maxlength="8"></label>
@@ -1132,6 +1183,16 @@ function renderOffers() {
   `;
 }
 
+// These stores use a wide 1600×600 promo banner (logo + product montage on a solid
+// background) as their cover. With object-fit:cover the short mobile box crops the logo
+// and products off the side edges, so we show the full banner instead (see styles.css:
+// .store-cover--banner). Matched by image path so it works for bundled and Supabase data.
+const BANNER_COVER_SLUGS = ["kady", "tihama", "afgan", "nour", "salloura", "ezzedine"];
+function hasBannerCover(store) {
+  const src = store.coverImage || store.image || "";
+  return BANNER_COVER_SLUGS.some(slug => src.includes(`/photos/${slug}/`));
+}
+
 function renderStorePage(id) {
   const store = getStore(id);
   if (!store) return renderNotFound();
@@ -1152,7 +1213,7 @@ function renderStorePage(id) {
     <section class="store-page-head">
       <div class="container">
         <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${store.name}</strong></div>
-        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""}">
+        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""} ${hasBannerCover(store) ? "store-cover--banner" : ""}">
           <img src="${store.coverImage || store.image}" alt="${store.name}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
@@ -1286,18 +1347,28 @@ function renderAccountMenu() {
 }
 
 function renderCustomerOrders() {
+  const orders = state.myOrders || [];
+  if (!orders.length) {
+    return `<div class="order-list">${renderEmpty("لا طلبات بعد", "عندما تطلب من أحد المتاجر سيظهر طلبك هنا لتتبّعه حتى الاستلام.", "تصفح المتاجر", "stores")}</div>`;
+  }
   return `<div class="order-list">
-    ${customerOrders.map(order => {
+    ${orders.map(order => {
       const store = getStore(order.storeId);
+      const prog = orderProgress(order.status);
+      const isDelivery = order.fulfillment !== "pickup";
+      const steps = isDelivery
+        ? ["تم استلام الطلب", "تم التأكيد", "قيد التجهيز", "خرج للتوصيل", "تم التوصيل"]
+        : ["تم استلام الطلب", "تم التأكيد", "قيد التجهيز", "جاهز للاستلام", "تم الاستلام"];
+      const canConfirm = prog.steps >= 4 && prog.steps < 5;
       return `<article class="customer-order">
         <div class="customer-order__top">
-          <div>${storeAvatar(store)}<span><strong>${store.name}</strong><small>طلب رقم ${order.id} · ${order.date}</small></span></div>
-          <span class="status-pill ${order.color}">${order.status}</span>
+          <div>${storeAvatar(store)}<span><strong>${store ? store.name : "متجر"}</strong><small>طلب رقم <span dir="ltr">${order.id}</span>${order.createdAt ? ` · ${formatOrderDate(order.createdAt)}` : ""}</small></span></div>
+          <span class="status-pill ${prog.color}">${order.status}</span>
         </div>
-        ${order.steps < 5 ? `<div class="tracking-steps">
-          ${["تم استلام الطلب", "تم التأكيد", "قيد التجهيز", "خرج للتوصيل", "تم التوصيل"].map((step, index) => `<div class="${index < order.steps ? "done" : ""}"><span>${index < order.steps ? icon("check") : ""}</span><small>${step}</small></div>`).join("")}
+        ${prog.steps > 0 && prog.steps < 5 ? `<div class="tracking-steps">
+          ${steps.map((step, index) => `<div class="${index < prog.steps ? "done" : ""}"><span>${index < prog.steps ? icon("check") : ""}</span><small>${step}</small></div>`).join("")}
         </div>` : ""}
-        <div class="customer-order__bottom"><strong>${money(order.total)}</strong><div><button class="text-button" data-action="customer-order-details" data-id="${order.id}">${icon("eye")} عرض التفاصيل</button><button class="secondary-button compact" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div></div>
+        <div class="customer-order__bottom"><strong>${money(order.total)}</strong><div>${canConfirm ? `<button class="primary-button compact" data-action="confirm-receipt" data-id="${order.id}">${icon("check")} تأكيد الاستلام</button>` : ""}<button class="text-button" data-action="customer-order-details" data-id="${order.id}">${icon("eye")} التفاصيل</button><button class="secondary-button compact" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div></div>
       </article>`;
     }).join("")}
   </div>`;
@@ -1400,7 +1471,7 @@ function dashboardSidebar(type, active) {
       <div class="dashboard-brand">${brandLogo("brand-on-dark")}<span>${type === "merchant" ? "لوحة المتجر" : "لوحة الإدارة"}</span></div>
       <nav>${items.map(([key, iconName, label]) => `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}</button>`).join("")}</nav>
       <div class="dashboard-user">
-        <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png"}" alt=""></span>
+        <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png?v=86"}" alt=""></span>
         <span><strong>${merchantStore ? merchantStore.name : "إدارة دكانجي"}</strong><small>${merchantStore ? `الخطة ${merchantStore.subscription || "الاحترافية"}` : "مدير النظام"}</small></span>
         ${icon("dots")}
       </div>
@@ -1642,7 +1713,7 @@ function merchantLogin() {
   return `
     <div class="merchant-auth">
       <form class="merchant-auth__card" id="merchant-login-form">
-        <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
+        <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
         <h2>لوحة المتجر</h2>
         <p>أدخل رقم واتساب متجرك المسجّل للدخول إلى لوحة التحكم.</p>
         <label class="input-label"><span>رقم واتساب المتجر</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+90 555 000 00 00" dir="ltr"></label>
@@ -1810,6 +1881,10 @@ function renderCheckout() {
   const selectedAddressId = state.checkoutLocation ? "current" : defaultAddress?.id;
   const totals = cartTotals(selectedAddressId);
   const deliverySettings = getDeliverySettings(store.id);
+  const profile = state.customerProfile || {};
+  const dayFmt = new Intl.DateTimeFormat("ar-EG", { weekday: "long", day: "numeric", month: "long" });
+  const today = new Date(), tomorrow = new Date(Date.now() + 86400000);
+  const dayOptions = `<option>اليوم · ${dayFmt.format(today)}</option><option>غداً · ${dayFmt.format(tomorrow)}</option>`;
   return `
     <section class="page-hero compact checkout-hero"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>إتمام الطلب</strong></div><h1>إتمام طلبك</h1><p>راجع التفاصيل وحدد طريقة الاستلام والدفع.</p></div></section>
     <section class="section checkout-section">
@@ -1823,10 +1898,12 @@ function renderCheckout() {
             </div>
           </section>
           <section class="checkout-card">
-            <div class="checkout-card__title"><span>٢</span><div><h2>العنوان والموعد</h2><p>أين ومتى تريد استلام الطلب؟</p></div></div>
+            <div class="checkout-card__title"><span>٢</span><div><h2>بياناتك وعنوان التوصيل</h2><p>نحتاج اسمك ورقمك ليتواصل المتجر معك ويصلك التحديث.</p></div></div>
             <div class="form-grid">
+              <label><span>الاسم <i class="req">*</i></span><input name="contactName" autocomplete="name" required value="${escAttr(profile.name || "")}" placeholder="اسمك الكامل"></label>
+              <label><span>رقم واتساب <i class="req">*</i></span><input name="contactPhone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" value="${escAttr(profile.phone || "")}" placeholder="+90 555 000 00 00"></label>
               <label class="wide"><span>عنوان التوصيل</span><select name="address" id="checkout-address" required><option value="">اختر عنواناً محفوظاً</option>${state.customerAddresses.map(address => `<option value="${address.id}" ${String(address.id) === String(selectedAddressId) ? "selected" : ""}>${address.label} - ${address.address}</option>`).join("")}${(state.checkoutLocation || getUserLocationAddress()) ? `<option value="current" ${selectedAddressId === "current" ? "selected" : ""}>📍 ${escAttr((state.checkoutLocation || getUserLocationAddress()).address)}</option>` : ""}</select></label>
-              <label><span>اليوم</span><select name="day"><option>اليوم، 12 يونيو</option><option>غداً، 13 يونيو</option></select></label>
+              <label><span>اليوم</span><select name="day">${dayOptions}</select></label>
               <label><span>الوقت</span><select name="time"><option>في أقرب وقت</option><option>14:00 - 15:00</option><option>17:00 - 18:00</option></select></label>
             </div>
             <button type="button" class="location-link" data-action="use-current-location">${icon("pin")} استخدام موقعي الحالي</button>
@@ -2061,41 +2138,46 @@ function closeModal() {
 }
 
 function openCustomerOrderDetails(orderId) {
-  const order = customerOrders.find(item => item.id === orderId);
+  const order = (state.myOrders || []).find(item => item.id === orderId);
   if (!order) return;
   const store = getStore(order.storeId);
-  const deliveryFee = order.deliveryDetails?.fee ?? getDeliverySettings(order.storeId).fixedFee;
+  const prog = orderProgress(order.status);
+  const isDelivery = order.fulfillment !== "pickup";
+  const deliveryFee = isDelivery ? (order.deliveryDetails?.fee ?? 0) : 0;
+  const items = Array.isArray(order.lineItems) ? order.lineItems : [];
+  const waNum = (order.customerPhone || "").replace(/\D/g, "");
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <div class="customer-order-modal__store">${storeAvatar(store)}<div><span class="section-kicker">${order.id}</span><h2>${store.name}</h2><small>${order.date}</small></div><span class="status-pill ${order.color}">${order.status}</span></div>
-    <div class="customer-order-modal__items">${order.items.map(item => {
-      const product = getProduct(item.productId);
-      return `<article><img src="${product.image}" alt="${product.name}"><div><strong>${product.name}</strong><small>${product.unit}</small></div><span>${item.quantity} × ${money(product.price)}</span></article>`;
+    <div class="customer-order-modal__store">${storeAvatar(store)}<div><span class="section-kicker" dir="ltr">${order.id}</span><h2>${store ? store.name : "متجر"}</h2><small>${order.createdAt ? formatOrderDate(order.createdAt) : ""}</small></div><span class="status-pill ${prog.color}">${order.status}</span></div>
+    <div class="order-contact">
+      <div class="order-contact__row">${icon(isDelivery ? "bike" : "store")}<span>${isDelivery ? `توصيل إلى ${escAttr(order.address || "عنوانك")}${order.addressDetails ? ` — ${escAttr(order.addressDetails)}` : ""}` : "استلام من المتجر"}</span></div>
+      ${order.scheduleDay ? `<div class="order-contact__row">${icon("clock")}<span>${escAttr(order.scheduleDay)} · ${escAttr(order.scheduleTime || "في أقرب وقت")}</span></div>` : ""}
+      ${order.payment ? `<div class="order-contact__row">${icon("wallet")}<span>${escAttr(order.payment)}</span></div>` : ""}
+      ${store && (store.whatsapp || store.phone) ? `<div class="order-contact__row">${icon("whatsapp")}<a class="order-wa-btn" href="https://wa.me/${(store.whatsapp || store.phone).replace(/\D/g, "")}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة المتجر</a></div>` : ""}
+    </div>
+    <div class="customer-order-modal__items">${items.map(item => {
+      const product = item.productId ? getProduct(item.productId) : null;
+      return `<article>${product ? `<img src="${product.image}" alt="${escAttr(item.name)}">` : ""}<div><strong>${escAttr(item.name)}</strong>${item.options ? `<small>${escAttr(item.options)}</small>` : ""}</div><span>${(item.qty || 1).toLocaleString("ar")} × ${money(item.price)}</span></article>`;
     }).join("")}</div>
-    <div class="customer-order-modal__summary"><span><small>قيمة المنتجات</small><strong>${money(order.total - deliveryFee)}</strong></span><span><small>رسوم التوصيل</small><strong>${money(deliveryFee)}</strong></span><span class="total"><small>الإجمالي</small><strong>${money(order.total)}</strong></span></div>
+    <div class="customer-order-modal__summary"><span><small>قيمة المنتجات</small><strong>${money(order.total - deliveryFee)}</strong></span><span><small>${isDelivery ? "رسوم التوصيل" : "الاستلام"}</small><strong>${isDelivery ? money(deliveryFee) : "مجاناً"}</strong></span><span class="total"><small>الإجمالي</small><strong>${money(order.total)}</strong></span></div>
     <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إغلاق</button><button class="primary-button" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div>
   `, "customer-order-modal");
 }
 
 function applyCustomerReorder(orderId) {
-  const order = customerOrders.find(item => item.id === orderId);
+  const order = (state.myOrders || []).find(item => item.id === orderId);
   if (!order) return;
-  state.cart = order.items.map((item, index) => {
-    const product = getProduct(item.productId);
-    return {
-      key: `reorder-${order.id}-${product.id}-${index}`,
-      productId: product.id,
-      storeId: product.storeId,
-      quantity: item.quantity,
-      finalPrice: product.price,
-      optionsText: product.unit,
-      notes: ""
-    };
+  state.cart = [];
+  let added = 0;
+  (order.lineItems || []).forEach(item => {
+    const product = item.productId ? getProduct(item.productId) : null;
+    if (!product || product.available === false) return;
+    addToCart(product.id, item.qty || 1, item.optionSelections || [], item.notes || "");
+    added++;
   });
-  saveState();
-  updateCartBadges();
   closeModal();
-  showToast("تمت إعادة منتجات الطلب إلى السلة", "success");
+  if (!added) { showToast("لم تعد منتجات هذا الطلب متوفرة حالياً"); return; }
+  showToast("تمت إضافة منتجات الطلب إلى السلة", "success");
   openCart();
 }
 
@@ -2430,7 +2512,7 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   const key = `${product.id}-${optionSelections.join("-")}-${notes}`;
   const existing = state.cart.find(item => item.key === key);
   if (existing) existing.quantity += quantity;
-  else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), notes });
+  else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), optionSelections: [...optionSelections], notes });
   saveState();
   updateCartBadges();
   window.DUKKANCI_INTEGRATIONS?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity });
@@ -2450,7 +2532,7 @@ function showToast(message, type = "") {
 function openLoginModal() {
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
     <h2>أهلاً بك في دكانجي</h2><p>سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك.</p>
     <button class="google-button" data-action="google-login"><b>G</b> المتابعة باستخدام Google</button>
     <div class="or-line"><span>أو</span></div>
@@ -3025,27 +3107,35 @@ document.addEventListener("submit", event => {
     closeModal(); render(); showToast("تم تفعيل العرض ويظهر الآن في المتجر", "success");
   }
   if (event.target.id === "checkout-form") {
-    if (!event.target.elements.terms.checked) { showToast("يرجى الموافقة على سياسة الطلب أولاً"); return; }
-    if (!event.target.elements.address.value && event.target.elements.fulfillment.value === "delivery") { showToast("يرجى اختيار عنوان التوصيل"); return; }
-    const totals = cartTotals(event.target.elements.address.value);
+    const els = event.target.elements;
+    const isPickup = els.fulfillment.value === "pickup";
+    // Contact info is required so the merchant can actually reach the customer.
+    const contactName = (els.contactName?.value || "").trim();
+    const contactPhone = (els.contactPhone?.value || "").trim();
+    if (!contactName) { showToast("يرجى إدخال اسمك للتواصل"); els.contactName?.focus(); return; }
+    if (contactPhone.replace(/\D/g, "").length < 10) { showToast("يرجى إدخال رقم واتساب صحيح للتواصل"); els.contactPhone?.focus(); return; }
+    if (!els.terms.checked) { showToast("يرجى الموافقة على سياسة الطلب أولاً"); return; }
+    if (!isPickup && !els.address.value) { showToast("يرجى اختيار عنوان التوصيل"); return; }
+    const totals = cartTotals(els.address.value);
     const deliverySettings = getDeliverySettings(state.cart[0].storeId);
-    if (event.target.elements.fulfillment.value === "delivery" && deliverySettings.mode === "distance" && (!totals.quote || totals.quote.exceedsMaxDistance)) {
+    if (!isPickup && deliverySettings.mode === "distance" && (!totals.quote || totals.quote.exceedsMaxDistance)) {
       showToast(totals.quote?.exceedsMaxDistance ? "العنوان خارج نطاق توصيل هذا المتجر" : "تعذر حساب التوصيل لهذا العنوان");
       return;
     }
-    const isPickup = event.target.elements.fulfillment.value === "pickup";
+    // Persist contact to the profile so it prefills next time and ties orders together.
+    state.customerProfile = { ...state.customerProfile, name: contactName, phone: contactPhone };
     const finalTotal = totals.subtotal + (isPickup ? 0 : totals.delivery);
     const storeId = state.cart[0].storeId;
-    const addrObj = isPickup ? null : (getCheckoutAddress(event.target.elements.address.value) || getDefaultAddress());
-    // Snapshot exactly what was ordered so the merchant can fulfil it.
+    const addrObj = isPickup ? null : (getCheckoutAddress(els.address.value) || getDefaultAddress());
+    // Snapshot exactly what was ordered (incl. productId so reorder can rebuild it).
     const lineItems = state.cart.map(it => {
       const p = getProduct(it.productId);
-      return { name: p ? p.name : "منتج", qty: it.quantity, price: it.finalPrice, options: it.optionsText || "", notes: it.notes || "" };
+      return { productId: it.productId, name: p ? p.name : "منتج", qty: it.quantity, price: it.finalPrice, options: it.optionsText || "", optionSelections: it.optionSelections || [], notes: it.notes || "" };
     });
     const newOrder = {
       id: `DK-${Date.now().toString().slice(-9)}`,
-      customer: state.customerProfile.name || "عميل دكانجي",
-      customerPhone: state.customerProfile.phone || "",
+      customer: contactName,
+      customerPhone: contactPhone,
       storeId,
       total: finalTotal,
       status: "طلب جديد",
@@ -3056,17 +3146,33 @@ document.addEventListener("submit", event => {
       addressDetails: isPickup ? "" : (addrObj?.details || ""),
       lineItems,
       notes: "",
+      substitution: els.substitution?.value || "",
+      payment: els.payment?.value === "cash" ? "الدفع عند الاستلام" : "الدفع بالبطاقة",
+      scheduleDay: els.day?.value || "",
+      scheduleTime: els.time?.value || "",
       deliveryDetails: isPickup ? null : totals.quote,
       createdAt: new Date().toISOString()
     };
+    state.myOrders.unshift(newOrder);
     state.orders.unshift(newOrder);
     pushOrderCloud(newOrder);
     window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
+    const itemCount = newOrder.lineItems.reduce((s, i) => s + (i.qty || 1), 0);
+    const etaMin = (deliverySettings.prepMinutes || 20) + (isPickup ? 0 : 25);
     state.cart = [];
     state.deliveryQuote = null;
     state.checkoutLocation = null;
     saveState(); updateCartBadges();
-    showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2><p>طلبك رقم <strong>${newOrder.id}</strong> وصل إلى ${getStore(storeId).name}. سنخبرك عبر واتساب فور تأكيده.</p><div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">متابعة الطلب</button></div>`, "success-modal");
+    showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2>
+      <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
+      <div class="order-success-summary">
+        <span>${icon("box")}<small>المنتجات</small><b>${itemCount.toLocaleString("ar")}</b></span>
+        <span>${icon("wallet")}<small>الإجمالي</small><b>${money(finalTotal)}</b></span>
+        <span>${icon(isPickup ? "store" : "bike")}<small>${isPickup ? "الاستلام" : "التوصيل إلى"}</small><b>${isPickup ? "من المتجر" : (newOrder.address || "عنوانك")}</b></span>
+        <span>${icon("clock")}<small>الوقت المتوقع</small><b>~${etaMin} دقيقة</b></span>
+      </div>
+      <p class="success-note">${icon("whatsapp")} سنخبرك عبر واتساب على <strong dir="ltr">${escAttr(contactPhone)}</strong> فور تأكيد المتجر.</p>
+      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">تتبّع الطلب</button></div>`, "success-modal");
   }
   if (event.target.id === "login-form") {
     sendWhatsappOtp(event.target);

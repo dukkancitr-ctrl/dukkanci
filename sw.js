@@ -1,4 +1,4 @@
-const CACHE = "dukkanci-v81";
+const CACHE = "dukkanci-v86";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -19,7 +19,7 @@ const APP_SHELL = [
   "/kadiby-data.js?v=81",
   "/azal-data.js?v=81",
   "/abou-data.js?v=81",
-  "/app.js?v=81",
+  "/app.js?v=86",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
@@ -45,7 +45,7 @@ const APP_SHELL = [
   "/assets/photos/azal/cover.jpg",
   "/assets/photos/azal/logo.jpg",
   "/assets/photos/abou/cover.jpg",
-  "/assets/dukkanci-mark.png",
+  "/assets/dukkanci-mark.png?v=86",
   "/assets/dukkanci-app-icon-192.png",
   "/assets/dukkanci-app-icon-512.png",
   "/assets/fonts/IBMPlexSansArabic-Regular.ttf",
