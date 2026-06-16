@@ -9,6 +9,15 @@ const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr")
 
 const b64url = buf => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
+// Vercel env values for PEM keys are a footgun: they may be wrapped in quotes,
+// single-escaped (\n) or double-escaped (\\n). Normalize all of these to a real
+// PEM with newlines.
+function normalizePrivateKey(raw) {
+  let k = (raw || "").trim();
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) k = k.slice(1, -1);
+  return k.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
+}
+
 async function getAccessToken(clientEmail, privateKey) {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
@@ -40,12 +49,17 @@ module.exports = async (req, res) => {
   // (never their values) to debug configuration. Remove after verification.
   if (req.method === "GET" && req.query && req.query.debug) {
     const k = process.env.GOOGLE_INDEXING_PRIVATE_KEY || "";
+    let keyParseable = false, keyParseError = null;
+    try { crypto.createPrivateKey(normalizePrivateKey(k)); keyParseable = true; }
+    catch (e) { keyParseError = e.message; }
     return res.status(200).json({
       hasEmail: !!process.env.GOOGLE_INDEXING_CLIENT_EMAIL,
       hasKey: !!k,
       keyLength: k.length,
       keyHasHeader: k.includes("BEGIN PRIVATE KEY"),
       keyHasEscapedNewlines: k.includes("\\n"),
+      keyParseable,
+      keyParseError,
       hasSiteUrl: !!process.env.NEXT_PUBLIC_SITE_URL,
       // Non-secret Vercel system info: which project/commit is actually live here.
       vercelEnv: process.env.VERCEL_ENV || null,
@@ -69,7 +83,7 @@ module.exports = async (req, res) => {
   }
 
   const clientEmail = process.env.GOOGLE_INDEXING_CLIENT_EMAIL;
-  const privateKey = (process.env.GOOGLE_INDEXING_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const privateKey = normalizePrivateKey(process.env.GOOGLE_INDEXING_PRIVATE_KEY);
   if (!clientEmail || !privateKey) {
     return res.status(200).json({ skipped: true, reason: "indexing credentials not configured" });
   }

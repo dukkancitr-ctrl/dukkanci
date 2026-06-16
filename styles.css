@@ -6242,6 +6242,154 @@ tr:last-child td {
   font-size: 10px;
 }
 
+/* --- Merchant flow: required marks, order fulfilment, auth divider --- */
+.req {
+  color: var(--red);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.merchant-auth__divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.merchant-auth__divider::before,
+.merchant-auth__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.store-switcher--single {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.store-switcher--single .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.order-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 16px;
+}
+.order-contact__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.order-contact__row .icon {
+  width: 17px;
+  height: 17px;
+  color: var(--green-700, #1f7a52);
+  flex-shrink: 0;
+}
+.order-contact__row--muted {
+  color: var(--muted);
+}
+.order-wa-btn {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #25d366;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+.order-wa-btn .icon {
+  width: 15px;
+  height: 15px;
+  color: #fff;
+}
+
+.order-items-block {
+  margin-bottom: 16px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.order-items-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  margin-bottom: 9px;
+}
+.order-items-title .icon {
+  width: 17px;
+  height: 17px;
+}
+.order-items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.order-items-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+}
+.order-items-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.oi-qty {
+  font-weight: 800;
+  color: var(--green-700, #1f7a52);
+  min-width: 30px;
+}
+.oi-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.oi-name small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.oi-note {
+  color: var(--orange) !important;
+}
+.order-items-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Guard against horizontal overflow inside the merchant/admin dashboard on mobile */
+.dashboard-view,
+.dashboard-shell,
+.dashboard-main {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Visual polish */
 :root {
   --shadow-card: 0 12px 34px rgba(76, 27, 31, 0.075);
@@ -6678,12 +6826,32 @@ tbody tr:hover {
     padding-bottom: calc(69px + env(safe-area-inset-bottom));
   }
 
-  .top-strip,
   .desktop-nav,
   .account-button,
   .cart-label,
   .search-toggle {
     display: none;
+  }
+
+  /* Keep the location control reachable on mobile (the strip is hidden on
+     desktop-narrow only via the tagline). Show just the pill, full-width and
+     tappable, so visitors can set their location to browse the nearest stores. */
+  .top-strip__inner {
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .top-strip p {
+    display: none;
+  }
+
+  .location-pill {
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .site-header {

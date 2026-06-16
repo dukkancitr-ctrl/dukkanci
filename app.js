@@ -443,9 +443,58 @@ function deleteProductCloud(id) {
   const sb = window.supabaseClient;
   if (sb) sb.from("products").delete().eq("id", Number(id)).then(({ error }) => { if (error) console.warn("product delete:", error.message); });
 }
+// The orders table has fixed columns + a flexible delivery_details jsonb. We pack
+// every field the merchant needs to FULFILL the order (phone, address, the actual
+// line items, notes) into delivery_details so no schema migration is required.
 function pushOrderCloud(order) {
   const sb = window.supabaseClient;
-  if (sb) sb.from("orders").upsert({ id: order.id, store_id: order.storeId, customer: order.customer, total: order.total, status: order.status, time: order.time, items: order.items, delivery_details: order.deliveryDetails ?? null }, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
+  if (!sb) return;
+  const payload = {
+    id: order.id, store_id: order.storeId, customer: order.customer, total: order.total,
+    status: order.status, time: order.time, items: order.items,
+    delivery_details: {
+      quote: order.deliveryDetails ?? null,
+      phone: order.customerPhone || "",
+      fulfillment: order.fulfillment || "delivery",
+      address: order.address || "",
+      addressDetails: order.addressDetails || "",
+      lineItems: order.lineItems || [],
+      notes: order.notes || "",
+      createdAt: order.createdAt || ""
+    }
+  };
+  sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
+}
+function mapDbOrder(r) {
+  const dd = (r.delivery_details && typeof r.delivery_details === "object") ? r.delivery_details : {};
+  // Legacy rows stored the raw delivery quote directly in delivery_details (no `quote` key).
+  const quote = ("quote" in dd) ? dd.quote : ((dd.roundTripKm != null || dd.fee != null) ? dd : null);
+  return {
+    id: r.id, storeId: r.store_id, customer: r.customer, total: Number(r.total) || 0,
+    status: r.status, time: r.time, items: r.items,
+    customerPhone: dd.phone || "", fulfillment: dd.fulfillment || (quote ? "delivery" : "pickup"),
+    address: dd.address || "", addressDetails: dd.addressDetails || "",
+    lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [], notes: dd.notes || "",
+    deliveryDetails: quote, createdAt: dd.createdAt || r.created_at || ""
+  };
+}
+// Merchants must see orders placed from ANY device, so the dashboard reads them
+// back from the cloud (the previous version only pushed, never loaded).
+async function loadOrdersFromSupabase(storeId) {
+  const sb = window.supabaseClient;
+  if (!sb) return false;
+  try {
+    const cb = Date.now(); // vary the URL to dodge Cloudflare's edge cache (see loadCatalogFromSupabase)
+    let q = sb.from("orders").select("*").order("created_at", { ascending: false }).neq("id", "__cb" + cb);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { data, error } = await q;
+    if (error || !data) return false;
+    const mapped = data.map(mapDbOrder);
+    // Replace this store's orders with the cloud truth; keep any unrelated local orders.
+    const others = state.orders.filter(o => storeId ? o.storeId !== Number(storeId) : false);
+    state.orders = [...mapped, ...others.filter(o => !mapped.some(m => m.id === o.id))];
+    return true;
+  } catch (e) { console.warn("orders load failed:", e.message); return false; }
 }
 async function initCatalog() {
   await window.__supabaseReady;
@@ -1382,11 +1431,12 @@ function merchantOverview() {
     </div>
     <div class="dashboard-grid">
       <section class="dashboard-card chart-card">
-        <div class="card-heading"><div><h3>أداء الطلبات</h3><p>آخر 7 أيام</p></div><button class="outline-select">هذا الأسبوع ${icon("chevron")}</button></div>
+        <div class="card-heading"><div><h3>أداء الطلبات</h3><p>آخر 7 أيام</p></div></div>
+        ${merchantOrders.length ? `
         <div class="chart-wrap">
           <div class="chart-y"><span>20</span><span>15</span><span>10</span><span>5</span><span>0</span></div>
           <div class="bar-chart">${[11, 16, 13, 19, 15, 20, 17].map((height, index) => `<div><span style="height:${height * 7}px"></span><small>${["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"][index]}</small></div>`).join("")}</div>
-        </div>
+        </div>` : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات كافية بعد. سيظهر الرسم البياني بمجرد استقبال أول الطلبات.</p></div>`}
       </section>
       <section class="dashboard-card subscription-card">
         <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill green">نشط</span></div>
@@ -1435,13 +1485,13 @@ function merchantOrders() {
   return `
     <div class="dashboard-toolbar">
       <div class="dashboard-search">${icon("search")}<input id="merchant-order-search" placeholder="ابحث برقم الطلب أو اسم العميل" value="${escAttr(state.merchantOrderSearch || "")}"></div>
-      <div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="refresh-orders">${icon("bell")} تحديث</button>${storeOrders.length ? `<button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button>` : ""}</div>
     </div>
     <div class="order-status-tabs">${tabs.map(status => {
       const count = status === "الكل" ? storeOrders.length : storeOrders.filter(o => o.status === status).length;
       return `<button class="${status === activeFilter ? "active" : ""}" data-action="merchant-order-filter" data-status="${escAttr(status)}">${status}${count ? `<b>${count.toLocaleString("ar")}</b>` : ""}</button>`;
     }).join("")}</div>
-    <section class="dashboard-card orders-table-card">${filtered.length ? renderOrdersTable(filtered, "merchant") : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات ${activeFilter === "الكل" ? "بعد" : `بحالة "${activeFilter}"`}</p></div>`}</section>
+    <section class="dashboard-card orders-table-card">${filtered.length ? renderOrdersTable(filtered, "merchant") : `<div class="empty-managed">${icon("receipt")}<p>${activeFilter === "الكل" ? "لا طلبات بعد — ستظهر هنا فور أن يطلب أحد العملاء من متجرك." : `لا طلبات بحالة "${activeFilter}"`}</p>${activeFilter === "الكل" ? `<button class="secondary-button compact" data-action="merchant-tab" data-tab="products">${icon("box")} راجع منتجاتك</button>` : ""}</div>`}</section>
   `;
 }
 
@@ -1594,12 +1644,13 @@ function merchantLogin() {
       <form class="merchant-auth__card" id="merchant-login-form">
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png" alt="دكانجي"></span></div>
         <h2>لوحة المتجر</h2>
-        <p>سجّل دخولك لإدارة متجرك على دكانجي.</p>
-        <label class="input-label"><span>اسم المستخدم</span><input name="username" autocomplete="username" required placeholder="demo" dir="ltr"></label>
-        <label class="input-label"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"></label>
-        <p class="merchant-auth__error" id="merchant-login-error" hidden>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
+        <p>أدخل رقم واتساب متجرك المسجّل للدخول إلى لوحة التحكم.</p>
+        <label class="input-label"><span>رقم واتساب المتجر</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+90 555 000 00 00" dir="ltr"></label>
+        <p class="merchant-auth__error" id="merchant-login-error" hidden>لا يوجد متجر مسجّل بهذا الرقم. تأكد من الرقم أو أنشئ متجرك.</p>
         <button class="primary-button full large" type="submit">${icon("store")} دخول لوحة المتجر</button>
-        <p class="merchant-auth__note">${icon("shield")} الدخول متاح لأصحاب المتاجر المسجّلين. لطلب حساب تاجر تواصل مع إدارة دكانجي.</p>
+        <div class="merchant-auth__divider"><span>ليس لديك متجر بعد؟</span></div>
+        <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
+        <p class="merchant-auth__note">${icon("shield")} لمساعدة في الدخول، تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
       </form>
     </div>
   `;
@@ -1608,6 +1659,12 @@ function merchantLogin() {
 function renderMerchant(id) {
   if (!state.merchantAuth) return merchantLogin();
   state.merchantStoreId = Number(id) || state.merchantAuth.storeId || state.merchantStoreId || (stores[0] && stores[0].id);
+  // Pull this store's orders from the cloud once per session so the merchant sees
+  // orders placed from any device (not just this browser).
+  if (!state._merchantOrdersFetched) {
+    state._merchantOrdersFetched = true;
+    loadOrdersFromSupabase(state.merchantStoreId).then(ok => { if (ok) render(); });
+  }
   const store = getMerchantStore();
   const content = {
     overview: merchantOverview,
@@ -1631,7 +1688,16 @@ function renderMerchant(id) {
             <p>${subtitle}</p>
           </div>
           <div class="dashboard-header__actions">
-            <label class="store-switcher" title="اختر المتجر الذي تديره">${icon("store")}<select id="merchant-store-switch">${[...stores].sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s => `<option value="${s.id}" ${s.id === store.id ? "selected" : ""}>${s.name}</option>`).join("")}</select></label>
+            ${(() => {
+              // A merchant only manages the store(s) registered to their own number.
+              const norm = s => (s || "").replace(/\D/g, "");
+              const myPhone = state.merchantAuth?.phone;
+              const owned = myPhone ? stores.filter(s => norm(s.phone) === myPhone || norm(s.whatsapp) === myPhone) : [store];
+              const list = owned.length ? owned : [store];
+              return list.length > 1
+                ? `<label class="store-switcher" title="اختر فرعك">${icon("store")}<select id="merchant-store-switch">${list.sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s => `<option value="${s.id}" ${s.id === store.id ? "selected" : ""}>${s.name}</option>`).join("")}</select></label>`
+                : `<span class="store-switcher store-switcher--single">${icon("store")} ${escAttr(store.name)}</span>`;
+            })()}
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
             <button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button>
             <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
@@ -2399,14 +2465,14 @@ function openJoinModal() {
     <div class="join-modal-head"><span>${icon("store")}</span><div><h2>انضم إلى دكانجي</h2><p>ابدأ باستقبال طلبات جديدة من عملاء منطقتك.</p></div></div>
     <form id="join-form" class="join-form">
       <div class="form-grid">
-        <label><span>اسم المتجر الحقيقي</span><input required placeholder="مثال: متجر الحي"></label>
-        <label><span>تصنيف المتجر</span><select required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option><option>عصائر</option></select></label>
-        <label><span>اسم صاحب المتجر</span><input required placeholder="الاسم الكامل"></label>
-        <label><span>رقم واتساب</span><input required dir="ltr" placeholder="+90 555 000 00 00"></label>
-        <label class="wide"><span>عنوان المتجر</span><input required placeholder="الحي، الشارع، رقم البناء"></label>
+        <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
+        <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option><option>عصائر</option></select></label>
+        <label><span>اسم صاحب المتجر</span><input name="ownerName" autocomplete="name" placeholder="الاسم الكامل"></label>
+        <label><span>رقم واتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">سيكون رقم دخولك للوحة، وعليه تصلك الطلبات.</small></label>
+        <label class="wide"><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
       </div>
-      <div class="review-note">${icon("shield")} <span><strong>طلبك يخضع للمراجعة</strong><small>سيتواصل فريق دكانجي معك للتحقق من البيانات وتفعيل المتجر.</small></span></div>
-      <button class="primary-button full large" type="submit">إرسال طلب الانضمام ${icon("arrowLeft")}</button>
+      <div class="review-note">${icon("store")} <span><strong>متجرك يُنشأ فوراً</strong><small>بعد الإنشاء تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك، ثم يظهر متجرك للعملاء.</small></span></div>
+      <button class="primary-button full large" type="submit">${icon("store")} إنشاء المتجر والدخول</button>
     </form>
   `, "join-modal");
 }
@@ -2414,15 +2480,26 @@ function openJoinModal() {
 function openOrderManager(orderId) {
   const order = state.orders.find(item => item.id === orderId);
   if (!order) return;
-  const statuses = ["تم القبول", "بانتظار الدفع", "قيد التجهيز", "جاهز للاستلام", "خرج للتوصيل", "مكتمل"];
+  const statuses = ["طلب جديد", "تم القبول", "قيد التجهيز", "جاهز للاستلام", "خرج للتوصيل", "مكتمل", "مرفوضة"];
+  if (order.status && !statuses.includes(order.status)) statuses.unshift(order.status);
+  const waNum = (order.customerPhone || "").replace(/\D/g, "");
+  const isDelivery = order.fulfillment !== "pickup";
+  const items = Array.isArray(order.lineItems) ? order.lineItems : [];
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">الطلب ${order.id}</span><h2>إدارة الطلب</h2>
-    <div class="order-manager-summary"><span><small>العميل</small><strong>${order.customer}</strong></span><span><small>الإجمالي</small><strong>${money(order.total)}</strong></span><span><small>المنتجات</small><strong>${order.items}</strong></span></div>
+    <div class="order-manager-summary"><span><small>العميل</small><strong>${escAttr(order.customer)}</strong></span><span><small>الإجمالي</small><strong>${money(order.total)}</strong></span><span><small>النوع</small><strong>${isDelivery ? "توصيل" : "استلام"}</strong></span></div>
+    <div class="order-contact">
+      ${order.customerPhone ? `<div class="order-contact__row">${icon("phone")}<span dir="ltr">${escAttr(order.customerPhone)}</span>${waNum ? `<a class="order-wa-btn" href="https://wa.me/${waNum}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة العميل</a>` : ""}</div>` : `<div class="order-contact__row order-contact__row--muted">${icon("phone")}<span>لا يوجد رقم تواصل للعميل</span></div>`}
+      ${isDelivery ? `<div class="order-contact__row">${icon("pin")}<span>${order.address ? escAttr(order.address) : "لم يُحدَّد عنوان"}${order.addressDetails ? ` — ${escAttr(order.addressDetails)}` : ""}</span></div>${order.deliveryDetails?.roundTripKm != null ? `<div class="order-contact__row">${icon("bike")}<span>المسافة ذهاباً وإياباً ${formatDistance(order.deliveryDetails.roundTripKm)} · رسوم ${money(order.deliveryDetails.fee || 0)}</span></div>` : ""}` : `<div class="order-contact__row">${icon("store")}<span>استلام من المتجر</span></div>`}
+    </div>
+    <div class="order-items-block">
+      <strong class="order-items-title">${icon("box")} تفاصيل الطلب (${items.reduce((s, i) => s + (i.qty || 1), 0) || order.items})</strong>
+      ${items.length ? `<ul class="order-items-list">${items.map(i => `<li><span class="oi-qty">${(i.qty || 1).toLocaleString("ar")}×</span><span class="oi-name">${escAttr(i.name)}${i.options ? `<small>${escAttr(i.options)}</small>` : ""}${i.notes ? `<small class="oi-note">${icon("edit")} ${escAttr(i.notes)}</small>` : ""}</span><b>${money(i.price)}</b></li>`).join("")}</ul>` : `<p class="order-items-empty">تفاصيل الأصناف غير متوفرة لهذا الطلب.</p>`}
+    </div>
     <label class="input-label"><span>تحديث حالة الطلب</span><select id="order-status-select">${statuses.map(status => `<option ${status === order.status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
-    <label class="input-label"><span>ملاحظة للعميل</span><textarea id="order-status-note" placeholder="اكتب رسالة قصيرة تظهر للعميل..."></textarea></label>
-    <div class="review-note">${icon("whatsapp")} <span><strong>إشعار واتساب</strong><small>سيصل تحديث الحالة إلى العميل تلقائياً عند ربط WhatsApp API.</small></span></div>
-    <button class="primary-button full" data-action="save-order-status" data-id="${order.id}">حفظ وإرسال التحديث</button>
+    <label class="input-label"><span>ملاحظة للعميل (اختياري)</span><textarea id="order-status-note" placeholder="اكتب رسالة قصيرة تظهر للعميل..."></textarea></label>
+    <button class="primary-button full" data-action="save-order-status" data-id="${order.id}">${icon("check")} حفظ التحديث</button>
   `, "order-modal");
 }
 
@@ -2459,16 +2536,20 @@ function openProductForm(id) {
   const editing = id ? getProduct(id) : null;
   const store = getMerchantStore();
   const cats = [...new Set(products.filter(p => p.storeId === store.id).map(p => p.category))];
+  const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
+    ? editing.options[0].values.map((v, i) => `${v} | ${editing.options[0].extra?.[i] || 0}`).join("\n")
+    : "";
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${store.name}</span>
     <h2>${editing ? "تعديل منتج" : "إضافة منتج جديد"}</h2>
     <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}">
       <div class="form-grid">
-        <label class="input-label wide"><span>اسم المنتج</span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
-        <label class="input-label"><span>السعر (ل.ت)</span><input name="price" type="number" min="0" step="1" required value="${editing ? editing.price : ""}"></label>
+        <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
+        <label class="input-label"><span>السعر (ل.ت) <i class="req">*</i></span><input name="price" type="number" min="0" step="1" inputmode="numeric" required value="${editing ? editing.price : ""}"></label>
         <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
-        <label class="input-label"><span>التصنيف</span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label"><span>التصنيف <i class="req">*</i></span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label wide"><span>الأحجام والخيارات (اختياري)</span><textarea name="optionLines" rows="3" placeholder="سطر لكل خيار بالصيغة: الاسم | فرق السعر&#10;مثال:&#10;وسط | 0&#10;كبير | 70">${escAttr(optText)}</textarea><small class="field-hint">اتركه فارغاً إن لم يكن للمنتج أحجام. السعر أعلاه هو سعر الخيار الأول.</small></label>
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
           <div class="image-upload-row">
@@ -2727,15 +2808,18 @@ document.addEventListener("click", event => {
   if (action === "edit-product") openProductForm(target.dataset.id);
   if (action === "delete-product") openDeleteProductConfirm(target.dataset.id);
   if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
-  if (action === "fill-merchant-demo") {
-    const f = document.getElementById("merchant-login-form");
-    if (f) { f.username.value = "demo"; f.password.value = "dukkanci2026"; }
-  }
   if (action === "merchant-logout") {
     state.merchantAuth = null;
+    state._merchantOrdersFetched = false;
+    state.orders = [];
     localStorage.removeItem("dukkanci-merchant-auth");
     showToast("تم تسجيل الخروج", "success");
     render();
+  }
+  if (action === "refresh-orders") {
+    state._merchantOrdersFetched = true;
+    showToast("جارٍ تحديث الطلبات...");
+    loadOrdersFromSupabase(state.merchantStoreId).then(ok => { render(); if (ok) showToast("تم تحديث الطلبات", "success"); });
   }
   if (action === "merchant-order-filter") { state.merchantOrderFilter = target.dataset.status; render(); }
   if (action === "create-offer") openOfferForm();
@@ -2774,6 +2858,7 @@ document.addEventListener("change", event => {
   if (event.target.id === "merchant-store-switch") {
     state.merchantStoreId = Number(event.target.value);
     state.merchantProductSearch = "";
+    state._merchantOrdersFetched = false;
     saveState();
     render();
   }
@@ -2875,6 +2960,17 @@ document.addEventListener("submit", event => {
   }
   if (event.target.id === "merchant-product-form") {
     const f = event.target;
+    // Parse optional size/option lines ("الاسم | فرق السعر") into one option group.
+    let options = [];
+    const optLines = (f.optionLines?.value || "").trim();
+    if (optLines) {
+      const values = [], extra = [];
+      optLines.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
+        const [label, p] = line.split("|").map(x => (x || "").trim());
+        if (label) { values.push(label); extra.push(Math.max(0, Math.round(Number(p) || 0))); }
+      });
+      if (values.length > 1) options = [{ name: "الحجم", values, extra }];
+    }
     const data = {
       name: f.name.value.trim(),
       price: Math.max(0, Math.round(Number(f.price.value) || 0)),
@@ -2882,7 +2978,8 @@ document.addEventListener("submit", event => {
       category: f.category.value.trim() || "منتجات",
       image: (f.imageData.value || f.image.value.trim()) || "/assets/photos/store-market.jpg",
       description: f.description.value.trim(),
-      available: f.available.checked
+      available: f.available.checked,
+      options
     };
     if (!data.name) { showToast("يرجى إدخال اسم المنتج"); return; }
     if (f.dataset.id) {
@@ -2936,17 +3033,31 @@ document.addEventListener("submit", event => {
       showToast(totals.quote?.exceedsMaxDistance ? "العنوان خارج نطاق توصيل هذا المتجر" : "تعذر حساب التوصيل لهذا العنوان");
       return;
     }
-    const finalTotal = totals.subtotal + (event.target.elements.fulfillment.value === "pickup" ? 0 : totals.delivery);
+    const isPickup = event.target.elements.fulfillment.value === "pickup";
+    const finalTotal = totals.subtotal + (isPickup ? 0 : totals.delivery);
     const storeId = state.cart[0].storeId;
+    const addrObj = isPickup ? null : (getCheckoutAddress(event.target.elements.address.value) || getDefaultAddress());
+    // Snapshot exactly what was ordered so the merchant can fulfil it.
+    const lineItems = state.cart.map(it => {
+      const p = getProduct(it.productId);
+      return { name: p ? p.name : "منتج", qty: it.quantity, price: it.finalPrice, options: it.optionsText || "", notes: it.notes || "" };
+    });
     const newOrder = {
-      id: `DK-${1050 + state.orders.length}`,
+      id: `DK-${Date.now().toString().slice(-9)}`,
       customer: state.customerProfile.name || "عميل دكانجي",
+      customerPhone: state.customerProfile.phone || "",
       storeId,
       total: finalTotal,
-      status: "بانتظار تأكيد المتجر",
+      status: "طلب جديد",
       time: "الآن",
       items: state.cart.length,
-      deliveryDetails: event.target.elements.fulfillment.value === "delivery" ? totals.quote : null
+      fulfillment: isPickup ? "pickup" : "delivery",
+      address: isPickup ? "" : (addrObj?.address || ""),
+      addressDetails: isPickup ? "" : (addrObj?.details || ""),
+      lineItems,
+      notes: "",
+      deliveryDetails: isPickup ? null : totals.quote,
+      createdAt: new Date().toISOString()
     };
     state.orders.unshift(newOrder);
     pushOrderCloud(newOrder);
@@ -2964,7 +3075,44 @@ document.addEventListener("submit", event => {
     verifyWhatsappOtp(event.target);
   }
   if (event.target.id === "join-form") {
-    closeModal(); showToast("وصل طلب انضمامك وسيتواصل معك فريق دكانجي", "success");
+    const f = new FormData(event.target);
+    const name = (f.get("storeName") || "").toString().trim();
+    const category = (f.get("category") || "").toString().trim();
+    const owner = (f.get("ownerName") || "").toString().trim();
+    const phoneRaw = (f.get("phone") || "").toString().trim();
+    const address = (f.get("address") || "").toString().trim();
+    const norm = s => (s || "").replace(/\D/g, "");
+    const phone = norm(phoneRaw);
+    if (!name || !category || !phone) { showToast("يرجى إكمال الحقول المطلوبة (الاسم، التصنيف، رقم واتساب)"); return; }
+    // If a store already exists for this WhatsApp number, just sign them in.
+    const existing = stores.find(s => norm(s.phone) === phone || norm(s.whatsapp) === phone);
+    if (existing) {
+      state.merchantAuth = { storeId: existing.id, phone };
+      localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
+      state.merchantStoreId = existing.id; state.merchantTab = "overview"; state._merchantOrdersFetched = false;
+      closeModal(); navigate("merchant");
+      showToast("لديك متجر مسجّل بهذا الرقم — تم تسجيل دخولك", "success");
+      return;
+    }
+    const newId = Math.max(0, ...stores.map(s => Number(s.id) || 0)) + 1;
+    const store = {
+      id: newId, name, category, ownerName: owner,
+      logo: name.charAt(0) || "م", image: "/assets/photos/store-market.jpg", coverImage: "/assets/photos/store-market.jpg",
+      logoImage: "", rating: 0, reviews: 0, newStore: true, delivery: 35, minOrder: 0,
+      time: "", distance: 0, location: undefined, mapUrl: "", open: true, featured: false,
+      hasOffer: false, offer: "", description: "", address, phone: phoneRaw, whatsapp: phoneRaw, email: "",
+      website: "", sourceUrl: "", hours: "", areas: address ? [address] : [],
+      fulfillment: "توصيل واستلام", subscription: "احترافي", orderCount: 0, officialStore: false
+    };
+    stores.push(store);
+    pushStoreCloud(store);
+    state.deliverySettings[newId] = { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 };
+    state.merchantAuth = { storeId: newId, phone };
+    localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
+    state.merchantStoreId = newId; state.merchantTab = "store"; state._merchantOrdersFetched = true;
+    saveState(); closeModal(); navigate("merchant");
+    showToast("تم إنشاء متجرك! أكمل بياناته وأضف منتجاتك ليظهر للعملاء", "success");
+    return;
   }
   if (event.target.id === "customer-profile-form") {
     const form = new FormData(event.target);
@@ -2997,19 +3145,22 @@ document.addEventListener("submit", event => {
   }
   if (event.target.id === "merchant-login-form") {
     const f = event.target;
-    const username = f.username.value.trim().toLowerCase();
-    const password = f.password.value;
-    const account = MERCHANT_ACCOUNTS.find(a => a.username === username && a.password === password);
-    if (!account) {
+    const phone = (f.phone.value || "").replace(/\D/g, "");
+    const norm = s => (s || "").replace(/\D/g, "");
+    // Stores are loaded from the cloud, so phone login works on any device.
+    const match = phone && stores.find(s => norm(s.phone) === phone || norm(s.whatsapp) === phone);
+    if (!match) {
       const err = document.getElementById("merchant-login-error");
       if (err) err.hidden = false;
       return;
     }
-    state.merchantAuth = { username: account.username, storeId: account.storeId };
+    state.merchantAuth = { storeId: match.id, phone };
     localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
-    state.merchantStoreId = account.storeId;
+    state.merchantStoreId = match.id;
     state.merchantTab = "overview";
+    state._merchantOrdersFetched = false;
     render();
+    loadOrdersFromSupabase(match.id).then(ok => { if (ok) render(); });
     showToast("مرحباً بك في لوحة متجرك", "success");
     return;
   }
