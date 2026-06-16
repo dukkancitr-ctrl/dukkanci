@@ -7422,6 +7422,22 @@ tbody tr:hover {
     height: 210px;
   }
 
+  /* Wide promo banners (logo + product montage on a solid background): the short cover
+     box crops their edges with object-fit:cover, cutting off the logo/products. Show the
+     full banner by matching the box to the banner's own 1600:600 ratio + object-fit:contain. */
+  .store-cover--banner {
+    height: auto;
+    aspect-ratio: 1600 / 600;
+  }
+
+  .store-cover--banner > img {
+    object-fit: contain;
+  }
+
+  .store-cover--banner .store-cover__gradient {
+    display: none;
+  }
+
   .branch-switcher {
     padding: 17px;
   }
