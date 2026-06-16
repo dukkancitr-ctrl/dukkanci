@@ -116,12 +116,35 @@ const itemsLine = items => (items || []).map(i => `${i.name} ×${i.qty || 1}`).j
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  const c = cfg();
+
+  // This endpoint doubles as the Meta WhatsApp webhook (Hobby plan caps us at 12
+  // serverless functions, so webhook + notify share one file).
+  // GET = verification handshake.
+  if (req.method === "GET") {
+    const q = req.query || {};
+    const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
+    if (q["hub.mode"] === "subscribe" && expected && q["hub.verify_token"] === expected) {
+      res.setHeader("Content-Type", "text/plain");
+      return res.status(200).send(String(q["hub.challenge"] == null ? "" : q["hub.challenge"]));
+    }
+    return res.status(403).end();
+  }
+
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const c = cfg();
+  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+
+  // POST from Meta = delivery statuses / inbound messages. Log and ack.
+  if (body && (body.object === "whatsapp_business_account" || Array.isArray(body.entry))) {
+    try { console.log("[whatsapp-webhook]", JSON.stringify(body).slice(0, 2000)); } catch (e) {}
+    return res.status(200).json({ received: true });
+  }
+
+  // Otherwise this is an order-notification request.
   // Optional shared secret (used when the trigger is a Supabase DB webhook).
   if (c.secret) {
     const got = req.headers["x-notify-secret"] || (req.query && req.query.secret);
@@ -130,8 +153,6 @@ module.exports = async (req, res) => {
   if (!c.token || !c.phoneId) {
     return res.status(200).json({ skipped: true, reason: "whatsapp not configured" });
   }
-
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
   const order = normalizeOrder(body);
   if (!order.id || !order.storeId) return res.status(400).json({ error: "order id/storeId required" });
 

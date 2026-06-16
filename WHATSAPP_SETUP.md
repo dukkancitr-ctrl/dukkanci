@@ -14,7 +14,7 @@
 | الملف | الوظيفة |
 |---|---|
 | `api/notify-order.js` | يرسل رسالتي الطلب (للمتجر + للزبون) عبر Cloud API. يعمل no-op حتى تُضبط المتغيّرات. |
-| `api/whatsapp-webhook.js` | نقطة الـ Webhook للتحقق من الرقم واستقبال حالات التسليم. |
+| `api/notify-order.js` (GET) | يعمل أيضاً كنقطة Webhook للتحقق من الرقم واستقبال حالات التسليم (دُمج لتقليل عدد الدوال — حدّ Hobby 12 دالة). |
 | `app.js` → `notifyOrderWhatsapp()` | يُستدعى بعد حفظ الطلب مباشرة (fire-and-forget، لا يعطّل الطلب). |
 
 ---
@@ -84,7 +84,7 @@ WHATSAPP_VERIFY_TOKEN=<أي نص عشوائي>
 
 ### 6) ربط الـ Webhook (لتأكيد الرقم وحالات التسليم)
 - من **WhatsApp > Configuration > Webhook** → **Edit**:
-  - **Callback URL**: `https://www.dukkanci.com.tr/api/whatsapp-webhook`
+  - **Callback URL**: `https://www.dukkanci.com.tr/api/notify-order`
   - **Verify token**: نفس قيمة `WHATSAPP_VERIFY_TOKEN`.
 - اضغط **Verify and Save** ثم **Subscribe** لحقلي `messages` و`message_template_status_update`.
 
