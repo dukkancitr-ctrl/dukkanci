@@ -870,7 +870,7 @@ function categoryCard(name, image, caption) {
 function storeCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   return `
-    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
+    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""} ${hasBannerCover(store) ? "store-card--banner" : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
         <span class="status-badge ${store.open ? "open" : "closed"}">${store.open ? "مفتوح" : "مغلق الآن"}</span>
