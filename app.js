@@ -1187,7 +1187,7 @@ function renderOffers() {
 // background) as their cover. With object-fit:cover the short mobile box crops the logo
 // and products off the side edges, so we show the full banner instead (see styles.css:
 // .store-cover--banner). Matched by image path so it works for bundled and Supabase data.
-const BANNER_COVER_SLUGS = ["kady", "tihama", "afgan", "nour", "salloura", "ezzedine"];
+const BANNER_COVER_SLUGS = ["kady", "tihama", "afgan", "nour", "salloura", "ezzedine", "sam"];
 function hasBannerCover(store) {
   const src = store.coverImage || store.image || "";
   return BANNER_COVER_SLUGS.some(slug => src.includes(`/photos/${slug}/`));
