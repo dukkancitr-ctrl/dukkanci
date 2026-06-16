@@ -111,7 +111,8 @@ async function sendWhatsapp(c, to, { template, params, text }) {
 }
 
 const money = n => `${Number(n || 0).toLocaleString("ar")} ل.ت`;
-const itemsLine = items => (items || []).map(i => `• ${i.name} ×${i.qty || 1}`).join("\n");
+// Single line — WhatsApp template parameters reject newlines, tabs, and 4+ spaces.
+const itemsLine = items => (items || []).map(i => `${i.name} ×${i.qty || 1}`).join(" • ");
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
