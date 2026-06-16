@@ -475,6 +475,24 @@ function pushOrderCloud(order) {
   };
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
 }
+// Fire-and-forget WhatsApp notification through the platform number: alerts the
+// store of the new order and sends the customer a confirmation. The serverless
+// endpoint no-ops until the WhatsApp number is configured (see api/notify-order.js),
+// so this is safe to call always and never blocks the order flow.
+function notifyOrderWhatsapp(order) {
+  try {
+    fetch("/api/notify-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: order.id, storeId: order.storeId, customer: order.customer,
+        customerPhone: order.customerPhone, total: order.total,
+        fulfillment: order.fulfillment, address: order.address,
+        payment: order.payment, lineItems: order.lineItems
+      })
+    }).catch(() => {});
+  } catch (e) { /* notifications must never break checkout */ }
+}
 function mapDbOrder(r) {
   const dd = (r.delivery_details && typeof r.delivery_details === "object") ? r.delivery_details : {};
   // Legacy rows stored the raw delivery quote directly in delivery_details (no `quote` key).
@@ -1836,6 +1854,12 @@ function adminContent() {
 }
 
 function renderAdmin() {
+  // Pull EVERY store's orders from the cloud once per session so the platform's
+  // reports/totals reflect all activity (not just this browser's local orders).
+  if (!state._adminOrdersFetched) {
+    state._adminOrdersFetched = true;
+    loadOrdersFromSupabase().then(ok => { if (ok) render(); });
+  }
   const content = { overview: adminOverview, stores: adminStores, customers: adminCustomers, orders: adminOrders, complaints: adminComplaints, content: adminContent }[state.adminTab]();
   const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
@@ -3156,6 +3180,7 @@ document.addEventListener("submit", event => {
     state.myOrders.unshift(newOrder);
     state.orders.unshift(newOrder);
     pushOrderCloud(newOrder);
+    notifyOrderWhatsapp(newOrder);
     window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
     const itemCount = newOrder.lineItems.reduce((s, i) => s + (i.qty || 1), 0);
     const etaMin = (deliverySettings.prepMinutes || 20) + (isPickup ? 0 : 25);
