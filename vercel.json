@@ -13,6 +13,8 @@
     { "source": "/store/:id", "destination": "/api/store?id=:id" },
     { "source": "/product/:slug", "destination": "/api/product?slug=:slug" },
     { "source": "/category/:slug", "destination": "/api/category?slug=:slug" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/gizlilik", "destination": "/privacy.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

@@ -145,7 +145,11 @@ http.createServer(async (request, response) => {
     await handleDeliveryQuote(request, response);
     return;
   }
-  const relativePath = requestPath === "/" ? "index.html" : requestPath.replace(/^\/+/, "");
+  // Clean-URL rewrites (mirror vercel.json so dev matches prod).
+  const cleanUrls = { "/privacy": "privacy.html", "/gizlilik": "privacy.html" };
+  const relativePath = requestPath === "/"
+    ? "index.html"
+    : (cleanUrls[requestPath] || requestPath.replace(/^\/+/, ""));
   const filePath = path.resolve(root, relativePath);
 
   if (!filePath.startsWith(root)) {
