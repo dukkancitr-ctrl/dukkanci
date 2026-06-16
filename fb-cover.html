@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<style>
+  @font-face{font-family:'Dubai';src:url('/assets/fonts/Dubai-Bold.ttf') format('truetype');font-weight:700;font-display:block}
+  @font-face{font-family:'Dubai';src:url('/assets/fonts/Dubai-Medium.ttf') format('truetype');font-weight:500;font-display:block}
+  @font-face{font-family:'Dubai';src:url('/assets/fonts/Dubai-Regular.ttf') format('truetype');font-weight:400;font-display:block}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#222}
+  .cover{position:relative;width:1640px;height:608px;overflow:hidden;direction:rtl;
+    background:#fdf7f3;font-family:'Dubai',sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center}
+
+  .watermark{position:absolute;left:-120px;top:50%;transform:translateY(-50%);
+    width:540px;height:540px;opacity:.05}
+  .watermark img{width:100%;height:100%;object-fit:contain}
+  .topbar{position:absolute;top:0;left:0;width:100%;height:8px;background:#e30613}
+  .botbar{position:absolute;bottom:0;left:0;width:100%;height:8px;background:#e30613}
+
+  .logo{position:relative;z-index:2}
+  .logo img{height:232px;width:auto;display:block}
+  .rule{position:relative;z-index:2;width:96px;height:5px;border-radius:3px;background:#e30613;margin:30px 0 26px}
+  .tag{position:relative;z-index:2;font-weight:700;font-size:52px;color:#231f20;letter-spacing:-.5px}
+
+  .foot{position:absolute;z-index:2;bottom:42px;left:0;width:100%;text-align:center;
+    font-weight:500;font-size:25px;color:#8a7f7b}
+  .foot .site{color:#c20512;font-weight:700;direction:ltr;display:inline-block}
+  .foot .dot{margin:0 14px;color:#e0b9b9}
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="topbar"></div>
+    <div class="watermark"><img src="/assets/dukkanci-app-icon-512.png" alt=""></div>
+
+    <div class="logo"><img src="/assets/dukkanci-logo.png" alt="دكانجي"></div>
+    <div class="rule"></div>
+    <div class="tag">سوق الحيّ بين يديك</div>
+
+    <div class="foot">
+      <span>توصيل سريع من متاجر ومطاعم حيّك في إسطنبول</span>
+      <span class="dot">•</span>
+      <span class="site">dukkanci.com.tr</span>
+    </div>
+    <div class="botbar"></div>
+  </div>
+</body>
+</html>
