@@ -120,9 +120,11 @@ module.exports = async (req, res) => {
 
   // This endpoint doubles as the Meta WhatsApp webhook (Hobby plan caps us at 12
   // serverless functions, so webhook + notify share one file).
-  // GET = verification handshake.
+  // GET = verification handshake. Parse the query from req.url with Node's
+  // querystring (keeps the dotted "hub.mode" keys flat — req.query may nest them).
   if (req.method === "GET") {
-    const q = req.query || {};
+    let q = {};
+    try { q = require("url").parse(req.url || "", true).query || {}; } catch (e) { q = req.query || {}; }
     const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
     if (q["hub.mode"] === "subscribe" && expected && q["hub.verify_token"] === expected) {
       res.setHeader("Content-Type", "text/plain");
