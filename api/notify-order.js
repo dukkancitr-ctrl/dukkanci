@@ -126,14 +126,6 @@ module.exports = async (req, res) => {
     let q = {};
     try { q = require("url").parse(req.url || "", true).query || {}; } catch (e) { q = req.query || {}; }
     const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
-    if (q.debug === "1") {
-      return res.status(200).json({
-        modeOk: q["hub.mode"] === "subscribe",
-        expectedLen: expected.length,
-        givenLen: (q["hub.verify_token"] || "").length,
-        match: q["hub.verify_token"] === expected
-      });
-    }
     if (q["hub.mode"] === "subscribe" && expected && q["hub.verify_token"] === expected) {
       res.setHeader("Content-Type", "text/plain");
       return res.status(200).send(String(q["hub.challenge"] == null ? "" : q["hub.challenge"]));
