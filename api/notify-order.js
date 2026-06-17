@@ -257,28 +257,6 @@ module.exports = async (req, res) => {
     return res.status(200).json({ received: true });
   }
 
-  // TEMP one-time: register this phone number on the Cloud API. The number shows
-  // "Pending" in WhatsApp Manager until registered; this calls the /register
-  // endpoint with the env token. Gated by ADMIN_PASSWORD; PIN comes from the
-  // request (never committed). Remove this block once the number is Connected.
-  if (pq.action === "register") {
-    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
-    if (!c.token || !c.phoneId) return res.status(400).json({ error: "whatsapp not configured" });
-    const pin = String(body.pin || pq.pin || "").replace(/\D/g, "");
-    if (pin.length !== 6) return res.status(400).json({ error: "pin must be 6 digits" });
-    try {
-      const r = await fetch(`${GRAPH}/${c.version}/${c.phoneId}/register`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ messaging_product: "whatsapp", pin })
-      });
-      const data = await r.json().catch(() => ({}));
-      return res.status(r.status).json({ ok: r.ok, status: r.status, data });
-    } catch (e) {
-      return res.status(502).json({ error: e.message });
-    }
-  }
-
   // Admin inbox writes (password-gated).
   if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
