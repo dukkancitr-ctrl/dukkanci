@@ -191,6 +191,7 @@ const state = {
   merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
+  adminContentSection: null,
   adminKey: sessionStorage.getItem("dukkanci-admin-key") || null,
   adminThreads: [],
   adminActiveWa: null,
@@ -1872,7 +1873,31 @@ function adminComplaints() {
 }
 
 function adminContent() {
-  return `<div class="content-management-grid">${[["megaphone", "بنرات الصفحة الرئيسية", "إدارة الصور الإعلانية وترتيب ظهورها"], ["filter", "التصنيفات", "ترتيب وإخفاء تصنيفات المتاجر"], ["star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية"], ["wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات"], ["edit", "النصوص الرئيسية", "تعديل نصوص صفحات المنصة"], ["users", "صفحة انضم كتاجر", "تعديل المحتوى ومتطلبات الانضمام"]].map(item => `<article class="dashboard-card"><span>${icon(item[0])}</span><h3>${item[1]}</h3><p>${item[2]}</p><button class="secondary-button compact" data-action="toast" data-message="تم فتح قسم ${item[1]}">إدارة القسم ${icon("arrowLeft")}</button></article>`).join("")}</div>`;
+  if (state.adminContentSection === "featured") return adminContentFeatured();
+  // [key, icon, title, subtitle, built]
+  const cards = [
+    ["banners", "megaphone", "بنرات الصفحة الرئيسية", "إدارة الصور الإعلانية وترتيب ظهورها", false],
+    ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات المتاجر", false],
+    ["featured", "star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية", true],
+    ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات", false],
+    ["texts", "edit", "النصوص الرئيسية", "تعديل نصوص صفحات المنصة", false],
+    ["join", "users", "صفحة انضم كتاجر", "تعديل المحتوى ومتطلبات الانضمام", false]
+  ];
+  return `<div class="content-management-grid">${cards.map(c => `<article class="dashboard-card"><span>${icon(c[1])}</span><h3>${c[2]}</h3><p>${c[3]}</p>${c[4] ? `<button class="secondary-button compact" data-action="content-section" data-section="${c[0]}">إدارة القسم ${icon("arrowLeft")}</button>` : `<button class="secondary-button compact" data-action="toast" data-message="قسم «${c[2]}» قيد الإنشاء — سيُفعَّل قريباً">قريباً</button>`}</article>`).join("")}</div>`;
+}
+
+// Content > Featured stores: pick which stores appear in the homepage "متاجر
+// مميزة" section. Toggling sets store.featured and persists it to the cloud
+// (pushStoreCloud), so every visitor sees the change — mirrors toggle-product.
+function adminContentFeatured() {
+  const list = stores.slice().sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || String(a.name).localeCompare(String(b.name), "ar"));
+  const count = stores.filter(s => s.featured).length;
+  return `
+    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>المتاجر المميزة على الصفحة الرئيسية</h3><p>المتاجر المختارة تظهر في قسم «متاجر مميزة بالقرب منك». المختار حالياً: ${count.toLocaleString("ar")}</p></div></div>
+      <div class="admin-store-list">${list.map(s => `<article>${storeAvatar(s)}<div style="flex:1 1 auto;min-width:0"><strong>${escAttr(s.name)}</strong><small>${escAttr(s.category || "")}</small></div><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="toggle-featured" data-id="${s.id}" ${s.featured ? "checked" : ""}><b>${s.featured ? "⭐ مميّز" : "عادي"}</b></label></article>`).join("")}</div>
+    </section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -3078,7 +3103,9 @@ document.addEventListener("click", event => {
     saveState(); render(); showToast("تم حذف الشكوى", "success");
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
-  if (action === "admin-tab") { state.adminTab = target.dataset.tab; render(); }
+  if (action === "admin-tab") { state.adminTab = target.dataset.tab; state.adminContentSection = null; render(); }
+  if (action === "content-section") { state.adminContentSection = target.dataset.section; render(); }
+  if (action === "content-back") { state.adminContentSection = null; render(); }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
   if (action === "route-home") navigate("home");
@@ -3228,6 +3255,15 @@ document.addEventListener("change", event => {
     pushProductCloud(product);
     showToast(`أصبح المنتج ${product.available ? "متوفراً" : "غير متوفر"}`, "success");
     render();
+  }
+  if (event.target.dataset.action === "toggle-featured") {
+    const store = getStore(event.target.dataset.id);
+    if (store) {
+      store.featured = event.target.checked;
+      pushStoreCloud(store);
+      showToast(`${store.name}: ${store.featured ? "أصبح مميّزاً على الرئيسية" : "أُزيل من المميّزة"}`, "success");
+      render();
+    }
   }
 });
 
