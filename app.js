@@ -1003,16 +1003,23 @@ const HOME_CATEGORIES = [
   ["مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان"],
   ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"]
 ];
-function homeCategoriesOrdered() {
+// The editable homepage categories. From site_settings.categories.items when
+// set (admin add/delete/edit), else built from the HOME_CATEGORIES defaults
+// (honoring any older hidden/order config). Each item = {name, image, caption, hidden}.
+function categoriesList() {
   const cfg = (state.siteSettings && state.siteSettings.categories) || {};
+  if (Array.isArray(cfg.items) && cfg.items.length) return cfg.items.filter(c => c && c.name);
   const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
   const order = Array.isArray(cfg.order) ? cfg.order : [];
-  const list = HOME_CATEGORIES.slice();
-  if (order.length) list.sort((a, b) => {
-    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+  const base = HOME_CATEGORIES.map(c => ({ name: c[0], image: c[1], caption: c[2], hidden: hidden.has(c[0]) }));
+  if (order.length) base.sort((a, b) => {
+    const ia = order.indexOf(a.name), ib = order.indexOf(b.name);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  return list.filter(c => !hidden.has(c[0]));
+  return base;
+}
+function homeCategoriesOrdered() {
+  return categoriesList().filter(c => !c.hidden);
 }
 
 function renderHome() {
@@ -1080,7 +1087,7 @@ function renderHome() {
           <a href="#stores" data-route="stores">عرض كل المتاجر ${icon("arrowLeft")}</a>
         </div>
         <div class="category-grid">
-          ${homeCategoriesOrdered().map(c => categoryCard(c[0], c[1], c[2])).join("")}
+          ${homeCategoriesOrdered().map(c => categoryCard(c.name, c.image, c.caption)).join("")}
         </div>
       </div>
     </section>
@@ -2020,27 +2027,43 @@ function adminContentForm(sectionKey) {
 }
 // Content > التصنيفات: show/hide + reorder the homepage category tiles.
 function adminContentCategories() {
-  const cfg = (state.siteSettings && state.siteSettings.categories) || {};
-  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
-  const order = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : HOME_CATEGORIES.map(c => c[0]);
-  const all = HOME_CATEGORIES.slice().sort((a, b) => {
-    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
+  const items = categoriesList();
   return `
     <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
     <section class="dashboard-card">
-      <div class="card-heading"><div><h3>تصنيفات الصفحة الرئيسية</h3><p>أظهِر/أخفِ التصنيفات ورتّبها كما تظهر في «ماذا تحتاج اليوم؟».</p></div></div>
-      <div class="admin-store-list">${all.map((c, i) => `<article>
-        <span class="avatar-mini"><img src="${c[1]}" alt=""></span>
-        <div style="flex:1 1 auto;min-width:0"><strong>${escAttr(c[0])}</strong><small>${escAttr(c[2])}</small></div>
-        <span style="display:flex;gap:.25rem">
-          <button class="table-action" data-action="cat-move" data-name="${escAttr(c[0])}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="تحريك لأعلى">▲</button>
-          <button class="table-action" data-action="cat-move" data-name="${escAttr(c[0])}" data-dir="down" ${i === all.length - 1 ? "disabled" : ""} aria-label="تحريك لأسفل">▼</button>
+      <div class="card-heading"><div><h3>تصنيفات الصفحة الرئيسية</h3><p>أضِف أو احذف تصنيفاً، عدّل اسمه أو صورته، أظهِره/أخفِه، ورتّبه — كما يظهر في «ماذا تحتاج اليوم؟».</p></div>
+        <button class="primary-button compact" data-action="cat-add">${icon("plus")} إضافة تصنيف</button></div>
+      <div class="admin-store-list">${items.length ? items.map((c, i) => `<article>
+        <span class="avatar-mini">${c.image ? `<img src="${escAttr(c.image)}" alt="">` : icon("box")}</span>
+        <div style="flex:1 1 auto;min-width:0"><strong>${escAttr(c.name || "")}</strong><small>${escAttr(c.caption || "")}</small></div>
+        <span style="display:flex;gap:.25rem;align-items:center;flex-wrap:wrap">
+          <button class="table-action" data-action="cat-move" data-index="${i}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="تحريك لأعلى">▲</button>
+          <button class="table-action" data-action="cat-move" data-index="${i}" data-dir="down" ${i === items.length - 1 ? "disabled" : ""} aria-label="تحريك لأسفل">▼</button>
+          <button class="table-action" data-action="cat-edit" data-index="${i}" aria-label="تعديل">${icon("edit")}</button>
+          <button class="table-action danger" data-action="cat-delete" data-index="${i}" aria-label="حذف">${icon("trash")}</button>
+          <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="toggle-category" data-index="${i}" ${c.hidden ? "" : "checked"}><b>${c.hidden ? "مخفي" : "ظاهر"}</b></label>
         </span>
-        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="toggle-category" data-name="${escAttr(c[0])}" ${hidden.has(c[0]) ? "" : "checked"}><b>${hidden.has(c[0]) ? "مخفي" : "ظاهر"}</b></label>
-      </article>`).join("")}</div>
+      </article>`).join("") : `<div class="empty-managed">${icon("filter")}<p>لا توجد تصنيفات بعد. اضغط «إضافة تصنيف».</p></div>`}</div>
     </section>`;
+}
+// Add/edit a single homepage category (name, caption, image upload).
+function openCategoryEditModal(index) {
+  const items = categoriesList();
+  const editing = (index != null && index >= 0 && items[index]) ? items[index] : null;
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">التصنيفات</span><h2>${editing ? "تعديل تصنيف" : "إضافة تصنيف"}</h2>
+    <form id="category-form" data-index="${index != null && index >= 0 ? index : ""}" class="form-grid">
+      <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف</span><input name="name" value="${escAttr(editing ? editing.name : "")}" required placeholder="مثال: خضار وفواكه"></label>
+      <label class="input-label" style="grid-column:1/-1"><span>وصف قصير</span><input name="caption" value="${escAttr(editing ? editing.caption : "")}" placeholder="مثال: طازج يومياً"></label>
+      <input type="hidden" name="image" value="${escAttr(editing ? editing.image : "")}">
+      <div class="input-label" style="grid-column:1/-1"><span>صورة التصنيف</span>
+        <div class="image-preview" id="category-image-preview">${editing && editing.image ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+        <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="category-image-file" accept="image/*" hidden></label>
+      </div>
+      <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ التصنيف</button>
+    </form>
+  `, "");
 }
 // Persist a content setting (optimistic local update + re-render, then save via
 // the admin server endpoint). Used by the categories toggles/reorder.
@@ -3275,12 +3298,17 @@ document.addEventListener("click", event => {
   if (action === "content-section") { state.adminContentSection = target.dataset.section; render(); }
   if (action === "content-back") { state.adminContentSection = null; render(); }
   if (action === "cat-move") {
-    const name = target.dataset.name, dir = target.dataset.dir;
-    const cfg = { ...((state.siteSettings && state.siteSettings.categories) || {}) };
-    let order = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order.slice() : HOME_CATEGORIES.map(c => c[0]);
-    HOME_CATEGORIES.forEach(c => { if (!order.includes(c[0])) order.push(c[0]); });
-    const i = order.indexOf(name), j = dir === "up" ? i - 1 : i + 1;
-    if (i >= 0 && j >= 0 && j < order.length) { const t = order[i]; order[i] = order[j]; order[j] = t; cfg.order = order; saveContentSetting("categories", cfg); }
+    const i = Number(target.dataset.index), dir = target.dataset.dir;
+    const items = categoriesList().map(c => ({ ...c }));
+    const j = dir === "up" ? i - 1 : i + 1;
+    if (i >= 0 && j >= 0 && j < items.length) { const t = items[i]; items[i] = items[j]; items[j] = t; saveContentSetting("categories", { items }); }
+  }
+  if (action === "cat-add") openCategoryEditModal(null);
+  if (action === "cat-edit") openCategoryEditModal(Number(target.dataset.index));
+  if (action === "cat-delete") {
+    const i = Number(target.dataset.index);
+    const items = categoriesList().map(c => ({ ...c }));
+    if (items[i] && confirm(`حذف التصنيف "${items[i].name}"؟`)) { items.splice(i, 1); saveContentSetting("categories", { items }); showToast("تم حذف التصنيف", "success"); }
   }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
@@ -3442,12 +3470,21 @@ document.addEventListener("change", event => {
     }
   }
   if (event.target.dataset.action === "toggle-category") {
-    const name = event.target.dataset.name;
-    const cfg = { ...((state.siteSettings && state.siteSettings.categories) || {}) };
-    const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
-    if (event.target.checked) hidden.delete(name); else hidden.add(name);
-    cfg.hidden = [...hidden];
-    saveContentSetting("categories", cfg);
+    const i = Number(event.target.dataset.index);
+    const items = categoriesList().map(c => ({ ...c }));
+    if (items[i]) { items[i].hidden = !event.target.checked; saveContentSetting("categories", { items }); }
+  }
+  if (event.target.id === "category-image-file") {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const form = event.target.closest("form");
+    const preview = document.getElementById("category-image-preview");
+    if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
+    readImageFileResized(file).then(dataUrl => {
+      const imgInput = form.querySelector('[name="image"]'); if (imgInput) imgInput.value = dataUrl;
+      if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      showToast(`تم اختيار "${file.name}"`, "success");
+    }).catch(() => { if (preview) preview.innerHTML = icon("box"); showToast("تعذّر رفع الصورة، جرّب صورة أخرى", ""); });
   }
 });
 
@@ -3566,6 +3603,24 @@ document.addEventListener("submit", event => {
     adminApi("save-settings", { method: "POST", body: { key: cfg.key, value } })
       .then(() => { state.siteSettings = { ...state.siteSettings, [cfg.key]: value }; showToast("تم الحفظ بنجاح", "success"); render(); })
       .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
+    return;
+  }
+  if (event.target.id === "category-form") {
+    const f = event.target;
+    const val = n => (f.querySelector(`[name="${n}"]`)?.value || "").trim();
+    const name = val("name");
+    if (!name) return;
+    const image = (f.querySelector('[name="image"]')?.value || "");
+    const items = categoriesList().map(c => ({ ...c }));
+    const idxRaw = f.dataset.index;
+    if (idxRaw !== "" && idxRaw != null && items[Number(idxRaw)]) {
+      items[Number(idxRaw)] = { ...items[Number(idxRaw)], name, caption: val("caption"), image };
+    } else {
+      items.push({ name, caption: val("caption"), image, hidden: false });
+    }
+    closeModal();
+    saveContentSetting("categories", { items });
+    showToast("تم حفظ التصنيف", "success");
     return;
   }
   if (event.target.id === "product-form") {
