@@ -121,6 +121,8 @@ const REPLY_OFFERS = `🎁 لمشاهدة أحدث العروض والخصوما
 const REPLY_STORES = `🏪 لتصفّح المتاجر والأقسام المتوفرة قرب عنوانك، افتح:\n${SITE_URL}\nمطاعم وبقالات ومتاجر متنوّعة بين يديك. 🛍️`;
 const REPLY_SUPPORT = `💬 نحن هنا لمساعدتك! اكتب استفسارك في رسالة وسيردّ عليك فريق دعم دكانجي في أقرب وقت.\nويمكنك تصفّح الأسئلة الشائعة على: ${SITE_URL}`;
 const REPLY_MERCHANT = `🤝 يسعدنا انضمامك كتاجر في دكانجي!\nأرسل لنا اسم متجرك ونوع نشاطه ومنطقته، وسيتواصل معك فريقنا لإتمام الإضافة وبدء استقبال الطلبات. 🚀`;
+const REPLY_WELCOME = `أهلاً بك في دكانجي! 🛍️\nسوق الحي بين يديك — متاجر ومطاعم وبقالات حيّك في إسطنبول.\nكيف نساعدك؟ اكتب «/» لرؤية الخيارات السريعة، أو أخبرنا باستفسارك وسيردّ فريقنا. 🌟`;
+const REPLY_AWAY = `شكراً لتواصلك مع دكانجي! 🌙\nفريقنا خارج أوقات العمل حالياً (نعمل يومياً ٩ صباحاً–١١ مساءً بتوقيت إسطنبول)، وسنردّ فور بدء الدوام.\nوللطلب في أي وقت، الموقع متاح على مدار الساعة: ${SITE_URL}`;
 
 const COMMAND_REPLIES = {
   "/order": REPLY_ORDER, "/track": REPLY_TRACK, "/delivery": REPLY_DELIVERY,
@@ -151,6 +153,26 @@ async function sendAutoReply(to, text) {
   }, "return=minimal");
 }
 
+// Dukkanci WhatsApp support hours (Istanbul = UTC+3, no DST): open 09:00–23:00.
+function isOutsideHours() {
+  const h = (new Date().getUTCHours() + 3) % 24;
+  return h < 9 || h >= 23;
+}
+// For unrecognized messages (those needing a human), greet a new conversation or
+// send an out-of-hours notice — once per new conversation (first message, or the
+// first after a 12h gap) so we never spam. Needs DB access to detect "new"; if it
+// is unavailable we skip rather than send blindly.
+async function maybeGreetOrAway(wa_id, timestamp) {
+  const ts = timestamp ? new Date(Number(timestamp) * 1000).toISOString() : new Date().toISOString();
+  const recent = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&direction=eq.in&created_at=lt.${encodeURIComponent(ts)}&select=created_at&order=created_at.desc&limit=1`);
+  if (!Array.isArray(recent)) return;
+  const previous = recent[0];
+  const NEW_SESSION_MS = 12 * 60 * 60 * 1000;
+  const isNew = !previous || (Date.now() - new Date(previous.created_at).getTime() > NEW_SESSION_MS);
+  if (!isNew) return;
+  await sendAutoReply(wa_id, isOutsideHours() ? REPLY_AWAY : REPLY_WELCOME);
+}
+
 // Persist inbound messages + delivery-status updates from a Meta webhook event.
 async function ingestWebhook(body) {
   const entries = Array.isArray(body.entry) ? body.entry : [];
@@ -179,6 +201,7 @@ async function ingestWebhook(body) {
         if (!dup && d.type === "text" && m.from) {
           const reply = autoReplyFor(d.body);
           if (reply) { try { await sendAutoReply(m.from, reply); } catch (e) {} }
+          else { try { await maybeGreetOrAway(m.from, m.timestamp); } catch (e) {} }
         }
       }
       // Delivery/read statuses for messages we sent.
