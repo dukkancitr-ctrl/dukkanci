@@ -450,6 +450,18 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, id: sent.id });
   }
 
+  // Admin: save editable site content (e.g. the subscription plan) into the
+  // public site_settings table. Admin-gated; writes with the service-role key
+  // (bypasses RLS — the table is public-read only, no public write).
+  if (pq.action === "save-settings") {
+    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    const key = String(body.key || "").trim();
+    if (!key) return res.status(400).json({ error: "key required" });
+    const r = await sbWrite("POST", "site_settings?on_conflict=key", { key, value: body.value, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true });
+  }
+
   // Admin inbox writes (password-gated).
   if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });

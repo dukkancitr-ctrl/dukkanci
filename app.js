@@ -192,6 +192,7 @@ const state = {
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   adminTab: "overview",
   adminContentSection: null,
+  siteSettings: {},
   adminKey: sessionStorage.getItem("dukkanci-admin-key") || null,
   adminThreads: [],
   adminActiveWa: null,
@@ -589,9 +590,27 @@ async function loadOrdersFromSupabase(storeId) {
 }
 async function initCatalog() {
   await window.__supabaseReady;
+  loadSiteSettings();
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
   else { applyProductPersistence(); render(); }
+}
+
+// Load editable site content (subscription plan, etc.) from the public
+// `site_settings` table into state.siteSettings. Defensive + non-blocking: any
+// failure (table missing, offline, RLS) leaves siteSettings empty so the UI
+// falls back to its built-in defaults — it never breaks the catalog or page.
+async function loadSiteSettings() {
+  const sb = window.supabaseClient;
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from("site_settings").select("key,value");
+    if (error || !Array.isArray(data)) return;
+    const map = {};
+    data.forEach(r => { map[r.key] = r.value; });
+    state.siteSettings = map;
+    render();
+  } catch (e) { /* keep defaults */ }
 }
 
 // ---- Google sign-in via Supabase Auth ----
@@ -1701,14 +1720,21 @@ function merchantStore() {
 }
 
 function merchantSubscription() {
+  const p = (state.siteSettings && state.siteSettings.plan) || {};
+  const name = p.name || "الخطة الاحترافية";
+  const tagline = p.tagline || "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.";
+  const price = (p.price != null && p.price !== "") ? p.price : "499";
+  const period = p.period || "ل.ت / شهرياً";
+  const features = (Array.isArray(p.features) && p.features.length) ? p.features
+    : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
   return `
     <div class="subscription-hero dashboard-card">
-      <div><span class="status-pill green">اشتراك نشط</span><h2>الخطة الاحترافية</h2><p>كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.</p></div>
-      <div class="subscription-price"><strong>499</strong><span>ل.ت / شهرياً</span></div>
+      <div><span class="status-pill green">اشتراك نشط</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
+      <div class="subscription-price"><strong>${escAttr(String(price))}</strong><span>${escAttr(period)}</span></div>
     </div>
     <div class="subscription-details">
       <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3><div class="detail-list"><span><small>تاريخ البداية</small><strong>30 مايو 2026</strong></span><span><small>تاريخ الانتهاء</small><strong>30 يوليو 2026</strong></span><span><small>التجديد</small><strong>يدوي</strong></span><span><small>طريقة الدفع</small><strong>iyzico</strong></span></div><button class="primary-button full" data-action="toast" data-message="سيتم ربط الدفع عبر iyzico عند إضافة مفاتيح الحساب">تجديد الاشتراك</button></section>
-      <section class="dashboard-card"><h3>مزايا خطتك</h3><ul class="feature-list"><li>${icon("check")} استقبال طلبات غير محدودة</li><li>${icon("check")} رفع المنتجات عبر CSV</li><li>${icon("check")} عروض وخصومات</li><li>${icon("check")} تقارير شهرية عبر واتساب</li><li>${icon("check")} ظهور مميز في نتائج البحث</li></ul></section>
+      <section class="dashboard-card"><h3>مزايا خطتك</h3><ul class="feature-list">${features.map(f => `<li>${icon("check")} ${escAttr(f)}</li>`).join("")}</ul></section>
     </div>
   `;
 }
@@ -1874,16 +1900,40 @@ function adminComplaints() {
 
 function adminContent() {
   if (state.adminContentSection === "featured") return adminContentFeatured();
+  if (state.adminContentSection === "plans") return adminContentPlans();
   // [key, icon, title, subtitle, built]
   const cards = [
     ["banners", "megaphone", "بنرات الصفحة الرئيسية", "إدارة الصور الإعلانية وترتيب ظهورها", false],
     ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات المتاجر", false],
     ["featured", "star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية", true],
-    ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات", false],
+    ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات", true],
     ["texts", "edit", "النصوص الرئيسية", "تعديل نصوص صفحات المنصة", false],
     ["join", "users", "صفحة انضم كتاجر", "تعديل المحتوى ومتطلبات الانضمام", false]
   ];
   return `<div class="content-management-grid">${cards.map(c => `<article class="dashboard-card"><span>${icon(c[1])}</span><h3>${c[2]}</h3><p>${c[3]}</p>${c[4] ? `<button class="secondary-button compact" data-action="content-section" data-section="${c[0]}">إدارة القسم ${icon("arrowLeft")}</button>` : `<button class="secondary-button compact" data-action="toast" data-message="قسم «${c[2]}» قيد الإنشاء — سيُفعَّل قريباً">قريباً</button>`}</article>`).join("")}</div>`;
+}
+
+// Content > Plans & pricing: edit the subscription plan shown to merchants on
+// the "الاشتراك" page. Saved to site_settings.plan via the admin server
+// endpoint (service-role write), then reflected for everyone.
+function adminContentPlans() {
+  const p = (state.siteSettings && state.siteSettings.plan) || {};
+  const v = (k, d) => escAttr(p[k] != null && p[k] !== "" ? String(p[k]) : d);
+  const features = (Array.isArray(p.features) && p.features.length) ? p.features
+    : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
+  return `
+    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>خطة الاشتراك والسعر</h3><p>تظهر للتجار في صفحة «الاشتراك». أي تعديل يُحفظ ويظهر للجميع فوراً.</p></div></div>
+      <form id="admin-plan-form" class="form-grid">
+        <label class="input-label"><span>اسم الخطة</span><input name="name" value="${v("name", "الخطة الاحترافية")}" required></label>
+        <label class="input-label"><span>السعر</span><input name="price" value="${v("price", "499")}" inputmode="numeric"></label>
+        <label class="input-label"><span>وحدة السعر</span><input name="period" value="${v("period", "ل.ت / شهرياً")}"></label>
+        <label class="input-label" style="grid-column:1/-1"><span>وصف مختصر</span><input name="tagline" value="${v("tagline", "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.")}"></label>
+        <label class="input-label" style="grid-column:1/-1"><span>المزايا (ميزة واحدة في كل سطر)</span><textarea name="features" rows="6">${escAttr(features.join("\n"))}</textarea></label>
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ الخطة</button>
+      </form>
+    </section>`;
 }
 
 // Content > Featured stores: pick which stores appear in the homepage "متاجر
@@ -3352,6 +3402,23 @@ document.addEventListener("submit", event => {
     if (!text) return;
     if (input) input.value = "";
     sendAdminReply(text);
+    return;
+  }
+  if (event.target.id === "admin-plan-form") {
+    const f = event.target;
+    const val = n => (f.querySelector(`[name="${n}"]`)?.value || "");
+    const value = {
+      name: val("name").trim(),
+      price: val("price").trim(),
+      period: val("period").trim(),
+      tagline: val("tagline").trim(),
+      features: val("features").split("\n").map(s => s.trim()).filter(Boolean)
+    };
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    adminApi("save-settings", { method: "POST", body: { key: "plan", value } })
+      .then(() => { state.siteSettings = { ...state.siteSettings, plan: value }; showToast("تم حفظ الخطة بنجاح", "success"); render(); })
+      .catch(() => { showToast("تعذّر حفظ الخطة", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ الخطة`; } });
     return;
   }
   if (event.target.id === "product-form") {
