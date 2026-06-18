@@ -498,6 +498,22 @@ function notifyOrderWhatsapp(order) {
     }).catch(() => {});
   } catch (e) { /* notifications must never break checkout */ }
 }
+// Notify the customer of an order STATUS change (confirmed, preparing, ready,
+// out for delivery, completed, rejected) through the platform number. Sends the
+// `order_status_update` template; fire-and-forget so a status save never blocks.
+function notifyOrderStatusWhatsapp(order, note) {
+  try {
+    const store = getStore(order.storeId);
+    fetch("/api/notify-order?action=status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: order.id, customerPhone: order.customerPhone,
+        storeName: store ? store.name : "المتجر", status: order.status, note: note || ""
+      })
+    }).catch(() => {});
+  } catch (e) { /* notifications must never break the dashboard */ }
+}
 function mapDbOrder(r) {
   const dd = (r.delivery_details && typeof r.delivery_details === "object") ? r.delivery_details : {};
   // Legacy rows stored the raw delivery quote directly in delivery_details (no `quote` key).
@@ -3070,9 +3086,15 @@ document.addEventListener("click", event => {
   if (action === "view-order") showToast(`تم فتح الطلب ${target.dataset.id}`);
   if (action === "save-order-status") {
     const order = state.orders.find(item => item.id === target.dataset.id);
-    order.status = document.getElementById("order-status-select").value;
+    const prevStatus = order.status;
+    const newStatus = document.getElementById("order-status-select").value;
+    const note = (document.getElementById("order-status-note")?.value || "").trim();
+    order.status = newStatus;
     pushOrderCloud(order);
-    saveState(); closeModal(); render(); showToast("تم تحديث حالة الطلب وإعداد إشعار العميل", "success");
+    // Tell the customer on real status changes (skip the initial states they were
+    // already acked for at checkout).
+    if (newStatus !== prevStatus && !["طلب جديد", "بانتظار الدفع"].includes(newStatus)) notifyOrderStatusWhatsapp(order, note);
+    saveState(); closeModal(); render(); showToast("تم تحديث حالة الطلب وإشعار العميل", "success");
   }
   if (action === "approve-store" || action === "reject-store") {
     target.closest("article").remove();

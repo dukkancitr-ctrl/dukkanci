@@ -31,6 +31,7 @@ function cfg() {
     lang: env("WHATSAPP_TEMPLATE_LANG") || "ar",
     tplStore: env("WHATSAPP_TEMPLATE_STORE"),
     tplCustomer: env("WHATSAPP_TEMPLATE_CUSTOMER"),
+    tplStatus: env("WHATSAPP_TEMPLATE_STATUS") || "order_status_update",
     secret: env("NOTIFY_SECRET")
   };
 }
@@ -190,6 +191,23 @@ const money = n => `${Number(n || 0).toLocaleString("ar")} ل.ت`;
 // Single line — WhatsApp template parameters reject newlines, tabs, and 4+ spaces.
 const itemsLine = items => (items || []).map(i => `${i.name} ×${i.qty || 1}`).join(" • ");
 
+// Default customer-facing line for each order status, used when the merchant
+// leaves the note blank. Mirrors the statuses in app.js's order manager.
+function statusMessage(status) {
+  const m = {
+    "تم القبول": "تم قبول طلبك وسيبدأ تجهيزه قريباً.",
+    "قيد التجهيز": "يجري تجهيز طلبك الآن.",
+    "جاهز للاستلام": "طلبك جاهز للاستلام من المتجر.",
+    "خرج للتوصيل": "طلبك في الطريق إليك الآن.",
+    "مكتمل": "تم إكمال طلبك. شكراً لاستخدامك دكانجي!",
+    "تم التوصيل": "تم توصيل طلبك. شكراً لاستخدامك دكانجي!",
+    "تم الاستلام": "تم تسليم طلبك. شكراً لاستخدامك دكانجي!",
+    "مرفوضة": "نعتذر، تعذّر على المتجر قبول طلبك حالياً. للاستفسار تواصل معنا.",
+    "ملغى": "تم إلغاء طلبك. لأي استفسار تواصل معنا."
+  };
+  return m[status] || ("حالة طلبك الآن: " + status + ".");
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const c = cfg();
@@ -255,6 +273,26 @@ module.exports = async (req, res) => {
   if (body && (body.object === "whatsapp_business_account" || Array.isArray(body.entry))) {
     try { await ingestWebhook(body); } catch (e) { try { console.error("[whatsapp-webhook] ingest", e.message); } catch (_) {} }
     return res.status(200).json({ received: true });
+  }
+
+  // Customer order-status notification: the merchant advanced the order, so tell
+  // the customer the new status. Business-initiated → uses the approved
+  // `order_status_update` template. The merchant client sends the order id,
+  // customer phone, store name, the new status, and an optional note.
+  if (pq.action === "status") {
+    if (!c.token || !c.phoneId) return res.status(200).json({ skipped: true, reason: "whatsapp not configured" });
+    const id = String(body.id || "").trim();
+    const status = String(body.status || "").trim();
+    if (!id || !status) return res.status(400).json({ error: "id and status required" });
+    const custTo = toE164(body.customerPhone || "", c.cc);
+    if (!custTo) return res.status(200).json({ skipped: true, reason: "no customer phone" });
+    const storeName = String(body.storeName || "المتجر").trim();
+    const note = String(body.note || "").replace(/\s+/g, " ").trim();
+    const line = note || statusMessage(status);
+    const params = [id, storeName, status, line];
+    const sent = await sendWhatsapp(c, custTo, { template: c.tplStatus, params, text: `تحديث طلبك ${id} من ${storeName}: ${status}. ${line}` });
+    if (!sent.ok) return res.status(502).json({ error: "send failed", detail: sent.error });
+    return res.status(200).json({ ok: true, id: sent.id });
   }
 
   // Admin inbox writes (password-gated).
