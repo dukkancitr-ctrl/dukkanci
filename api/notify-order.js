@@ -108,6 +108,49 @@ function describeMessage(m) {
   return { type: t, body: `[${t}]` };
 }
 
+// Canned auto-replies for the WhatsApp Manager commands + ice breakers. The
+// customer taps a command (e.g. "/delivery") or an ice breaker, it arrives here
+// as an inbound message, and we reply instantly with the matching info. Sent as
+// free-form text — allowed because the customer just messaged (24h service
+// window). Unrecognized messages get no auto-reply (the team answers from the inbox).
+const SITE_URL = "https://www.dukkanci.com.tr";
+const REPLY_ORDER = `🛒 لطلب من دكانجي:\n1) افتح الموقع: ${SITE_URL}\n2) اختر متجرك والمنتجات وأضِفها إلى السلة.\n3) أكمل الطلب واختر التوصيل أو الاستلام من المتجر.\nستصلك رسالة تأكيد فور إرسال الطلب، وتحديثات حالته أولاً بأول. 🌟`;
+const REPLY_TRACK = `📦 لتتبّع طلبك:\n• افتح «طلباتي» في الموقع لمتابعة الحالة لحظياً.\n• أو أرسل لنا رقم طلبك (مثل DK-1234567) وسنوافيك بحالته.\nوتصلك تحديثات الحالة تلقائياً عبر واتساب عند كل مرحلة. 🚚`;
+const REPLY_DELIVERY = `🚚 التوصيل في دكانجي:\n• يُحسب حسب المسافة بين المتجر وعنوانك، وتظهر الرسوم والوقت المتوقّع بدقّة عند إتمام الطلب.\n• نخدم أحياء إسطنبول، ويختلف النطاق حسب كل متجر.\n• يمكنك أيضاً الاستلام من المتجر مجاناً. 🏪`;
+const REPLY_OFFERS = `🎁 لمشاهدة أحدث العروض والخصومات، افتح قسم «العروض» في الموقع:\n${SITE_URL}\nتتجدّد العروض باستمرار فتابعنا! ✨`;
+const REPLY_STORES = `🏪 لتصفّح المتاجر والأقسام المتوفرة قرب عنوانك، افتح:\n${SITE_URL}\nمطاعم وبقالات ومتاجر متنوّعة بين يديك. 🛍️`;
+const REPLY_SUPPORT = `💬 نحن هنا لمساعدتك! اكتب استفسارك في رسالة وسيردّ عليك فريق دعم دكانجي في أقرب وقت.\nويمكنك تصفّح الأسئلة الشائعة على: ${SITE_URL}`;
+const REPLY_MERCHANT = `🤝 يسعدنا انضمامك كتاجر في دكانجي!\nأرسل لنا اسم متجرك ونوع نشاطه ومنطقته، وسيتواصل معك فريقنا لإتمام الإضافة وبدء استقبال الطلبات. 🚀`;
+
+const COMMAND_REPLIES = {
+  "/order": REPLY_ORDER, "/track": REPLY_TRACK, "/delivery": REPLY_DELIVERY,
+  "/offers": REPLY_OFFERS, "/stores": REPLY_STORES, "/support": REPLY_SUPPORT, "/merchant": REPLY_MERCHANT
+};
+const ICEBREAKER_REPLIES = {
+  "كيف أطلب من دكانجي؟": REPLY_ORDER,
+  "ما هي مناطق التوصيل والرسوم؟": REPLY_DELIVERY,
+  "أين وصل طلبي؟": REPLY_TRACK,
+  "أريد إضافة متجري إلى دكانجي": REPLY_MERCHANT
+};
+function autoReplyFor(raw) {
+  const text = String(raw == null ? "" : raw).trim();
+  if (!text) return null;
+  const first = text.split(/\s+/)[0].toLowerCase();          // "/delivery" from "/delivery من فضلك"
+  if (first.charAt(0) === "/" && COMMAND_REPLIES[first]) return COMMAND_REPLIES[first];
+  return ICEBREAKER_REPLIES[text.replace(/\s+/g, " ")] || null;
+}
+// Send a free-form auto-reply to the customer and log it to the inbox thread.
+async function sendAutoReply(to, text) {
+  const c = cfg();
+  if (!c.token || !c.phoneId) return;
+  const sent = await sendWhatsapp(c, to, { text });
+  await sbWrite("POST", "whatsapp_messages", {
+    wa_id: to, direction: "out", body: text, msg_type: "text",
+    wam_id: sent.id || null, status: sent.ok ? "sent" : "failed",
+    error: sent.ok ? null : JSON.stringify(sent.error || "").slice(0, 500)
+  }, "return=minimal");
+}
+
 // Persist inbound messages + delivery-status updates from a Meta webhook event.
 async function ingestWebhook(body) {
   const entries = Array.isArray(body.entry) ? body.entry : [];
@@ -120,7 +163,7 @@ async function ingestWebhook(body) {
       // Inbound customer messages.
       for (const m of (v.messages || [])) {
         const d = describeMessage(m);
-        await sbWrite("POST", "whatsapp_messages?on_conflict=wam_id", {
+        const ins = await sbWrite("POST", "whatsapp_messages?on_conflict=wam_id", {
           wa_id: m.from,
           contact_name: nameByWa[m.from] || null,
           direction: "in",
@@ -128,7 +171,15 @@ async function ingestWebhook(body) {
           msg_type: d.type,
           wam_id: m.id,
           created_at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined
-        }, "resolution=ignore-duplicates,return=minimal");
+        }, "resolution=ignore-duplicates,return=representation");
+        // Auto-reply to recognized commands / ice breakers. Skip only when the
+        // insert succeeded but stored nothing (a duplicate webhook retry) so we
+        // never reply twice; if storage is unavailable we still reply.
+        const dup = ins && ins.ok && Array.isArray(ins.rows) && ins.rows.length === 0;
+        if (!dup && d.type === "text" && m.from) {
+          const reply = autoReplyFor(d.body);
+          if (reply) { try { await sendAutoReply(m.from, reply); } catch (e) {} }
+        }
       }
       // Delivery/read statuses for messages we sent.
       for (const s of (v.statuses || [])) {
