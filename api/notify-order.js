@@ -173,13 +173,12 @@ async function maybeGreetOrAway(wa_id, timestamp) {
   await sendAutoReply(wa_id, isOutsideHours() ? REPLY_AWAY : REPLY_WELCOME);
 }
 
-// AI auto-reply (Claude). Answers free-text customer questions about Dukkanci.
-// Single Messages-API call over raw fetch (no SDK dep — matches the rest of this
-// file). Model defaults to claude-opus-4-8, overridable via WHATSAPP_AI_MODEL
-// (set it to claude-haiku-4-5 for a faster/cheaper customer-service bot). No
-// thinking/effort params: keeps replies fast and works on any model. Returns the
-// reply text, or null when the key is unset / the call fails / Claude refuses —
-// callers fall back to the static welcome/away message.
+// AI auto-reply (OpenAI / ChatGPT). Answers free-text customer questions about
+// Dukkanci. Single Chat Completions call over raw fetch (no SDK dep — matches the
+// rest of this file). Model defaults to gpt-4o-mini (cheap + fast, well-suited to
+// a customer-service bot), overridable via OPENAI_MODEL. Returns the reply text,
+// or null when the key is unset / the call fails — callers fall back to the
+// static welcome/away message.
 const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عملاء لمنصّة دكانجي — سوق الحي الإلكتروني في إسطنبول يجمع متاجر ومطاعم وبقالات الحيّ للطلب مع التوصيل أو الاستلام.
 أسلوبك: ردّ بإيجاز ووضوح وودّ (جملتان إلى ثلاث كحد أقصى)، وبنفس لغة العميل (عربية غالباً، وقد تكون تركية أو إنجليزية).
 تساعد في: كيفية الطلب، التوصيل والاستلام ومناطقه ورسومه، تصفّح المتاجر والأقسام، العروض، وانضمام التجار، والأسئلة العامة عن المنصة.
@@ -191,36 +190,36 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 - للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
 أجب مباشرةً بالرسالة النهائية فقط دون شرح طريقة تفكيرك.`;
 async function aiReply(text, wa_id, timestamp) {
-  const key = env("ANTHROPIC_API_KEY");
+  const key = env("OPENAI_API_KEY");
   if (!key) return null;
-  const model = env("WHATSAPP_AI_MODEL") || "claude-opus-4-8";
-  // Light conversation context (prior messages, oldest→newest) when the DB is available.
-  let messages = [];
+  const model = env("OPENAI_MODEL") || "gpt-4o-mini";
+  // OpenAI takes the system prompt as the first message. Add light conversation
+  // context (prior messages, oldest→newest) when the DB is available.
+  const messages = [{ role: "system", content: AI_SYSTEM }];
   try {
     const ts = timestamp ? new Date(Number(timestamp) * 1000).toISOString() : new Date().toISOString();
     const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&created_at=lt.${encodeURIComponent(ts)}&select=direction,body&order=created_at.desc&limit=8`);
     if (Array.isArray(rows)) {
-      const hist = rows.reverse()
-        .map(r => ({ role: r.direction === "in" ? "user" : "assistant", content: String(r.body || "").slice(0, 1000) }))
-        .filter(m => m.content);
-      while (hist.length && hist[0].role !== "user") hist.shift(); // first turn must be user
-      messages = hist;
+      rows.reverse().forEach(r => {
+        const content = String(r.body || "").slice(0, 1000);
+        if (content) messages.push({ role: r.direction === "in" ? "user" : "assistant", content });
+      });
     }
   } catch (e) { /* no history → stateless reply */ }
   messages.push({ role: "user", content: String(text == null ? "" : text).slice(0, 2000) });
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000); // keep the webhook within serverless limits
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 500, system: AI_SYSTEM, messages }),
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, max_tokens: 500, temperature: 0.4, messages }),
       signal: ctrl.signal
     });
     const data = await r.json().catch(() => null);
-    if (!r.ok || !data || data.stop_reason === "refusal") return null;
-    const block = Array.isArray(data.content) ? data.content.find(b => b.type === "text") : null;
-    const out = block && block.text ? block.text.trim() : "";
+    if (!r.ok || !data) return null;
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    const out = msg && msg.content ? String(msg.content).trim() : "";
     return out || null;
   } catch (e) {
     return null;
