@@ -1848,7 +1848,7 @@ function adminOverview() {
 
 function adminStores() {
   return `
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث باسم المتجر أو صاحبه"></div><div class="toolbar-actions"><button class="secondary-button compact">${icon("filter")} تصفية</button><button class="secondary-button compact" data-action="export-csv" data-kind="stores">${icon("download")} تصدير Excel</button></div></div>
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-store-search" placeholder="ابحث باسم المتجر أو صاحبه"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="stores">${icon("download")} تصدير Excel</button></div></div>
     <section class="dashboard-card admin-store-list">
       ${stores.map(store => `<article>${storeAvatar(store)}<div><strong>${store.name}</strong><small>${store.category}${store.address && store.address.includes("،") ? " · " + store.address.split("،").pop().trim() : ""}</small></div><span class="status-pill ${store.open ? "green" : "gray"}">${store.open ? "نشط" : "متوقف"}</span><span><small>الاشتراك</small><strong>${store.subscription || "احترافي"}</strong></span><span><small>الطلبات</small><strong>${(store.orderCount ?? 0).toLocaleString("ar")}</strong></span><button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`).join("")}
     </section>
@@ -1863,7 +1863,7 @@ function adminCustomers() {
 }
 
 function adminOrders() {
-  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في كل الطلبات"></div><div class="toolbar-actions"><button class="secondary-button compact">${icon("calendar")} التاريخ</button><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div></div><section class="dashboard-card orders-table-card">${renderOrdersTable(state.orders, "admin")}</section>`;
+  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-order-search" placeholder="ابحث في كل الطلبات"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div></div><section class="dashboard-card orders-table-card">${renderOrdersTable(state.orders, "admin")}</section>`;
 }
 
 function adminComplaints() {
@@ -3083,7 +3083,7 @@ document.addEventListener("click", event => {
   if (action === "wa-refresh") loadAdminThreads(false);
   if (action === "route-home") navigate("home");
   if (action === "manage-order") openOrderManager(target.dataset.id);
-  if (action === "view-order") showToast(`تم فتح الطلب ${target.dataset.id}`);
+  if (action === "view-order") openOrderManager(target.dataset.id);
   if (action === "save-order-status") {
     const order = state.orders.find(item => item.id === target.dataset.id);
     const prevStatus = order.status;
@@ -3238,6 +3238,18 @@ document.addEventListener("input", event => {
     document.querySelectorAll(".orders-table-card tbody tr").forEach(row => {
       const text = normalizeAr(row.textContent);
       row.style.display = !q || text.includes(q) ? "" : "none";
+    });
+  }
+  if (event.target.id === "admin-order-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".orders-table-card tbody tr").forEach(row => {
+      row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
+    });
+  }
+  if (event.target.id === "admin-store-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".admin-store-list article").forEach(card => {
+      card.style.display = !q || normalizeAr(card.textContent).includes(q) ? "" : "none";
     });
   }
   if (event.target.name === "image" && event.target.closest("#merchant-product-form")) {
