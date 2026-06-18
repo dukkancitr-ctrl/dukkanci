@@ -992,6 +992,29 @@ function productCard(product) {
   `;
 }
 
+// Homepage category tiles ("ماذا تحتاج اليوم؟"). Editable via Content >
+// التصنيفات (show/hide + reorder); the chosen order/hidden set lives in
+// site_settings.categories. Falls back to all six in default order.
+const HOME_CATEGORIES = [
+  ["سوبر ماركت", "/assets/photos/store-market.jpg", "كل احتياجات البيت"],
+  ["مطاعم", "/assets/photos/store-restaurant.jpg", "ألذ الأطباق إلى بابك"],
+  ["ملاحم", "/assets/photos/store-butcher.jpg", "لحوم طازجة يومياً"],
+  ["حلويات", "/assets/photos/store-bakery.jpg", "لأحلى المناسبات"],
+  ["مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان"],
+  ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"]
+];
+function homeCategoriesOrdered() {
+  const cfg = (state.siteSettings && state.siteSettings.categories) || {};
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const list = HOME_CATEGORIES.slice();
+  if (order.length) list.sort((a, b) => {
+    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  return list.filter(c => !hidden.has(c[0]));
+}
+
 function renderHome() {
   // For brands with several branches, surface the branch nearest the visitor's
   // location (from geolocation) instead of a fixed "main" branch — on desktop and
@@ -1002,13 +1025,27 @@ function renderHome() {
   // so "متاجر مميزة بالقرب منك" is literally true.
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
   const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 4);
+  const HT = (state.siteSettings && state.siteSettings.heroTexts) || {};
+  const ht = {
+    eyebrow: HT.eyebrow || "كل ما تحتاجه من دكاكين حيك",
+    titleTop: HT.titleTop || "سوق الحي",
+    titleEm: HT.titleEm || "بين يديك",
+    subtitle: HT.subtitle || "اطلب خضارك الطازجة، حلوياتك المفضلة واحتياجات البيت من متاجر تعرفها وتثق بها."
+  };
+  const HB = (state.siteSettings && state.siteSettings.homeBanner) || {};
+  const hb = {
+    eyebrow: HB.eyebrow || "عروض لا تفوّت",
+    title: HB.title || "وفّر أكثر على طلباتك اليومية",
+    subtitle: HB.subtitle || "خصومات مختارة من متاجر الحي، تتجدد باستمرار.",
+    button: HB.button || "شاهد كل العروض"
+  };
   return `
     <section class="hero">
       <div class="container hero__grid">
         <div class="hero__content">
-          <span class="eyebrow"><span></span> كل ما تحتاجه من دكاكين حيك</span>
-          <h1>سوق الحي<br><em>بين يديك</em></h1>
-          <p>اطلب خضارك الطازجة، حلوياتك المفضلة واحتياجات البيت من متاجر تعرفها وتثق بها.</p>
+          <span class="eyebrow"><span></span> ${escAttr(ht.eyebrow)}</span>
+          <h1>${escAttr(ht.titleTop)}<br><em>${escAttr(ht.titleEm)}</em></h1>
+          <p>${escAttr(ht.subtitle)}</p>
           <div class="hero-search">
             ${icon("search")}
             <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${state.search}">
@@ -1043,12 +1080,7 @@ function renderHome() {
           <a href="#stores" data-route="stores">عرض كل المتاجر ${icon("arrowLeft")}</a>
         </div>
         <div class="category-grid">
-          ${categoryCard("سوبر ماركت", "/assets/photos/store-market.jpg", "كل احتياجات البيت")}
-          ${categoryCard("مطاعم", "/assets/photos/store-restaurant.jpg", "ألذ الأطباق إلى بابك")}
-          ${categoryCard("ملاحم", "/assets/photos/store-butcher.jpg", "لحوم طازجة يومياً")}
-          ${categoryCard("حلويات", "/assets/photos/store-bakery.jpg", "لأحلى المناسبات")}
-          ${categoryCard("مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان")}
-          ${categoryCard("عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات")}
+          ${homeCategoriesOrdered().map(c => categoryCard(c[0], c[1], c[2])).join("")}
         </div>
       </div>
     </section>
@@ -1067,10 +1099,10 @@ function renderHome() {
       <div class="container">
         <div class="offers-banner">
           <div class="offers-banner__copy">
-            <span class="eyebrow light"><span></span> عروض لا تفوّت</span>
-            <h2>وفّر أكثر على<br>طلباتك اليومية</h2>
-            <p>خصومات مختارة من متاجر الحي، تتجدد باستمرار.</p>
-            <a href="#offers" data-route="offers" class="light-button">شاهد كل العروض ${icon("arrowLeft")}</a>
+            <span class="eyebrow light"><span></span> ${escAttr(hb.eyebrow)}</span>
+            <h2>${escAttr(hb.title)}</h2>
+            <p>${escAttr(hb.subtitle)}</p>
+            <a href="#offers" data-route="offers" class="light-button">${escAttr(hb.button)} ${icon("arrowLeft")}</a>
           </div>
           <div class="offer-products">
             ${offerProducts.slice(0, 2).map(product => `
@@ -1901,14 +1933,18 @@ function adminComplaints() {
 function adminContent() {
   if (state.adminContentSection === "featured") return adminContentFeatured();
   if (state.adminContentSection === "plans") return adminContentPlans();
+  if (state.adminContentSection === "categories") return adminContentCategories();
+  if (state.adminContentSection === "banners") return adminContentForm("banner");
+  if (state.adminContentSection === "texts") return adminContentForm("hero");
+  if (state.adminContentSection === "join") return adminContentForm("join");
   // [key, icon, title, subtitle, built]
   const cards = [
-    ["banners", "megaphone", "بنرات الصفحة الرئيسية", "إدارة الصور الإعلانية وترتيب ظهورها", false],
-    ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات المتاجر", false],
+    ["banners", "megaphone", "بنرات الصفحة الرئيسية", "تعديل نصوص بنر العروض في الرئيسية", true],
+    ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات الرئيسية", true],
     ["featured", "star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية", true],
-    ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والبنرات", true],
-    ["texts", "edit", "النصوص الرئيسية", "تعديل نصوص صفحات المنصة", false],
-    ["join", "users", "صفحة انضم كتاجر", "تعديل المحتوى ومتطلبات الانضمام", false]
+    ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والمزايا", true],
+    ["texts", "edit", "النصوص الرئيسية", "تعديل نصوص الهيرو في الصفحة الرئيسية", true],
+    ["join", "users", "صفحة انضم كتاجر", "تعديل نصوص نافذة الانضمام", true]
   ];
   return `<div class="content-management-grid">${cards.map(c => `<article class="dashboard-card"><span>${icon(c[1])}</span><h3>${c[2]}</h3><p>${c[3]}</p>${c[4] ? `<button class="secondary-button compact" data-action="content-section" data-section="${c[0]}">إدارة القسم ${icon("arrowLeft")}</button>` : `<button class="secondary-button compact" data-action="toast" data-message="قسم «${c[2]}» قيد الإنشاء — سيُفعَّل قريباً">قريباً</button>`}</article>`).join("")}</div>`;
 }
@@ -1934,6 +1970,84 @@ function adminContentPlans() {
         <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ الخطة</button>
       </form>
     </section>`;
+}
+
+// Generic editor for text content sections (banner, hero, join). Each saves
+// its fields to site_settings[key]; the matching render point reads
+// state.siteSettings[key] with these `def` values as fallbacks, so the live
+// site is unchanged until something is actually edited.
+const CONTENT_SECTIONS = {
+  hero: {
+    title: "نصوص الصفحة الرئيسية (الهيرو)", key: "heroTexts",
+    fields: [
+      { name: "eyebrow", label: "النص العلوي الصغير", def: "كل ما تحتاجه من دكاكين حيك" },
+      { name: "titleTop", label: "العنوان — السطر الأول", def: "سوق الحي" },
+      { name: "titleEm", label: "العنوان — الكلمة المميّزة", def: "بين يديك" },
+      { name: "subtitle", label: "الوصف", def: "اطلب خضارك الطازجة، حلوياتك المفضلة واحتياجات البيت من متاجر تعرفها وتثق بها.", area: true }
+    ]
+  },
+  banner: {
+    title: "بنر العروض في الصفحة الرئيسية", key: "homeBanner",
+    fields: [
+      { name: "eyebrow", label: "النص العلوي الصغير", def: "عروض لا تفوّت" },
+      { name: "title", label: "العنوان", def: "وفّر أكثر على طلباتك اليومية" },
+      { name: "subtitle", label: "الوصف", def: "خصومات مختارة من متاجر الحي، تتجدد باستمرار.", area: true },
+      { name: "button", label: "نص الزر", def: "شاهد كل العروض" }
+    ]
+  },
+  join: {
+    title: "نافذة «انضم كتاجر»", key: "joinPage",
+    fields: [
+      { name: "title", label: "العنوان", def: "انضم إلى دكانجي" },
+      { name: "subtitle", label: "الوصف", def: "ابدأ باستقبال طلبات جديدة من عملاء منطقتك." },
+      { name: "note", label: "ملاحظة بعد الإنشاء", def: "بعد الإنشاء تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك، ثم يظهر متجرك للعملاء.", area: true }
+    ]
+  }
+};
+function adminContentForm(sectionKey) {
+  const cfg = CONTENT_SECTIONS[sectionKey];
+  const saved = (state.siteSettings && state.siteSettings[cfg.key]) || {};
+  const v = f => escAttr(saved[f.name] != null && saved[f.name] !== "" ? String(saved[f.name]) : f.def);
+  return `
+    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>${cfg.title}</h3><p>التعديل يُحفظ ويظهر لكل الزوّار فوراً.</p></div></div>
+      <form id="content-edit-form" data-section="${sectionKey}" class="form-grid">
+        ${cfg.fields.map(f => `<label class="input-label" style="grid-column:1/-1"><span>${f.label}</span>${f.area ? `<textarea name="${f.name}" rows="3">${v(f)}</textarea>` : `<input name="${f.name}" value="${v(f)}">`}</label>`).join("")}
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ</button>
+      </form>
+    </section>`;
+}
+// Content > التصنيفات: show/hide + reorder the homepage category tiles.
+function adminContentCategories() {
+  const cfg = (state.siteSettings && state.siteSettings.categories) || {};
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : HOME_CATEGORIES.map(c => c[0]);
+  const all = HOME_CATEGORIES.slice().sort((a, b) => {
+    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  return `
+    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>تصنيفات الصفحة الرئيسية</h3><p>أظهِر/أخفِ التصنيفات ورتّبها كما تظهر في «ماذا تحتاج اليوم؟».</p></div></div>
+      <div class="admin-store-list">${all.map((c, i) => `<article>
+        <span class="avatar-mini"><img src="${c[1]}" alt=""></span>
+        <div style="flex:1 1 auto;min-width:0"><strong>${escAttr(c[0])}</strong><small>${escAttr(c[2])}</small></div>
+        <span style="display:flex;gap:.25rem">
+          <button class="table-action" data-action="cat-move" data-name="${escAttr(c[0])}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="تحريك لأعلى">▲</button>
+          <button class="table-action" data-action="cat-move" data-name="${escAttr(c[0])}" data-dir="down" ${i === all.length - 1 ? "disabled" : ""} aria-label="تحريك لأسفل">▼</button>
+        </span>
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="toggle-category" data-name="${escAttr(c[0])}" ${hidden.has(c[0]) ? "" : "checked"}><b>${hidden.has(c[0]) ? "مخفي" : "ظاهر"}</b></label>
+      </article>`).join("")}</div>
+    </section>`;
+}
+// Persist a content setting (optimistic local update + re-render, then save via
+// the admin server endpoint). Used by the categories toggles/reorder.
+function saveContentSetting(key, value) {
+  state.siteSettings = { ...state.siteSettings, [key]: value };
+  render();
+  adminApi("save-settings", { method: "POST", body: { key, value } }).catch(() => showToast("تعذّر الحفظ سحابياً", ""));
 }
 
 // Content > Featured stores: pick which stores appear in the homepage "متاجر
@@ -2851,9 +2965,13 @@ function openLoginModal() {
 }
 
 function openJoinModal() {
+  const jp = (state.siteSettings && state.siteSettings.joinPage) || {};
+  const jTitle = jp.title || "انضم إلى دكانجي";
+  const jSub = jp.subtitle || "ابدأ باستقبال طلبات جديدة من عملاء منطقتك.";
+  const jNote = jp.note || "بعد الإنشاء تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك، ثم يظهر متجرك للعملاء.";
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <div class="join-modal-head"><span>${icon("store")}</span><div><h2>انضم إلى دكانجي</h2><p>ابدأ باستقبال طلبات جديدة من عملاء منطقتك.</p></div></div>
+    <div class="join-modal-head"><span>${icon("store")}</span><div><h2>${escAttr(jTitle)}</h2><p>${escAttr(jSub)}</p></div></div>
     <form id="join-form" class="join-form">
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
@@ -2862,7 +2980,7 @@ function openJoinModal() {
         <label><span>رقم واتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">سيكون رقم دخولك للوحة، وعليه تصلك الطلبات.</small></label>
         <label class="wide"><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
       </div>
-      <div class="review-note">${icon("store")} <span><strong>متجرك يُنشأ فوراً</strong><small>بعد الإنشاء تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك، ثم يظهر متجرك للعملاء.</small></span></div>
+      <div class="review-note">${icon("store")} <span><strong>متجرك يُنشأ فوراً</strong><small>${escAttr(jNote)}</small></span></div>
       <button class="primary-button full large" type="submit">${icon("store")} إنشاء المتجر والدخول</button>
     </form>
   `, "join-modal");
@@ -3156,6 +3274,14 @@ document.addEventListener("click", event => {
   if (action === "admin-tab") { state.adminTab = target.dataset.tab; state.adminContentSection = null; render(); }
   if (action === "content-section") { state.adminContentSection = target.dataset.section; render(); }
   if (action === "content-back") { state.adminContentSection = null; render(); }
+  if (action === "cat-move") {
+    const name = target.dataset.name, dir = target.dataset.dir;
+    const cfg = { ...((state.siteSettings && state.siteSettings.categories) || {}) };
+    let order = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order.slice() : HOME_CATEGORIES.map(c => c[0]);
+    HOME_CATEGORIES.forEach(c => { if (!order.includes(c[0])) order.push(c[0]); });
+    const i = order.indexOf(name), j = dir === "up" ? i - 1 : i + 1;
+    if (i >= 0 && j >= 0 && j < order.length) { const t = order[i]; order[i] = order[j]; order[j] = t; cfg.order = order; saveContentSetting("categories", cfg); }
+  }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
   if (action === "route-home") navigate("home");
@@ -3315,6 +3441,14 @@ document.addEventListener("change", event => {
       render();
     }
   }
+  if (event.target.dataset.action === "toggle-category") {
+    const name = event.target.dataset.name;
+    const cfg = { ...((state.siteSettings && state.siteSettings.categories) || {}) };
+    const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+    if (event.target.checked) hidden.delete(name); else hidden.add(name);
+    cfg.hidden = [...hidden];
+    saveContentSetting("categories", cfg);
+  }
 });
 
 document.addEventListener("input", event => {
@@ -3419,6 +3553,19 @@ document.addEventListener("submit", event => {
     adminApi("save-settings", { method: "POST", body: { key: "plan", value } })
       .then(() => { state.siteSettings = { ...state.siteSettings, plan: value }; showToast("تم حفظ الخطة بنجاح", "success"); render(); })
       .catch(() => { showToast("تعذّر حفظ الخطة", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ الخطة`; } });
+    return;
+  }
+  if (event.target.id === "content-edit-form") {
+    const f = event.target;
+    const cfg = CONTENT_SECTIONS[f.dataset.section];
+    if (!cfg) return;
+    const value = {};
+    cfg.fields.forEach(fld => { value[fld.name] = (f.querySelector(`[name="${fld.name}"]`)?.value || "").trim(); });
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    adminApi("save-settings", { method: "POST", body: { key: cfg.key, value } })
+      .then(() => { state.siteSettings = { ...state.siteSettings, [cfg.key]: value }; showToast("تم الحفظ بنجاح", "success"); render(); })
+      .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
     return;
   }
   if (event.target.id === "product-form") {
