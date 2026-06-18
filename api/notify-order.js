@@ -173,6 +173,62 @@ async function maybeGreetOrAway(wa_id, timestamp) {
   await sendAutoReply(wa_id, isOutsideHours() ? REPLY_AWAY : REPLY_WELCOME);
 }
 
+// AI auto-reply (Claude). Answers free-text customer questions about Dukkanci.
+// Single Messages-API call over raw fetch (no SDK dep — matches the rest of this
+// file). Model defaults to claude-opus-4-8, overridable via WHATSAPP_AI_MODEL
+// (set it to claude-haiku-4-5 for a faster/cheaper customer-service bot). No
+// thinking/effort params: keeps replies fast and works on any model. Returns the
+// reply text, or null when the key is unset / the call fails / Claude refuses —
+// callers fall back to the static welcome/away message.
+const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عملاء لمنصّة دكانجي — سوق الحي الإلكتروني في إسطنبول يجمع متاجر ومطاعم وبقالات الحيّ للطلب مع التوصيل أو الاستلام.
+أسلوبك: ردّ بإيجاز ووضوح وودّ (جملتان إلى ثلاث كحد أقصى)، وبنفس لغة العميل (عربية غالباً، وقد تكون تركية أو إنجليزية).
+تساعد في: كيفية الطلب، التوصيل والاستلام ومناطقه ورسومه، تصفّح المتاجر والأقسام، العروض، وانضمام التجار، والأسئلة العامة عن المنصة.
+إرشادات مهمة:
+- للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
+- لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
+- لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
+- لا تطلب أبداً بيانات حساسة (أرقام بطاقات، كلمات مرور، رموز).
+- للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
+أجب مباشرةً بالرسالة النهائية فقط دون شرح طريقة تفكيرك.`;
+async function aiReply(text, wa_id, timestamp) {
+  const key = env("ANTHROPIC_API_KEY");
+  if (!key) return null;
+  const model = env("WHATSAPP_AI_MODEL") || "claude-opus-4-8";
+  // Light conversation context (prior messages, oldest→newest) when the DB is available.
+  let messages = [];
+  try {
+    const ts = timestamp ? new Date(Number(timestamp) * 1000).toISOString() : new Date().toISOString();
+    const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&created_at=lt.${encodeURIComponent(ts)}&select=direction,body&order=created_at.desc&limit=8`);
+    if (Array.isArray(rows)) {
+      const hist = rows.reverse()
+        .map(r => ({ role: r.direction === "in" ? "user" : "assistant", content: String(r.body || "").slice(0, 1000) }))
+        .filter(m => m.content);
+      while (hist.length && hist[0].role !== "user") hist.shift(); // first turn must be user
+      messages = hist;
+    }
+  } catch (e) { /* no history → stateless reply */ }
+  messages.push({ role: "user", content: String(text == null ? "" : text).slice(0, 2000) });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000); // keep the webhook within serverless limits
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model, max_tokens: 500, system: AI_SYSTEM, messages }),
+      signal: ctrl.signal
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !data || data.stop_reason === "refusal") return null;
+    const block = Array.isArray(data.content) ? data.content.find(b => b.type === "text") : null;
+    const out = block && block.text ? block.text.trim() : "";
+    return out || null;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Persist inbound messages + delivery-status updates from a Meta webhook event.
 async function ingestWebhook(body) {
   const entries = Array.isArray(body.entry) ? body.entry : [];
@@ -200,8 +256,14 @@ async function ingestWebhook(body) {
         const dup = ins && ins.ok && Array.isArray(ins.rows) && ins.rows.length === 0;
         if (!dup && d.type === "text" && m.from) {
           const reply = autoReplyFor(d.body);
-          if (reply) { try { await sendAutoReply(m.from, reply); } catch (e) {} }
-          else { try { await maybeGreetOrAway(m.from, m.timestamp); } catch (e) {} }
+          if (reply) {
+            try { await sendAutoReply(m.from, reply); } catch (e) {}     // command / ice breaker → static
+          } else {
+            let ai = null;
+            try { ai = await aiReply(d.body, m.from, m.timestamp); } catch (e) {}  // free text → AI
+            if (ai) { try { await sendAutoReply(m.from, ai); } catch (e) {} }
+            else { try { await maybeGreetOrAway(m.from, m.timestamp); } catch (e) {} }  // fallback
+          }
         }
       }
       // Delivery/read statuses for messages we sent.
