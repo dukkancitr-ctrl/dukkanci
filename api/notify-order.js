@@ -356,26 +356,6 @@ module.exports = async (req, res) => {
     let q = {};
     try { q = require("url").parse(req.url || "", true).query || {}; } catch (e) { q = req.query || {}; }
 
-    // TEMP diagnostic: verify the OpenAI key works (returns status only, never the
-    // key). Gated by the webhook verify token via the x-diag header. Remove after debugging.
-    if (q.action === "ai-ping") {
-      if (String(req.headers["x-diag"] || "") !== (process.env.WHATSAPP_VERIFY_TOKEN || "").trim()) return res.status(403).json({ error: "unauthorized" });
-      const okey = env("OPENAI_API_KEY");
-      const omodel = env("OPENAI_MODEL") || "gpt-4o-mini";
-      if (!okey) return res.status(200).json({ openaiKeySet: false, whatsappTokenSet: !!c.token });
-      try {
-        const rr = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${okey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: omodel, max_tokens: 5, messages: [{ role: "user", content: "ping" }] })
-        });
-        const dd = await rr.json().catch(() => ({}));
-        return res.status(200).json({ openaiKeySet: true, model: omodel, openaiStatus: rr.status, openaiOk: rr.ok, openaiError: rr.ok ? null : ((dd.error && (dd.error.code || dd.error.type || dd.error.message)) || "unknown"), whatsappTokenSet: !!c.token });
-      } catch (e) {
-        return res.status(200).json({ openaiKeySet: true, model: omodel, openaiError: e.message, whatsappTokenSet: !!c.token });
-      }
-    }
-
     // Admin inbox reads.
     if (q.action === "threads" || q.action === "thread") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
