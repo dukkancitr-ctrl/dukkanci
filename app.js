@@ -1044,8 +1044,12 @@ function renderHome() {
     eyebrow: HB.eyebrow || "عروض لا تفوّت",
     title: HB.title || "وفّر أكثر على طلباتك اليومية",
     subtitle: HB.subtitle || "خصومات مختارة من متاجر الحي، تتجدد باستمرار.",
-    button: HB.button || "شاهد كل العروض"
+    button: HB.button || "شاهد كل العروض",
+    link: HB.link || "",
+    image: HB.image || ""
   };
+  const bHref = hb.link || "#offers";
+  const bAttrs = `href="${escAttr(bHref)}"${/^(https?:|tel:|mailto:|wa\.me)/i.test(bHref) ? ' target="_blank" rel="noopener"' : ""}`;
   return `
     <section class="hero">
       <div class="container hero__grid">
@@ -1109,10 +1113,10 @@ function renderHome() {
             <span class="eyebrow light"><span></span> ${escAttr(hb.eyebrow)}</span>
             <h2>${escAttr(hb.title)}</h2>
             <p>${escAttr(hb.subtitle)}</p>
-            <a href="#offers" data-route="offers" class="light-button">${escAttr(hb.button)} ${icon("arrowLeft")}</a>
+            <a ${bAttrs} class="light-button">${escAttr(hb.button)} ${icon("arrowLeft")}</a>
           </div>
           <div class="offer-products">
-            ${offerProducts.slice(0, 2).map(product => `
+            ${hb.image ? `<a ${bAttrs} class="offers-banner__image" style="display:block;width:100%;border-radius:18px;overflow:hidden"><img src="${escAttr(hb.image)}" alt="${escAttr(hb.title)}" style="width:100%;display:block;object-fit:cover"></a>` : offerProducts.slice(0, 2).map(product => `
               <button class="mini-offer-card" data-action="open-product" data-id="${product.id}">
                 <img src="${product.image}" alt="${product.name}">
                 <span><small>عرض اليوم</small><strong>${product.name}</strong><b>${money(product.price)}</b></span>
@@ -1999,7 +2003,9 @@ const CONTENT_SECTIONS = {
       { name: "eyebrow", label: "النص العلوي الصغير", def: "عروض لا تفوّت" },
       { name: "title", label: "العنوان", def: "وفّر أكثر على طلباتك اليومية" },
       { name: "subtitle", label: "الوصف", def: "خصومات مختارة من متاجر الحي، تتجدد باستمرار.", area: true },
-      { name: "button", label: "نص الزر", def: "شاهد كل العروض" }
+      { name: "button", label: "نص الزر", def: "شاهد كل العروض" },
+      { name: "link", label: "رابط عند الضغط (اختياري) — مثل #stores أو /store/5 أو https://...", def: "", type: "url" },
+      { name: "image", label: "صورة البنر (اختياري — تظهر بدل بطاقات العروض)", def: "", type: "image" }
     ]
   },
   join: {
@@ -2020,7 +2026,19 @@ function adminContentForm(sectionKey) {
     <section class="dashboard-card form-card">
       <div class="card-heading"><div><h3>${cfg.title}</h3><p>التعديل يُحفظ ويظهر لكل الزوّار فوراً.</p></div></div>
       <form id="content-edit-form" data-section="${sectionKey}" class="form-grid">
-        ${cfg.fields.map(f => `<label class="input-label" style="grid-column:1/-1"><span>${f.label}</span>${f.area ? `<textarea name="${f.name}" rows="3">${v(f)}</textarea>` : `<input name="${f.name}" value="${v(f)}">`}</label>`).join("")}
+        ${cfg.fields.map(f => {
+          if (f.type === "image") {
+            const cur = saved[f.name] != null ? String(saved[f.name]) : "";
+            return `<div class="input-label" style="grid-column:1/-1"><span>${f.label}</span>
+              <input type="hidden" name="${f.name}" value="${escAttr(cur)}">
+              <div class="image-preview" id="content-image-preview">${cur ? `<img src="${escAttr(cur)}" alt="">` : icon("box")}</div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+                <label class="upload-tile" style="flex:0 0 auto">${icon("upload")}<span>رفع صورة</span><input type="file" id="content-image-file" accept="image/*" hidden></label>
+                <button type="button" class="secondary-button compact" data-action="content-image-remove">${icon("trash")} إزالة الصورة</button>
+              </div></div>`;
+          }
+          return `<label class="input-label" style="grid-column:1/-1"><span>${f.label}</span>${f.area ? `<textarea name="${f.name}" rows="3">${v(f)}</textarea>` : `<input name="${f.name}" value="${v(f)}"${f.type === "url" ? ' dir="ltr"' : ""}>`}</label>`;
+        }).join("")}
         <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ</button>
       </form>
     </section>`;
@@ -3310,6 +3328,13 @@ document.addEventListener("click", event => {
     const items = categoriesList().map(c => ({ ...c }));
     if (items[i] && confirm(`حذف التصنيف "${items[i].name}"؟`)) { items.splice(i, 1); saveContentSetting("categories", { items }); showToast("تم حذف التصنيف", "success"); }
   }
+  if (action === "content-image-remove") {
+    const form = target.closest("form");
+    const imgInput = form && form.querySelector('[name="image"]');
+    if (imgInput) imgInput.value = "";
+    const preview = document.getElementById("content-image-preview");
+    if (preview) preview.innerHTML = icon("box");
+  }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
   if (action === "route-home") navigate("home");
@@ -3479,6 +3504,18 @@ document.addEventListener("change", event => {
     if (!file) return;
     const form = event.target.closest("form");
     const preview = document.getElementById("category-image-preview");
+    if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
+    readImageFileResized(file).then(dataUrl => {
+      const imgInput = form.querySelector('[name="image"]'); if (imgInput) imgInput.value = dataUrl;
+      if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      showToast(`تم اختيار "${file.name}"`, "success");
+    }).catch(() => { if (preview) preview.innerHTML = icon("box"); showToast("تعذّر رفع الصورة، جرّب صورة أخرى", ""); });
+  }
+  if (event.target.id === "content-image-file") {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const form = event.target.closest("form");
+    const preview = document.getElementById("content-image-preview");
     if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
     readImageFileResized(file).then(dataUrl => {
       const imgInput = form.querySelector('[name="image"]'); if (imgInput) imgInput.value = dataUrl;
