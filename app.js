@@ -193,7 +193,7 @@ const state = {
   adminTab: "overview",
   adminContentSection: null,
   siteSettings: {},
-  adminKey: sessionStorage.getItem("dukkanci-admin-key") || null,
+  adminKey: sessionStorage.getItem("dukkanci-admin-token") || null,
   adminThreads: [],
   adminActiveWa: null,
   adminThread: null,
@@ -366,7 +366,7 @@ function mapDbStore(r) {
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
     website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
-    branchGroup: r.branch_group, brandTheme: r.brand_theme
+    branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status
   };
 }
 function mapDbProduct(r) {
@@ -653,9 +653,9 @@ async function initAuth() {
     if (state.user) applyUserToProfile(state.user);
     else if (event === "SIGNED_OUT") clearUserIdentity();
     updateAccountButton();
-    if (event === "SIGNED_IN") { closeModal(); showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success"); }
-    if (event === "SIGNED_OUT") showToast("تم تسجيل الخروج", "success");
-    if (state.route === "orders") render();
+    if (event === "SIGNED_IN") { state._merchantResolved = false; state._merchantResolving = false; closeModal(); showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success"); }
+    if (event === "SIGNED_OUT") { state.merchantAuth = null; state.merchantStores = null; state._merchantResolved = false; showToast("تم تسجيل الخروج", "success"); }
+    if (state.route === "orders" || state.route === "merchant") render();
   });
 }
 
@@ -942,7 +942,7 @@ function storeCard(store) {
       <div class="store-card__body">
         <button class="store-title-row" data-action="open-store" data-id="${store.id}">
           ${storeAvatar(store)}
-          <span><strong>${store.name}</strong><small>${store.category}</small></span>
+          <span><strong>${esc(store.name)}</strong><small>${esc(store.category)}</small></span>
         </button>
         <div class="store-rating">
           ${store.newStore ? `${icon("store")} <strong>متجر جديد</strong><span>موثق البيانات</span>` : `${icon("star")} <strong>${store.rating}</strong><span>(${store.reviews} تقييم)</span>`}
@@ -968,7 +968,7 @@ function productCard(product) {
   return `
     <article class="product-card ${product.storeId === 5 || (product.sourceBranded && product.imageFit !== "cover") ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
       <button class="product-card__image" data-action="open-product" data-id="${product.id}">
-        <img src="${product.image}" alt="${product.name}" loading="lazy">
+        <img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">
         ${product.oldPrice ? `<span class="discount-chip">وفر ${Math.round((1 - product.price / product.oldPrice) * 100)}%</span>` : ""}
         ${!product.available ? `<span class="soldout-overlay">غير متوفر</span>` : ""}
       </button>
@@ -976,8 +976,8 @@ function productCard(product) {
         ${icon("heart")}
       </button>
       <div class="product-card__body">
-        <small>${product.category}</small>
-        <button class="product-name" data-action="open-product" data-id="${product.id}">${product.name}</button>
+        <small>${esc(product.category)}</small>
+        <button class="product-name" data-action="open-product" data-id="${product.id}">${esc(product.name)}</button>
         ${product.priceOnRequest ? `
         <div class="price-row price-row--request">
           <span class="price-request">السعر عند الطلب</span>
@@ -1027,7 +1027,7 @@ function renderHome() {
   // location (from geolocation) instead of a fixed "main" branch — on desktop and
   // mobile alike (the store grid is shared/responsive). Falls back to the featured
   // branch until the browser location is known.
-  let featuredStores = collapseBranchGroups(stores.filter(store => store.featured));
+  let featuredStores = collapseBranchGroups(stores.filter(store => store.featured && isStoreApproved(store)));
   // When the visitor's location is known, show the nearest featured stores first
   // so "متاجر مميزة بالقرب منك" is literally true.
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
@@ -1194,6 +1194,7 @@ function getFilteredStores() {
   const q = normalizeAr(state.search);
   const terms = q.split(" ").filter(Boolean);
   let result = stores.filter(store => {
+    if (!isStoreApproved(store)) return false;
     const categoryMatch = state.storeFilter === "الكل"
       || store.category === state.storeFilter
       || (state.storeFilter === "ملاحم" && store.category.includes("ملحم"));
@@ -1325,9 +1326,9 @@ function renderStorePage(id) {
           <div class="store-profile__main">
             ${storeAvatar(store, "large")}
             <div>
-              <span class="store-category">${store.category}${store.branchName ? ` · فرع ${store.branchName}` : ""}</span>
-              <h1>${store.name}</h1>
-              <p>${store.description}</p>
+              <span class="store-category">${esc(store.category)}${store.branchName ? ` · فرع ${esc(store.branchName)}` : ""}</span>
+              <h1>${esc(store.name)}</h1>
+              <p>${esc(store.description)}</p>
               <div class="store-profile__meta">
                 <span>${store.newStore ? `${icon("check")} <b>متجر جديد موثق</b>` : `${icon("star")} <b>${store.rating}</b> (${store.reviews} تقييم)`}</span>
                 <span>${icon("clock")} ${store.time}</span>
@@ -1399,7 +1400,7 @@ function renderStorePage(id) {
         </div>
         <aside class="store-info-card">
           <h3>معلومات المتجر</h3>
-          <div class="info-row">${icon("pin")}<div><strong>العنوان</strong><span>${store.address}</span><button data-action="map">عرض على الخريطة</button></div></div>
+          <div class="info-row">${icon("pin")}<div><strong>العنوان</strong><span>${esc(store.address)}</span><button data-action="map">عرض على الخريطة</button></div></div>
           <div class="info-row">${icon("clock")}<div><strong>أوقات العمل</strong><span>${store.hours}</span></div></div>
           <div class="info-row">${icon("phone")}<div><strong>التواصل</strong><span dir="ltr">${store.phone}</span></div></div>
           ${store.email ? `<div class="info-row">${icon("user")}<div><strong>البريد الإلكتروني</strong><span dir="ltr">${store.email}</span></div></div>` : ""}
@@ -1819,27 +1820,102 @@ function merchantIntegrations() {
     </form>`;
 }
 
+// SECURE merchant login (item 2): authenticate the OWNER via Supabase Auth — a
+// one-time code sent to the store's WhatsApp/SMS number, or Google. Knowing a
+// store's public number is no longer enough; you must RECEIVE the code on it.
 function merchantLogin() {
   return `
     <div class="merchant-auth">
-      <form class="merchant-auth__card" id="merchant-login-form">
+      <form class="merchant-auth__card" id="login-form">
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
         <h2>لوحة المتجر</h2>
-        <p>أدخل رقم واتساب متجرك المسجّل للدخول إلى لوحة التحكم.</p>
+        <p>سجّل الدخول برقم واتساب متجرك. سنرسل رمز تحقّق إلى الرقم — معرفة الرقم وحدها لا تكفي للدخول.</p>
         <label class="input-label"><span>رقم واتساب المتجر</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+90 555 000 00 00" dir="ltr"></label>
-        <p class="merchant-auth__error" id="merchant-login-error" hidden>لا يوجد متجر مسجّل بهذا الرقم. تأكد من الرقم أو أنشئ متجرك.</p>
-        <button class="primary-button full large" type="submit">${icon("store")} دخول لوحة المتجر</button>
+        <p class="auth-error" id="login-error" hidden></p>
+        <button class="primary-button full large" type="submit">${icon("whatsapp")} إرسال رمز التحقق</button>
+        <div class="merchant-auth__divider"><span>أو</span></div>
+        <button type="button" class="secondary-button full" data-action="merchant-google">متابعة عبر Google</button>
         <div class="merchant-auth__divider"><span>ليس لديك متجر بعد؟</span></div>
         <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
-        <p class="merchant-auth__note">${icon("shield")} لمساعدة في الدخول، تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+        <p class="merchant-auth__note">${icon("shield")} دخول آمن عبر رمز تحقّق. للمساعدة تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
       </form>
     </div>
   `;
 }
 
+// Resolve which store(s) the signed-in user may manage. Preferred source is the
+// store_users ownership table (added in the security migration). Until a user is
+// linked there, we fall back to matching the user's VERIFIED auth phone to a
+// store's number — still secure, because the phone was proven via the OTP.
+async function resolveMerchantStores() {
+  const sb = window.supabaseClient;
+  const user = state.user;
+  if (!user) return [];
+  const norm = s => (s || "").replace(/\D/g, "");
+  let owned = [];
+  if (sb) {
+    try {
+      const { data, error } = await sb.from("store_users").select("store_id").eq("user_id", user.id);
+      if (!error && Array.isArray(data) && data.length) {
+        const ids = data.map(r => Number(r.store_id));
+        owned = stores.filter(s => ids.includes(Number(s.id)));
+      }
+    } catch (e) { /* store_users table not present yet (pre-migration) */ }
+  }
+  if (!owned.length && user.phone) {
+    const p = norm(user.phone);
+    const variants = new Set([p, p.replace(/^90/, ""), "90" + p.replace(/^90/, "")]);
+    owned = stores.filter(s => variants.has(norm(s.phone)) || variants.has(norm(s.whatsapp)));
+  }
+  return owned;
+}
+
+function merchantResolving() {
+  return `<div class="merchant-auth"><div class="merchant-auth__card"><div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div><h2>جارٍ التحقق…</h2><p>نتحقّق من المتجر المرتبط بحسابك.</p></div></div>`;
+}
+
+function merchantNoStore() {
+  return `<div class="merchant-auth"><form class="merchant-auth__card">
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
+    <h2>لا يوجد متجر مرتبط بحسابك</h2>
+    <p>لم نعثر على متجر مرتبط برقمك. أنشئ متجرك، أو تواصل مع الدعم لربط متجرك القائم بحسابك.</p>
+    <button type="button" class="primary-button full large" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
+    <button type="button" class="secondary-button full" data-action="merchant-logout">${icon("logout")} تسجيل الخروج</button>
+    <p class="merchant-auth__note">${icon("shield")} لربط متجر قائم بحسابك تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+  </form></div>`;
+}
+
+// Link the signed-in user as the owner of a store in store_users so RLS lets
+// them manage it. Best-effort: the DB trigger also binds on insert, and the
+// table may not exist before the security migration runs.
+async function bindStoreToUser(storeId) {
+  const sb = window.supabaseClient;
+  if (!sb || !state.user) return;
+  try { await sb.from("store_users").upsert({ user_id: state.user.id, store_id: storeId, role: "owner" }); }
+  catch (e) { /* store_users not present yet, or already linked */ }
+}
+
 function renderMerchant(id) {
-  if (!state.merchantAuth) return merchantLogin();
-  state.merchantStoreId = Number(id) || state.merchantAuth.storeId || state.merchantStoreId || (stores[0] && stores[0].id);
+  // Must be authenticated (Supabase session) — no more public phone-number login.
+  if (!state.user) return merchantLogin();
+  if (!state._merchantResolved) {
+    if (!state._merchantResolving) {
+      state._merchantResolving = true;
+      resolveMerchantStores().then(list => {
+        state.merchantStores = list;
+        state._merchantResolved = true;
+        state._merchantResolving = false;
+        if (list[0]) {
+          state.merchantAuth = { storeId: list[0].id, phone: (state.user.phone || "").replace(/\D/g, ""), userId: state.user.id };
+          state.merchantStoreId = list[0].id;
+        }
+        render();
+      });
+    }
+    return merchantResolving();
+  }
+  if (!state.merchantStores || !state.merchantStores.length) return merchantNoStore();
+  state.merchantStoreId = Number(id) || state.merchantStoreId || state.merchantAuth?.storeId || (state.merchantStores[0] && state.merchantStores[0].id);
   // Pull this store's orders from the cloud once per session so the merchant sees
   // orders placed from any device (not just this browser).
   if (!state._merchantOrdersFetched) {
@@ -1870,10 +1946,8 @@ function renderMerchant(id) {
           </div>
           <div class="dashboard-header__actions">
             ${(() => {
-              // A merchant only manages the store(s) registered to their own number.
-              const norm = s => (s || "").replace(/\D/g, "");
-              const myPhone = state.merchantAuth?.phone;
-              const owned = myPhone ? stores.filter(s => norm(s.phone) === myPhone || norm(s.whatsapp) === myPhone) : [store];
+              // A merchant only manages the store(s) linked to their account.
+              const owned = (state.merchantStores && state.merchantStores.length) ? state.merchantStores : [store];
               const list = owned.length ? owned : [store];
               return list.length > 1
                 ? `<label class="store-switcher" title="اختر فرعك">${icon("store")}<select id="merchant-store-switch">${list.sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s => `<option value="${s.id}" ${s.id === store.id ? "selected" : ""}>${s.name}</option>`).join("")}</select></label>`
@@ -1916,11 +1990,41 @@ function adminOverview() {
   `;
 }
 
+// Customer-facing visibility: a store shows to customers only when approved.
+// (Legacy stores with no status are treated as approved.) The server enforces
+// this too via RLS once the lockdown migration is applied.
+function isStoreApproved(store) {
+  return !store.approvalStatus || store.approvalStatus === "approved";
+}
+
+function approvalPill(status) {
+  const s = status || "approved";
+  const map = {
+    approved: ["green", "معتمد"],
+    pending: ["amber", "بانتظار الموافقة"],
+    rejected: ["red", "مرفوض"],
+    suspended: ["gray", "معلّق"]
+  };
+  const [cls, label] = map[s] || map.approved;
+  return `<span class="status-pill ${cls}">${label}</span>`;
+}
+
 function adminStores() {
+  // Pending applications first so the admin sees them immediately.
+  const order = { pending: 0, approved: 1, suspended: 2, rejected: 3 };
+  const sorted = [...stores].sort((a, b) => (order[a.approvalStatus || "approved"] ?? 1) - (order[b.approvalStatus || "approved"] ?? 1));
   return `
     <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-store-search" placeholder="ابحث باسم المتجر أو صاحبه"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="stores">${icon("download")} تصدير Excel</button></div></div>
     <section class="dashboard-card admin-store-list">
-      ${stores.map(store => `<article>${storeAvatar(store)}<div><strong>${store.name}</strong><small>${store.category}${store.address && store.address.includes("،") ? " · " + store.address.split("،").pop().trim() : ""}</small></div><span class="status-pill ${store.open ? "green" : "gray"}">${store.open ? "نشط" : "متوقف"}</span><span><small>الاشتراك</small><strong>${store.subscription || "احترافي"}</strong></span><span><small>الطلبات</small><strong>${(store.orderCount ?? 0).toLocaleString("ar")}</strong></span><button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`).join("")}
+      ${sorted.map(store => {
+        const st = store.approvalStatus || "approved";
+        const actions = [
+          st !== "approved" ? `<button class="table-action approve" data-action="store-approve" data-id="${store.id}" data-status="approved" title="قبول">${icon("check")}</button>` : "",
+          st !== "suspended" && st === "approved" ? `<button class="table-action" data-action="store-approve" data-id="${store.id}" data-status="suspended" title="تعليق">${icon("clock")}</button>` : "",
+          st !== "rejected" ? `<button class="table-action danger" data-action="store-approve" data-id="${store.id}" data-status="rejected" title="رفض">${icon("close")}</button>` : ""
+        ].join("");
+        return `<article>${storeAvatar(store)}<div><strong>${escAttr(store.name)}</strong><small>${escAttr(store.category)}${store.address && store.address.includes("،") ? " · " + escAttr(store.address.split("،").pop().trim()) : ""}</small></div>${approvalPill(st)}<span class="status-pill ${store.open ? "green" : "gray"}">${store.open ? "نشط" : "متوقف"}</span><span><small>الطلبات</small><strong>${(store.orderCount ?? 0).toLocaleString("ar")}</strong></span>${actions}<button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`;
+      }).join("")}
     </section>
   `;
 }
@@ -2112,8 +2216,10 @@ function adminContentFeatured() {
 // public Supabase key.
 // ---------------------------------------------------------------------------
 async function adminApi(action, { method = "GET", params = {}, body = null } = {}) {
+  // state.adminKey holds the SESSION TOKEN (never the password). The password is
+  // never placed in the query string — only the action and non-secret params are.
   const qs = new URLSearchParams({ action, ...params }).toString();
-  const opts = { method, headers: { "x-admin-key": state.adminKey || "" } };
+  const opts = { method, headers: { "x-admin-token": state.adminKey || "" } };
   if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   const res = await fetch(`/api/notify-order?${qs}`, opts);
   if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
@@ -2123,7 +2229,7 @@ async function adminApi(action, { method = "GET", params = {}, body = null } = {
 
 function lockAdmin() {
   state.adminKey = null;
-  sessionStorage.removeItem("dukkanci-admin-key");
+  sessionStorage.removeItem("dukkanci-admin-token");
 }
 
 async function loadAdminThreads(silent) {
@@ -2487,11 +2593,11 @@ function renderProductPage(slugOrId) {
     <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span>${store ? `<a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a><span>/</span>` : ""}<strong>${product.name}</strong></div></div></section>
     <section class="section">
       <div class="container product-page-grid">
-        <div class="product-page-media"><img src="${product.image}" alt="${product.name}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}"></div>
+        <div class="product-page-media"><img src="${esc(product.image)}" alt="${esc(product.name)}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}"></div>
         <div class="product-page-info">
-          <h1>${product.name}</h1>
-          ${product.category ? `<span class="cat">${product.category}</span>` : ""}
-          <p>${product.description || ""}</p>
+          <h1>${esc(product.name)}</h1>
+          ${product.category ? `<span class="cat">${esc(product.category)}</span>` : ""}
+          <p>${esc(product.description || "")}</p>
           <div class="product-page-price"><strong>${priceLine}</strong></div>
           ${store ? `<p class="product-page-store">${storeAvatar(store)} من متجر <a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a></p>` : ""}
           <button class="primary-button large" data-action="open-product" data-id="${product.id}">${icon("bag")} أضف إلى السلة</button>
@@ -2510,7 +2616,7 @@ function renderCategoryPage(slug) {
   if (!catText) {
     return `<section class="section empty-page">${renderEmpty("الفئة غير موجودة", "تصفح كل المتاجر بدلاً من ذلك.", "تصفح المتاجر", "stores")}</section>`;
   }
-  const catStores = stores.filter(s => s.category === catText);
+  const catStores = stores.filter(s => s.category === catText && isStoreApproved(s));
   const storeIds = new Set(catStores.map(s => s.id));
   const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
   return `
@@ -2704,10 +2810,10 @@ function openProductModal(id) {
     <div class="product-modal-grid">
       <div class="product-gallery"><img src="${product.image}" alt="${product.name}"><div><button class="active"><img src="${product.image}" alt=""></button><button><img src="${store.image}" alt=""></button></div></div>
       <form class="product-details" id="product-form" data-id="${product.id}">
-        <span class="product-breadcrumb">${store.name} · ${product.category}</span>
-        <h2>${product.name}</h2>
+        <span class="product-breadcrumb">${esc(store.name)} · ${esc(product.category)}</span>
+        <h2>${esc(product.name)}</h2>
         <div class="product-status"><span class="${product.available ? "available" : "not-available"}">${product.available ? "متوفر" : "غير متوفر"}</span><span>${icon("star")} 4.8 (42 تقييماً)</span></div>
-        <p>${product.description}</p>
+        <p>${esc(product.description)}</p>
         <div class="modal-price">${product.priceOnRequest ? `<strong>السعر عند الطلب</strong>` : `<strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}`}</div>
         ${product.options.map((option, optionIndex) => `
           <fieldset class="option-group"><legend>${option.name}</legend><div>${option.values.map((value, valueIndex) => `<label><input type="radio" name="option-${optionIndex}" value="${valueIndex}" ${valueIndex === 0 ? "checked" : ""}><span>${value}${option.extra[valueIndex] ? `<small>${option.extra[valueIndex] > 0 ? "+" : ""}${money(option.extra[valueIndex])}</small>` : ""}</span></label>`).join("")}</div></fieldset>
@@ -3053,9 +3159,18 @@ function openOrderManager(orderId) {
   `, "order-modal");
 }
 
+// Complete HTML escape — safe for both text and attribute contexts. Use this on
+// EVERY dynamic value (store/product/merchant/DB input) interpolated into HTML.
 function escAttr(value) {
-  return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
+// Short alias used by the render helpers.
+const esc = escAttr;
 
 // Read an uploaded image, downscale it (so it stays light for storage), return a JPEG data URL.
 function readImageFileResized(file, maxDim = 900) {
@@ -3390,11 +3505,30 @@ document.addEventListener("click", event => {
   if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
   if (action === "merchant-logout") {
     state.merchantAuth = null;
+    state.merchantStores = null;
+    state._merchantResolved = false;
+    state._merchantResolving = false;
     state._merchantOrdersFetched = false;
     state.orders = [];
     localStorage.removeItem("dukkanci-merchant-auth");
+    signOutUser(); // end the Supabase session (merchant identity == the session); re-renders
     showToast("تم تسجيل الخروج", "success");
+  }
+  if (action === "merchant-google") signInWithGoogle();
+  if (action === "store-approve") {
+    const id = Number(target.dataset.id);
+    const status = target.dataset.status;
+    const store = stores.find(s => s.id === id);
+    if (!store) return;
+    const prev = store.approvalStatus;
+    store.approvalStatus = status; // optimistic
     render();
+    adminApi("store-approval", { method: "POST", body: { id, status } })
+      .then(() => {
+        const labels = { approved: "تم قبول المتجر", rejected: "تم رفض المتجر", suspended: "تم تعليق المتجر", pending: "أُعيد للمراجعة" };
+        showToast(labels[status] || "تم التحديث", "success");
+      })
+      .catch(() => { store.approvalStatus = prev; render(); showToast("تعذّر تحديث حالة المتجر", ""); });
   }
   if (action === "refresh-orders") {
     state._merchantOrdersFetched = true;
@@ -3586,10 +3720,18 @@ document.addEventListener("submit", event => {
     if (!pwd) return;
     const btn = event.target.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.textContent = "جارٍ التحقق…"; }
-    adminApi("login", { method: "POST", body: { key: pwd }, params: { key: pwd } })
-      .then(() => {
-        state.adminKey = pwd;
-        sessionStorage.setItem("dukkanci-admin-key", pwd);
+    // Authenticate by sending the typed password ONCE via header (never in the
+    // URL). The server returns a short-lived session token; we store only that.
+    fetch("/api/notify-order?action=login", {
+      method: "POST",
+      headers: { "x-admin-key": pwd, "Content-Type": "application/json" },
+      body: "{}"
+    })
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error("unauthorized"))))
+      .then(data => {
+        if (!data || !data.token) return Promise.reject(new Error("no token"));
+        state.adminKey = data.token;
+        sessionStorage.setItem("dukkanci-admin-token", data.token);
         render();
       })
       .catch(() => {
@@ -3810,6 +3952,8 @@ document.addEventListener("submit", event => {
     verifyWhatsappOtp(event.target);
   }
   if (event.target.id === "join-form") {
+    // Must be authenticated before creating a store (so we can bind ownership).
+    if (!state.user) { showToast("سجّل الدخول أولاً عبر رمز واتساب لإنشاء متجرك"); closeModal(); navigate("merchant"); return; }
     const f = new FormData(event.target);
     const name = (f.get("storeName") || "").toString().trim();
     const category = (f.get("category") || "").toString().trim();
@@ -3819,14 +3963,11 @@ document.addEventListener("submit", event => {
     const norm = s => (s || "").replace(/\D/g, "");
     const phone = norm(phoneRaw);
     if (!name || !category || !phone) { showToast("يرجى إكمال الحقول المطلوبة (الاسم، التصنيف، رقم واتساب)"); return; }
-    // If a store already exists for this WhatsApp number, just sign them in.
+    // A store already exists for this number → don't duplicate; send them to log in.
     const existing = stores.find(s => norm(s.phone) === phone || norm(s.whatsapp) === phone);
     if (existing) {
-      state.merchantAuth = { storeId: existing.id, phone };
-      localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
-      state.merchantStoreId = existing.id; state.merchantTab = "overview"; state._merchantOrdersFetched = false;
-      closeModal(); navigate("merchant");
-      showToast("لديك متجر مسجّل بهذا الرقم — تم تسجيل دخولك", "success");
+      closeModal(); state._merchantResolved = false; navigate("merchant");
+      showToast("يوجد متجر بهذا الرقم — سجّل الدخول للوصول إليه", "");
       return;
     }
     const newId = Math.max(0, ...stores.map(s => Number(s.id) || 0)) + 1;
@@ -3837,16 +3978,19 @@ document.addEventListener("submit", event => {
       time: "", distance: 0, location: undefined, mapUrl: "", open: true, featured: false,
       hasOffer: false, offer: "", description: "", address, phone: phoneRaw, whatsapp: phoneRaw, email: "",
       website: "", sourceUrl: "", hours: "", areas: address ? [address] : [],
-      fulfillment: "توصيل واستلام", subscription: "احترافي", orderCount: 0, officialStore: false
+      fulfillment: "توصيل واستلام", subscription: "احترافي", orderCount: 0, officialStore: false,
+      approvalStatus: "pending" // item 9: hidden from customers until the admin approves it
     };
     stores.push(store);
     pushStoreCloud(store);
+    bindStoreToUser(newId); // link ownership so RLS lets this merchant manage it
     state.deliverySettings[newId] = { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 };
-    state.merchantAuth = { storeId: newId, phone };
-    localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
+    state.merchantStores = [...(state.merchantStores || []), store];
+    state._merchantResolved = true;
+    state.merchantAuth = { storeId: newId, phone, userId: state.user.id };
     state.merchantStoreId = newId; state.merchantTab = "store"; state._merchantOrdersFetched = true;
     saveState(); closeModal(); navigate("merchant");
-    showToast("تم إنشاء متجرك! أكمل بياناته وأضف منتجاتك ليظهر للعملاء", "success");
+    showToast("تم استلام طلب إنشاء متجرك! سيظهر للعملاء بعد موافقة الإدارة.", "success");
     return;
   }
   if (event.target.id === "customer-profile-form") {
@@ -3878,27 +4022,8 @@ document.addEventListener("submit", event => {
     else state.customerAddresses.push(addressData);
     saveState(); closeModal(); render(); showToast(addressId ? "تم تحديث العنوان" : "تمت إضافة العنوان", "success");
   }
-  if (event.target.id === "merchant-login-form") {
-    const f = event.target;
-    const phone = (f.phone.value || "").replace(/\D/g, "");
-    const norm = s => (s || "").replace(/\D/g, "");
-    // Stores are loaded from the cloud, so phone login works on any device.
-    const match = phone && stores.find(s => norm(s.phone) === phone || norm(s.whatsapp) === phone);
-    if (!match) {
-      const err = document.getElementById("merchant-login-error");
-      if (err) err.hidden = false;
-      return;
-    }
-    state.merchantAuth = { storeId: match.id, phone };
-    localStorage.setItem("dukkanci-merchant-auth", JSON.stringify(state.merchantAuth));
-    state.merchantStoreId = match.id;
-    state.merchantTab = "overview";
-    state._merchantOrdersFetched = false;
-    render();
-    loadOrdersFromSupabase(match.id).then(ok => { if (ok) render(); });
-    showToast("مرحباً بك في لوحة متجرك", "success");
-    return;
-  }
+  // (The old insecure phone-only merchant login was removed — merchants now
+  //  authenticate via Supabase Auth: see merchantLogin()/resolveMerchantStores().)
   if (event.target.id === "merchant-store-form") {
     const form = new FormData(event.target);
     const storeId = Number(event.target.dataset.storeId);

@@ -7,3 +7,10 @@ node_modules/
 npm-debug.log*
 Thumbs.db
 .DS_Store
+
+# Secrets — never commit credentials/passwords to the repo
+dukkanci project passwords.txt
+*passwords*.txt
+*secrets*.txt
+*.pem
+*.key

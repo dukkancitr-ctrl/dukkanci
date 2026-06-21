@@ -1,8 +1,8 @@
-const CACHE = "dukkanci-v89";
+const CACHE = "dukkanci-v100";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=81",
+  "/styles.css?v=91",
   "/store-slugs.js?v=81",
   "/heelal-products.js?v=81",
   "/alsultan-data.js?v=81",
@@ -19,7 +19,7 @@ const APP_SHELL = [
   "/kadiby-data.js?v=81",
   "/azal-data.js?v=81",
   "/abou-data.js?v=81",
-  "/app.js?v=89",
+  "/app.js?v=99",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
@@ -97,6 +97,13 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
+
+  // API calls must NEVER be served from cache (config, geocoding, quotes, etc.).
+  // Let them bypass the service worker entirely so they always hit the network.
+  const reqUrl = new URL(event.request.url);
+  if (reqUrl.origin === self.location.origin && reqUrl.pathname.startsWith("/api/")) {
+    return;
+  }
 
   // Navigations: network-first, fall back to the cached shell when offline.
   if (event.request.mode === "navigate") {

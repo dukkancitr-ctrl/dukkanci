@@ -16,11 +16,47 @@
 // templates; otherwise it falls back to plain text (only delivered when the
 // recipient has messaged the number in the last 24h — useful for testing).
 
+const crypto = require("crypto");
+
 const GRAPH = "https://graph.facebook.com";
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
 
 const env = k => (process.env[k] || "").trim();
+
+// We disable Vercel's automatic body parser so we can read the EXACT raw bytes
+// Meta signed. Without the raw body, the X-Hub-Signature-256 HMAC cannot be
+// verified. We parse JSON ourselves from the raw buffer.
+module.exports.config = { api: { bodyParser: false } };
+
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    if (typeof req.body === "string") return resolve(req.body);
+    if (req.body && typeof req.body === "object") return resolve(JSON.stringify(req.body));
+    let data = "";
+    req.on("data", chunk => {
+      data += chunk;
+      if (data.length > 1_000_000) req.destroy(); // 1MB hard cap — webhooks are tiny
+    });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
+// Constant-time comparison of the Meta webhook signature against the app secret.
+// Returns true ONLY when META_APP_SECRET is configured AND the signature matches.
+// If the secret is unset we return false (fail closed) so unsigned bodies are
+// never trusted as genuine WhatsApp/Meta events.
+function verifyMetaSignature(rawBody, signatureHeader) {
+  const secret = env("META_APP_SECRET") || env("WHATSAPP_APP_SECRET");
+  if (!secret) return false;
+  const sig = String(signatureHeader || "");
+  if (!sig.startsWith("sha256=")) return false;
+  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 function cfg() {
   return {
@@ -86,11 +122,64 @@ async function sbWrite(method, path, body, prefer) {
 // Admin gate: the panel sends the password as `x-admin-key` (or ?key=). It must
 // match ADMIN_PASSWORD. If ADMIN_PASSWORD is unset, the inbox endpoints are
 // closed (403) rather than open — fail safe, never expose customer chats.
-function adminOk(req) {
+// Secret used to sign admin session tokens. Prefer a dedicated secret; fall back
+// to ADMIN_PASSWORD so it works even if only the password is configured.
+function adminSecret() { return env("ADMIN_SESSION_SECRET") || env("ADMIN_PASSWORD"); }
+
+// Issue a short-lived signed session token (default 12h). The raw password is
+// NEVER stored on the client — only this token is.
+function signAdminToken(ttlMs = 12 * 60 * 60 * 1000) {
+  const secret = adminSecret();
+  if (!secret) return null;
+  const payload = "exp=" + (Date.now() + ttlMs);
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return Buffer.from(payload).toString("base64url") + "." + sig;
+}
+
+function verifyAdminToken(token) {
+  const secret = adminSecret();
+  if (!secret) return false;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return false;
+  let payload;
+  try { payload = Buffer.from(parts[0], "base64url").toString("utf8"); } catch (e) { return false; }
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const a = Buffer.from(parts[1]);
+  const b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  const m = /^exp=(\d+)$/.exec(payload);
+  return !!m && Date.now() < Number(m[1]);
+}
+
+// Verify the typed admin password (used ONLY at login to mint a token).
+function adminPasswordOk(req) {
   const expected = env("ADMIN_PASSWORD");
   if (!expected) return false;
   const got = req.headers["x-admin-key"] || (req.query && req.query.key) || "";
-  return String(got) === expected;
+  if (!got) return false;
+  const a = Buffer.from(String(got));
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Admin gate for all protected actions. Accepts a valid session token
+// (preferred) OR the password header/legacy ?key= (kept for the login call and
+// backward compatibility). New clients send the token; the password never needs
+// to travel in a URL again.
+function adminOk(req) {
+  if (verifyAdminToken(req.headers && req.headers["x-admin-token"])) return true;
+  return adminPasswordOk(req);
+}
+
+// Shared-secret gate for system/internal callers (Supabase DB webhook, cron).
+// Returns true only when NOTIFY_SECRET is configured AND the caller presents it.
+function secretOk(req, q, c) {
+  if (!c.secret) return false;
+  const got = req.headers["x-notify-secret"] || (q && q.secret) || "";
+  if (!got) return false;
+  const a = Buffer.from(String(got));
+  const b = Buffer.from(c.secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 // Map a WhatsApp inbound message to a short text + type label (we store text;
@@ -400,12 +489,20 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const rawBody = await readRawBody(req);
+  let body;
+  try { body = rawBody ? JSON.parse(rawBody) : {}; } catch (e) { body = {}; }
   let pq = {};
   try { pq = require("url").parse(req.url || "", true).query || {}; } catch (e) { pq = req.query || {}; }
 
   // POST from Meta = delivery statuses / inbound messages. Store + ack.
+  // SECURITY: only trust the body if its HMAC signature matches META_APP_SECRET.
+  // This stops anyone from POSTing a fake "whatsapp_business_account" event to
+  // inject messages into the inbox or trigger auto-replies.
   if (body && (body.object === "whatsapp_business_account" || Array.isArray(body.entry))) {
+    if (!verifyMetaSignature(rawBody, req.headers["x-hub-signature-256"])) {
+      return res.status(401).json({ error: "invalid signature" });
+    }
     try { await ingestWebhook(body); } catch (e) { try { console.error("[whatsapp-webhook] ingest", e.message); } catch (_) {} }
     return res.status(200).json({ received: true });
   }
@@ -415,6 +512,12 @@ module.exports = async (req, res) => {
   // `order_status_update` template. The merchant client sends the order id,
   // customer phone, store name, the new status, and an optional note.
   if (pq.action === "status") {
+    // SECURITY: previously OPEN — anyone could send a WhatsApp message to any
+    // customer phone. Now requires admin or the internal shared secret. (Once
+    // merchant Supabase Auth lands, also verify the caller owns this order's store.)
+    if (!adminOk({ headers: req.headers, query: pq }) && !secretOk(req, pq, c)) {
+      return res.status(403).json({ error: "unauthorized" });
+    }
     if (!c.token || !c.phoneId) return res.status(200).json({ skipped: true, reason: "whatsapp not configured" });
     const id = String(body.id || "").trim();
     const status = String(body.status || "").trim();
@@ -442,11 +545,25 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // Admin: approve / reject / suspend a store (item 9 moderation). Admin-gated and
+  // written with the service-role key, so it keeps working after RLS is locked
+  // down (the admin panel has no Supabase Auth session of its own).
+  if (pq.action === "store-approval") {
+    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    const id = String(body.id || "").trim();
+    const status = String(body.status || "").trim();
+    const allowed = ["pending", "approved", "rejected", "suspended"];
+    if (!id || !allowed.includes(status)) return res.status(400).json({ error: "id and valid status required" });
+    const r = await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(id)}`, { approval_status: status }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true });
+  }
+
   // Admin inbox writes (password-gated).
   if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
 
-    if (pq.action === "login") return res.status(200).json({ ok: true });
+    if (pq.action === "login") return res.status(200).json({ ok: true, token: signAdminToken() });
 
     if (pq.action === "mark-read") {
       const wa = String(body.wa || pq.wa || "").replace(/\D/g, "");

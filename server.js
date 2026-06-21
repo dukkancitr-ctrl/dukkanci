@@ -1,6 +1,11 @@
+// Local dev server. It serves the static site AND dispatches every /api/* request
+// to the SAME handler files used in production (api/<name>.js), so local behaviour
+// matches Vercel exactly — including delivery-quote rounding/minimum, /api/config
+// and /api/reverse-geocode. (For full Vercel parity you can also run `vercel dev`.)
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { parse: parseUrl } = require("url");
 
 const port = Number(process.env.PORT) || 4173;
 const host = process.env.HOST || "0.0.0.0";
@@ -20,131 +25,78 @@ const types = {
   ".ico": "image/x-icon"
 };
 
-function sendJson(response, status, data) {
-  response.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  response.end(JSON.stringify(data));
-}
-
-function readJson(request) {
-  return new Promise((resolve, reject) => {
+function readRawBody(request) {
+  return new Promise(resolve => {
     let body = "";
     request.on("data", chunk => {
       body += chunk;
-      if (body.length > 20_000) request.destroy();
+      if (body.length > 1_000_000) request.destroy();
     });
-    request.on("end", () => {
-      try {
-        resolve(JSON.parse(body || "{}"));
-      } catch {
-        reject(new Error("Invalid JSON"));
-      }
-    });
-    request.on("error", reject);
+    request.on("end", () => resolve(body));
+    request.on("error", () => resolve(""));
   });
 }
 
-function validPoint(point) {
-  return Number.isFinite(Number(point?.lat))
-    && Number.isFinite(Number(point?.lng))
-    && Math.abs(Number(point.lat)) <= 90
-    && Math.abs(Number(point.lng)) <= 180;
-}
-
-function haversineKm(origin, destination) {
-  const toRadians = value => value * Math.PI / 180;
-  const earthRadius = 6371;
-  const deltaLat = toRadians(destination.lat - origin.lat);
-  const deltaLng = toRadians(destination.lng - origin.lng);
-  const a = Math.sin(deltaLat / 2) ** 2
-    + Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(deltaLng / 2) ** 2;
-  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provider) {
-  const roundTripKm = oneWayKm * 2;
-  return {
-    oneWayKm,
-    roundTripKm,
-    routeMinutes,
-    fee: Math.round(roundTripKm * ratePerKm),
-    provider,
-    exceedsMaxDistance: roundTripKm > maxRoundTripKm
+// Add the Vercel-style helpers (res.status().json()/send()) the api/* modules use.
+function enhanceResponse(response) {
+  response.status = code => { response.statusCode = code; return response; };
+  response.json = obj => {
+    if (!response.headersSent) response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.end(JSON.stringify(obj));
+    return response;
   };
+  response.send = data => {
+    response.end(Buffer.isBuffer(data) || typeof data === "string" ? data : String(data));
+    return response;
+  };
+  return response;
 }
 
-function fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm) {
-  const oneWayKm = Math.max(0.5, haversineKm(origin, destination) * 1.28);
-  const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
-  return finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, "estimate");
-}
-
-async function googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm) {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+// Dispatch /api/<name> to the production handler in api/<name>.js.
+async function handleApi(name, request, response) {
+  if (!/^[a-z0-9-]+$/.test(name)) { response.writeHead(404); response.end("Not found"); return; }
+  let handler;
   try {
-    const googleResponse = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,status,condition"
-      },
-      body: JSON.stringify({
-        origins: [{ waypoint: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } } }],
-        destinations: [{ waypoint: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } } }],
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE"
-      })
-    });
-    if (!googleResponse.ok) throw new Error(`Google Routes returned ${googleResponse.status}`);
-    const routes = await googleResponse.json();
-    const route = routes.find(item => item.condition === "ROUTE_EXISTS" && item.distanceMeters);
-    if (!route) throw new Error("No route found");
-    const oneWayKm = route.distanceMeters / 1000;
-    const routeMinutes = Math.max(1, Math.ceil(Number.parseFloat(route.duration) / 60));
-    return finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, "google");
-  } finally {
-    clearTimeout(timeout);
+    const mod = require(path.join(root, "api", `${name}.js`));
+    handler = typeof mod === "function" ? mod : (mod && mod.default);
+  } catch (e) {
+    response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: `no api handler: ${name}` }));
+    return;
   }
-}
+  if (typeof handler !== "function") { response.writeHead(500); response.end("Bad handler"); return; }
 
-async function handleDeliveryQuote(request, response) {
+  const parsed = parseUrl(request.url, true);
+  request.query = parsed.query || {};
+  const raw = await readRawBody(request);
+  const contentType = request.headers["content-type"] || "";
+  if (raw && contentType.includes("application/json")) {
+    try { request.body = JSON.parse(raw); } catch { request.body = {}; }
+  } else {
+    request.body = raw || {};
+  }
+  enhanceResponse(response);
   try {
-    const body = await readJson(request);
-    if (!validPoint(body.origin) || !validPoint(body.destination)) {
-      sendJson(response, 400, { error: "يلزم إرسال موقع صحيح للمتجر والعميل." });
-      return;
+    await handler(request, response);
+  } catch (error) {
+    console.error(`/api/${name} error:`, error && error.message);
+    if (!response.writableEnded) {
+      response.statusCode = 500;
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ error: "server error" }));
     }
-    const origin = { lat: Number(body.origin.lat), lng: Number(body.origin.lng) };
-    const destination = { lat: Number(body.destination.lat), lng: Number(body.destination.lng) };
-    const ratePerKm = Math.min(20, Math.max(10, Number(body.ratePerKm) || 15));
-    const maxRoundTripKm = Math.min(200, Math.max(5, Number(body.maxRoundTripKm) || 60));
-    let quote;
-    try {
-      quote = await googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm);
-    } catch (error) {
-      console.error("Google Routes fallback:", error.message);
-      quote = fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm);
-    }
-    sendJson(response, 200, quote);
-  } catch {
-    sendJson(response, 400, { error: "تعذر قراءة طلب حساب التوصيل." });
   }
 }
 
 http.createServer(async (request, response) => {
   const requestPath = decodeURIComponent(request.url.split("?")[0]);
-  if (requestPath === "/api/delivery-quote" && request.method === "POST") {
-    await handleDeliveryQuote(request, response);
+
+  // Route every /api/* to the matching production handler file.
+  if (requestPath.startsWith("/api/")) {
+    await handleApi(requestPath.slice("/api/".length).replace(/\/+$/, ""), request, response);
     return;
   }
+
   // Clean-URL rewrites (mirror vercel.json so dev matches prod).
   const cleanUrls = { "/privacy": "privacy.html", "/gizlilik": "privacy.html" };
   const relativePath = requestPath === "/"
@@ -166,7 +118,6 @@ http.createServer(async (request, response) => {
         response.end("Not found");
         return;
       }
-
       response.writeHead(200, {
         "Content-Type": types[path.extname(target)] || "application/octet-stream",
         "Cache-Control": /^(sw\.js|index\.html)$/.test(path.basename(target)) ? "no-cache" : "public, max-age=300"

@@ -4,7 +4,8 @@
 // product sitemap; this page is the categorical entry point.
 const { STORE_SLUGS } = require("../store-slugs.js");
 const { CATEGORY_SLUGS } = require("../category-slugs.js");
-const SHELL = "https://dukkanci.vercel.app";
+// Origin for the static shell — same host as the request by default; override with SSR_SHELL_ORIGIN.
+const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
@@ -31,7 +32,8 @@ module.exports = async (req, res) => {
   const catText = CATEGORY_SLUGS[slug];
   let html = "";
   try {
-    const shell = await fetch(`${SHELL}/index.html`, { headers: { "User-Agent": "dukkanci-ssr" } });
+    const shellOrigin = SHELL_ENV || `https://${req.headers.host || ""}`;
+    const shell = await fetch(`${shellOrigin}/index.html`, { headers: { "User-Agent": "dukkanci-ssr" } });
     html = await shell.text();
   } catch (e) {
     res.setHeader("Location", "/index.html");

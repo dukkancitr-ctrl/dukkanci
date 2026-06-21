@@ -3,7 +3,8 @@
 // seller) — so Google indexes each product with real content in the source.
 // The SPA hydrates over this and renders the live product view.
 const { STORE_SLUGS } = require("../store-slugs.js");
-const SHELL = "https://dukkanci.vercel.app";                                  // origin to fetch the static shell
+// Origin for the static shell — same host as the request by default; override with SSR_SHELL_ORIGIN.
+const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, ""); // public canonical
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
@@ -29,7 +30,8 @@ module.exports = async (req, res) => {
   const raw = req.query && req.query.slug != null ? String(req.query.slug) : "";
   let html = "";
   try {
-    const shell = await fetch(`${SHELL}/index.html`, { headers: { "User-Agent": "dukkanci-ssr" } });
+    const shellOrigin = SHELL_ENV || `https://${req.headers.host || ""}`;
+    const shell = await fetch(`${shellOrigin}/index.html`, { headers: { "User-Agent": "dukkanci-ssr" } });
     html = await shell.text();
   } catch (e) {
     res.setHeader("Location", "/index.html");
