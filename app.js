@@ -34,7 +34,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore);
 
 const products = [];
 
@@ -59,6 +59,10 @@ products.push(...khawaliProducts);
 products.push(...ademsefProducts);
 products.push(...babtomaProducts);
 products.push(...orangeProducts);
+products.push(...anasProducts);
+products.push(...yemenmandyProducts);
+products.push(...alfursanProducts);
+products.push(...hallabProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -126,7 +130,11 @@ const initialDeliverySettings = {
   ...khawaliDeliverySettings,
   ...ademsefDeliverySettings,
   ...babtomaDeliverySettings,
-  ...orangeDeliverySettings
+  ...orangeDeliverySettings,
+  ...anasDeliverySettings,
+  ...yemenmandyDeliverySettings,
+  ...alfursanDeliverySettings,
+  ...hallabDeliverySettings
 };
 
 function loadCustomerAddresses() {

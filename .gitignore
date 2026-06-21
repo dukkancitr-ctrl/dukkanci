@@ -8,6 +8,9 @@ npm-debug.log*
 Thumbs.db
 .DS_Store
 
+# Scratch dir for restaurant-import scraping (raw HTML, JS bundles, manifests)
+scripts/_scrape/
+
 # Secrets — never commit credentials/passwords to the repo
 dukkanci project passwords.txt
 *passwords*.txt
