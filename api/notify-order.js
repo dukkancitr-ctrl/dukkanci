@@ -25,9 +25,9 @@ const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
 const env = k => (process.env[k] || "").trim();
 
 // We disable Vercel's automatic body parser so we can read the EXACT raw bytes
-// Meta signed. Without the raw body, the X-Hub-Signature-256 HMAC cannot be
-// verified. We parse JSON ourselves from the raw buffer.
-module.exports.config = { api: { bodyParser: false } };
+// that Meta (and the Supabase Send-SMS hook) signed. The `config` export is set
+// at the END of this file — AFTER module.exports is assigned the handler — so it
+// is not overwritten. We parse JSON ourselves from the raw buffer.
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -56,6 +56,52 @@ function verifyMetaSignature(rawBody, signatureHeader) {
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Verify a Supabase "Send SMS" Auth Hook signature (Standard Webhooks format).
+// secret looks like "v1,whsec_<base64>"; signed content is "<id>.<ts>.<body>".
+function verifySendSmsHook(rawBody, headers, secretRaw) {
+  if (!secretRaw) return false;
+  const secret = secretRaw.replace(/^v1,?/, "").replace(/^whsec_/, "");
+  let key;
+  try { key = Buffer.from(secret, "base64"); } catch (e) { return false; }
+  const id = headers["webhook-id"], ts = headers["webhook-timestamp"], sigHeader = headers["webhook-signature"];
+  if (!id || !ts || !sigHeader) return false;
+  const expected = crypto.createHmac("sha256", key).update(`${id}.${ts}.${rawBody}`).digest("base64");
+  return String(sigHeader).split(" ").some(part => {
+    const sig = part.split(",")[1] || part;
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+}
+
+// Send a login OTP over WhatsApp using a Meta AUTHENTICATION template. The code
+// goes in the body param AND the copy-code/URL button param (adjust to match the
+// approved template named in WHATSAPP_TEMPLATE_OTP).
+async function sendOtpWhatsapp(c, to, otp) {
+  if (!c.token || !c.phoneId) return { ok: false, error: "whatsapp not configured" };
+  const template = env("WHATSAPP_TEMPLATE_OTP") || "login_otp";
+  const payload = {
+    messaging_product: "whatsapp", to, type: "template",
+    template: {
+      name: template, language: { code: c.lang },
+      components: [
+        { type: "body", parameters: [{ type: "text", text: String(otp) }] },
+        { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: String(otp) }] }
+      ]
+    }
+  };
+  try {
+    const r = await fetch(`${GRAPH}/${c.version}/${c.phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, id: data?.messages?.[0]?.id, error: r.ok ? undefined : data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 function cfg() {
@@ -495,6 +541,21 @@ module.exports = async (req, res) => {
   let pq = {};
   try { pq = require("url").parse(req.url || "", true).query || {}; } catch (e) { pq = req.query || {}; }
 
+  // Supabase "Send SMS" Auth Hook → deliver the login OTP over WhatsApp (Meta).
+  // Configured in Supabase as an HTTPS hook pointing to
+  //   /api/notify-order?action=auth-sms   with secret SEND_SMS_HOOK_SECRET.
+  if (pq.action === "auth-sms") {
+    if (!verifySendSmsHook(rawBody, req.headers, env("SEND_SMS_HOOK_SECRET"))) {
+      return res.status(401).json({ error: "invalid signature" });
+    }
+    const phone = String(body && body.user && body.user.phone || "").replace(/\D/g, "");
+    const otp = body && body.sms && body.sms.otp;
+    if (!phone || !otp) return res.status(400).json({ error: "missing phone or otp" });
+    const sent = await sendOtpWhatsapp(c, phone, otp);
+    if (!sent.ok) return res.status(502).json({ error: { http_code: 502, message: "otp send failed" } });
+    return res.status(200).json({});
+  }
+
   // POST from Meta = delivery statuses / inbound messages. Store + ack.
   // SECURITY: only trust the body if its HMAC signature matches META_APP_SECRET.
   // This stops anyone from POSTing a fake "whatsapp_business_account" event to
@@ -633,3 +694,7 @@ module.exports = async (req, res) => {
 
   return res.status(200).json({ ok: true, order: order.id, results });
 };
+
+// Set AFTER the handler assignment above so it is not overwritten. Disables the
+// automatic body parser so we can verify webhook/hook signatures on raw bytes.
+module.exports.config = { api: { bodyParser: false } };

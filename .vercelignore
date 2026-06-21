@@ -1,0 +1,4 @@
+# Keep total Serverless Functions within the Hobby-plan limit (max 12).
+# The WhatsApp OTP "Send SMS" hook logic lives inside api/notify-order.js
+# (action=auth-sms), so this standalone file must NOT be deployed as a 13th function.
+api/auth-sms.js
