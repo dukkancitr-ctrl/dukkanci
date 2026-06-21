@@ -378,7 +378,9 @@ function mapDbStore(r) {
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
     website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
-    branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status
+    branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status,
+    subscriptionStatus: r.subscription_status, subscriptionActive: r.subscription_active !== false,
+    trialEndsAt: r.trial_ends_at, currentPeriodEnd: r.current_period_end, whopMembershipId: r.whop_membership_id
   };
 }
 function mapDbProduct(r) {
@@ -1422,6 +1424,7 @@ function renderStorePage(id) {
           <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
           ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
         </div>
+        ${store.subscriptionActive === false ? `<div class="store-closed-banner review-note" style="margin:12px 0">${icon("shield")} <span><strong>هذا المتجر لا يستقبل طلبات حالياً.</strong><small>اشتراك المتجر منتهٍ — يمكنك تصفّح المنتجات، وسيعود الطلب فور تجديد المتجر لاشتراكه.</small></span></div>` : ""}
         <div class="store-profile">
           <div class="store-profile__main">
             ${storeAvatar(store, "large")}
@@ -1697,6 +1700,14 @@ function merchantOverview() {
   const openOrders = merchantOrders.filter(order => !["مكتمل", "ملغى", "مرفوضة"].includes(order.status)).length;
   const ratingLabel = store.newStore ? "جديد" : String(store.rating);
   const ratingTrend = store.newStore ? "بانتظار أول تقييم" : `من ${store.reviews} تقييماً`;
+  // Subscription snapshot for the overview card (real values from the DB).
+  const subStatus = store.subscriptionStatus || "none";
+  const subMeta = SUBSCRIPTION_LABELS[subStatus] || SUBSCRIPTION_LABELS.none;
+  const subActive = store.subscriptionActive !== false && subStatus !== "expired" && subStatus !== "canceled";
+  const subEndIso = (subStatus === "trialing" && store.trialEndsAt) ? store.trialEndsAt : store.currentPeriodEnd;
+  const subDaysLeft = subEndIso ? Math.max(0, Math.ceil((new Date(subEndIso).getTime() - Date.now()) / 86400000)) : null;
+  const subPct = subDaysLeft != null ? Math.max(4, Math.min(100, Math.round((subDaysLeft / 30) * 100))) : 0;
+  const subEndText = subEndIso ? `حتى ${formatSubDate(subEndIso)}` : (subActive ? "اشتراك فعّال" : "بحاجة للتجديد");
   return `
     <div class="stats-grid">
       ${statCard("receipt", "طلبات المتجر", merchantOrders.length.toLocaleString("ar"), openOrders ? `${openOrders.toLocaleString("ar")} طلب يحتاج متابعتك` : "لا طلبات قيد التنفيذ", "green")}
@@ -1714,10 +1725,10 @@ function merchantOverview() {
         </div>` : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات كافية بعد. سيظهر الرسم البياني بمجرد استقبال أول الطلبات.</p></div>`}
       </section>
       <section class="dashboard-card subscription-card">
-        <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill green">نشط</span></div>
-        <div class="plan-name"><span>${icon("star")}</span><div><strong>الخطة الاحترافية</strong><small>حتى 30 يوليو 2026</small></div></div>
-        <div class="progress-line"><span style="width:62%"></span></div>
-        <div class="days-left"><span>متبقي</span><strong>48 يوماً</strong></div>
+        <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill ${subMeta.pill}">${subMeta.text}</span></div>
+        <div class="plan-name"><span>${icon("star")}</span><div><strong>اشتراك متجر دكانجي</strong><small>${subEndText}</small></div></div>
+        <div class="progress-line"><span style="width:${subPct}%"></span></div>
+        <div class="days-left"><span>${subActive ? "متبقي" : "الحالة"}</span><strong>${subDaysLeft != null && subActive ? `${subDaysLeft.toLocaleString("ar")} يوماً` : subMeta.text}</strong></div>
         <button class="primary-button full" data-action="merchant-tab" data-tab="subscription">إدارة الاشتراك</button>
       </section>
     </div>
@@ -1863,21 +1874,62 @@ function merchantStore() {
   `;
 }
 
+// Arabic label + pill colour for each subscription status.
+const SUBSCRIPTION_LABELS = {
+  trialing: { text: "فترة تجريبية", pill: "green" },
+  active:   { text: "اشتراك نشط",  pill: "green" },
+  past_due: { text: "متأخر السداد", pill: "orange" },
+  canceled: { text: "ملغى",        pill: "red" },
+  expired:  { text: "منتهي",       pill: "red" },
+  none:     { text: "غير مشترك",   pill: "gray" }
+};
+function formatSubDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  try { return d.toLocaleDateString("ar-EG-u-nu-latn", { year: "numeric", month: "long", day: "numeric" }); }
+  catch (e) { return d.toISOString().slice(0, 10); }
+}
+
 function merchantSubscription() {
+  const store = getMerchantStore() || {};
+  const status = store.subscriptionStatus || "none";
+  const meta = SUBSCRIPTION_LABELS[status] || SUBSCRIPTION_LABELS.none;
+  const active = store.subscriptionActive !== false && status !== "expired" && status !== "canceled";
+  const whopUrl = window.WHOP_CHECKOUT_URL || "https://whop.com/dukkanci/dukkanci-store-subscription/";
+
   const p = (state.siteSettings && state.siteSettings.plan) || {};
-  const name = p.name || "الخطة الاحترافية";
+  const name = p.name || "اشتراك متجر دكانجي";
   const tagline = p.tagline || "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.";
-  const price = (p.price != null && p.price !== "") ? p.price : "499";
+  const price = (p.price != null && p.price !== "") ? p.price : "2,499";
   const period = p.period || "ل.ت / شهرياً";
   const features = (Array.isArray(p.features) && p.features.length) ? p.features
-    : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
+    : ["تجربة مجانية ٧ أيام", "استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
+
+  // Whichever date matters now: trial end while trialing, else the renewal date.
+  const endIso = (status === "trialing" && store.trialEndsAt) ? store.trialEndsAt : store.currentPeriodEnd;
+  const endLabel = status === "trialing" ? "تنتهي التجربة" : "تاريخ التجديد";
+
+  const renewLabel = active ? "إدارة الاشتراك" : "تجديد الاشتراك الآن";
+  const banner = active ? "" : `
+    <div class="review-note" style="margin-bottom:16px">${icon("shield")} <span><strong>اشتراك متجرك غير مفعّل — لا يستقبل المتجر طلبات جديدة حالياً.</strong><small>جدّد اشتراكك عبر الزر أدناه ليعود متجرك للعمل فوراً.</small></span></div>`;
+
   return `
+    ${banner}
     <div class="subscription-hero dashboard-card">
-      <div><span class="status-pill green">اشتراك نشط</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
+      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
       <div class="subscription-price"><strong>${escAttr(String(price))}</strong><span>${escAttr(period)}</span></div>
     </div>
     <div class="subscription-details">
-      <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3><div class="detail-list"><span><small>تاريخ البداية</small><strong>30 مايو 2026</strong></span><span><small>تاريخ الانتهاء</small><strong>30 يوليو 2026</strong></span><span><small>التجديد</small><strong>يدوي</strong></span><span><small>طريقة الدفع</small><strong>iyzico</strong></span></div><button class="primary-button full" data-action="toast" data-message="سيتم ربط الدفع عبر iyzico عند إضافة مفاتيح الحساب">تجديد الاشتراك</button></section>
+      <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3>
+        <div class="detail-list">
+          <span><small>الحالة</small><strong>${meta.text}</strong></span>
+          <span><small>${endLabel}</small><strong>${formatSubDate(endIso)}</strong></span>
+          <span><small>التجديد</small><strong>تلقائي عبر Whop</strong></span>
+          <span><small>طريقة الدفع</small><strong>Whop (بطاقة)</strong></span>
+        </div>
+        <a class="primary-button full" href="${escAttr(whopUrl)}" target="_blank" rel="noopener">${renewLabel}</a>
+      </section>
       <section class="dashboard-card"><h3>مزايا خطتك</h3><ul class="feature-list">${features.map(f => `<li>${icon("check")} ${escAttr(f)}</li>`).join("")}</ul></section>
     </div>
   `;
@@ -3158,6 +3210,13 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   const product = getProduct(productId);
   if (!product.available) return;
   if (product.priceOnRequest) { showToast("هذا المنتج بسعر عند الطلب — تواصل عبر واتساب"); return; }
+  // Subscription gate: a store whose subscription lapsed stays visible but cannot
+  // take new orders (subscription_active=false set by the Whop webhook / cron).
+  const productStore = getStore(product.storeId);
+  if (productStore && productStore.subscriptionActive === false) {
+    showToast("هذا المتجر لا يستقبل طلبات حالياً — الاشتراك منتهٍ");
+    return;
+  }
   const currentStoreId = state.cart[0]?.storeId;
   if (currentStoreId && currentStoreId !== product.storeId) {
     const currentStore = getStore(currentStoreId);

@@ -3,8 +3,14 @@
   "functions": {
     "api/delivery-quote.js": {
       "maxDuration": 10
+    },
+    "api/notify-order.js": {
+      "maxDuration": 30
     }
   },
+  "crons": [
+    { "path": "/api/notify-order?action=subscription-cron", "schedule": "0 6 * * *" }
+  ],
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/sitemap-stores.xml", "destination": "/api/sitemap-stores" },
