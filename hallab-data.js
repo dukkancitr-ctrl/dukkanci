@@ -3,12 +3,12 @@
 // own photos and Arabic names; prices in Turkish Lira. Alcohol sections were excluded (97 items).
 const hallabStore = {
  "id": 49,
- "name": "Hallab 1881",
+ "name": "حلاب 1881",
  "category": "مطاعم",
  "image": "/assets/photos/hallab/cover.jpg",
  "coverImage": "/assets/photos/hallab/cover.jpg",
  "logoImage": "/assets/photos/hallab/logo.svg",
- "logo": "H",
+ "logo": "ح",
  "rating": 0,
  "reviews": 0,
  "newStore": true,
@@ -24,7 +24,7 @@ const hallabStore = {
  "open": true,
  "featured": true,
  "hasOffer": false,
- "description": "حلب 1881 (Al Hallab): مطعم لبناني عريق في نيشانتاشي (شيشلي) يقدّم الفطور اللبناني والمقبلات الباردة والساخنة والمشاوي والفتّة واللحم والمعجنات والسلطات والحلويات اللبنانية الشهيرة والعصائر الطازجة. الأصناف والأسعار كما في القائمة الرسمية للمطعم.",
+ "description": "حلاب 1881 (Al Hallab): مطعم لبناني عريق في نيشانتاشي (شيشلي) يقدّم الفطور اللبناني والمقبلات الباردة والساخنة والمشاوي والفتّة واللحم والمعجنات والسلطات والحلويات اللبنانية الشهيرة والعصائر الطازجة. الأصناف والأسعار كما في القائمة الرسمية للمطعم.",
  "address": "Harbiye Mah., Abdi İpekçi Cad. No:16, 34250 Şişli, İstanbul",
  "phone": "+902122241882",
  "whatsapp": "+905336881819",
@@ -55,7 +55,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "(الفطور اللبناني (شخصين من مطعم حلب 1881.",
+  "description": "(الفطور اللبناني (شخصين من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -68,7 +68,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فطور تركي (لشخصين) من مطعم حلب 1881.",
+  "description": "فطور تركي (لشخصين) من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -81,7 +81,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص من مطعم حلب 1881.",
+  "description": "حمص من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -94,7 +94,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص سيغنايتشر من مطعم حلب 1881.",
+  "description": "حمص سيغنايتشر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -107,7 +107,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص بالفلفل الحار من مطعم حلب 1881.",
+  "description": "حمص بالفلفل الحار من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -120,7 +120,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "لبنة سيغنايتشر من مطعم حلب 1881.",
+  "description": "لبنة سيغنايتشر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -133,7 +133,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "لبنة من مطعم حلب 1881.",
+  "description": "لبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -146,7 +146,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "مكدوس باذنجان من مطعم حلب 1881.",
+  "description": "مكدوس باذنجان من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -159,7 +159,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "Manakish Zaatar من مطعم حلب 1881.",
+  "description": "Manakish Zaatar من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -172,7 +172,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "Manakish Jibni من مطعم حلب 1881.",
+  "description": "Manakish Jibni من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -185,7 +185,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "Manakish Mix من مطعم حلب 1881.",
+  "description": "Manakish Mix من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -198,7 +198,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "Lam Bejin من مطعم حلب 1881.",
+  "description": "Lam Bejin من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -211,7 +211,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "Trabolsi من مطعم حلب 1881.",
+  "description": "Trabolsi من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -224,7 +224,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "كنافة بالجبنة من مطعم حلب 1881.",
+  "description": "كنافة بالجبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -237,7 +237,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فتة حمص باللحمة من مطعم حلب 1881.",
+  "description": "فتة حمص باللحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -250,7 +250,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص باللحمة من مطعم حلب 1881.",
+  "description": "حمص باللحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -263,7 +263,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص بالصنوبر من مطعم حلب 1881.",
+  "description": "حمص بالصنوبر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -276,7 +276,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حمص بليلة من مطعم حلب 1881.",
+  "description": "حمص بليلة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -289,7 +289,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فول من مطعم حلب 1881.",
+  "description": "فول من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -302,7 +302,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فول بالطحينة من مطعم حلب 1881.",
+  "description": "فول بالطحينة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -315,7 +315,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فتة حمص من مطعم حلب 1881.",
+  "description": "فتة حمص من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -328,7 +328,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "حلوم سيغنايتشر من مطعم حلب 1881.",
+  "description": "حلوم سيغنايتشر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -341,7 +341,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "جبنة بلدي من مطعم حلب 1881.",
+  "description": "جبنة بلدي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -354,7 +354,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "بيض من مطعم حلب 1881.",
+  "description": "بيض من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -367,7 +367,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "بيض شكشوكة من مطعم حلب 1881.",
+  "description": "بيض شكشوكة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -380,7 +380,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "بيض بالسجق من مطعم حلب 1881.",
+  "description": "بيض بالسجق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -393,7 +393,7 @@ const hallabProductCatalog = [
   "category": "فطور",
   "available": true,
   "featured": false,
-  "description": "فلافل من مطعم حلب 1881.",
+  "description": "فلافل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -406,7 +406,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "برتقال من مطعم حلب 1881.",
+  "description": "برتقال من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -419,7 +419,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "تفاح من مطعم حلب 1881.",
+  "description": "تفاح من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -432,7 +432,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "جزر من مطعم حلب 1881.",
+  "description": "جزر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -445,7 +445,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "Pomegranate Juice من مطعم حلب 1881.",
+  "description": "Pomegranate Juice من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -458,7 +458,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "ليمون من مطعم حلب 1881.",
+  "description": "ليمون من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -471,7 +471,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "ليمون بالنعناع من مطعم حلب 1881.",
+  "description": "ليمون بالنعناع من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -484,7 +484,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "Lemonade with Green Apple من مطعم حلب 1881.",
+  "description": "Lemonade with Green Apple من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -497,7 +497,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "Lemonade with Strawberry من مطعم حلب 1881.",
+  "description": "Lemonade with Strawberry من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -510,7 +510,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "Ginger Lemonade من مطعم حلب 1881.",
+  "description": "Ginger Lemonade من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -523,7 +523,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "مياه محلية كبيرة من مطعم حلب 1881.",
+  "description": "مياه محلية كبيرة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -536,7 +536,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "مياه غازية من مطعم حلب 1881.",
+  "description": "مياه غازية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -549,7 +549,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "عيران من مطعم حلب 1881.",
+  "description": "عيران من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -562,7 +562,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "بيبسي من مطعم حلب 1881.",
+  "description": "بيبسي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -575,7 +575,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "كوكا كولا زيرو من مطعم حلب 1881.",
+  "description": "كوكا كولا زيرو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -588,7 +588,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "بيبسي دايت من مطعم حلب 1881.",
+  "description": "بيبسي دايت من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -601,7 +601,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "سبريت من مطعم حلب 1881.",
+  "description": "سبريت من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -614,7 +614,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شويبس ماندرين من مطعم حلب 1881.",
+  "description": "شويبس ماندرين من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -627,7 +627,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شويبس بيتر ليمون من مطعم حلب 1881.",
+  "description": "شويبس بيتر ليمون من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -640,7 +640,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شويبس تونيك من مطعم حلب 1881.",
+  "description": "شويبس تونيك من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -653,7 +653,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شاي الخوخ من مطعم حلب 1881.",
+  "description": "شاي الخوخ من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -666,7 +666,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شاي الليمون من مطعم حلب 1881.",
+  "description": "شاي الليمون من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -679,7 +679,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "RedBull Enerji İçeceği من مطعم حلب 1881.",
+  "description": "RedBull Enerji İçeceği من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -692,7 +692,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "Red Bull Sugarfree من مطعم حلب 1881.",
+  "description": "Red Bull Sugarfree من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -705,7 +705,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "شاي من مطعم حلب 1881.",
+  "description": "شاي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -718,7 +718,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "قهوة تركي من مطعم حلب 1881.",
+  "description": "قهوة تركي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -731,7 +731,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "إسبرسو من مطعم حلب 1881.",
+  "description": "إسبرسو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -744,7 +744,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كافيه لاتيه من مطعم حلب 1881.",
+  "description": "كافيه لاتيه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -757,7 +757,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كابوتشينو من مطعم حلب 1881.",
+  "description": "كابوتشينو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -770,7 +770,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "Mocha من مطعم حلب 1881.",
+  "description": "Mocha من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -783,7 +783,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "White Chocolate Mocha من مطعم حلب 1881.",
+  "description": "White Chocolate Mocha من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -796,7 +796,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "أمريكانو من مطعم حلب 1881.",
+  "description": "أمريكانو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -809,7 +809,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "شاي بالاعشاب من مطعم حلب 1881.",
+  "description": "شاي بالاعشاب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -822,7 +822,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "Hot Chocolate من مطعم حلب 1881.",
+  "description": "Hot Chocolate من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -835,7 +835,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "Sahlep من مطعم حلب 1881.",
+  "description": "Sahlep من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -848,7 +848,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "شوربة عدس من مطعم حلب 1881.",
+  "description": "شوربة عدس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -861,7 +861,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "شوربة فطر من مطعم حلب 1881.",
+  "description": "شوربة فطر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -874,7 +874,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "سلطة حرة من مطعم حلب 1881.",
+  "description": "سلطة حرة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -887,7 +887,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "فتوش من مطعم حلب 1881.",
+  "description": "فتوش من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -900,7 +900,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "تبولة من مطعم حلب 1881.",
+  "description": "تبولة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -913,7 +913,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "سلطة جرجير وزعتر من مطعم حلب 1881.",
+  "description": "سلطة جرجير وزعتر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -926,7 +926,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "سلطة يونانية من مطعم حلب 1881.",
+  "description": "سلطة يونانية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -939,7 +939,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "تبولة كينوا من مطعم حلب 1881.",
+  "description": "تبولة كينوا من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -952,7 +952,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "تمر جرجير من مطعم حلب 1881.",
+  "description": "تمر جرجير من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -965,7 +965,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "سلطة سيزار مع الدجاج من مطعم حلب 1881.",
+  "description": "سلطة سيزار مع الدجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -978,7 +978,7 @@ const hallabProductCatalog = [
   "category": "سلطات",
   "available": true,
   "featured": false,
-  "description": "سلطة سيزر بالقريدس من مطعم حلب 1881.",
+  "description": "سلطة سيزر بالقريدس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -991,7 +991,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "مازة رباعي من مطعم حلب 1881.",
+  "description": "مازة رباعي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1004,7 +1004,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "متبل من مطعم حلب 1881.",
+  "description": "متبل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1017,7 +1017,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "بابا غنوج من مطعم حلب 1881.",
+  "description": "بابا غنوج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1030,7 +1030,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "متبل شمندر من مطعم حلب 1881.",
+  "description": "متبل شمندر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1043,7 +1043,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "محمرة من مطعم حلب 1881.",
+  "description": "محمرة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1056,7 +1056,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "ورق عنب من مطعم حلب 1881.",
+  "description": "ورق عنب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1069,7 +1069,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "سمكة حرة من مطعم حلب 1881.",
+  "description": "سمكة حرة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1082,7 +1082,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "لوبية بالزيت من مطعم حلب 1881.",
+  "description": "لوبية بالزيت من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1095,7 +1095,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "سلق بلوبيه من مطعم حلب 1881.",
+  "description": "سلق بلوبيه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1108,7 +1108,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "لبن بالخيار من مطعم حلب 1881.",
+  "description": "لبن بالخيار من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1121,7 +1121,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "كبيس خيار من مطعم حلب 1881.",
+  "description": "كبيس خيار من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1134,7 +1134,7 @@ const hallabProductCatalog = [
   "category": "مقبلات باردة",
   "available": true,
   "featured": false,
-  "description": "زيتون مشكل من مطعم حلب 1881.",
+  "description": "زيتون مشكل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1147,7 +1147,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "شاورما لحمة من مطعم حلب 1881.",
+  "description": "شاورما لحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1160,7 +1160,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "شاورما دجاج من مطعم حلب 1881.",
+  "description": "شاورما دجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1173,7 +1173,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "مقانق من مطعم حلب 1881.",
+  "description": "مقانق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1186,7 +1186,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كبدة دجاج من مطعم حلب 1881.",
+  "description": "كبدة دجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1199,7 +1199,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كبدة غنم مقلية من مطعم حلب 1881.",
+  "description": "كبدة غنم مقلية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1212,7 +1212,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "قلاية لحمة بالفطر من مطعم حلب 1881.",
+  "description": "قلاية لحمة بالفطر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1225,7 +1225,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كفته بالرمان من مطعم حلب 1881.",
+  "description": "كفته بالرمان من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1238,7 +1238,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "بطاطا حارة من مطعم حلب 1881.",
+  "description": "بطاطا حارة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1251,7 +1251,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "لفائف المسخن من مطعم حلب 1881.",
+  "description": "لفائف المسخن من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1264,7 +1264,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كبة حميص سيغنايتشر من مطعم حلب 1881.",
+  "description": "كبة حميص سيغنايتشر من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1277,7 +1277,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "كبة لحمة من مطعم حلب 1881.",
+  "description": "كبة لحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1290,7 +1290,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "رقاقات جبنة من مطعم حلب 1881.",
+  "description": "رقاقات جبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1303,7 +1303,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "سمبوسك جبنة من مطعم حلب 1881.",
+  "description": "سمبوسك جبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1316,7 +1316,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "سمبوسك لحمة من مطعم حلب 1881.",
+  "description": "سمبوسك لحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1329,7 +1329,7 @@ const hallabProductCatalog = [
   "category": "مقبلات ساخنة",
   "available": true,
   "featured": false,
-  "description": "معجنات مشكلة من مطعم حلب 1881.",
+  "description": "معجنات مشكلة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1342,7 +1342,7 @@ const hallabProductCatalog = [
   "category": "فتات",
   "available": true,
   "featured": false,
-  "description": "فتة باذنجان من مطعم حلب 1881.",
+  "description": "فتة باذنجان من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1355,7 +1355,7 @@ const hallabProductCatalog = [
   "category": "فتات",
   "available": true,
   "featured": false,
-  "description": "فتة  لحمة من مطعم حلب 1881.",
+  "description": "فتة  لحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1368,7 +1368,7 @@ const hallabProductCatalog = [
   "category": "لحمة نية",
   "available": true,
   "featured": false,
-  "description": "كبة نية من مطعم حلب 1881.",
+  "description": "كبة نية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1381,7 +1381,7 @@ const hallabProductCatalog = [
   "category": "لحمة نية",
   "available": true,
   "featured": false,
-  "description": "هبرة نية تابلة من مطعم حلب 1881.",
+  "description": "هبرة نية تابلة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1394,7 +1394,7 @@ const hallabProductCatalog = [
   "category": "لحمة نية",
   "available": true,
   "featured": false,
-  "description": "كفتة نية من مطعم حلب 1881.",
+  "description": "كفتة نية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1407,7 +1407,7 @@ const hallabProductCatalog = [
   "category": "لحمة نية",
   "available": true,
   "featured": false,
-  "description": "لوحة نية من مطعم حلب 1881.",
+  "description": "لوحة نية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1420,7 +1420,7 @@ const hallabProductCatalog = [
   "category": "معجنات",
   "available": true,
   "featured": false,
-  "description": "لحم بالعجين تركي من مطعم حلب 1881.",
+  "description": "لحم بالعجين تركي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1433,7 +1433,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "كتف خروف مشوي من مطعم حلب 1881.",
+  "description": "كتف خروف مشوي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1446,7 +1446,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "خروف محشي من مطعم حلب 1881.",
+  "description": "خروف محشي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1459,7 +1459,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "فريكه باللحمة من مطعم حلب 1881.",
+  "description": "فريكه باللحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1472,7 +1472,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "برياني لحمة من مطعم حلب 1881.",
+  "description": "برياني لحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1485,7 +1485,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "كبه لبنيه مع ارز من مطعم حلب 1881.",
+  "description": "كبه لبنيه مع ارز من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1498,7 +1498,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "Oriental Rice w. Chicken من مطعم حلب 1881.",
+  "description": "Oriental Rice w. Chicken من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1511,7 +1511,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "برياني دجاج من مطعم حلب 1881.",
+  "description": "برياني دجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1524,7 +1524,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "فريكة الدجاج من مطعم حلب 1881.",
+  "description": "فريكة الدجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1537,7 +1537,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "دجاج سوبريم من مطعم حلب 1881.",
+  "description": "دجاج سوبريم من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1550,7 +1550,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "اسكالوب دجاج من مطعم حلب 1881.",
+  "description": "اسكالوب دجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1563,7 +1563,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "أصابع الدجاج المقلية من مطعم حلب 1881.",
+  "description": "أصابع الدجاج المقلية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1576,7 +1576,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "دجاج بارميجانا من مطعم حلب 1881.",
+  "description": "دجاج بارميجانا من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1589,7 +1589,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "صيادية سمك من مطعم حلب 1881.",
+  "description": "صيادية سمك من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1602,7 +1602,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "قريدس بانيه من مطعم حلب 1881.",
+  "description": "قريدس بانيه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1615,7 +1615,7 @@ const hallabProductCatalog = [
   "category": "أكلات من المطبخ",
   "available": true,
   "featured": false,
-  "description": "بامية باللحمة من مطعم حلب 1881.",
+  "description": "بامية باللحمة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1628,7 +1628,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "مشكل مع طاووق من مطعم حلب 1881.",
+  "description": "مشكل مع طاووق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1641,7 +1641,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب لبناني من مطعم حلب 1881.",
+  "description": "كباب لبناني من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1654,7 +1654,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "أضنة كباب من مطعم حلب 1881.",
+  "description": "أضنة كباب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1667,7 +1667,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "تبسي كباب من مطعم حلب 1881.",
+  "description": "تبسي كباب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1680,7 +1680,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب محشو بالجبنة من مطعم حلب 1881.",
+  "description": "كباب محشو بالجبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1693,7 +1693,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب خشخاش من مطعم حلب 1881.",
+  "description": "كباب خشخاش من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1706,7 +1706,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب بالفستق من مطعم حلب 1881.",
+  "description": "كباب بالفستق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1719,7 +1719,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب باتنجان من مطعم حلب 1881.",
+  "description": "كباب باتنجان من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1732,7 +1732,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كباب اورفلي من مطعم حلب 1881.",
+  "description": "كباب اورفلي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1745,7 +1745,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "عرايس من مطعم حلب 1881.",
+  "description": "عرايس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1758,7 +1758,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "شقف لحم مشوي من مطعم حلب 1881.",
+  "description": "شقف لحم مشوي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1771,7 +1771,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "ريش غنم من مطعم حلب 1881.",
+  "description": "ريش غنم من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1784,7 +1784,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "كبدة غنم مشوية من مطعم حلب 1881.",
+  "description": "كبدة غنم مشوية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1797,7 +1797,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "لحم شيشليك من مطعم حلب 1881.",
+  "description": "لحم شيشليك من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1810,7 +1810,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "تندرليون ستيك مع صلصة البهار من مطعم حلب 1881.",
+  "description": "تندرليون ستيك مع صلصة البهار من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1823,7 +1823,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "شيش طاووق من مطعم حلب 1881.",
+  "description": "شيش طاووق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1836,7 +1836,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "نصف دجاج مسحب من مطعم حلب 1881.",
+  "description": "نصف دجاج مسحب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1849,7 +1849,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "جوانح دجاج من مطعم حلب 1881.",
+  "description": "جوانح دجاج من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1862,7 +1862,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "فيليه سيباس من مطعم حلب 1881.",
+  "description": "فيليه سيباس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1875,7 +1875,7 @@ const hallabProductCatalog = [
   "category": "مشويات",
   "available": true,
   "featured": false,
-  "description": "جمبري جامبو من مطعم حلب 1881.",
+  "description": "جمبري جامبو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1888,7 +1888,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "ارز ابيض من مطعم حلب 1881.",
+  "description": "ارز ابيض من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1901,7 +1901,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "ارز بالزعفران من مطعم حلب 1881.",
+  "description": "ارز بالزعفران من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1914,7 +1914,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "برغل من مطعم حلب 1881.",
+  "description": "برغل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1927,7 +1927,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "فريكه من مطعم حلب 1881.",
+  "description": "فريكه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1940,7 +1940,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "خضار سوتيه من مطعم حلب 1881.",
+  "description": "خضار سوتيه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1953,7 +1953,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "بطاطا مقلية من مطعم حلب 1881.",
+  "description": "بطاطا مقلية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1966,7 +1966,7 @@ const hallabProductCatalog = [
   "category": "أطباق جانبية",
   "available": true,
   "featured": false,
-  "description": "سبانغ سوتيه من مطعم حلب 1881.",
+  "description": "سبانغ سوتيه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1979,7 +1979,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "ساندويش فلافل من مطعم حلب 1881.",
+  "description": "ساندويش فلافل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -1992,7 +1992,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "لحم بعجين من مطعم حلب 1881.",
+  "description": "لحم بعجين من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2005,7 +2005,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "برغر بالجبنة من مطعم حلب 1881.",
+  "description": "برغر بالجبنة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2018,7 +2018,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "Chicken Shawarma Wrap Menu من مطعم حلب 1881.",
+  "description": "Chicken Shawarma Wrap Menu من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2031,7 +2031,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "Meat Shawarma Wrap Menu من مطعم حلب 1881.",
+  "description": "Meat Shawarma Wrap Menu من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2044,7 +2044,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "Wrap Kebab Menu من مطعم حلب 1881.",
+  "description": "Wrap Kebab Menu من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2057,7 +2057,7 @@ const hallabProductCatalog = [
   "category": "البرغر والسندويشات",
   "available": true,
   "featured": false,
-  "description": "Lamb Shish Wrap Menu من مطعم حلب 1881.",
+  "description": "Lamb Shish Wrap Menu من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2070,7 +2070,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "فطيرة الفستق من مطعم حلب 1881.",
+  "description": "فطيرة الفستق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2083,7 +2083,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "عثملية بالقشطة من مطعم حلب 1881.",
+  "description": "عثملية بالقشطة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2096,7 +2096,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "حلاوة الجبن ملفوفة من مطعم حلب 1881.",
+  "description": "حلاوة الجبن ملفوفة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2109,7 +2109,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "زنود بالقشطة من مطعم حلب 1881.",
+  "description": "زنود بالقشطة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2122,7 +2122,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "معمول بالقشطة من مطعم حلب 1881.",
+  "description": "معمول بالقشطة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2135,7 +2135,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "مفروكه من مطعم حلب 1881.",
+  "description": "مفروكه من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2148,7 +2148,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "ورد الشام من مطعم حلب 1881.",
+  "description": "ورد الشام من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2161,7 +2161,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "بقلاوة مشكلة من مطعم حلب 1881.",
+  "description": "بقلاوة مشكلة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2174,7 +2174,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "مهلبية مع فستق من مطعم حلب 1881.",
+  "description": "مهلبية مع فستق من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2187,7 +2187,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "الارز بالحليب من مطعم حلب 1881.",
+  "description": "الارز بالحليب من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2200,7 +2200,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "بوظة مع غزل البنات من مطعم حلب 1881.",
+  "description": "بوظة مع غزل البنات من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2213,7 +2213,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "مغلي من مطعم حلب 1881.",
+  "description": "مغلي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2226,7 +2226,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "فوندان شوكولا من مطعم حلب 1881.",
+  "description": "فوندان شوكولا من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2239,7 +2239,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "قشطة وعسل من مطعم حلب 1881.",
+  "description": "قشطة وعسل من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2252,7 +2252,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "فطيرة اللوز من مطعم حلب 1881.",
+  "description": "فطيرة اللوز من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2265,7 +2265,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "New York Cheesecake من مطعم حلب 1881.",
+  "description": "New York Cheesecake من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2278,7 +2278,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "French style creme brulee من مطعم حلب 1881.",
+  "description": "French style creme brulee من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2291,7 +2291,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "رازبيري موس من مطعم حلب 1881.",
+  "description": "رازبيري موس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2304,7 +2304,7 @@ const hallabProductCatalog = [
   "category": "حلويات",
   "available": true,
   "featured": false,
-  "description": "تيراميسو من مطعم حلب 1881.",
+  "description": "تيراميسو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2317,7 +2317,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "فوريست كيس من مطعم حلب 1881.",
+  "description": "فوريست كيس من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2330,7 +2330,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "سويت سانرايز من مطعم حلب 1881.",
+  "description": "سويت سانرايز من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2343,7 +2343,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "ماريلين من مطعم حلب 1881.",
+  "description": "ماريلين من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2356,7 +2356,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "اكسترا ريفراشينغ من مطعم حلب 1881.",
+  "description": "اكسترا ريفراشينغ من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2369,7 +2369,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "أوريو سماش من مطعم حلب 1881.",
+  "description": "أوريو سماش من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2382,7 +2382,7 @@ const hallabProductCatalog = [
   "category": "عصائر طازجة",
   "available": true,
   "featured": false,
-  "description": "باترفلاي من مطعم حلب 1881.",
+  "description": "باترفلاي من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2395,7 +2395,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "مياه محلية كبيرة من مطعم حلب 1881.",
+  "description": "مياه محلية كبيرة من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2408,7 +2408,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "مياه غازية من مطعم حلب 1881.",
+  "description": "مياه غازية من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2421,7 +2421,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "شويبس بيتر ليمون من مطعم حلب 1881.",
+  "description": "شويبس بيتر ليمون من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2434,7 +2434,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "Jallab من مطعم حلب 1881.",
+  "description": "Jallab من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2447,7 +2447,7 @@ const hallabProductCatalog = [
   "category": "مشروبات باردة",
   "available": true,
   "featured": false,
-  "description": "Black Mulberry Juice من مطعم حلب 1881.",
+  "description": "Black Mulberry Juice من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2460,7 +2460,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "ماكياتو من مطعم حلب 1881.",
+  "description": "ماكياتو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  },
@@ -2473,7 +2473,7 @@ const hallabProductCatalog = [
   "category": "مشروبات ساخنة",
   "available": true,
   "featured": false,
-  "description": "إسبرسو من مطعم حلب 1881.",
+  "description": "إسبرسو من مطعم حلاب 1881.",
   "imageFit": "cover",
   "options": []
  }
