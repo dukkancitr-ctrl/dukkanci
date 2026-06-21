@@ -186,6 +186,9 @@ const state = {
   search: "",
   accountTab: "orders",
   customerProfile: JSON.parse(localStorage.getItem("dukkanci-profile") || "null") || initialCustomerProfile,
+  // A WhatsApp number the customer already verified (E.164 "+90…"); skips re-OTP on
+  // later orders from the same number. Anti-fraud: a new number must verify once.
+  verifiedPhone: localStorage.getItem("dukkanci-verified-phone") || null,
   customerAddresses: loadCustomerAddresses(),
   customerComplaints: JSON.parse(localStorage.getItem("dukkanci-complaints") || "null") || initialCustomerComplaints,
   deliverySettings: loadDeliverySettings(),
@@ -313,6 +316,7 @@ function saveState() {
   localStorage.setItem("dukkanci-orders", JSON.stringify(state.orders));
   localStorage.setItem("dukkanci-my-orders", JSON.stringify(state.myOrders));
   localStorage.setItem("dukkanci-profile", JSON.stringify(state.customerProfile));
+  if (state.verifiedPhone) localStorage.setItem("dukkanci-verified-phone", state.verifiedPhone);
   localStorage.setItem("dukkanci-addresses", JSON.stringify(state.customerAddresses));
   localStorage.setItem("dukkanci-complaints", JSON.stringify(state.customerComplaints));
   localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(state.deliverySettings));
@@ -751,6 +755,87 @@ async function verifyWhatsappOtp(form) {
   if (btn) { btn.disabled = false; }
   if (error) showErr(/expired|invalid|token/i.test(error.message) ? "الرمز غير صحيح أو منتهي الصلاحية." : (error.message || "تعذّر التحقق."));
   // success -> onAuthStateChange (SIGNED_IN) closes the modal and updates the UI
+}
+
+// ---- Checkout WhatsApp OTP (anti-fraud: verify the phone before placing the order) ----
+// Self-contained (custom /api/notify-order?action=send-order-otp / verify-order-otp),
+// independent of Supabase phone-auth. `pendingOtpCommit` holds the "place the order"
+// callback to run once the code is verified.
+let pendingOtpCommit = null;
+
+async function sendOrderOtpRequest(phone) {
+  try {
+    const r = await fetch("/api/notify-order?action=send-order-otp", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone })
+    });
+    return await r.json().catch(() => ({ ok: false, soft: true }));
+  } catch (e) { return { ok: false, soft: true }; }
+}
+
+// Gate order placement behind a WhatsApp OTP. If delivery isn't operational yet
+// (soft fail) or the network is down, fall through and place the order so a real
+// customer is never blocked; once the OTP template is live it enforces automatically.
+async function startCheckoutOtp(phone, displayPhone, onVerified) {
+  pendingOtpCommit = onVerified;
+  showToast("جارٍ إرسال رمز التحقق إلى واتساب…");
+  const r = await sendOrderOtpRequest(phone);
+  if (r && r.ok) { openOrderOtpModal(phone, displayPhone); return; }
+  if (!r || r.soft) { pendingOtpCommit = null; onVerified(); return; } // fail-open → never block a real order
+  pendingOtpCommit = null;
+  if (r.reason === "too_soon") showToast(`انتظر ${r.retryInSec || 30} ثانية ثم أعد المحاولة`);
+  else if (r.reason === "rate_limited") showToast("تجاوزت عدد محاولات الإرسال، حاول لاحقاً");
+  else if (r.reason === "bad_phone") showToast("رقم واتساب غير صحيح");
+  else showToast("تعذّر إرسال رمز التحقق، تأكد من رقم واتساب");
+}
+
+function openOrderOtpModal(phone, displayPhone) {
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
+    <h2>تأكيد رقم الواتساب</h2>
+    <p>لمنع الطلبات الوهمية، أرسلنا رمزاً من 6 أرقام عبر واتساب إلى <strong dir="ltr">${escAttr(displayPhone || phone)}</strong>. أدخله لتأكيد طلبك.</p>
+    <form id="order-otp-form" data-phone="${escAttr(phone)}">
+      <label class="input-label"><span>رمز التحقق</span><input name="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="------" dir="ltr" maxlength="6"></label>
+      <p class="auth-error" id="order-otp-error" hidden></p>
+      <button class="primary-button full large" type="submit">${icon("check")} تأكيد وإرسال الطلب</button>
+    </form>
+    <button class="text-button" data-action="resend-order-otp" data-phone="${escAttr(phone)}">إعادة إرسال الرمز</button>
+  `, "auth-modal");
+}
+
+async function verifyOrderOtp(form) {
+  const errEl = document.getElementById("order-otp-error");
+  const showErr = m => { if (errEl) { errEl.textContent = m; errEl.hidden = false; } };
+  const phone = form.dataset.phone;
+  const code = (form.code.value || "").trim();
+  if (!code) { showErr("يرجى إدخال الرمز."); return; }
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.textContent = "جارٍ التحقق…"; }
+  let r;
+  try {
+    r = await fetch("/api/notify-order?action=verify-order-otp", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code })
+    }).then(x => x.json());
+  } catch (e) { r = { ok: false }; }
+  if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "تأكيد وإرسال الطلب"; }
+  if (r && r.ok) {
+    state.verifiedPhone = phone; saveState();
+    closeModal();
+    const cb = pendingOtpCommit; pendingOtpCommit = null;
+    if (cb) cb();
+    return;
+  }
+  showErr(r && r.reason === "expired" ? "انتهت صلاحية الرمز، أعد الإرسال."
+        : r && r.reason === "too_many" ? "محاولات كثيرة، اطلب رمزاً جديداً."
+        : "الرمز غير صحيح، حاول مجدداً.");
+}
+
+async function resendOrderOtp(phone) {
+  const r = await sendOrderOtpRequest(phone);
+  if (r && r.ok) showToast("تم إرسال رمز جديد عبر واتساب", "success");
+  else if (r && r.reason === "too_soon") showToast(`انتظر ${r.retryInSec || 30} ثانية ثم أعد المحاولة`);
+  else if (r && r.reason === "rate_limited") showToast("تجاوزت عدد المحاولات، حاول لاحقاً");
+  else showToast("تعذّر إرسال الرمز");
 }
 
 function getDeliverySettings(storeId) {
@@ -3394,6 +3479,7 @@ document.addEventListener("click", event => {
     const sb = window.supabaseClient;
     if (sb && sb.auth) sb.auth.signInWithOtp({ phone: target.dataset.phone, options: { channel: "whatsapp" } }).then(({ error }) => showToast(error ? "تعذّر إعادة الإرسال" : "تم إرسال الرمز مجدداً", error ? "" : "success"));
   }
+  if (action === "resend-order-otp") resendOrderOtp(target.dataset.phone);
   if (action === "logout") signOutUser();
   if (action === "join-merchant") openJoinModal();
   if (action === "account-tab") { state.accountTab = target.dataset.tab; render(); }
@@ -3931,33 +4017,45 @@ document.addEventListener("submit", event => {
       deliveryDetails: isPickup ? null : totals.quote,
       createdAt: new Date().toISOString()
     };
-    state.myOrders.unshift(newOrder);
-    state.orders.unshift(newOrder);
-    pushOrderCloud(newOrder);
-    notifyOrderWhatsapp(newOrder);
-    window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
     const itemCount = newOrder.lineItems.reduce((s, i) => s + (i.qty || 1), 0);
     const etaMin = (deliverySettings.prepMinutes || 20) + (isPickup ? 0 : 25);
-    state.cart = [];
-    state.deliveryQuote = null;
-    state.checkoutLocation = null;
-    saveState(); updateCartBadges();
-    showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2>
-      <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
-      <div class="order-success-summary">
-        <span>${icon("box")}<small>المنتجات</small><b>${itemCount.toLocaleString("ar")}</b></span>
-        <span>${icon("wallet")}<small>الإجمالي</small><b>${money(finalTotal)}</b></span>
-        <span>${icon(isPickup ? "store" : "bike")}<small>${isPickup ? "الاستلام" : "التوصيل إلى"}</small><b>${isPickup ? "من المتجر" : (newOrder.address || "عنوانك")}</b></span>
-        <span>${icon("clock")}<small>الوقت المتوقع</small><b>~${etaMin} دقيقة</b></span>
-      </div>
-      <p class="success-note">${icon("whatsapp")} سنخبرك عبر واتساب على <strong dir="ltr">${escAttr(contactPhone)}</strong> فور تأكيد المتجر.</p>
-      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">تتبّع الطلب</button></div>`, "success-modal");
+    // The actual order placement — run now if the phone is already verified, else
+    // only after the WhatsApp OTP is confirmed (anti-fraud gate below).
+    const commitOrder = () => {
+      state.myOrders.unshift(newOrder);
+      state.orders.unshift(newOrder);
+      pushOrderCloud(newOrder);
+      notifyOrderWhatsapp(newOrder);
+      window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
+      state.cart = [];
+      state.deliveryQuote = null;
+      state.checkoutLocation = null;
+      saveState(); updateCartBadges();
+      showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2>
+        <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
+        <div class="order-success-summary">
+          <span>${icon("box")}<small>المنتجات</small><b>${itemCount.toLocaleString("ar")}</b></span>
+          <span>${icon("wallet")}<small>الإجمالي</small><b>${money(finalTotal)}</b></span>
+          <span>${icon(isPickup ? "store" : "bike")}<small>${isPickup ? "الاستلام" : "التوصيل إلى"}</small><b>${isPickup ? "من المتجر" : (newOrder.address || "عنوانك")}</b></span>
+          <span>${icon("clock")}<small>الوقت المتوقع</small><b>~${etaMin} دقيقة</b></span>
+        </div>
+        <p class="success-note">${icon("whatsapp")} سنخبرك عبر واتساب على <strong dir="ltr">${escAttr(contactPhone)}</strong> فور تأكيد المتجر.</p>
+        <div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">تتبّع الطلب</button></div>`, "success-modal");
+    };
+    // Anti-fraud: a number must be confirmed via a WhatsApp OTP once before its first
+    // order goes through. Already-verified numbers skip straight to placing the order.
+    const verifyPhone = normalizePhone(contactPhone);
+    if (state.verifiedPhone === verifyPhone) commitOrder();
+    else startCheckoutOtp(verifyPhone, contactPhone, commitOrder);
   }
   if (event.target.id === "login-form") {
     sendWhatsappOtp(event.target);
   }
   if (event.target.id === "otp-form") {
     verifyWhatsappOtp(event.target);
+  }
+  if (event.target.id === "order-otp-form") {
+    verifyOrderOtp(event.target);
   }
   if (event.target.id === "join-form") {
     // Must be authenticated before creating a store (so we can bind ownership).

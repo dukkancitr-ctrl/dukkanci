@@ -104,6 +104,13 @@ async function sendOtpWhatsapp(c, to, otp) {
   }
 }
 
+// Hash an OTP bound to its phone with a server-side pepper, so a DB leak can't
+// recover codes and a code can't be replayed for a different number.
+function otpHash(phone, code) {
+  const pepper = env("OTP_PEPPER") || env("NOTIFY_SECRET") || env("WHATSAPP_TOKEN") || "dukkanci-otp-pepper";
+  return crypto.createHmac("sha256", pepper).update(`${phone}:${code}`).digest("hex");
+}
+
 function cfg() {
   return {
     token: env("WHATSAPP_TOKEN"),
@@ -554,6 +561,67 @@ module.exports = async (req, res) => {
     const sent = await sendOtpWhatsapp(c, phone, otp);
     if (!sent.ok) return res.status(502).json({ error: { http_code: 502, message: "otp send failed" } });
     return res.status(200).json({});
+  }
+
+  // Checkout phone verification — STEP 1: generate a 6-digit code and WhatsApp it
+  // to the customer. Public endpoint, rate-limited per phone (>=60s apart, <=5/hr).
+  // Fails SOFT (soft:true) when WhatsApp OTP delivery isn't operational yet (no
+  // approved template), so the client can fall back and never block a real order.
+  // Set ORDER_OTP_STRICT=1 (once the template is live) to instead block on send
+  // failures (forces a reachable WhatsApp number).
+  if (pq.action === "send-order-otp") {
+    const phone = toE164(body && body.phone || "", c.cc);
+    if (!phone || phone.length < 11) return res.status(400).json({ ok: false, reason: "bad_phone" });
+    const now = Date.now();
+    const rows = await sbGet(`order_otps?phone=eq.${encodeURIComponent(phone)}&select=*`);
+    const row = rows && rows[0];
+    let sends = 1, windowStart = new Date(now).toISOString();
+    if (row) {
+      if (row.last_sent_at && now - Date.parse(row.last_sent_at) < 60_000) {
+        return res.status(429).json({ ok: false, reason: "too_soon", retryInSec: Math.ceil((60_000 - (now - Date.parse(row.last_sent_at))) / 1000) });
+      }
+      if (row.window_start && now - Date.parse(row.window_start) < 3_600_000) {
+        if ((row.sends || 0) >= 5) return res.status(429).json({ ok: false, reason: "rate_limited" });
+        sends = (row.sends || 0) + 1; windowStart = row.window_start;
+      }
+    }
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+    await sbWrite("POST", "order_otps?on_conflict=phone", {
+      phone, code_hash: otpHash(phone, code), expires_at: new Date(now + 5 * 60_000).toISOString(),
+      attempts: 0, sends, window_start: windowStart, last_sent_at: new Date(now).toISOString(),
+      verified_at: null, updated_at: new Date(now).toISOString()
+    }, "resolution=merge-duplicates,return=minimal");
+    const sent = await sendOtpWhatsapp(c, phone, code);
+    if (!sent.ok) {
+      const strict = env("ORDER_OTP_STRICT") === "1" && c.token && c.phoneId;
+      return res.status(200).json({ ok: false, soft: !strict, reason: strict ? "send_failed" : "delivery_unavailable" });
+    }
+    return res.status(200).json({ ok: true });
+  }
+
+  // Checkout phone verification — STEP 2: check the entered code (timing-safe),
+  // one-time use, <=5 attempts, 5-min expiry.
+  if (pq.action === "verify-order-otp") {
+    const phone = toE164(body && body.phone || "", c.cc);
+    const code = String(body && body.code || "").replace(/\D/g, "");
+    if (!phone || !code) return res.status(400).json({ ok: false, reason: "missing" });
+    const rows = await sbGet(`order_otps?phone=eq.${encodeURIComponent(phone)}&select=*`);
+    const row = rows && rows[0];
+    if (!row || !row.code_hash || !row.expires_at || Date.parse(row.expires_at) < Date.now()) {
+      return res.status(200).json({ ok: false, reason: "expired" });
+    }
+    if ((row.attempts || 0) >= 5) {
+      await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, updated_at: new Date().toISOString() }, "return=minimal");
+      return res.status(200).json({ ok: false, reason: "too_many" });
+    }
+    const got = Buffer.from(otpHash(phone, code)), want = Buffer.from(row.code_hash);
+    const match = got.length === want.length && crypto.timingSafeEqual(got, want);
+    if (!match) {
+      await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { attempts: (row.attempts || 0) + 1, updated_at: new Date().toISOString() }, "return=minimal");
+      return res.status(200).json({ ok: false, reason: "invalid" });
+    }
+    await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, "return=minimal");
+    return res.status(200).json({ ok: true });
   }
 
   // POST from Meta = delivery statuses / inbound messages. Store + ack.
