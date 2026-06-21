@@ -1114,6 +1114,13 @@ function categoriesList() {
 function homeCategoriesOrdered() {
   return categoriesList().filter(c => !c.hidden);
 }
+// Store category NAMES sourced from the same admin-managed list as the homepage
+// tiles, so a category added in Content > التصنيفات (e.g. «خضار وفواكه») shows up
+// everywhere a store category is offered — the join form and the stores filter —
+// not only on the homepage. Falls back to the HOME_CATEGORIES defaults.
+function storeCategoryNames() {
+  return categoriesList().map(c => c.name).filter(Boolean);
+}
 
 function renderHome() {
   // For brands with several branches, surface the branch nearest the visitor's
@@ -1314,7 +1321,7 @@ function getFilteredStores() {
 
 function renderStores() {
   const result = getFilteredStores();
-  const categories = ["الكل", "مطاعم", "سوبر ماركت", "ملاحم", "حلويات", "مكسرات وبهارات", "عصائر"];
+  const categories = ["الكل", ...storeCategoryNames()];
   return `
     <section class="page-hero compact">
       <div class="container">
@@ -1332,7 +1339,7 @@ function renderStores() {
       <div class="container">
         <div class="listing-toolbar">
           <div class="filter-pills">
-            ${categories.map(category => `<button class="${state.storeFilter === category ? "active" : ""}" data-action="store-filter" data-category="${category}">${category}</button>`).join("")}
+            ${categories.map(category => `<button class="${state.storeFilter === category ? "active" : ""}" data-action="store-filter" data-category="${escAttr(category)}">${esc(category)}</button>`).join("")}
           </div>
           <label class="sort-select">
             ${icon("filter")}
@@ -1822,7 +1829,7 @@ function merchantStore() {
       <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""></div>
       <div class="form-grid">
         <label><span>اسم المتجر</span><input name="storeName" required value="${escAttr(store.name || "")}"><small class="field-hint">يظهر في عنوان التبويب هكذا: «دكانجي - ${escAttr(store.name || "")}»</small></label>
-        <label><span>التصنيف</span><select name="category">${[...new Set([store.category, ...stores.map(s => s.category)])].filter(Boolean).map(c => `<option ${c === store.category ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+        <label><span>التصنيف</span><select name="category">${[...new Set([store.category, ...storeCategoryNames(), ...stores.map(s => s.category)])].filter(Boolean).map(c => `<option ${c === store.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
         <label class="wide"><span>وصف قصير</span><textarea name="description">${escAttr(store.description || "")}</textarea></label>
         <label class="wide"><span>رابط صورة الواجهة</span><input name="coverImage" dir="ltr" placeholder="/assets/... أو https://..." value="${escAttr(store.coverImage || store.image || "")}"></label>
         <label class="wide"><span>العنوان</span><input name="address" value="${escAttr(store.address || "")}"></label>
@@ -3215,7 +3222,7 @@ function openJoinModal() {
     <form id="join-form" class="join-form">
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
-        <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option><option>مطاعم</option><option>سوبر ماركت</option><option>ملاحم</option><option>حلويات</option><option>مكسرات وبهارات</option><option>عصائر</option></select></label>
+        <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option>${storeCategoryNames().map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
         <label><span>اسم صاحب المتجر</span><input name="ownerName" autocomplete="name" placeholder="الاسم الكامل"></label>
         <label><span>رقم واتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">سيكون رقم دخولك للوحة، وعليه تصلك الطلبات.</small></label>
         <label class="wide"><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
