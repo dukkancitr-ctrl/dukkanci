@@ -3,12 +3,12 @@
 // 77 items with the shop's own photos; prices in Turkish Lira from the live menu.
 const yemenmandyStore = {
  "id": 47,
- "name": "Mandy Meydan Restaurant",
+ "name": "مطعم مندي ميدان",
  "category": "مطاعم",
  "image": "/assets/photos/yemenmandy/cover.webp",
  "coverImage": "/assets/photos/yemenmandy/cover.webp",
  "logoImage": "/assets/photos/yemenmandy/logo.webp",
- "logo": "M",
+ "logo": "م",
  "rating": 0,
  "reviews": 0,
  "newStore": true,
