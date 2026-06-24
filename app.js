@@ -1554,6 +1554,7 @@ function renderStorePage(id) {
           <div class="info-row">${icon("phone")}<div><strong>التواصل</strong><span dir="ltr">${store.phone}</span></div></div>
           ${store.email ? `<div class="info-row">${icon("user")}<div><strong>البريد الإلكتروني</strong><span dir="ltr">${store.email}</span></div></div>` : ""}
           <div class="info-row">${icon("bike")}<div><strong>مناطق الخدمة</strong><span>${store.areas.join("، ")}</span></div></div>
+          ${(() => { const ds = getDeliverySettings(store.id) || {}; const zones = ds.namedZones || []; if (!zones.length) return ""; return `<div class="info-row">${icon("pin")}<div><strong>أسعار توصيل خاصة</strong><ul class="zone-price-list">${zones.map(z => `<li><span>${escAttr(z.label)}</span><strong>${money(z.fee)}</strong></li>`).join("")}</ul></div></div>`; })()}
           <div class="info-row">${icon("bag")}<div><strong>طرق الاستلام</strong><span>${store.fulfillment}</span></div></div>
           ${store.website ? `<div class="official-source-note">${icon("shield")}<span><strong>بيانات موثقة</strong><small>الصور والأسعار مستوردة من الموقع الرسمي للمتجر.</small><a href="${store.sourceUrl || store.website}" target="_blank" rel="noopener">زيارة المصدر الرسمي</a></span></div>` : ""}
           <div class="store-minimum"><span>الحد الأدنى للطلب</span><strong>${money(store.minOrder)}</strong></div>

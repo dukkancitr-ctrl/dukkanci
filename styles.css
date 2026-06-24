@@ -2456,6 +2456,27 @@ img {
   cursor: pointer;
 }
 
+.zone-price-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zone-price-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.zone-price-list li strong {
+  color: var(--primary);
+  font-size: 13px;
+}
 .store-minimum {
   padding: 16px 0;
   display: flex;
