@@ -1472,9 +1472,17 @@ function renderStorePage(id) {
   const allStoreProducts = products.filter(product => product.storeId === store.id);
   const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
-  const storeProducts = activeProductFilter === "الكل"
+  const searchQuery = (state.storeProductSearch || "").trim().toLowerCase();
+  const categoryFiltered = activeProductFilter === "الكل"
     ? allStoreProducts
     : allStoreProducts.filter(product => product.category === activeProductFilter);
+  const storeProducts = searchQuery
+    ? categoryFiltered.filter(p =>
+        (p.name || "").toLowerCase().includes(searchQuery) ||
+        (p.description || "").toLowerCase().includes(searchQuery) ||
+        (p.category || "").toLowerCase().includes(searchQuery)
+      )
+    : categoryFiltered;
   const deliverySettings = getDeliverySettings(store.id);
   const defaultQuote = activeDeliveryQuote(store, getDefaultAddress());
   return `
@@ -1545,9 +1553,17 @@ function renderStorePage(id) {
             </div>
           ` : ""}
           ${store.hasOffer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
-          <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
+          <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip" id="store-products-count">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
+          <div class="store-product-search-wrap">
+            <div class="store-product-search">
+              ${icon("search")}
+              <input id="store-product-search" type="search" placeholder="ابحث في منتجات ${escAttr(store.name)}..." value="${escAttr(searchQuery)}" autocomplete="off" inputmode="search">
+              ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
+            </div>
+          </div>
           ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
-          <div class="product-grid store-products-grid">${storeProducts.map(productCard).join("")}</div>
+          ${storeProducts.length === 0 && searchQuery ? `<div class="store-search-empty">${icon("search")}<p>لا توجد نتائج لـ "<strong>${esc(searchQuery)}</strong>"</p><button class="secondary-button" data-action="clear-store-search">مسح البحث</button></div>` : ""}
+          <div class="product-grid store-products-grid" id="store-products-grid">${storeProducts.map(productCard).join("")}</div>
           ${store.newStore ? `
           <section class="reviews-block new-store-review">
             <span>${icon("star")}</span>
@@ -3664,6 +3680,7 @@ document.addEventListener("click", event => {
   if (action === "close-modal") closeModal();
   if (action === "open-store") {
     state.storeProductFilter = "الكل";
+    state.storeProductSearch = "";
     closeModal();
     closeDrawers();
     const s = getStore(target.dataset.id);
@@ -3689,8 +3706,13 @@ document.addEventListener("click", event => {
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "product-category") {
     state.storeProductFilter = target.dataset.category;
+    state.storeProductSearch = "";
     render();
     setTimeout(() => document.getElementById("store-products")?.scrollIntoView({ behavior: "auto", block: "start" }), 0);
+  }
+  if (action === "clear-store-search") {
+    state.storeProductSearch = "";
+    render();
   }
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
@@ -4177,6 +4199,27 @@ document.addEventListener("input", event => {
   }
   if (event.target.name === "category" && event.target.closest("#merchant-product-form")) {
     event.target.dataset.prev = event.target.value;
+  }
+  if (event.target.id === "store-product-search") {
+    const q = event.target.value.trim().toLowerCase();
+    state.storeProductSearch = q;
+    // Live filter: update grid without full re-render
+    const grid = document.getElementById("store-products-grid");
+    const countEl = document.getElementById("store-products-count");
+    if (grid) {
+      let visible = 0;
+      const cards = [...grid.querySelectorAll("article.product-card")];
+      cards.forEach(card => {
+        const name = (card.querySelector(".product-card__body") || card).textContent.toLowerCase();
+        const show = !q || name.includes(q);
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+      if (countEl) countEl.textContent = q ? `${visible} نتيجة من ${cards.length}` : `${cards.length} منتجاً`;
+    }
+    // Show/hide clear button dynamically
+    const clearBtn = document.querySelector(".store-search-clear");
+    if (clearBtn) clearBtn.style.display = q ? "" : "none";
   }
   if (event.target.id === "merchant-product-search") {
     state.merchantProductSearch = event.target.value;
