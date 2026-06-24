@@ -974,8 +974,8 @@ img {
 }
 
 .favorite-button {
-  width: 37px;
-  height: 37px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
@@ -1552,8 +1552,8 @@ img {
 }
 
 .social-row button {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 50%;
@@ -1568,7 +1568,7 @@ img {
 }
 
 .install-button {
-  min-height: 43px;
+  min-height: 44px;
   padding: 0 15px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
@@ -7030,7 +7030,8 @@ tbody tr:hover {
 
   .location-pill {
     gap: 8px;
-    padding: 7px 14px;
+    padding: 10px 14px;
+    min-height: 44px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.12);
     font-size: 13px;
@@ -7076,7 +7077,8 @@ tbody tr:hover {
   }
 
   .cart-button {
-    width: 43px;
+    width: 44px;
+    min-height: 44px;
     padding: 0;
     border-radius: 50%;
     justify-content: center;
@@ -7370,7 +7372,7 @@ tbody tr:hover {
   }
 
   .hero-search button {
-    height: 42px;
+    height: 44px;
     padding: 0 17px;
   }
 
@@ -7432,7 +7434,8 @@ tbody tr:hover {
     font-size: 12px;
     white-space: nowrap;
     flex-shrink: 0;
-    margin-top: 6px;
+    margin-top: 2px;
+    padding-block: 11px;
   }
 
   .category-grid {
@@ -7582,8 +7585,8 @@ tbody tr:hover {
   }
 
   .favorite-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .quantity-control {
