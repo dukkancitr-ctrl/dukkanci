@@ -75,6 +75,132 @@ function verifySendSmsHook(rawBody, headers, secretRaw) {
   });
 }
 
+// ───────────────────────── Whop subscriptions ─────────────────────────
+// Whop signs webhooks with the Standard Webhooks (svix) scheme — the SAME format
+// as the Supabase Send-SMS hook above. Accept both the "webhook-*" and "svix-*"
+// header families. The secret is the "whsec_<base64>" value from the Whop
+// dashboard, stored in WHOP_WEBHOOK_SECRET. Fails closed when the secret is unset
+// so a forged body is never trusted.
+function verifyStandardWebhook(rawBody, headers, secretRaw) {
+  if (!secretRaw) return false;
+  const secret = secretRaw.replace(/^v1,?/, "").replace(/^whsec_/, "");
+  let key;
+  try { key = Buffer.from(secret, "base64"); } catch (e) { return false; }
+  const id = headers["webhook-id"] || headers["svix-id"];
+  const ts = headers["webhook-timestamp"] || headers["svix-timestamp"];
+  const sigHeader = headers["webhook-signature"] || headers["svix-signature"];
+  if (!id || !ts || !sigHeader) return false;
+  const expected = crypto.createHmac("sha256", key).update(`${id}.${ts}.${rawBody}`).digest("base64");
+  return String(sigHeader).split(" ").some(part => {
+    const sig = part.split(",")[1] || part;           // "v1,<base64>"
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+}
+
+function whopCfg() {
+  return {
+    secret: env("WHOP_WEBHOOK_SECRET"),
+    checkoutUrl: env("WHOP_CHECKOUT_URL") || "https://whop.com/dukkanci/dukkanci-store-subscription/",
+    tplRenewal: env("WHATSAPP_TEMPLATE_RENEWAL") || "subscription_renewal"
+  };
+}
+
+// Whop sends renewal dates as Unix seconds (sometimes ms). Normalize to ISO.
+function unixToIso(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "string" && /\d{4}-\d{2}-\d{2}T/.test(v)) return v; // already ISO
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0) return null;
+  const d = new Date(n > 1e12 ? n : n * 1000);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// Extract the fields we care about from a Whop membership webhook. Handles the
+// "{ action, data }" envelope and tolerates several field name variants across
+// Whop API versions.
+function parseWhopMembership(body) {
+  const event = String(body.action || body.event || body.type || "").toLowerCase();
+  const d = (body.data && typeof body.data === "object") ? body.data : (body || {});
+  const u = (d.user && typeof d.user === "object") ? d.user : {};
+  const emailRaw = d.email || u.email || u.email_address || d.user_email || null;
+  const valid = (d.valid != null)
+    ? !!d.valid
+    : ["active", "trialing", "completed"].includes(String(d.status || "").toLowerCase());
+  const planId = d.plan_id || (d.plan && (d.plan.id || d.plan)) || null;
+  return {
+    event,
+    membershipId: d.id || d.membership_id || d.membership || null,
+    planId: typeof planId === "object" ? (planId.id || null) : planId,
+    productId: d.product_id || d.product || null,
+    email: emailRaw ? String(emailRaw).trim() : null,
+    status: d.status ? String(d.status).toLowerCase() : null,
+    valid,
+    periodEnd: unixToIso(d.renewal_period_end || d.expires_at || d.current_period_end || d.valid_until),
+    trialEnd: unixToIso(d.trial_end || d.trial_ends_at || d.trial_period_end),
+    metadata: (d.metadata && typeof d.metadata === "object") ? d.metadata : {},
+    raw: d
+  };
+}
+
+// Map a Whop membership to our subscription_status enum.
+function mapWhopStatus(m) {
+  if (!m.valid) {
+    const s = m.status || "";
+    if (s === "canceled" || s === "cancelled") return "canceled";
+    if (s === "past_due") return "past_due";
+    return "expired";
+  }
+  if (m.status === "trialing") return "trialing";
+  if (m.trialEnd && Date.parse(m.trialEnd) > Date.now() && !m.status) return "trialing";
+  return "active";
+}
+
+// Business-initiated WhatsApp message telling a store to renew. Outside the 24h
+// service window this REQUIRES an approved template (WHATSAPP_TEMPLATE_RENEWAL,
+// two body params: {{1}} store name, {{2}} renewal URL). Falls back to plain text.
+async function sendRenewalWhatsapp(c, wc, store) {
+  if (!c.token || !c.phoneId) return { skipped: true, reason: "whatsapp not configured" };
+  const to = toE164(store.whatsapp || store.phone, c.cc);
+  if (!to) return { skipped: true, reason: "store has no whatsapp/phone" };
+  const name = store.name || "متجرك";
+  const url = wc.checkoutUrl;
+  const text = `🔔 دكانجي — تجديد الاشتراك\n\nمرحباً ${name}، انتهت صلاحية اشتراك متجرك وتوقّف استقبال الطلبات الجديدة مؤقتاً.\nجدّد اشتراكك الآن ليعود متجرك للعمل واستقبال الطلبات:\n${url}\n\nشكراً لكونك جزءاً من دكانجي 🛍️`;
+  return sendWhatsapp(c, to, { template: wc.tplRenewal, params: [name, url], text });
+}
+
+// Safety-net sweep: close any store whose paid period elapsed without a Whop
+// "invalid" webhook, and WhatsApp the renewal message once. Idempotent — runs
+// daily from Vercel Cron and is also callable by an admin for a manual sweep.
+async function runSubscriptionCron(c) {
+  const wc = whopCfg();
+  const nowIso = new Date().toISOString();
+  const expired = await sbGet(
+    `stores?subscription_active=eq.true&current_period_end=not.is.null&current_period_end=lt.${encodeURIComponent(nowIso)}&select=id,name,whatsapp,phone,renewal_notified_at&limit=200`
+  ) || [];
+  let closed = 0, notified = 0;
+  for (const store of expired) {
+    await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(store.id)}`,
+      { subscription_active: false, subscription_status: "expired", subscription: "expired" }, "return=minimal");
+    closed++;
+    if (!store.renewal_notified_at) {
+      try { const r = await sendRenewalWhatsapp(c, wc, store); if (r && r.ok) notified++; } catch (e) {}
+      await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(store.id)}`,
+        { renewal_notified_at: nowIso }, "return=minimal");
+    }
+  }
+  return { ok: true, scanned: expired.length, closed, notified };
+}
+
+// Authorize the cron caller: Vercel Cron sends "Authorization: Bearer <CRON_SECRET>"
+// automatically; we also accept the shared NOTIFY_SECRET (?secret=) or an admin.
+function cronOk(req, q, c) {
+  const cs = env("CRON_SECRET");
+  if (cs && req.headers && req.headers.authorization === `Bearer ${cs}`) return true;
+  if (secretOk(req, q, c)) return true;
+  return adminOk({ headers: req.headers, query: q });
+}
+
 // Send a login OTP over WhatsApp using a Meta AUTHENTICATION template. The code
 // goes in the body param AND the copy-code/URL button param (adjust to match the
 // approved template named in WHATSAPP_TEMPLATE_OTP).
@@ -498,6 +624,12 @@ module.exports = async (req, res) => {
     let q = {};
     try { q = require("url").parse(req.url || "", true).query || {}; } catch (e) { q = req.query || {}; }
 
+    // Subscription expiry sweep — Vercel Cron invokes this over GET (see vercel.json).
+    if (q.action === "subscription-cron") {
+      if (!cronOk(req, q, c)) return res.status(403).json({ error: "unauthorized" });
+      return res.status(200).json(await runSubscriptionCron(c));
+    }
+
     // Admin inbox reads.
     if (q.action === "threads" || q.action === "thread") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
@@ -561,6 +693,87 @@ module.exports = async (req, res) => {
     const sent = await sendOtpWhatsapp(c, phone, otp);
     if (!sent.ok) return res.status(502).json({ error: { http_code: 502, message: "otp send failed" } });
     return res.status(200).json({});
+  }
+
+  // ── Whop subscription webhook ──────────────────────────────────────────────
+  // Configured in the Whop dashboard → Developer → Webhooks, pointing to
+  //   https://<site>/api/notify-order?action=whop   with secret WHOP_WEBHOOK_SECRET.
+  // Drives the store on/off switch from Whop's LIVE membership status:
+  //   membership went valid   → activate the store (trial start or payment), and
+  //   membership went invalid → stop new orders + WhatsApp a renewal message.
+  if (pq.action === "whop") {
+    const wc = whopCfg();
+    if (!verifyStandardWebhook(rawBody, req.headers, wc.secret)) {
+      return res.status(401).json({ error: "invalid signature" });
+    }
+    const m = parseWhopMembership(body);
+    if (!m.membershipId) return res.status(200).json({ skipped: true, reason: "no membership id" });
+
+    const status = mapWhopStatus(m);
+    // current_period_end = when the store auto-stops. Prefer Whop's real renewal
+    // date; if absent, fall back to 37 days (7-day trial + 30-day month).
+    const periodEnd = m.periodEnd || new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
+
+    // 1) Upsert the authoritative membership log (survives even if no store yet).
+    await sbWrite("POST", "whop_subscriptions?on_conflict=membership_id", {
+      membership_id: m.membershipId, user_email: m.email, plan_id: m.planId, product_id: m.productId,
+      status, valid: m.valid, trial_ends_at: m.trialEnd, period_end: m.valid ? periodEnd : null,
+      last_event: m.event, raw: m.raw, updated_at: new Date().toISOString()
+    }, "resolution=merge-duplicates,return=minimal");
+
+    // 2) Resolve the store: checkout metadata.store_id wins, then a prior link by
+    //    membership id, then a match on the email used at checkout.
+    let store = null;
+    const metaStoreId = m.metadata && (m.metadata.store_id || m.metadata.storeId);
+    const sel = "select=id,name,whatsapp,phone,renewal_notified_at&limit=1";
+    if (metaStoreId) {
+      const rows = await sbGet(`stores?id=eq.${encodeURIComponent(metaStoreId)}&${sel}`);
+      store = rows && rows[0];
+    }
+    if (!store) {
+      const rows = await sbGet(`stores?whop_membership_id=eq.${encodeURIComponent(m.membershipId)}&${sel}`);
+      store = rows && rows[0];
+    }
+    if (!store && m.email) {
+      const enc = encodeURIComponent(m.email);
+      let rows = await sbGet(`stores?subscription_email=eq.${enc}&${sel}`);
+      if (!rows || !rows.length) rows = await sbGet(`stores?email=eq.${enc}&${sel}`);
+      store = rows && rows[0];
+    }
+
+    if (store) {
+      const patch = {
+        whop_membership_id: m.membershipId, whop_plan_id: m.planId,
+        subscription_status: status, subscription_active: m.valid,
+        trial_ends_at: m.trialEnd, subscription: status
+      };
+      if (m.email) patch.subscription_email = m.email;
+      if (m.valid) patch.current_period_end = periodEnd;
+      await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(store.id)}`, patch, "return=minimal");
+      await sbWrite("PATCH", `whop_subscriptions?membership_id=eq.${encodeURIComponent(m.membershipId)}`,
+        { store_id: store.id, updated_at: new Date().toISOString() }, "return=minimal");
+
+      if (!m.valid && !store.renewal_notified_at) {
+        try { await sendRenewalWhatsapp(c, wc, store); } catch (e) {}
+        await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(store.id)}`,
+          { renewal_notified_at: new Date().toISOString() }, "return=minimal");
+      } else if (m.valid && store.renewal_notified_at) {
+        // Re-activated → reset so the NEXT expiry notifies again.
+        await sbWrite("PATCH", `stores?id=eq.${encodeURIComponent(store.id)}`,
+          { renewal_notified_at: null }, "return=minimal");
+      }
+    }
+    return res.status(200).json({ ok: true, membership: m.membershipId, event: m.event, status, linked: !!store });
+  }
+
+  // ── Subscription expiry cron (safety net) ──────────────────────────────────
+  // A daily Vercel Cron (see vercel.json) hits
+  //   /api/notify-order?action=subscription-cron   with ?secret=<NOTIFY_SECRET>.
+  // Catches any store whose paid period elapsed without a Whop "invalid" webhook:
+  // closes it to new orders and WhatsApps the renewal message once.
+  if (pq.action === "subscription-cron") {
+    if (!cronOk(req, pq, c)) return res.status(403).json({ error: "unauthorized" });
+    return res.status(200).json(await runSubscriptionCron(c));
   }
 
   // Checkout phone verification — STEP 1: generate a 6-digit code and WhatsApp it

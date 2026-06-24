@@ -34,7 +34,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore);
 
 const products = [];
 
@@ -63,6 +63,7 @@ products.push(...anasProducts);
 products.push(...yemenmandyProducts);
 products.push(...alfursanProducts);
 products.push(...hallabProducts);
+products.push(...safaProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -71,7 +72,15 @@ products.push(...hallabProducts);
 // The same product photo reused across branches of one brand is NOT a duplicate, so
 // duplicate detection is scoped per store.
 function isPlaceholderImage(img) {
-  return !img || /placeholder|generic-cover/i.test(String(img));
+  return !img || /placeholder|generic-cover|coming-soon/i.test(String(img));
+}
+// Products the admin explicitly hid from the storefront (ids loaded from site_settings.hiddenProducts).
+// The storefront shows a product only if it has a real image, is in stock, and isn't force-hidden;
+// the management panels (merchant + admin) read `allProducts` instead, so they still see and manage
+// EVERY product — including ones without an image (shown there as "بانتظار صورة / غير معروض").
+let HIDDEN_PRODUCTS = new Set();
+function isShownOnStore(p) {
+  return p.available !== false && !HIDDEN_PRODUCTS.has(p.id) && !isPlaceholderImage(p.image);
 }
 function applyPublishingRules(list) {
   const imageUses = new Map(); // `${storeId}|${image}` -> count, real images only
@@ -82,11 +91,14 @@ function applyPublishingRules(list) {
   }
   return list.filter(p => {
     if (p.available === false) return false;          // rule 1: unavailable
-    if (isPlaceholderImage(p.image)) return false;     // rule 2: no real image
+    if (HIDDEN_PRODUCTS.has(p.id)) return false;       // admin force-hide
+    if (isPlaceholderImage(p.image)) return false;     // rule 2: no real image -> hidden from storefront
     const k = p.storeId + "|" + String(p.image).trim();
     return imageUses.get(k) === 1;                      // rule 3: unique within its store
   });
 }
+// Full catalog (incl. items hidden from the storefront) — the management panels read this.
+const allProducts = products.slice();
 // Apply to the bundled fallback in place (preserve the array identity/reference).
 {
   const kept = applyPublishingRules(products);
@@ -134,7 +146,8 @@ const initialDeliverySettings = {
   ...anasDeliverySettings,
   ...yemenmandyDeliverySettings,
   ...alfursanDeliverySettings,
-  ...hallabDeliverySettings
+  ...hallabDeliverySettings,
+  ...safaDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -378,7 +391,9 @@ function mapDbStore(r) {
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
     website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
-    branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status
+    branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status,
+    subscriptionStatus: r.subscription_status, subscriptionActive: r.subscription_active !== false,
+    trialEndsAt: r.trial_ends_at, currentPeriodEnd: r.current_period_end, whopMembershipId: r.whop_membership_id
   };
 }
 function mapDbProduct(r) {
@@ -419,6 +434,7 @@ async function loadCatalogFromSupabase() {
     if (!all.length) return false;
     stores.length = 0; st.forEach(r => stores.push(mapDbStore(r)));
     const mapped = all.map(mapDbProduct);
+    allProducts.length = 0; mapped.forEach(p => allProducts.push(p));   // full catalog for panels
     const published = applyPublishingRules(mapped);
     products.length = 0; published.forEach(p => products.push(p));
     console.info(`Supabase: loaded ${stores.length} stores, ${published.length}/${mapped.length} products (publishing rules dropped ${mapped.length - published.length})`);
@@ -621,6 +637,9 @@ async function loadSiteSettings() {
     const map = {};
     data.forEach(r => { map[r.key] = r.value; });
     state.siteSettings = map;
+    // Admin force-hidden product ids -> re-derive the storefront list (panels use allProducts).
+    HIDDEN_PRODUCTS = new Set((((map.hiddenProducts && map.hiddenProducts.ids) || [])).map(Number));
+    if (allProducts.length) { const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p)); }
     render();
   } catch (e) { /* keep defaults */ }
 }
@@ -1422,6 +1441,7 @@ function renderStorePage(id) {
           <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
           ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
         </div>
+        ${store.subscriptionActive === false ? `<div class="store-closed-banner review-note" style="margin:12px 0">${icon("shield")} <span><strong>هذا المتجر لا يستقبل طلبات حالياً.</strong><small>اشتراك المتجر منتهٍ — يمكنك تصفّح المنتجات، وسيعود الطلب فور تجديد المتجر لاشتراكه.</small></span></div>` : ""}
         <div class="store-profile">
           <div class="store-profile__main">
             ${storeAvatar(store, "large")}
@@ -1663,6 +1683,7 @@ function dashboardSidebar(type, active) {
   const adminItems = [
     ["overview", "chart", "نظرة عامة"],
     ["stores", "store", "المتاجر"],
+    ["products", "box", "المنتجات"],
     ["customers", "users", "العملاء"],
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
@@ -1690,18 +1711,26 @@ function statCard(iconName, label, value, trend, tone) {
 function merchantOverview() {
   const store = getMerchantStore();
   const merchantOrders = state.orders.filter(order => order.storeId === store.id);
-  const storeProducts = products.filter(product => product.storeId === store.id);
-  const availableCount = storeProducts.filter(product => product.available !== false).length;
+  const storeProducts = allProducts.filter(product => product.storeId === store.id);
+  const shownCount = storeProducts.filter(isShownOnStore).length;
   const offersCount = storeProducts.filter(product => product.oldPrice).length;
   const revenue = merchantOrders.reduce((sum, order) => sum + (order.total || 0), 0);
   const openOrders = merchantOrders.filter(order => !["مكتمل", "ملغى", "مرفوضة"].includes(order.status)).length;
   const ratingLabel = store.newStore ? "جديد" : String(store.rating);
   const ratingTrend = store.newStore ? "بانتظار أول تقييم" : `من ${store.reviews} تقييماً`;
+  // Subscription snapshot for the overview card (real values from the DB).
+  const subStatus = store.subscriptionStatus || "none";
+  const subMeta = SUBSCRIPTION_LABELS[subStatus] || SUBSCRIPTION_LABELS.none;
+  const subActive = store.subscriptionActive !== false && subStatus !== "expired" && subStatus !== "canceled";
+  const subEndIso = (subStatus === "trialing" && store.trialEndsAt) ? store.trialEndsAt : store.currentPeriodEnd;
+  const subDaysLeft = subEndIso ? Math.max(0, Math.ceil((new Date(subEndIso).getTime() - Date.now()) / 86400000)) : null;
+  const subPct = subDaysLeft != null ? Math.max(4, Math.min(100, Math.round((subDaysLeft / 30) * 100))) : 0;
+  const subEndText = subEndIso ? `حتى ${formatSubDate(subEndIso)}` : (subActive ? "اشتراك فعّال" : "بحاجة للتجديد");
   return `
     <div class="stats-grid">
       ${statCard("receipt", "طلبات المتجر", merchantOrders.length.toLocaleString("ar"), openOrders ? `${openOrders.toLocaleString("ar")} طلب يحتاج متابعتك` : "لا طلبات قيد التنفيذ", "green")}
       ${statCard("wallet", "إجمالي قيمة الطلبات", `${revenue.toLocaleString("ar")} ل.ت`, merchantOrders.length ? `من ${merchantOrders.length.toLocaleString("ar")} طلب` : "لا توجد طلبات بعد", "orange")}
-      ${statCard("box", "منتجات المتجر", storeProducts.length.toLocaleString("ar"), `${availableCount.toLocaleString("ar")} متوفر · ${offersCount.toLocaleString("ar")} عليه عرض`, "blue")}
+      ${statCard("box", "منتجات المتجر", storeProducts.length.toLocaleString("ar"), `${shownCount.toLocaleString("ar")} معروض · ${(storeProducts.length - shownCount).toLocaleString("ar")} بانتظار صورة`, "blue")}
       ${statCard("star", "متوسط التقييم", ratingLabel, ratingTrend, "yellow")}
     </div>
     <div class="dashboard-grid">
@@ -1714,10 +1743,10 @@ function merchantOverview() {
         </div>` : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات كافية بعد. سيظهر الرسم البياني بمجرد استقبال أول الطلبات.</p></div>`}
       </section>
       <section class="dashboard-card subscription-card">
-        <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill green">نشط</span></div>
-        <div class="plan-name"><span>${icon("star")}</span><div><strong>الخطة الاحترافية</strong><small>حتى 30 يوليو 2026</small></div></div>
-        <div class="progress-line"><span style="width:62%"></span></div>
-        <div class="days-left"><span>متبقي</span><strong>48 يوماً</strong></div>
+        <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill ${subMeta.pill}">${subMeta.text}</span></div>
+        <div class="plan-name"><span>${icon("star")}</span><div><strong>اشتراك متجر دكانجي</strong><small>${subEndText}</small></div></div>
+        <div class="progress-line"><span style="width:${subPct}%"></span></div>
+        <div class="days-left"><span>${subActive ? "متبقي" : "الحالة"}</span><strong>${subDaysLeft != null && subActive ? `${subDaysLeft.toLocaleString("ar")} يوماً` : subMeta.text}</strong></div>
         <button class="primary-button full" data-action="merchant-tab" data-tab="subscription">إدارة الاشتراك</button>
       </section>
     </div>
@@ -1771,7 +1800,7 @@ function merchantOrders() {
 }
 
 function merchantProducts() {
-  const allStoreProducts = products.filter(product => product.storeId === getMerchantStore().id);
+  const allStoreProducts = allProducts.filter(product => product.storeId === getMerchantStore().id);
   const query = (state.merchantProductSearch || "").trim();
   const normQuery = normalizeAr(query);
   const merchantProducts = normQuery
@@ -1783,7 +1812,7 @@ function merchantProducts() {
           <div class="managed-product-name"><strong>${product.name}</strong><small>${product.category} · ${product.unit}</small></div>
           <strong>${money(product.price)}${product.oldPrice ? ` <s class="managed-old-price">${money(product.oldPrice)}</s>` : ""}</strong>
           <label class="toggle"><input type="checkbox" ${product.available !== false ? "checked" : ""} data-action="toggle-product" data-id="${product.id}"><span></span><small>${product.available !== false ? "متوفر" : "غير متوفر"}</small></label>
-          <span class="status-pill ${product.oldPrice ? "orange" : "gray"}">${product.oldPrice ? "عرض" : "عادي"}</span>
+          <span class="status-pill ${isShownOnStore(product) ? "green" : (isPlaceholderImage(product.image) ? "gray" : "red")}" title="${isPlaceholderImage(product.image) ? "أضف صورة ليظهر المنتج في المتجر" : ""}">${isShownOnStore(product) ? "معروض" : (isPlaceholderImage(product.image) ? "بانتظار صورة" : "مخفي")}</span>
           <div class="managed-product-actions">
             <button class="table-action" data-action="edit-product" data-id="${product.id}" title="تعديل">${icon("edit")}</button>
             <button class="table-action danger" data-action="delete-product" data-id="${product.id}" title="حذف">${icon("trash")}</button>
@@ -1863,21 +1892,62 @@ function merchantStore() {
   `;
 }
 
+// Arabic label + pill colour for each subscription status.
+const SUBSCRIPTION_LABELS = {
+  trialing: { text: "فترة تجريبية", pill: "green" },
+  active:   { text: "اشتراك نشط",  pill: "green" },
+  past_due: { text: "متأخر السداد", pill: "orange" },
+  canceled: { text: "ملغى",        pill: "red" },
+  expired:  { text: "منتهي",       pill: "red" },
+  none:     { text: "غير مشترك",   pill: "gray" }
+};
+function formatSubDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  try { return d.toLocaleDateString("ar-EG-u-nu-latn", { year: "numeric", month: "long", day: "numeric" }); }
+  catch (e) { return d.toISOString().slice(0, 10); }
+}
+
 function merchantSubscription() {
+  const store = getMerchantStore() || {};
+  const status = store.subscriptionStatus || "none";
+  const meta = SUBSCRIPTION_LABELS[status] || SUBSCRIPTION_LABELS.none;
+  const active = store.subscriptionActive !== false && status !== "expired" && status !== "canceled";
+  const whopUrl = window.WHOP_CHECKOUT_URL || "https://whop.com/dukkanci/dukkanci-store-subscription/";
+
   const p = (state.siteSettings && state.siteSettings.plan) || {};
-  const name = p.name || "الخطة الاحترافية";
+  const name = p.name || "اشتراك متجر دكانجي";
   const tagline = p.tagline || "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.";
-  const price = (p.price != null && p.price !== "") ? p.price : "499";
+  const price = (p.price != null && p.price !== "") ? p.price : "2,499";
   const period = p.period || "ل.ت / شهرياً";
   const features = (Array.isArray(p.features) && p.features.length) ? p.features
-    : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
+    : ["تجربة مجانية ٧ أيام", "استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
+
+  // Whichever date matters now: trial end while trialing, else the renewal date.
+  const endIso = (status === "trialing" && store.trialEndsAt) ? store.trialEndsAt : store.currentPeriodEnd;
+  const endLabel = status === "trialing" ? "تنتهي التجربة" : "تاريخ التجديد";
+
+  const renewLabel = active ? "إدارة الاشتراك" : "تجديد الاشتراك الآن";
+  const banner = active ? "" : `
+    <div class="review-note" style="margin-bottom:16px">${icon("shield")} <span><strong>اشتراك متجرك غير مفعّل — لا يستقبل المتجر طلبات جديدة حالياً.</strong><small>جدّد اشتراكك عبر الزر أدناه ليعود متجرك للعمل فوراً.</small></span></div>`;
+
   return `
+    ${banner}
     <div class="subscription-hero dashboard-card">
-      <div><span class="status-pill green">اشتراك نشط</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
+      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
       <div class="subscription-price"><strong>${escAttr(String(price))}</strong><span>${escAttr(period)}</span></div>
     </div>
     <div class="subscription-details">
-      <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3><div class="detail-list"><span><small>تاريخ البداية</small><strong>30 مايو 2026</strong></span><span><small>تاريخ الانتهاء</small><strong>30 يوليو 2026</strong></span><span><small>التجديد</small><strong>يدوي</strong></span><span><small>طريقة الدفع</small><strong>iyzico</strong></span></div><button class="primary-button full" data-action="toast" data-message="سيتم ربط الدفع عبر iyzico عند إضافة مفاتيح الحساب">تجديد الاشتراك</button></section>
+      <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3>
+        <div class="detail-list">
+          <span><small>الحالة</small><strong>${meta.text}</strong></span>
+          <span><small>${endLabel}</small><strong>${formatSubDate(endIso)}</strong></span>
+          <span><small>التجديد</small><strong>تلقائي عبر Whop</strong></span>
+          <span><small>طريقة الدفع</small><strong>Whop (بطاقة)</strong></span>
+        </div>
+        <a class="primary-button full" href="${escAttr(whopUrl)}" target="_blank" rel="noopener">${renewLabel}</a>
+      </section>
       <section class="dashboard-card"><h3>مزايا خطتك</h3><ul class="feature-list">${features.map(f => `<li>${icon("check")} ${escAttr(f)}</li>`).join("")}</ul></section>
     </div>
   `;
@@ -2493,6 +2563,42 @@ function adminLoginScreen() {
   </div></main></div>`;
 }
 
+// Admin product management: pick any store, then show/hide or edit price/name of any product.
+// Reads `allProducts` so it lists EVERY product (incl. ones without an image / hidden ones).
+function adminProducts() {
+  const storeId = Number(state.adminProductStoreId) || 50;
+  const store = getStore(storeId) || stores[0];
+  if (!store) return `<section class="dashboard-card"><div class="empty-managed">${icon("box")}<p>لا توجد متاجر</p></div></section>`;
+  const q = (state.adminProductSearch || "").trim();
+  const nq = normalizeAr(q);
+  let list = allProducts.filter(p => p.storeId === store.id);
+  if (nq) list = list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq));
+  const shownCount = list.filter(isShownOnStore).length;
+  const rows = list.slice(0, 400).map(p => {
+    const forced = HIDDEN_PRODUCTS.has(p.id);
+    const canShow = !isPlaceholderImage(p.image);
+    const vis = isShownOnStore(p) ? ["green", "معروض"] : (canShow ? ["red", "مخفي"] : ["gray", "بانتظار صورة"]);
+    return `<article>
+        <img src="${esc(p.image)}" alt="${escAttr(p.name)}" loading="lazy">
+        <div class="managed-product-name"><strong>${esc(p.name)}</strong><small>${esc(p.category || "")} · ${esc(p.unit || "")}</small></div>
+        <strong>${money(p.price)}${p.oldPrice ? ` <s class="managed-old-price">${money(p.oldPrice)}</s>` : ""}</strong>
+        <label class="toggle" title="${canShow ? "إظهار/إخفاء من المتجر" : "أضف صورة ليظهر المنتج"}"><input type="checkbox" ${(!forced && canShow) ? "checked" : ""} ${canShow ? "" : "disabled"} data-action="admin-toggle-hide" data-id="${p.id}"><span></span><small>${forced ? "مخفي" : "ظاهر"}</small></label>
+        <span class="status-pill ${vis[0]}">${vis[1]}</span>
+        <div class="managed-product-actions"><button class="table-action" data-action="edit-product" data-id="${p.id}" title="تعديل الاسم والسعر">${icon("edit")}</button></div>
+      </article>`;
+  }).join("");
+  return `
+    <div class="dashboard-toolbar">
+      <label class="store-switcher" title="اختر المتجر">${icon("store")}<select id="admin-product-store">${stores.slice().sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s => `<option value="${s.id}" ${s.id === store.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
+      <div class="dashboard-search">${icon("search")}<input id="admin-product-search" placeholder="ابحث في منتجات المتجر" value="${escAttr(q)}"></div>
+      <span class="toolbar-count">${list.length.toLocaleString("ar")} منتج · ${shownCount.toLocaleString("ar")} معروض</span>
+    </div>
+    <section class="dashboard-card product-management">
+      ${rows || `<div class="empty-managed">${icon("box")}<p>لا منتجات مطابقة</p></div>`}
+      ${list.length > 400 ? `<p style="text-align:center;padding:12px;color:#888">يُعرض أول 400 منتج — استخدم البحث لتضييق النتائج</p>` : ""}
+    </section>`;
+}
+
 function renderAdmin() {
   // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
   if (!state.adminKey) return adminLoginScreen();
@@ -2503,8 +2609,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, content: adminContent }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, content: adminContent }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -3158,6 +3264,13 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   const product = getProduct(productId);
   if (!product.available) return;
   if (product.priceOnRequest) { showToast("هذا المنتج بسعر عند الطلب — تواصل عبر واتساب"); return; }
+  // Subscription gate: a store whose subscription lapsed stays visible but cannot
+  // take new orders (subscription_active=false set by the Whop webhook / cron).
+  const productStore = getStore(product.storeId);
+  if (productStore && productStore.subscriptionActive === false) {
+    showToast("هذا المتجر لا يستقبل طلبات حالياً — الاشتراك منتهٍ");
+    return;
+  }
   const currentStoreId = state.cart[0]?.storeId;
   if (currentStoreId && currentStoreId !== product.storeId) {
     const currentStore = getStore(currentStoreId);
@@ -3720,6 +3833,20 @@ document.addEventListener("change", event => {
     showToast(`أصبح المنتج ${product.available ? "متوفراً" : "غير متوفر"}`, "success");
     render();
   }
+  if (event.target.dataset.action === "admin-toggle-hide") {
+    const id = Number(event.target.dataset.id);
+    const ids = new Set([...HIDDEN_PRODUCTS]);
+    if (event.target.checked) ids.delete(id); else ids.add(id);   // checked = ظاهر, unchecked = مخفي
+    HIDDEN_PRODUCTS = ids;
+    const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p));
+    saveContentSetting("hiddenProducts", { ids: [...ids] });   // persists (admin) + re-renders
+    showToast(ids.has(id) ? "أُخفي المنتج من المتجر" : "أصبح المنتج معروضاً", "success");
+  }
+  if (event.target.id === "admin-product-store") {
+    state.adminProductStoreId = Number(event.target.value);
+    state.adminProductSearch = "";
+    render();
+  }
   if (event.target.dataset.action === "toggle-featured") {
     const store = getStore(event.target.dataset.id);
     if (store) {
@@ -3803,6 +3930,15 @@ document.addEventListener("input", event => {
       const countEl = document.querySelector(".toolbar-count");
       if (countEl) countEl.textContent = `${visible.toLocaleString("ar")} منتج`;
     }
+  }
+  if (event.target.id === "admin-product-search") {
+    state.adminProductSearch = event.target.value;
+    const q = normalizeAr(event.target.value.trim());
+    const section = document.querySelector(".product-management");
+    if (section) section.querySelectorAll("article").forEach(article => {
+      const nameEl = article.querySelector(".managed-product-name");
+      article.style.display = (!q || normalizeAr(nameEl ? nameEl.textContent : "").includes(q)) ? "" : "none";
+    });
   }
   if (event.target.name === "ratePerKm") {
     const rate = Math.min(20, Math.max(10, Number(event.target.value) || 10));
