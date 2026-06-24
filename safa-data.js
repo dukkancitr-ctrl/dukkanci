@@ -18519,5 +18519,10 @@ const safaProducts = safaProductCatalog.map((product) => ({
 }));
 
 const safaDeliverySettings = {
-  [safaStore.id]: { mode: "distance", fixedFee: 30, ratePerKm: 12, prepMinutes: 40, maxRoundTripKm: 140 }
+  [safaStore.id]: { mode: "distance", fixedFee: 30, ratePerKm: 12, prepMinutes: 40, maxRoundTripKm: 140,
+    namedZones: [
+      { match: ["برستيج بارك", "prestige park"], fee: 50, label: "مجمع برستيج بارك" },
+      { match: ["تيراس ميكس", "terrace mix"], fee: 50, label: "تيراس ميكس" }
+    ]
+  }
 };

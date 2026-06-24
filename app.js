@@ -951,6 +951,11 @@ function normalizeDeliveryFee(rawFee) {
 
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
+  if (settings.namedZones?.length && address) {
+    const addrText = [address.label, address.address, address.details].join(" ").toLowerCase();
+    const zone = settings.namedZones.find(z => z.match.some(k => addrText.includes(k.toLowerCase())));
+    if (zone) return { storeId: store.id, addressId: address.id, fee: zone.fee, provider: "zone", zoneLabel: zone.label, estimatedMinutes: settings.prepMinutes, exceedsMaxDistance: false };
+  }
   if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
   if (settings.mode !== "distance") {
     return {
