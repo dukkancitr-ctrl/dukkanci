@@ -2284,8 +2284,13 @@ img {
   grid-template-columns: repeat(3, 1fr);
 }
 
-.store-product-search-wrap {
-  margin: 0 0 14px;
+.store-toolbar {
+  position: sticky;
+  top: 119px;
+  z-index: 90;
+  background: #f5f0ee;
+  padding: 10px 0 0;
+  margin: 0 0 4px;
 }
 
 .store-product-search {
@@ -2364,11 +2369,16 @@ img {
 .store-search-empty p { font-size: 15px; margin: 0; }
 
 .store-product-filters {
-  margin: -2px 0 21px;
+  margin: 8px 0 0;
+  padding-bottom: 10px;
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.store-product-filters::-webkit-scrollbar { display: none; }
 
 .store-product-filters button {
   min-height: 37px;
