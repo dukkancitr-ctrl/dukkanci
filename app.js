@@ -3543,7 +3543,12 @@ function openProductForm(id, defaultCategory) {
         <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
         <label class="input-label"><span>السعر (ل.ت) <i class="req">*</i></span><input name="price" type="number" min="0" step="1" inputmode="numeric" required value="${editing ? editing.price : ""}"></label>
         <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
-        <label class="input-label"><span>التصنيف <i class="req">*</i></span><input name="category" list="merchant-cat-list" required value="${escAttr(presetCat)}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label"><span>التصنيف <i class="req">*</i></span>
+          <select name="category" required>
+            ${cats.map(c => `<option value="${escAttr(c)}" ${c === presetCat ? "selected" : ""}>${esc(c)}</option>`).join("")}
+            <option value="__new__">＋ إضافة تصنيف جديد...</option>
+          </select>
+        </label>
         <label class="input-label wide"><span>الأحجام والخيارات (اختياري)</span><textarea name="optionLines" rows="3" placeholder="سطر لكل خيار بالصيغة: الاسم | فرق السعر&#10;مثال:&#10;وسط | 0&#10;كبير | 70">${escAttr(optText)}</textarea><small class="field-hint">اتركه فارغاً إن لم يكن للمنتج أحجام. السعر أعلاه هو سعر الخيار الأول.</small></label>
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
@@ -4152,6 +4157,23 @@ document.addEventListener("input", event => {
     const url = event.target.value.trim();
     if (preview) preview.innerHTML = url ? `<img src="${escAttr(url)}" alt="" onerror="this.parentNode.innerHTML='&#9888;'">` : icon("box");
   }
+  if (event.target.name === "category" && event.target.closest("#merchant-product-form") && event.target.value === "__new__") {
+    event.target.value = event.target.dataset.prev || "";
+    const storeId = getMerchantStore().id;
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <span class="section-kicker">${getMerchantStore().name}</span>
+      <h2>إضافة تصنيف جديد</h2>
+      <form id="add-cat-form" data-store-id="${storeId}" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف <i class="req">*</i></span><input name="catName" required placeholder="مثال: منتجات عضوية"></label>
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ التصنيف</button>
+      </form>
+    `, "");
+    return;
+  }
+  if (event.target.name === "category" && event.target.closest("#merchant-product-form")) {
+    event.target.dataset.prev = event.target.value;
+  }
   if (event.target.id === "merchant-product-search") {
     state.merchantProductSearch = event.target.value;
     const q = normalizeAr(event.target.value.trim());
@@ -4296,6 +4318,7 @@ document.addEventListener("submit", event => {
   }
   if (event.target.id === "merchant-product-form") {
     const f = event.target;
+    if (f.category?.value === "__new__") { showToast("اختر تصنيفاً من القائمة أولاً", ""); return; }
     // Parse optional size/option lines ("الاسم | فرق السعر") into one option group.
     let options = [];
     const optLines = (f.optionLines?.value || "").trim();
