@@ -2292,12 +2292,13 @@ img {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--surface);
-  border: 1.5px solid var(--line);
+  background: #fff;
+  border: 1.5px solid #d4ccc9;
   border-radius: 12px;
   padding: 0 14px;
   height: 48px;
   transition: border-color 0.18s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .store-product-search:focus-within {
