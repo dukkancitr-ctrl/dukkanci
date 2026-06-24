@@ -3543,11 +3543,11 @@ function openProductForm(id, defaultCategory) {
             <div class="image-upload-controls">
               <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
               <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
-              <button type="button" class="ai-enhance-btn" id="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} توليد صورة بالذكاء الاصطناعي</button>
+              <button type="button" class="ai-enhance-btn" id="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} تحسين الصورة بالذكاء الاصطناعي</button>
             </div>
           </div>
           <input type="hidden" name="imageData">
-          <small class="field-hint ai-enhance-hint">يُولَّد صورة احترافية للمنتج بناءً على اسمه وتصنيفه — يستغرق ثوانٍ قليلة.</small>
+          <small class="field-hint ai-enhance-hint">ارفع الصورة أولاً ثم اضغط «تحسين» — يُزيل الخلفية ويُحسّن الجودة تلقائياً.</small>
         </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
       </div>
@@ -3724,33 +3724,35 @@ document.addEventListener("click", event => {
   if (action === "ai-enhance-image") {
     const form = target.closest("form");
     if (!form) return;
+    const imageData = form.elements.imageData?.value || "";
+    const imageUrl = (form.elements.image?.value || "").trim();
+    if (!imageData && !imageUrl) { showToast("ارفع الصورة أولاً ثم اضغط تحسين", ""); return; }
     const productName = (form.elements.name?.value || "").trim();
-    const category = (form.elements.category?.value || "").trim();
-    if (!productName) { showToast("أدخل اسم المنتج أولاً", ""); return; }
-    const btn = target;
     const preview = document.getElementById("product-image-preview");
     const imageInput = form.elements.image;
-    btn.disabled = true;
-    btn.innerHTML = `<span class="ai-spin">⏳</span> جارٍ التوليد...`;
+    target.disabled = true;
+    target.innerHTML = `⏳ جارٍ التحسين...`;
+    const body = imageData ? { imageData, name: productName } : { imageUrl, name: productName };
     fetch("/api/enhance-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: productName, category })
+      body: JSON.stringify(body)
     })
       .then(r => r.json())
       .then(data => {
         if (data.url) {
           if (imageInput) imageInput.value = data.url;
+          if (form.elements.imageData) form.elements.imageData.value = "";
           if (preview) preview.innerHTML = `<img src="${data.url}" alt="">`;
-          showToast("تم توليد الصورة بنجاح ✓", "success");
+          showToast("تم تحسين الصورة بنجاح ✓", "success");
         } else {
-          showToast(data.error || "تعذّر توليد الصورة", "");
+          showToast(data.error || "تعذّر تحسين الصورة", "");
         }
       })
       .catch(() => showToast("خطأ في الاتصال بالذكاء الاصطناعي", ""))
       .finally(() => {
-        btn.disabled = false;
-        btn.innerHTML = `${icon("stars")} توليد صورة بالذكاء الاصطناعي`;
+        target.disabled = false;
+        target.innerHTML = `${icon("stars")} تحسين الصورة بالذكاء الاصطناعي`;
       });
   }
   if (action === "add-store-category") {
