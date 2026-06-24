@@ -3525,10 +3525,19 @@ function openProductForm(id, defaultCategory) {
   const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
     ? editing.options[0].values.map((v, i) => `${v} | ${editing.options[0].extra?.[i] || 0}`).join("\n")
     : "";
+  const hasImg = editing && editing.image && !isPlaceholderImage(editing.image);
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${store.name}</span>
     <h2>${editing ? "تعديل منتج" : "إضافة منتج جديد"}</h2>
+    ${editing ? `<div class="product-edit-current">
+      <div class="product-edit-current__img">${hasImg ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+      <div class="product-edit-current__info">
+        <strong>${esc(editing.name)}</strong>
+        <span>${money(editing.price)}</span>
+        <small>${esc(editing.category || "")}${editing.unit ? ` · ${esc(editing.unit)}` : ""}</small>
+      </div>
+    </div>` : ""}
     <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}">
       <div class="form-grid">
         <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
@@ -3539,11 +3548,14 @@ function openProductForm(id, defaultCategory) {
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
           <div class="image-upload-row">
-            <div class="image-preview" id="product-image-preview">${(editing && editing.image) ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+            <div class="image-preview-wrap">
+              <div class="image-preview" id="product-image-preview">${hasImg ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+              ${hasImg ? `<button type="button" class="image-clear-btn" data-action="clear-product-image" title="حذف الصورة">${icon("close")}</button>` : ""}
+            </div>
             <div class="image-upload-controls">
-              <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
+              <label class="upload-tile">${icon("upload")}<span>رفع صورة جديدة</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
               <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
-              <button type="button" class="ai-enhance-btn" id="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} تحسين الصورة بالذكاء الاصطناعي</button>
+              <button type="button" class="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} تحسين الصورة بالذكاء الاصطناعي</button>
             </div>
           </div>
           <input type="hidden" name="imageData">
@@ -3721,6 +3733,13 @@ document.addEventListener("click", event => {
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
+  if (action === "clear-product-image") {
+    const form = target.closest("form");
+    const preview = document.getElementById("product-image-preview");
+    if (form) { form.elements.image.value = ""; if (form.elements.imageData) form.elements.imageData.value = ""; }
+    if (preview) preview.innerHTML = icon("box");
+    target.remove();
+  }
   if (action === "ai-enhance-image") {
     const form = target.closest("form");
     if (!form) return;
