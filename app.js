@@ -1108,7 +1108,7 @@ function waOrderLink(product) {
 function productCard(product) {
   const isFavorite = state.favorites.includes(`product-${product.id}`);
   return `
-    <article class="product-card ${product.storeId === 5 || (product.sourceBranded && product.imageFit !== "cover") ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}">
+    <article class="product-card ${product.storeId === 5 || (product.sourceBranded && product.imageFit !== "cover") ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}" data-category="${escAttr(product.category || "")}">
       <button class="product-card__image" data-action="open-product" data-id="${product.id}">
         <img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">
         ${product.oldPrice ? `<span class="discount-chip">وفر ${Math.round((1 - product.price / product.oldPrice) * 100)}%</span>` : ""}
@@ -3705,10 +3705,28 @@ document.addEventListener("click", event => {
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "product-category") {
-    state.storeProductFilter = target.dataset.category;
+    const category = target.dataset.category;
+    state.storeProductFilter = category;
     state.storeProductSearch = "";
-    render();
-    setTimeout(() => document.getElementById("store-products")?.scrollIntoView({ behavior: "auto", block: "start" }), 0);
+    // DOM-level filter — no re-render, no scroll-to-top
+    document.querySelectorAll(".store-product-filters button").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.category === category);
+    });
+    const searchInput = document.getElementById("store-product-search");
+    if (searchInput) searchInput.value = "";
+    document.querySelector(".store-search-clear")?.style && (document.querySelector(".store-search-clear").style.display = "none");
+    const grid = document.getElementById("store-products-grid");
+    const countEl = document.getElementById("store-products-count");
+    if (grid) {
+      let visible = 0;
+      const total = grid.querySelectorAll("article.product-card").length;
+      grid.querySelectorAll("article.product-card").forEach(card => {
+        const show = category === "الكل" || card.dataset.category === category;
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+      if (countEl) countEl.textContent = category === "الكل" ? `${total} منتجاً` : `${visible} من ${total} منتجاً`;
+    }
   }
   if (action === "clear-store-search") {
     state.storeProductSearch = "";
