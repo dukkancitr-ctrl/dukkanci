@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="صورة المنتج قريباً">
+  <defs>
+    <linearGradient id="pbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F4F7F4"/>
+      <stop offset="100%" stop-color="#E6EFE9"/>
+    </linearGradient>
+    <linearGradient id="pgold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E2C66B"/>
+      <stop offset="100%" stop-color="#C49A2E"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#pbg)"/>
+  <!-- shopping bag -->
+  <g transform="translate(300,250)" fill="none" stroke="#0E5A3C" stroke-width="11" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M-92 -34 H92 L78 118 a16 16 0 0 1 -16 15 H-62 a16 16 0 0 1 -16 -15 Z"/>
+    <path d="M-46 -34 v-20 a46 46 0 0 1 92 0 v20" />
+  </g>
+  <!-- 8-point star accent -->
+  <g transform="translate(300,250)" fill="url(#pgold)">
+    <rect x="-19" y="-19" width="38" height="38" rx="5"/>
+    <rect x="-19" y="-19" width="38" height="38" rx="5" transform="rotate(45)"/>
+    <circle r="9" fill="#F4F7F4"/>
+  </g>
+  <g style="direction:rtl" text-anchor="middle" font-family="'Cairo','Tajawal','Segoe UI','Tahoma',Arial,sans-serif">
+    <text x="300" y="448" font-size="46" font-weight="800" fill="#0E5A3C">الصورة قريباً</text>
+    <text x="300" y="500" font-size="29" font-weight="600" fill="#C49A2E">صفا الشام</text>
+  </g>
+</svg>
