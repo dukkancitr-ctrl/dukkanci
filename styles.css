@@ -2456,6 +2456,42 @@ img {
   cursor: pointer;
 }
 
+/* Product category filter chips — admin & merchant panels */
+.product-cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 0 4px;
+}
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+.cat-chip span { font-size: 10px; color: var(--muted); }
+.cat-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+.cat-chip.active span { color: rgba(255,255,255,.8); }
+.cat-chip.add-cat-chip {
+  border-style: dashed;
+  color: var(--primary);
+  border-color: var(--primary);
+  background: transparent;
+}
+.cat-chip.add-cat-chip .icon { width: 12px; }
 .zone-price-list {
   list-style: none;
   margin: 6px 0 0;

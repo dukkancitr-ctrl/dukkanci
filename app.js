@@ -1169,6 +1169,22 @@ function homeCategoriesOrdered() {
 function storeCategoryNames() {
   return categoriesList().map(c => c.name).filter(Boolean);
 }
+// All product categories for a given store, deduplicated + sorted,
+// plus any extra categories the admin/owner added (persisted in site_settings).
+function storeProductCategories(storeId) {
+  const fromProducts = [...new Set(allProducts.filter(p => p.storeId === storeId).map(p => p.category).filter(Boolean))];
+  const extra = ((state.siteSettings.storeExtraCategories || {})[String(storeId)] || []);
+  const all = [...new Set([...fromProducts, ...extra])];
+  return all.sort((a, b) => a.localeCompare(b, "ar"));
+}
+function saveStoreExtraCategory(storeId, catName) {
+  const map = { ...(state.siteSettings.storeExtraCategories || {}) };
+  const existing = map[String(storeId)] || [];
+  if (existing.includes(catName)) return;
+  map[String(storeId)] = [...existing, catName];
+  state.siteSettings = { ...state.siteSettings, storeExtraCategories: map };
+  adminApi("save-settings", { method: "POST", body: { key: "storeExtraCategories", value: map } }).catch(() => showToast("تعذّر الحفظ سحابياً", ""));
+}
 
 function renderHome() {
   // For brands with several branches, surface the branch nearest the visitor's
@@ -1831,12 +1847,19 @@ function merchantOrders() {
 }
 
 function merchantProducts() {
-  const allStoreProducts = allProducts.filter(product => product.storeId === getMerchantStore().id);
+  const store = getMerchantStore();
+  const allStoreProducts = allProducts.filter(product => product.storeId === store.id);
   const query = (state.merchantProductSearch || "").trim();
   const normQuery = normalizeAr(query);
-  const merchantProducts = normQuery
-    ? allStoreProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery))
-    : allStoreProducts;
+  const activeCat = state.merchantProductCategory || null;
+  const storeCats = storeProductCategories(store.id);
+  let merchantProducts = activeCat ? allStoreProducts.filter(p => p.category === activeCat) : allStoreProducts;
+  if (normQuery) merchantProducts = merchantProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery));
+  const catBar = `<div class="product-cat-filter">
+    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
+    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+  </div>`;
   const rows = merchantProducts.map(product => `
         <article>
           <img src="${product.image}" alt="${escAttr(product.name)}" loading="lazy">
@@ -1855,6 +1878,7 @@ function merchantProducts() {
       <div class="dashboard-search">${icon("search")}<input id="merchant-product-search" placeholder="ابحث في منتجاتك" value="${escAttr(query)}"></div>
       <div class="toolbar-actions"><span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span><button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button></div>
     </div>
+    ${catBar}
     <section class="dashboard-card product-management">
       ${rows || `<div class="empty-managed">${icon("box")}<p>${query ? "لا منتجات مطابقة لبحثك" : "لا توجد منتجات بعد. ابدأ بإضافة أول منتج."}</p></div>`}
     </section>
@@ -2644,9 +2668,17 @@ function adminProducts() {
   if (!store) return `<section class="dashboard-card"><div class="empty-managed">${icon("box")}<p>لا توجد متاجر</p></div></section>`;
   const q = (state.adminProductSearch || "").trim();
   const nq = normalizeAr(q);
+  const activeCat = state.adminProductCategory || null;
+  const storeCats = storeProductCategories(store.id);
   let list = allProducts.filter(p => p.storeId === store.id);
+  if (activeCat) list = list.filter(p => p.category === activeCat);
   if (nq) list = list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq));
   const shownCount = list.filter(isShownOnStore).length;
+  const catBar = `<div class="product-cat-filter">
+    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
+    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+  </div>`;
   const rows = list.slice(0, 400).map(p => {
     const forced = HIDDEN_PRODUCTS.has(p.id);
     const canShow = !isPlaceholderImage(p.image);
@@ -2666,6 +2698,7 @@ function adminProducts() {
       <div class="dashboard-search">${icon("search")}<input id="admin-product-search" placeholder="ابحث في منتجات المتجر" value="${escAttr(q)}"></div>
       <span class="toolbar-count">${list.length.toLocaleString("ar")} منتج · ${shownCount.toLocaleString("ar")} معروض</span>
     </div>
+    ${catBar}
     <section class="dashboard-card product-management">
       ${rows || `<div class="empty-managed">${icon("box")}<p>لا منتجات مطابقة</p></div>`}
       ${list.length > 400 ? `<p style="text-align:center;padding:12px;color:#888">يُعرض أول 400 منتج — استخدم البحث لتضييق النتائج</p>` : ""}
@@ -3684,6 +3717,22 @@ document.addEventListener("click", event => {
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
+  if (action === "add-store-category") {
+    const storeId = Number(target.dataset.id);
+    const store = getStore(storeId);
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <span class="section-kicker">${store ? escAttr(store.name) : ""}</span>
+      <h2>إضافة تصنيف جديد</h2>
+      <form id="add-cat-form" data-store-id="${storeId}" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف <i class="req">*</i></span>
+          <input name="catName" required placeholder="مثال: منتجات عضوية" list="existing-cats-list">
+          <datalist id="existing-cats-list">${storeProductCategories(storeId).map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist>
+        </label>
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ التصنيف</button>
+      </form>
+    `, "");
+  }
   if (action === "add-zone") {
     const list = document.getElementById("named-zones-list");
     if (list) {
@@ -3967,6 +4016,15 @@ document.addEventListener("change", event => {
   if (event.target.id === "admin-product-store") {
     state.adminProductStoreId = Number(event.target.value);
     state.adminProductSearch = "";
+    state.adminProductCategory = null;
+    render();
+  }
+  if (event.target.dataset.action === "admin-cat-filter") {
+    state.adminProductCategory = event.target.dataset.cat || null;
+    render();
+  }
+  if (event.target.dataset.action === "merchant-cat-filter") {
+    state.merchantProductCategory = event.target.dataset.cat || null;
     render();
   }
   if (event.target.dataset.action === "toggle-featured") {
@@ -4160,6 +4218,16 @@ document.addEventListener("submit", event => {
     saveContentSetting("categories", { items });
     showToast("تم حفظ التصنيف", "success");
     return;
+  }
+  if (event.target.id === "add-cat-form") {
+    const form = new FormData(event.target);
+    const catName = (form.get("catName") || "").toString().trim();
+    const storeId = Number(event.target.dataset.storeId);
+    if (!catName) return;
+    saveStoreExtraCategory(storeId, catName);
+    closeModal();
+    showToast(`تم إضافة تصنيف «${catName}»`, "success");
+    render();
   }
   if (event.target.id === "product-form") {
     const product = getProduct(event.target.dataset.id);
