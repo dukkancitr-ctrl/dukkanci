@@ -274,7 +274,8 @@ const iconPaths = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
-  dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'
+  dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>'
 };
 
 function icon(name, className = "") {
@@ -637,6 +638,12 @@ async function loadSiteSettings() {
     const map = {};
     data.forEach(r => { map[r.key] = r.value; });
     state.siteSettings = map;
+    if (map.namedZones && typeof map.namedZones === "object") {
+      Object.entries(map.namedZones).forEach(([sid, zones]) => {
+        const id = Number(sid);
+        state.deliverySettings[id] = { ...(state.deliverySettings[id] || initialDeliverySettings[id] || {}), namedZones: zones };
+      });
+    }
     // Admin force-hidden product ids -> re-derive the storefront list (panels use allProducts).
     HIDDEN_PRODUCTS = new Set((((map.hiddenProducts && map.hiddenProducts.ids) || [])).map(Number));
     if (allProducts.length) { const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p)); }
@@ -951,6 +958,11 @@ function normalizeDeliveryFee(rawFee) {
 
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
+  if (settings.namedZones?.length && address) {
+    const addrText = [address.label, address.address, address.details].join(" ").toLowerCase();
+    const zone = settings.namedZones.find(z => z.match.some(k => addrText.includes(k.toLowerCase())));
+    if (zone) return { storeId: store.id, addressId: address.id, fee: zone.fee, provider: "zone", zoneLabel: zone.label, estimatedMinutes: settings.prepMinutes, exceedsMaxDistance: false };
+  }
   if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
   if (settings.mode !== "distance") {
     return {
@@ -981,6 +993,24 @@ function estimateDeliveryQuote(store, address) {
     provider: "estimate",
     exceedsMaxDistance: roundTripKm > settings.maxRoundTripKm
   };
+}
+
+function renderZoneRow(z, i) {
+  return `<div class="named-zone-row" data-zone="${i}">
+    <input name="zone-label-${i}" class="zone-label" placeholder="اسم المنطقة (مثال: برستيج بارك)" value="${escAttr(z.label || "")}">
+    <input name="zone-match-${i}" class="zone-match" placeholder="كلمات مطابقة، مفصولة بفاصلة" value="${escAttr((z.match || []).join(", "))}">
+    <div class="input-with-unit zone-fee-wrap"><input name="zone-fee-${i}" type="number" min="0" value="${z.fee || 0}"><b>ل.ت</b></div>
+    <button type="button" class="icon-button named-zone-delete" data-action="remove-zone" data-zone="${i}" title="حذف">${icon("trash")}</button>
+  </div>`;
+}
+
+function saveNamedZonesCloud(storeId, zones) {
+  const all = (state.siteSettings.namedZones && typeof state.siteSettings.namedZones === "object") ? { ...state.siteSettings.namedZones } : {};
+  if (zones.length) all[String(storeId)] = zones; else delete all[String(storeId)];
+  state.siteSettings = { ...state.siteSettings, namedZones: all };
+  state.deliverySettings[storeId] = { ...state.deliverySettings[storeId], namedZones: zones };
+  saveState();
+  adminApi("save-settings", { method: "POST", body: { key: "namedZones", value: all } }).catch(() => showToast("تعذّر الحفظ السحابي لمناطق التوصيل", ""));
 }
 
 function activeDeliveryQuote(store, address) {
@@ -1139,6 +1169,22 @@ function homeCategoriesOrdered() {
 // not only on the homepage. Falls back to the HOME_CATEGORIES defaults.
 function storeCategoryNames() {
   return categoriesList().map(c => c.name).filter(Boolean);
+}
+// All product categories for a given store, deduplicated + sorted,
+// plus any extra categories the admin/owner added (persisted in site_settings).
+function storeProductCategories(storeId) {
+  const fromProducts = [...new Set(allProducts.filter(p => p.storeId === storeId).map(p => p.category).filter(Boolean))];
+  const extra = ((state.siteSettings.storeExtraCategories || {})[String(storeId)] || []);
+  const all = [...new Set([...fromProducts, ...extra])];
+  return all.sort((a, b) => a.localeCompare(b, "ar"));
+}
+function saveStoreExtraCategory(storeId, catName) {
+  const map = { ...(state.siteSettings.storeExtraCategories || {}) };
+  const existing = map[String(storeId)] || [];
+  if (existing.includes(catName)) return;
+  map[String(storeId)] = [...existing, catName];
+  state.siteSettings = { ...state.siteSettings, storeExtraCategories: map };
+  adminApi("save-settings", { method: "POST", body: { key: "storeExtraCategories", value: map } }).catch(() => showToast("تعذّر الحفظ سحابياً", ""));
 }
 
 function renderHome() {
@@ -1426,9 +1472,17 @@ function renderStorePage(id) {
   const allStoreProducts = products.filter(product => product.storeId === store.id);
   const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
-  const storeProducts = activeProductFilter === "الكل"
+  const searchQuery = (state.storeProductSearch || "").trim().toLowerCase();
+  const categoryFiltered = activeProductFilter === "الكل"
     ? allStoreProducts
     : allStoreProducts.filter(product => product.category === activeProductFilter);
+  const storeProducts = searchQuery
+    ? categoryFiltered.filter(p =>
+        (p.name || "").toLowerCase().includes(searchQuery) ||
+        (p.description || "").toLowerCase().includes(searchQuery) ||
+        (p.category || "").toLowerCase().includes(searchQuery)
+      )
+    : categoryFiltered;
   const deliverySettings = getDeliverySettings(store.id);
   const defaultQuote = activeDeliveryQuote(store, getDefaultAddress());
   return `
@@ -1499,9 +1553,17 @@ function renderStorePage(id) {
             </div>
           ` : ""}
           ${store.hasOffer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
-          <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
+          <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip" id="store-products-count">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
+          <div class="store-product-search-wrap">
+            <div class="store-product-search">
+              ${icon("search")}
+              <input id="store-product-search" type="search" placeholder="ابحث في منتجات ${escAttr(store.name)}..." value="${escAttr(searchQuery)}" autocomplete="off" inputmode="search">
+              ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
+            </div>
+          </div>
           ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
-          <div class="product-grid store-products-grid">${storeProducts.map(productCard).join("")}</div>
+          ${storeProducts.length === 0 && searchQuery ? `<div class="store-search-empty">${icon("search")}<p>لا توجد نتائج لـ "<strong>${esc(searchQuery)}</strong>"</p><button class="secondary-button" data-action="clear-store-search">مسح البحث</button></div>` : ""}
+          <div class="product-grid store-products-grid" id="store-products-grid">${storeProducts.map(productCard).join("")}</div>
           ${store.newStore ? `
           <section class="reviews-block new-store-review">
             <span>${icon("star")}</span>
@@ -1525,6 +1587,7 @@ function renderStorePage(id) {
           <div class="info-row">${icon("phone")}<div><strong>التواصل</strong><span dir="ltr">${store.phone}</span></div></div>
           ${store.email ? `<div class="info-row">${icon("user")}<div><strong>البريد الإلكتروني</strong><span dir="ltr">${store.email}</span></div></div>` : ""}
           <div class="info-row">${icon("bike")}<div><strong>مناطق الخدمة</strong><span>${store.areas.join("، ")}</span></div></div>
+          ${(() => { const ds = getDeliverySettings(store.id) || {}; const zones = ds.namedZones || []; if (!zones.length) return ""; return `<div class="info-row">${icon("pin")}<div><strong>أسعار توصيل خاصة</strong><ul class="zone-price-list">${zones.map(z => `<li><span>${escAttr(z.label)}</span><strong>${money(z.fee)}</strong></li>`).join("")}</ul></div></div>`; })()}
           <div class="info-row">${icon("bag")}<div><strong>طرق الاستلام</strong><span>${store.fulfillment}</span></div></div>
           ${store.website ? `<div class="official-source-note">${icon("shield")}<span><strong>بيانات موثقة</strong><small>الصور والأسعار مستوردة من الموقع الرسمي للمتجر.</small><a href="${store.sourceUrl || store.website}" target="_blank" rel="noopener">زيارة المصدر الرسمي</a></span></div>` : ""}
           <div class="store-minimum"><span>الحد الأدنى للطلب</span><strong>${money(store.minOrder)}</strong></div>
@@ -1688,6 +1751,7 @@ function dashboardSidebar(type, active) {
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
     ["complaints", "megaphone", "الشكاوى"],
+    ["delivery", "bike", "التوصيل"],
     ["content", "settings", "المحتوى"]
   ];
   const items = type === "merchant" ? merchantItems : adminItems;
@@ -1800,12 +1864,19 @@ function merchantOrders() {
 }
 
 function merchantProducts() {
-  const allStoreProducts = allProducts.filter(product => product.storeId === getMerchantStore().id);
+  const store = getMerchantStore();
+  const allStoreProducts = allProducts.filter(product => product.storeId === store.id);
   const query = (state.merchantProductSearch || "").trim();
   const normQuery = normalizeAr(query);
-  const merchantProducts = normQuery
-    ? allStoreProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery))
-    : allStoreProducts;
+  const activeCat = state.merchantProductCategory || null;
+  const storeCats = storeProductCategories(store.id);
+  let merchantProducts = activeCat ? allStoreProducts.filter(p => p.category === activeCat) : allStoreProducts;
+  if (normQuery) merchantProducts = merchantProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery));
+  const catBar = `<div class="product-cat-filter">
+    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
+    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+  </div>`;
   const rows = merchantProducts.map(product => `
         <article>
           <img src="${product.image}" alt="${escAttr(product.name)}" loading="lazy">
@@ -1824,6 +1895,7 @@ function merchantProducts() {
       <div class="dashboard-search">${icon("search")}<input id="merchant-product-search" placeholder="ابحث في منتجاتك" value="${escAttr(query)}"></div>
       <div class="toolbar-actions"><span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span><button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button></div>
     </div>
+    ${catBar}
     <section class="dashboard-card product-management">
       ${rows || `<div class="empty-managed">${icon("box")}<p>${query ? "لا منتجات مطابقة لبحثك" : "لا توجد منتجات بعد. ابدأ بإضافة أول منتج."}</p></div>`}
     </section>
@@ -1886,6 +1958,17 @@ function merchantStore() {
           <button type="button" class="secondary-button compact" data-action="capture-store-location">${icon("pin")} استخدام موقعي الحالي</button>
         </div>
         <p class="maps-integration-note">${icon("shield")} يتم إرسال الإحداثيات من الخادم إلى Google Routes API عند توفر مفتاح الخدمة، ولا يظهر المفتاح داخل الموقع.</p>
+      </section>
+      <section class="named-zones-section">
+        <div class="card-heading">
+          <div><h3>${icon("pin")} مناطق توصيل بسعر ثابت</h3><p>سعر ثابت لسكان مجمعات أو مناطق محددة — يُطبَّق تلقائياً عند ذكر اسم المنطقة في عنوان التوصيل.</p></div>
+          <button type="button" class="secondary-button compact" data-action="add-zone">${icon("plus")} إضافة منطقة</button>
+        </div>
+        <div class="named-zones-list" id="named-zones-list">
+          ${(deliverySettings.namedZones || []).map((z, i) => renderZoneRow(z, i)).join("")}
+          ${!(deliverySettings.namedZones || []).length ? `<p class="zones-empty-hint">لا توجد مناطق خاصة بعد — اضغط «إضافة منطقة» لإضافة أول منطقة.</p>` : ""}
+        </div>
+        <div class="named-zones-guide"><small>${icon("info")} مثال: اسم المنطقة «برستيج بارك» — كلمات مطابقة: «برستيج بارك، prestige park» — السعر: 50 ل.ت</small></div>
       </section>
       <div class="form-actions"><button class="primary-button" type="submit">${icon("check")} حفظ التغييرات</button></div>
     </form>
@@ -2213,6 +2296,37 @@ function adminOrders() {
 function adminComplaints() {
   const complaints = state.customerComplaints || [];
   return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div></div><section class="dashboard-card complaint-list">${complaints.length ? complaints.map(c => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${c.subject}</strong><small>${c.id} · ${c.orderId || "شكوى عامة"} · ${c.date}</small></div><span class="status-pill ${statusClass(c.status)}">${c.status}</span></article>`).join("") : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد شكاوى حالياً.</p></div>`}</section>`;
+}
+
+function adminDeliveryZones() {
+  const sorted = [...stores].filter(s => (s.approvalStatus || "approved") === "approved").sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>مناطق التوصيل بسعر ثابت</h3><p>حدّد مجمعات أو أحياء تحصل على سعر توصيل ثابت بصرف النظر عن المسافة. يُطبَّق عند ذكر اسم المنطقة في عنوان التوصيل.</p></div></div>
+      <div class="admin-zones-list">
+        ${sorted.map(store => {
+          const zones = (getDeliverySettings(store.id) || {}).namedZones || [];
+          return `<article class="admin-zone-store">
+            <div class="admin-zone-store__head">
+              ${storeAvatar(store)}
+              <div><strong>${escAttr(store.name)}</strong><small>${zones.length ? zones.length + " منطقة مضافة" : "لا توجد مناطق خاصة"}</small></div>
+              <button class="secondary-button compact" data-action="toggle-zone-editor" data-id="${store.id}">${icon("edit")} تعديل</button>
+            </div>
+            <div class="zone-editor" id="zone-editor-${store.id}" style="display:none">
+              <div class="named-zones-list" id="named-zones-list-${store.id}">
+                ${zones.map((z, i) => renderZoneRow(z, i)).join("")}
+                ${!zones.length ? `<p class="zones-empty-hint">لا توجد مناطق — اضغط إضافة منطقة.</p>` : ""}
+              </div>
+              <div class="zone-editor-actions">
+                <button type="button" class="secondary-button compact" data-action="add-zone-admin" data-id="${store.id}">${icon("plus")} إضافة منطقة</button>
+                <button type="button" class="primary-button compact" data-action="save-zones-admin" data-id="${store.id}">${icon("check")} حفظ</button>
+              </div>
+              <div class="named-zones-guide"><small>${icon("info")} اسم المنطقة: ما يراه العميل · كلمات المطابقة: نص يبحث عنه في عنوانه (عربي أو لاتيني) · السعر: ل.ت</small></div>
+            </div>
+          </article>`;
+        }).join("")}
+      </div>
+    </section>`;
 }
 
 function adminContent() {
@@ -2571,9 +2685,17 @@ function adminProducts() {
   if (!store) return `<section class="dashboard-card"><div class="empty-managed">${icon("box")}<p>لا توجد متاجر</p></div></section>`;
   const q = (state.adminProductSearch || "").trim();
   const nq = normalizeAr(q);
+  const activeCat = state.adminProductCategory || null;
+  const storeCats = storeProductCategories(store.id);
   let list = allProducts.filter(p => p.storeId === store.id);
+  if (activeCat) list = list.filter(p => p.category === activeCat);
   if (nq) list = list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq));
   const shownCount = list.filter(isShownOnStore).length;
+  const catBar = `<div class="product-cat-filter">
+    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
+    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+  </div>`;
   const rows = list.slice(0, 400).map(p => {
     const forced = HIDDEN_PRODUCTS.has(p.id);
     const canShow = !isPlaceholderImage(p.image);
@@ -2593,6 +2715,7 @@ function adminProducts() {
       <div class="dashboard-search">${icon("search")}<input id="admin-product-search" placeholder="ابحث في منتجات المتجر" value="${escAttr(q)}"></div>
       <span class="toolbar-count">${list.length.toLocaleString("ar")} منتج · ${shownCount.toLocaleString("ar")} معروض</span>
     </div>
+    ${catBar}
     <section class="dashboard-card product-management">
       ${rows || `<div class="empty-managed">${icon("box")}<p>لا منتجات مطابقة</p></div>`}
       ${list.length > 400 ? `<p style="text-align:center;padding:12px;color:#888">يُعرض أول 400 منتج — استخدم البحث لتضييق النتائج</p>` : ""}
@@ -2609,8 +2732,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, content: adminContent }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, delivery: adminDeliveryZones, content: adminContent }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -3410,34 +3533,57 @@ function readImageFileResized(file, maxDim = 900) {
   });
 }
 
-function openProductForm(id) {
+function openProductForm(id, defaultCategory) {
   const editing = id ? getProduct(id) : null;
-  const store = getMerchantStore();
-  const cats = [...new Set(products.filter(p => p.storeId === store.id).map(p => p.category))];
+  // In admin panel use the store currently being viewed; in merchant panel use the logged-in store.
+  const store = editing
+    ? (getStore(editing.storeId) || getMerchantStore())
+    : (state.route === "admin" && state.adminProductStoreId ? getStore(state.adminProductStoreId) : getMerchantStore());
+  const cats = storeProductCategories(store.id);
+  const presetCat = editing ? editing.category : (defaultCategory || state.merchantProductCategory || state.adminProductCategory || cats[0] || "");
   const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
     ? editing.options[0].values.map((v, i) => `${v} | ${editing.options[0].extra?.[i] || 0}`).join("\n")
     : "";
+  const hasImg = editing && editing.image && !isPlaceholderImage(editing.image);
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${store.name}</span>
     <h2>${editing ? "تعديل منتج" : "إضافة منتج جديد"}</h2>
-    <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}">
+    ${editing ? `<div class="product-edit-current">
+      <div class="product-edit-current__img">${hasImg ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+      <div class="product-edit-current__info">
+        <strong>${esc(editing.name)}</strong>
+        <span>${money(editing.price)}</span>
+        <small>${esc(editing.category || "")}${editing.unit ? ` · ${esc(editing.unit)}` : ""}</small>
+      </div>
+    </div>` : ""}
+    <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}" data-store-id="${store.id}">
       <div class="form-grid">
         <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
         <label class="input-label"><span>السعر (ل.ت) <i class="req">*</i></span><input name="price" type="number" min="0" step="1" inputmode="numeric" required value="${editing ? editing.price : ""}"></label>
         <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
-        <label class="input-label"><span>التصنيف <i class="req">*</i></span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label"><span>التصنيف <i class="req">*</i></span>
+          <select name="category" required>
+            ${cats.map(c => `<option value="${escAttr(c)}" ${c === presetCat ? "selected" : ""}>${esc(c)}</option>`).join("")}
+            <option value="__new__">＋ إضافة تصنيف جديد...</option>
+          </select>
+        </label>
         <label class="input-label wide"><span>الأحجام والخيارات (اختياري)</span><textarea name="optionLines" rows="3" placeholder="سطر لكل خيار بالصيغة: الاسم | فرق السعر&#10;مثال:&#10;وسط | 0&#10;كبير | 70">${escAttr(optText)}</textarea><small class="field-hint">اتركه فارغاً إن لم يكن للمنتج أحجام. السعر أعلاه هو سعر الخيار الأول.</small></label>
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
           <div class="image-upload-row">
-            <div class="image-preview" id="product-image-preview">${(editing && editing.image) ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+            <div class="image-preview-wrap">
+              <div class="image-preview" id="product-image-preview">${hasImg ? `<img src="${escAttr(editing.image)}" alt="">` : icon("box")}</div>
+              ${hasImg ? `<button type="button" class="image-clear-btn" data-action="clear-product-image" title="حذف الصورة">${icon("close")}</button>` : ""}
+            </div>
             <div class="image-upload-controls">
-              <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
+              <label class="upload-tile">${icon("upload")}<span>رفع صورة جديدة</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
               <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
+              <button type="button" class="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} تحسين الصورة بالذكاء الاصطناعي</button>
             </div>
           </div>
           <input type="hidden" name="imageData">
+          <small class="field-hint ai-enhance-hint">ارفع الصورة أولاً ثم اضغط «تحسين» — يُزيل الخلفية ويُحسّن الجودة تلقائياً.</small>
         </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
       </div>
@@ -3534,6 +3680,7 @@ document.addEventListener("click", event => {
   if (action === "close-modal") closeModal();
   if (action === "open-store") {
     state.storeProductFilter = "الكل";
+    state.storeProductSearch = "";
     closeModal();
     closeDrawers();
     const s = getStore(target.dataset.id);
@@ -3559,8 +3706,13 @@ document.addEventListener("click", event => {
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "product-category") {
     state.storeProductFilter = target.dataset.category;
+    state.storeProductSearch = "";
     render();
     setTimeout(() => document.getElementById("store-products")?.scrollIntoView({ behavior: "auto", block: "start" }), 0);
+  }
+  if (action === "clear-store-search") {
+    state.storeProductSearch = "";
+    render();
   }
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
@@ -3611,6 +3763,112 @@ document.addEventListener("click", event => {
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
+  if (action === "clear-product-image") {
+    const form = target.closest("form");
+    const preview = document.getElementById("product-image-preview");
+    if (form) { form.elements.image.value = ""; if (form.elements.imageData) form.elements.imageData.value = ""; }
+    if (preview) preview.innerHTML = icon("box");
+    target.remove();
+  }
+  if (action === "ai-enhance-image") {
+    const form = target.closest("form");
+    if (!form) return;
+    const imageData = form.elements.imageData?.value || "";
+    const imageUrl = (form.elements.image?.value || "").trim();
+    if (!imageData && !imageUrl) { showToast("ارفع الصورة أولاً ثم اضغط تحسين", ""); return; }
+    const productName = (form.elements.name?.value || "").trim();
+    const preview = document.getElementById("product-image-preview");
+    const imageInput = form.elements.image;
+    target.disabled = true;
+    target.innerHTML = `⏳ جارٍ التحسين...`;
+    const body = imageData ? { imageData, name: productName } : { imageUrl, name: productName };
+    fetch("/api/enhance-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.url) {
+          if (imageInput) imageInput.value = data.url;
+          if (form.elements.imageData) form.elements.imageData.value = "";
+          if (preview) preview.innerHTML = `<img src="${data.url}" alt="">`;
+          showToast("تم تحسين الصورة بنجاح ✓", "success");
+        } else {
+          showToast(data.error || "تعذّر تحسين الصورة", "");
+        }
+      })
+      .catch(() => showToast("خطأ في الاتصال بالذكاء الاصطناعي", ""))
+      .finally(() => {
+        target.disabled = false;
+        target.innerHTML = `${icon("stars")} تحسين الصورة بالذكاء الاصطناعي`;
+      });
+  }
+  if (action === "add-store-category") {
+    const storeId = Number(target.dataset.id);
+    const store = getStore(storeId);
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <span class="section-kicker">${store ? escAttr(store.name) : ""}</span>
+      <h2>إضافة تصنيف جديد</h2>
+      <form id="add-cat-form" data-store-id="${storeId}" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف <i class="req">*</i></span>
+          <input name="catName" required placeholder="مثال: منتجات عضوية" list="existing-cats-list">
+          <datalist id="existing-cats-list">${storeProductCategories(storeId).map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist>
+        </label>
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ التصنيف</button>
+      </form>
+    `, "");
+  }
+  if (action === "add-zone") {
+    const list = document.getElementById("named-zones-list");
+    if (list) {
+      const idx = list.querySelectorAll(".named-zone-row").length;
+      list.querySelector(".zones-empty-hint")?.remove();
+      list.insertAdjacentHTML("beforeend", renderZoneRow({ label: "", match: [], fee: 0 }, idx));
+    }
+  }
+  if (action === "remove-zone") {
+    const row = target.closest(".named-zone-row");
+    if (row) {
+      row.remove();
+      document.querySelectorAll(".named-zone-row").forEach((r, i) => {
+        r.dataset.zone = i;
+        r.querySelector(".zone-label").name = `zone-label-${i}`;
+        r.querySelector(".zone-match").name = `zone-match-${i}`;
+        r.querySelector("input[type=number]").name = `zone-fee-${i}`;
+        r.querySelector("[data-action=remove-zone]").dataset.zone = i;
+      });
+    }
+  }
+  if (action === "toggle-zone-editor") {
+    const id = target.dataset.id;
+    const editor = document.getElementById(`zone-editor-${id}`);
+    if (editor) editor.style.display = editor.style.display === "none" ? "" : "none";
+  }
+  if (action === "add-zone-admin") {
+    const id = target.dataset.id;
+    const list = document.getElementById(`named-zones-list-${id}`);
+    if (list) {
+      const idx = list.querySelectorAll(".named-zone-row").length;
+      list.querySelector(".zones-empty-hint")?.remove();
+      list.insertAdjacentHTML("beforeend", renderZoneRow({ label: "", match: [], fee: 0 }, idx));
+    }
+  }
+  if (action === "save-zones-admin") {
+    const storeId = Number(target.dataset.id);
+    const list = document.getElementById(`named-zones-list-${storeId}`);
+    if (!list) return;
+    const zones = [];
+    list.querySelectorAll(".named-zone-row").forEach((row, i) => {
+      const label = (row.querySelector(".zone-label")?.value || "").trim();
+      const match = (row.querySelector(".zone-match")?.value || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fee = Math.max(0, Number(row.querySelector("input[type=number]")?.value) || 0);
+      if (label && match.length) zones.push({ label, match, fee });
+    });
+    saveNamedZonesCloud(storeId, zones);
+    showToast(`تم حفظ مناطق التوصيل لـ ${getStore(storeId)?.name || storeId}`, "success");
+  }
   if (action === "default-address") {
     state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: address.id === Number(target.dataset.id) }));
     saveState(); render(); showToast("تم تحديث العنوان الافتراضي", "success");
@@ -3845,6 +4103,15 @@ document.addEventListener("change", event => {
   if (event.target.id === "admin-product-store") {
     state.adminProductStoreId = Number(event.target.value);
     state.adminProductSearch = "";
+    state.adminProductCategory = null;
+    render();
+  }
+  if (event.target.dataset.action === "admin-cat-filter") {
+    state.adminProductCategory = event.target.dataset.cat || null;
+    render();
+  }
+  if (event.target.dataset.action === "merchant-cat-filter") {
+    state.merchantProductCategory = event.target.dataset.cat || null;
     render();
   }
   if (event.target.dataset.action === "toggle-featured") {
@@ -3914,6 +4181,45 @@ document.addEventListener("input", event => {
     const preview = document.getElementById("product-image-preview");
     const url = event.target.value.trim();
     if (preview) preview.innerHTML = url ? `<img src="${escAttr(url)}" alt="" onerror="this.parentNode.innerHTML='&#9888;'">` : icon("box");
+  }
+  if (event.target.name === "category" && event.target.closest("#merchant-product-form") && event.target.value === "__new__") {
+    event.target.value = event.target.dataset.prev || "";
+    const storeId = Number(event.target.closest("#merchant-product-form").dataset.storeId) || getMerchantStore().id;
+    const storeName = (getStore(storeId) || getMerchantStore()).name;
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <span class="section-kicker">${storeName}</span>
+      <h2>إضافة تصنيف جديد</h2>
+      <form id="add-cat-form" data-store-id="${storeId}" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف <i class="req">*</i></span><input name="catName" required placeholder="مثال: منتجات عضوية"></label>
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ التصنيف</button>
+      </form>
+    `, "");
+    return;
+  }
+  if (event.target.name === "category" && event.target.closest("#merchant-product-form")) {
+    event.target.dataset.prev = event.target.value;
+  }
+  if (event.target.id === "store-product-search") {
+    const q = event.target.value.trim().toLowerCase();
+    state.storeProductSearch = q;
+    // Live filter: update grid without full re-render
+    const grid = document.getElementById("store-products-grid");
+    const countEl = document.getElementById("store-products-count");
+    if (grid) {
+      let visible = 0;
+      const cards = [...grid.querySelectorAll("article.product-card")];
+      cards.forEach(card => {
+        const name = (card.querySelector(".product-card__body") || card).textContent.toLowerCase();
+        const show = !q || name.includes(q);
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+      if (countEl) countEl.textContent = q ? `${visible} نتيجة من ${cards.length}` : `${cards.length} منتجاً`;
+    }
+    // Show/hide clear button dynamically
+    const clearBtn = document.querySelector(".store-search-clear");
+    if (clearBtn) clearBtn.style.display = q ? "" : "none";
   }
   if (event.target.id === "merchant-product-search") {
     state.merchantProductSearch = event.target.value;
@@ -4039,6 +4345,16 @@ document.addEventListener("submit", event => {
     showToast("تم حفظ التصنيف", "success");
     return;
   }
+  if (event.target.id === "add-cat-form") {
+    const form = new FormData(event.target);
+    const catName = (form.get("catName") || "").toString().trim();
+    const storeId = Number(event.target.dataset.storeId);
+    if (!catName) return;
+    saveStoreExtraCategory(storeId, catName);
+    closeModal();
+    showToast(`تم إضافة تصنيف «${catName}»`, "success");
+    render();
+  }
   if (event.target.id === "product-form") {
     const product = getProduct(event.target.dataset.id);
     if (product.priceOnRequest) return;
@@ -4049,6 +4365,7 @@ document.addEventListener("submit", event => {
   }
   if (event.target.id === "merchant-product-form") {
     const f = event.target;
+    if (f.category?.value === "__new__") { showToast("اختر تصنيفاً من القائمة أولاً", ""); return; }
     // Parse optional size/option lines ("الاسم | فرق السعر") into one option group.
     let options = [];
     const optLines = (f.optionLines?.value || "").trim();
@@ -4078,7 +4395,8 @@ document.addEventListener("submit", event => {
       pushProductCloud(edited);
       showToast("تم حفظ تعديلات المنتج", "success");
     } else {
-      const store = getMerchantStore();
+      const formStoreId = Number(f.dataset.storeId) || getMerchantStore().id;
+      const store = getStore(formStoreId) || getMerchantStore();
       const newId = Math.max(0, ...products.map(p => p.id)) + 1;
       const newProduct = { id: newId, storeId: store.id, sourceId: `m-${newId}`, imageFit: "cover", options: [], featured: false, ...data };
       products.push(newProduct);
@@ -4294,13 +4612,22 @@ document.addEventListener("submit", event => {
       pushStoreCloud(store);
     }
     const ratePerKm = Math.min(20, Math.max(10, Number(form.get("ratePerKm")) || 15));
+    const zones = [];
+    for (let zi = 0; form.has(`zone-label-${zi}`); zi++) {
+      const label = (form.get(`zone-label-${zi}`) || "").toString().trim();
+      const match = (form.get(`zone-match-${zi}`) || "").toString().split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fee = Math.max(0, Number(form.get(`zone-fee-${zi}`)) || 0);
+      if (label && match.length) zones.push({ label, match, fee });
+    }
     state.deliverySettings[storeId] = {
       mode: form.get("distanceEnabled") === "on" ? "distance" : "fixed",
       fixedFee: Math.max(0, Number(form.get("fixedFee")) || 0),
       ratePerKm,
       prepMinutes: Math.min(120, Math.max(5, Number(form.get("prepMinutes")) || 20)),
-      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60))
+      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60)),
+      namedZones: zones
     };
+    saveNamedZonesCloud(storeId, zones);
     state.storeLocations[storeId] = {
       lat: Number(form.get("storeLat")),
       lng: Number(form.get("storeLng"))
