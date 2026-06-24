@@ -3516,10 +3516,11 @@ function readImageFileResized(file, maxDim = 900) {
   });
 }
 
-function openProductForm(id) {
+function openProductForm(id, defaultCategory) {
   const editing = id ? getProduct(id) : null;
   const store = getMerchantStore();
-  const cats = [...new Set(products.filter(p => p.storeId === store.id).map(p => p.category))];
+  const cats = storeProductCategories(store.id);
+  const presetCat = editing ? editing.category : (defaultCategory || state.merchantProductCategory || state.adminProductCategory || cats[0] || "");
   const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
     ? editing.options[0].values.map((v, i) => `${v} | ${editing.options[0].extra?.[i] || 0}`).join("\n")
     : "";
@@ -3532,7 +3533,7 @@ function openProductForm(id) {
         <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
         <label class="input-label"><span>السعر (ل.ت) <i class="req">*</i></span><input name="price" type="number" min="0" step="1" inputmode="numeric" required value="${editing ? editing.price : ""}"></label>
         <label class="input-label"><span>الوحدة</span><input name="unit" placeholder="كيلو / قطعة / علبة" value="${editing ? escAttr(editing.unit || "") : ""}"></label>
-        <label class="input-label"><span>التصنيف <i class="req">*</i></span><input name="category" list="merchant-cat-list" required value="${editing ? escAttr(editing.category) : (cats[0] || "")}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
+        <label class="input-label"><span>التصنيف <i class="req">*</i></span><input name="category" list="merchant-cat-list" required value="${escAttr(presetCat)}"><datalist id="merchant-cat-list">${cats.map(c => `<option value="${escAttr(c)}"></option>`).join("")}</datalist></label>
         <label class="input-label wide"><span>الأحجام والخيارات (اختياري)</span><textarea name="optionLines" rows="3" placeholder="سطر لكل خيار بالصيغة: الاسم | فرق السعر&#10;مثال:&#10;وسط | 0&#10;كبير | 70">${escAttr(optText)}</textarea><small class="field-hint">اتركه فارغاً إن لم يكن للمنتج أحجام. السعر أعلاه هو سعر الخيار الأول.</small></label>
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
