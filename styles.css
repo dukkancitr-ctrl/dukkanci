@@ -4425,6 +4425,27 @@ img {
   color: var(--green-800);
 }
 
+/* AI image enhance button */
+.ai-enhance-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1.5px solid #7c3aed;
+  background: linear-gradient(135deg, #f5f0ff, #ede9fe);
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .2s;
+  margin-top: 6px;
+}
+.ai-enhance-btn:hover { background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
+.ai-enhance-btn:disabled { opacity: .6; cursor: wait; }
+.ai-enhance-btn .icon { width: 14px; color: #7c3aed; }
+.ai-enhance-hint { color: #7c3aed; opacity: .75; margin-top: 4px; }
 /* Named delivery zones — merchant form + admin panel */
 .named-zones-section {
   margin-top: 22px;

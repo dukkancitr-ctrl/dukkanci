@@ -274,7 +274,8 @@ const iconPaths = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
-  dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'
+  dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>'
 };
 
 function icon(name, className = "") {
@@ -3542,9 +3543,11 @@ function openProductForm(id, defaultCategory) {
             <div class="image-upload-controls">
               <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
               <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
+              <button type="button" class="ai-enhance-btn" id="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} توليد صورة بالذكاء الاصطناعي</button>
             </div>
           </div>
           <input type="hidden" name="imageData">
+          <small class="field-hint ai-enhance-hint">يُولَّد صورة احترافية للمنتج بناءً على اسمه وتصنيفه — يستغرق ثوانٍ قليلة.</small>
         </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
       </div>
@@ -3718,6 +3721,38 @@ document.addEventListener("click", event => {
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
+  if (action === "ai-enhance-image") {
+    const form = target.closest("form");
+    if (!form) return;
+    const productName = (form.elements.name?.value || "").trim();
+    const category = (form.elements.category?.value || "").trim();
+    if (!productName) { showToast("أدخل اسم المنتج أولاً", ""); return; }
+    const btn = target;
+    const preview = document.getElementById("product-image-preview");
+    const imageInput = form.elements.image;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="ai-spin">⏳</span> جارٍ التوليد...`;
+    fetch("/api/enhance-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: productName, category })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.url) {
+          if (imageInput) imageInput.value = data.url;
+          if (preview) preview.innerHTML = `<img src="${data.url}" alt="">`;
+          showToast("تم توليد الصورة بنجاح ✓", "success");
+        } else {
+          showToast(data.error || "تعذّر توليد الصورة", "");
+        }
+      })
+      .catch(() => showToast("خطأ في الاتصال بالذكاء الاصطناعي", ""))
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = `${icon("stars")} توليد صورة بالذكاء الاصطناعي`;
+      });
+  }
   if (action === "add-store-category") {
     const storeId = Number(target.dataset.id);
     const store = getStore(storeId);
