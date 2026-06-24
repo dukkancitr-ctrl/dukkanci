@@ -3519,7 +3519,10 @@ function readImageFileResized(file, maxDim = 900) {
 
 function openProductForm(id, defaultCategory) {
   const editing = id ? getProduct(id) : null;
-  const store = getMerchantStore();
+  // In admin panel use the store currently being viewed; in merchant panel use the logged-in store.
+  const store = editing
+    ? (getStore(editing.storeId) || getMerchantStore())
+    : (state.route === "admin" && state.adminProductStoreId ? getStore(state.adminProductStoreId) : getMerchantStore());
   const cats = storeProductCategories(store.id);
   const presetCat = editing ? editing.category : (defaultCategory || state.merchantProductCategory || state.adminProductCategory || cats[0] || "");
   const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
@@ -3538,7 +3541,7 @@ function openProductForm(id, defaultCategory) {
         <small>${esc(editing.category || "")}${editing.unit ? ` · ${esc(editing.unit)}` : ""}</small>
       </div>
     </div>` : ""}
-    <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}">
+    <form class="modal-form" id="merchant-product-form" data-id="${editing ? editing.id : ""}" data-store-id="${store.id}">
       <div class="form-grid">
         <label class="input-label wide"><span>اسم المنتج <i class="req">*</i></span><input name="name" required value="${editing ? escAttr(editing.name) : ""}"></label>
         <label class="input-label"><span>السعر (ل.ت) <i class="req">*</i></span><input name="price" type="number" min="0" step="1" inputmode="numeric" required value="${editing ? editing.price : ""}"></label>
@@ -4159,10 +4162,11 @@ document.addEventListener("input", event => {
   }
   if (event.target.name === "category" && event.target.closest("#merchant-product-form") && event.target.value === "__new__") {
     event.target.value = event.target.dataset.prev || "";
-    const storeId = getMerchantStore().id;
+    const storeId = Number(event.target.closest("#merchant-product-form").dataset.storeId) || getMerchantStore().id;
+    const storeName = (getStore(storeId) || getMerchantStore()).name;
     showModal(`
       <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-      <span class="section-kicker">${getMerchantStore().name}</span>
+      <span class="section-kicker">${storeName}</span>
       <h2>إضافة تصنيف جديد</h2>
       <form id="add-cat-form" data-store-id="${storeId}" class="form-grid">
         <label class="input-label" style="grid-column:1/-1"><span>اسم التصنيف <i class="req">*</i></span><input name="catName" required placeholder="مثال: منتجات عضوية"></label>
@@ -4348,7 +4352,8 @@ document.addEventListener("submit", event => {
       pushProductCloud(edited);
       showToast("تم حفظ تعديلات المنتج", "success");
     } else {
-      const store = getMerchantStore();
+      const formStoreId = Number(f.dataset.storeId) || getMerchantStore().id;
+      const store = getStore(formStoreId) || getMerchantStore();
       const newId = Math.max(0, ...products.map(p => p.id)) + 1;
       const newProduct = { id: newId, storeId: store.id, sourceId: `m-${newId}`, imageFit: "cover", options: [], featured: false, ...data };
       products.push(newProduct);
