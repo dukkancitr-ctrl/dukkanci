@@ -263,6 +263,22 @@ function toE164(raw, cc) {
   return d;
 }
 
+// Canonical phone key for store-login matching: digits only, last 10 (the
+// Turkish national number) so +90 / 0 / spacing variants all map to one key.
+function phoneKey(raw) {
+  const d = String(raw == null ? "" : raw).replace(/\D/g, "");
+  return d.length > 10 ? d.slice(-10) : d;
+}
+
+// Generated store password: 8 chars from an unambiguous alphabet (no 0/O/1/l/I).
+function genPassword(n = 8) {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const buf = crypto.randomBytes(n);
+  let s = "";
+  for (let i = 0; i < n; i++) s += A[buf[i] % A.length];
+  return s;
+}
+
 function sb() {
   return {
     url: (env("SUPABASE_URL") || PUB_URL).replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, ""),
@@ -661,6 +677,40 @@ module.exports = async (req, res) => {
       return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform });
     }
 
+    // Admin: list every store with its login credentials (phone=username +
+    // generated password). Lazily generates+persists a password for any store
+    // that has a phone but no credential row yet. Passwords live in
+    // store_credentials (RLS denies anon) and are returned ONLY through this
+    // admin-gated endpoint — never to the public anon client.
+    if (q.action === "store-creds") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      const storeRows = await sbGet("stores?select=id,name,phone,subscription_active&order=id") || [];
+      const credRows = await sbGet("store_credentials?select=store_id,username,password") || [];
+      const byId = new Map(credRows.map(c => [Number(c.store_id), c]));
+      const toCreate = [];
+      for (const s of storeRows) {
+        const key = phoneKey(s.phone);
+        if (key && !byId.has(Number(s.id))) {
+          const row = { store_id: s.id, username: key, password: genPassword() };
+          byId.set(Number(s.id), row);
+          toCreate.push(row);
+        }
+      }
+      if (toCreate.length) {
+        await sbWrite("POST", "store_credentials?on_conflict=store_id", toCreate, "resolution=merge-duplicates,return=minimal");
+      }
+      const list = storeRows.map(s => {
+        const cr = byId.get(Number(s.id));
+        return {
+          store_id: s.id, name: s.name, phone: s.phone || "",
+          username: cr ? cr.username : "", password: cr ? cr.password : "",
+          subscription_active: s.subscription_active !== false,
+          no_phone: !phoneKey(s.phone)
+        };
+      });
+      return res.status(200).json({ stores: list });
+    }
+
     const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
     if (q["hub.mode"] === "subscribe" && expected && q["hub.verify_token"] === expected) {
       res.setHeader("Content-Type", "text/plain");
@@ -693,6 +743,45 @@ module.exports = async (req, res) => {
     const sent = await sendOtpWhatsapp(c, phone, otp);
     if (!sent.ok) return res.status(502).json({ error: { http_code: 502, message: "otp send failed" } });
     return res.status(200).json({});
+  }
+
+  // ── Store owner login (phone = username + admin-issued password) ────────────
+  // Public. Succeeds ONLY when the password matches AND the store's subscription
+  // is active. Verified server-side with the service-role key; passwords never
+  // reach the client. If the phone maps to >1 store (branches), returns the list.
+  if (pq.action === "store-login") {
+    const key = phoneKey(body && body.username);
+    const password = String((body && body.password) || "");
+    if (!key || !password) return res.status(400).json({ ok: false, error: "missing-credentials" });
+    const creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
+    const matched = creds.filter(cr => {
+      const a = Buffer.from(String(cr.password)), b = Buffer.from(password);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    }).map(cr => Number(cr.store_id));
+    if (!matched.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+    const sList = await sbGet(`stores?id=in.(${matched.join(",")})&select=id,name,subscription_active`) || [];
+    const active = sList.filter(s => s.subscription_active !== false);
+    if (!active.length) return res.status(403).json({ ok: false, error: "subscription-inactive" });
+    if (active.length === 1) return res.status(200).json({ ok: true, store_id: active[0].id, name: active[0].name });
+    return res.status(200).json({ ok: true, multi: true, stores: active.map(s => ({ id: s.id, name: s.name })) });
+  }
+
+  // Admin: regenerate one store's login password.
+  if (pq.action === "store-creds-reset") {
+    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    const storeId = Number(body && body.storeId);
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const rows = await sbGet(`stores?id=eq.${storeId}&select=id,name,phone`) || [];
+    const s = rows[0];
+    if (!s) return res.status(404).json({ error: "store not found" });
+    const key = phoneKey(s.phone);
+    if (!key) return res.status(400).json({ error: "no-phone" });
+    const password = genPassword();
+    const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
+      { store_id: storeId, username: key, password, updated_at: new Date().toISOString() },
+      "resolution=merge-duplicates,return=minimal");
+    if (!w.ok) return res.status(502).json({ error: "save failed" });
+    return res.status(200).json({ ok: true, store_id: storeId, username: key, password });
   }
 
   // ── Whop subscription webhook ──────────────────────────────────────────────
