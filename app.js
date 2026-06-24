@@ -1518,6 +1518,16 @@ function renderStorePage(id) {
         </div>
       </div>
     </section>
+    <div class="store-toolbar">
+      <div class="container">
+        <div class="store-product-search">
+          ${icon("search")}
+          <input id="store-product-search" type="search" placeholder="ابحث في منتجات ${escAttr(store.name)}..." value="${escAttr(searchQuery)}" autocomplete="off" inputmode="search">
+          ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
+        </div>
+        ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
+      </div>
+    </div>
     <section class="section store-content-section">
       <div class="container store-content-grid">
         <div>
@@ -1554,14 +1564,6 @@ function renderStorePage(id) {
           ` : ""}
           ${store.hasOffer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
           <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip" id="store-products-count">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
-          <div class="store-toolbar">
-            <div class="store-product-search">
-              ${icon("search")}
-              <input id="store-product-search" type="search" placeholder="ابحث في منتجات ${escAttr(store.name)}..." value="${escAttr(searchQuery)}" autocomplete="off" inputmode="search">
-              ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
-            </div>
-            ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
-          </div>
           ${storeProducts.length === 0 && searchQuery ? `<div class="store-search-empty">${icon("search")}<p>لا توجد نتائج لـ "<strong>${esc(searchQuery)}</strong>"</p><button class="secondary-button" data-action="clear-store-search">مسح البحث</button></div>` : ""}
           <div class="product-grid store-products-grid" id="store-products-grid">${storeProducts.map(productCard).join("")}</div>
           ${store.newStore ? `
