@@ -637,6 +637,12 @@ async function loadSiteSettings() {
     const map = {};
     data.forEach(r => { map[r.key] = r.value; });
     state.siteSettings = map;
+    if (map.namedZones && typeof map.namedZones === "object") {
+      Object.entries(map.namedZones).forEach(([sid, zones]) => {
+        const id = Number(sid);
+        state.deliverySettings[id] = { ...(state.deliverySettings[id] || initialDeliverySettings[id] || {}), namedZones: zones };
+      });
+    }
     // Admin force-hidden product ids -> re-derive the storefront list (panels use allProducts).
     HIDDEN_PRODUCTS = new Set((((map.hiddenProducts && map.hiddenProducts.ids) || [])).map(Number));
     if (allProducts.length) { const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p)); }
@@ -986,6 +992,24 @@ function estimateDeliveryQuote(store, address) {
     provider: "estimate",
     exceedsMaxDistance: roundTripKm > settings.maxRoundTripKm
   };
+}
+
+function renderZoneRow(z, i) {
+  return `<div class="named-zone-row" data-zone="${i}">
+    <input name="zone-label-${i}" class="zone-label" placeholder="اسم المنطقة (مثال: برستيج بارك)" value="${escAttr(z.label || "")}">
+    <input name="zone-match-${i}" class="zone-match" placeholder="كلمات مطابقة، مفصولة بفاصلة" value="${escAttr((z.match || []).join(", "))}">
+    <div class="input-with-unit zone-fee-wrap"><input name="zone-fee-${i}" type="number" min="0" value="${z.fee || 0}"><b>ل.ت</b></div>
+    <button type="button" class="icon-button named-zone-delete" data-action="remove-zone" data-zone="${i}" title="حذف">${icon("trash")}</button>
+  </div>`;
+}
+
+function saveNamedZonesCloud(storeId, zones) {
+  const all = (state.siteSettings.namedZones && typeof state.siteSettings.namedZones === "object") ? { ...state.siteSettings.namedZones } : {};
+  if (zones.length) all[String(storeId)] = zones; else delete all[String(storeId)];
+  state.siteSettings = { ...state.siteSettings, namedZones: all };
+  state.deliverySettings[storeId] = { ...state.deliverySettings[storeId], namedZones: zones };
+  saveState();
+  adminApi("save-settings", { method: "POST", body: { key: "namedZones", value: all } }).catch(() => showToast("تعذّر الحفظ السحابي لمناطق التوصيل", ""));
 }
 
 function activeDeliveryQuote(store, address) {
@@ -1693,6 +1717,7 @@ function dashboardSidebar(type, active) {
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
     ["complaints", "megaphone", "الشكاوى"],
+    ["delivery", "bike", "التوصيل"],
     ["content", "settings", "المحتوى"]
   ];
   const items = type === "merchant" ? merchantItems : adminItems;
@@ -1891,6 +1916,17 @@ function merchantStore() {
           <button type="button" class="secondary-button compact" data-action="capture-store-location">${icon("pin")} استخدام موقعي الحالي</button>
         </div>
         <p class="maps-integration-note">${icon("shield")} يتم إرسال الإحداثيات من الخادم إلى Google Routes API عند توفر مفتاح الخدمة، ولا يظهر المفتاح داخل الموقع.</p>
+      </section>
+      <section class="named-zones-section">
+        <div class="card-heading">
+          <div><h3>${icon("pin")} مناطق توصيل بسعر ثابت</h3><p>سعر ثابت لسكان مجمعات أو مناطق محددة — يُطبَّق تلقائياً عند ذكر اسم المنطقة في عنوان التوصيل.</p></div>
+          <button type="button" class="secondary-button compact" data-action="add-zone">${icon("plus")} إضافة منطقة</button>
+        </div>
+        <div class="named-zones-list" id="named-zones-list">
+          ${(deliverySettings.namedZones || []).map((z, i) => renderZoneRow(z, i)).join("")}
+          ${!(deliverySettings.namedZones || []).length ? `<p class="zones-empty-hint">لا توجد مناطق خاصة بعد — اضغط «إضافة منطقة» لإضافة أول منطقة.</p>` : ""}
+        </div>
+        <div class="named-zones-guide"><small>${icon("info")} مثال: اسم المنطقة «برستيج بارك» — كلمات مطابقة: «برستيج بارك، prestige park» — السعر: 50 ل.ت</small></div>
       </section>
       <div class="form-actions"><button class="primary-button" type="submit">${icon("check")} حفظ التغييرات</button></div>
     </form>
@@ -2218,6 +2254,37 @@ function adminOrders() {
 function adminComplaints() {
   const complaints = state.customerComplaints || [];
   return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div></div><section class="dashboard-card complaint-list">${complaints.length ? complaints.map(c => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${c.subject}</strong><small>${c.id} · ${c.orderId || "شكوى عامة"} · ${c.date}</small></div><span class="status-pill ${statusClass(c.status)}">${c.status}</span></article>`).join("") : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد شكاوى حالياً.</p></div>`}</section>`;
+}
+
+function adminDeliveryZones() {
+  const sorted = [...stores].filter(s => (s.approvalStatus || "approved") === "approved").sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>مناطق التوصيل بسعر ثابت</h3><p>حدّد مجمعات أو أحياء تحصل على سعر توصيل ثابت بصرف النظر عن المسافة. يُطبَّق عند ذكر اسم المنطقة في عنوان التوصيل.</p></div></div>
+      <div class="admin-zones-list">
+        ${sorted.map(store => {
+          const zones = (getDeliverySettings(store.id) || {}).namedZones || [];
+          return `<article class="admin-zone-store">
+            <div class="admin-zone-store__head">
+              ${storeAvatar(store)}
+              <div><strong>${escAttr(store.name)}</strong><small>${zones.length ? zones.length + " منطقة مضافة" : "لا توجد مناطق خاصة"}</small></div>
+              <button class="secondary-button compact" data-action="toggle-zone-editor" data-id="${store.id}">${icon("edit")} تعديل</button>
+            </div>
+            <div class="zone-editor" id="zone-editor-${store.id}" style="display:none">
+              <div class="named-zones-list" id="named-zones-list-${store.id}">
+                ${zones.map((z, i) => renderZoneRow(z, i)).join("")}
+                ${!zones.length ? `<p class="zones-empty-hint">لا توجد مناطق — اضغط إضافة منطقة.</p>` : ""}
+              </div>
+              <div class="zone-editor-actions">
+                <button type="button" class="secondary-button compact" data-action="add-zone-admin" data-id="${store.id}">${icon("plus")} إضافة منطقة</button>
+                <button type="button" class="primary-button compact" data-action="save-zones-admin" data-id="${store.id}">${icon("check")} حفظ</button>
+              </div>
+              <div class="named-zones-guide"><small>${icon("info")} اسم المنطقة: ما يراه العميل · كلمات المطابقة: نص يبحث عنه في عنوانه (عربي أو لاتيني) · السعر: ل.ت</small></div>
+            </div>
+          </article>`;
+        }).join("")}
+      </div>
+    </section>`;
 }
 
 function adminContent() {
@@ -2614,8 +2681,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, content: adminContent }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, delivery: adminDeliveryZones, content: adminContent }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -3616,6 +3683,55 @@ document.addEventListener("click", event => {
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
+  if (action === "add-zone") {
+    const list = document.getElementById("named-zones-list");
+    if (list) {
+      const idx = list.querySelectorAll(".named-zone-row").length;
+      list.querySelector(".zones-empty-hint")?.remove();
+      list.insertAdjacentHTML("beforeend", renderZoneRow({ label: "", match: [], fee: 0 }, idx));
+    }
+  }
+  if (action === "remove-zone") {
+    const row = target.closest(".named-zone-row");
+    if (row) {
+      row.remove();
+      document.querySelectorAll(".named-zone-row").forEach((r, i) => {
+        r.dataset.zone = i;
+        r.querySelector(".zone-label").name = `zone-label-${i}`;
+        r.querySelector(".zone-match").name = `zone-match-${i}`;
+        r.querySelector("input[type=number]").name = `zone-fee-${i}`;
+        r.querySelector("[data-action=remove-zone]").dataset.zone = i;
+      });
+    }
+  }
+  if (action === "toggle-zone-editor") {
+    const id = target.dataset.id;
+    const editor = document.getElementById(`zone-editor-${id}`);
+    if (editor) editor.style.display = editor.style.display === "none" ? "" : "none";
+  }
+  if (action === "add-zone-admin") {
+    const id = target.dataset.id;
+    const list = document.getElementById(`named-zones-list-${id}`);
+    if (list) {
+      const idx = list.querySelectorAll(".named-zone-row").length;
+      list.querySelector(".zones-empty-hint")?.remove();
+      list.insertAdjacentHTML("beforeend", renderZoneRow({ label: "", match: [], fee: 0 }, idx));
+    }
+  }
+  if (action === "save-zones-admin") {
+    const storeId = Number(target.dataset.id);
+    const list = document.getElementById(`named-zones-list-${storeId}`);
+    if (!list) return;
+    const zones = [];
+    list.querySelectorAll(".named-zone-row").forEach((row, i) => {
+      const label = (row.querySelector(".zone-label")?.value || "").trim();
+      const match = (row.querySelector(".zone-match")?.value || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fee = Math.max(0, Number(row.querySelector("input[type=number]")?.value) || 0);
+      if (label && match.length) zones.push({ label, match, fee });
+    });
+    saveNamedZonesCloud(storeId, zones);
+    showToast(`تم حفظ مناطق التوصيل لـ ${getStore(storeId)?.name || storeId}`, "success");
+  }
   if (action === "default-address") {
     state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: address.id === Number(target.dataset.id) }));
     saveState(); render(); showToast("تم تحديث العنوان الافتراضي", "success");
@@ -4299,13 +4415,22 @@ document.addEventListener("submit", event => {
       pushStoreCloud(store);
     }
     const ratePerKm = Math.min(20, Math.max(10, Number(form.get("ratePerKm")) || 15));
+    const zones = [];
+    for (let zi = 0; form.has(`zone-label-${zi}`); zi++) {
+      const label = (form.get(`zone-label-${zi}`) || "").toString().trim();
+      const match = (form.get(`zone-match-${zi}`) || "").toString().split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fee = Math.max(0, Number(form.get(`zone-fee-${zi}`)) || 0);
+      if (label && match.length) zones.push({ label, match, fee });
+    }
     state.deliverySettings[storeId] = {
       mode: form.get("distanceEnabled") === "on" ? "distance" : "fixed",
       fixedFee: Math.max(0, Number(form.get("fixedFee")) || 0),
       ratePerKm,
       prepMinutes: Math.min(120, Math.max(5, Number(form.get("prepMinutes")) || 20)),
-      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60))
+      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60)),
+      namedZones: zones
     };
+    saveNamedZonesCloud(storeId, zones);
     state.storeLocations[storeId] = {
       lat: Number(form.get("storeLat")),
       lng: Number(form.get("storeLng"))

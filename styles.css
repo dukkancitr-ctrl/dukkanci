@@ -4368,6 +4368,42 @@ img {
   color: var(--green-800);
 }
 
+/* Named delivery zones — merchant form + admin panel */
+.named-zones-section {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #e0eaff;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f5f8ff, #fff);
+}
+.named-zones-section .card-heading { margin-bottom: 14px; }
+.named-zone-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.named-zone-row input { width: 100%; }
+.zone-fee-wrap { min-width: 90px; }
+.named-zone-delete { color: var(--danger); }
+.zones-empty-hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.named-zones-guide { margin-top: 12px; color: var(--muted); font-size: 11px; display: flex; gap: 5px; align-items: center; }
+.named-zones-guide .icon { width: 13px; flex-shrink: 0; }
+/* Admin delivery zones panel */
+.admin-zones-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.admin-zone-store { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.admin-zone-store__head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.admin-zone-store__head div { flex: 1; min-width: 0; }
+.admin-zone-store__head strong { display: block; font-size: 14px; }
+.admin-zone-store__head small { color: var(--muted); font-size: 11px; }
+.zone-editor { padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--border); }
+.zone-editor-actions { display: flex; gap: 8px; margin-top: 12px; }
+@media (max-width: 600px) {
+  .named-zone-row { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
+  .named-zone-row .zone-fee-wrap { grid-column: 1; }
+  .named-zone-row .named-zone-delete { grid-column: 2; justify-self: end; }
+}
 .distance-cart-note {
   margin: 0;
   padding: 9px;
