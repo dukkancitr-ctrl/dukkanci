@@ -177,3 +177,21 @@ group by o.store_id, li->>'productId', li->>'name';
 grant select on public.order_reports, public.store_sales_daily, public.store_sales_monthly,
   public.platform_sales_daily, public.platform_sales_monthly, public.product_sales
 to anon, authenticated;
+
+-- =====================================================================
+-- Store login credentials (admin-issued: phone = username + generated password)
+-- =====================================================================
+-- Per-store merchant login. Unlike stores/products above, this table has RLS
+-- ENABLED with NO policy, so anon/authenticated are DENIED entirely — passwords
+-- are read/written ONLY by the service-role key inside api/notify-order.js
+-- (actions store-creds / store-creds-reset / store-login). NEVER add a
+-- permissive policy here, or passwords leak to the public anon key.
+create table if not exists public.store_credentials (
+  store_id   bigint primary key references public.stores(id) on delete cascade,
+  username   text not null,                 -- normalized phone (last 10 digits)
+  password   text not null,                 -- generated, plaintext (admin shares it)
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.store_credentials enable row level security;
+create index if not exists store_credentials_username_idx on public.store_credentials(username);
