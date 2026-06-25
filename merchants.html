@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e30613">
+  <title>لماذا تنضم إلى دكانجي؟ | افتح متجرك في السوق العربي بإسطنبول</title>
+  <meta name="description" content="افتح متجرك داخل دكانجي — السوق العربي الرقمي في إسطنبول. بدون عمولات على المبيعات، استلام الطلبات على واتساب، وإدارة كاملة من الموبايل. اشتراك شهري واضح.">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=90">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=90">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="افتح متجرك داخل السوق العربي الرقمي في إسطنبول | دكانجي">
+  <meta property="og:description" content="قناة بيع عربية جديدة أمام آلاف العملاء في إسطنبول. بدون عمولات على المبيعات، طلبات على واتساب، وإدارة من الموبايل.">
+  <meta property="og:image" content="/assets/dukkanci-app-icon-512.png">
+  <meta property="og:locale" content="ar_AR">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet">
+
+  <style>
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+
+    :root {
+      --red: #e30613;
+      --red-dark: #bf0813;
+      --red-deep: #470b10;
+      --red-darkest: #2c080b;
+      --red-soft: #fff3f3;
+      --red-100: #ffe1e3;
+      --cream: #faf7f2;
+      --text: #1f1411;
+      --muted: #6f6a66;
+      --border: #efe7e1;
+      --white: #ffffff;
+      --shadow-sm: 0 10px 26px rgba(31, 20, 17, 0.05);
+      --shadow: 0 20px 48px rgba(154, 12, 22, 0.12);
+      --radius: 22px;
+      --font-display: "Alyamama", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+      --font-body: "IBM Plex Sans Arabic", "Alyamama", Tahoma, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: var(--cream);
+      color: var(--text);
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, .stat-card strong, .mock-item strong { font-family: var(--font-display); font-weight: 700; }
+
+    .container { width: min(1160px, calc(100% - 36px)); margin-inline: auto; }
+
+    a { color: inherit; }
+
+    /* ---------- Header ---------- */
+    .site-bar {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .site-bar__inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+    .brand img { height: 38px; width: auto; display: block; }
+    .brand b { font-family: var(--font-display); color: var(--red); font-size: 22px; }
+    .bar-cta { font-size: 14px; padding: 0 18px; min-height: 42px; }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      min-height: 54px; padding: 0 26px; border-radius: 14px;
+      text-decoration: none; font-weight: 700; font-size: 16.5px;
+      border: 1.5px solid transparent; cursor: pointer; transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    .btn svg { width: 20px; height: 20px; }
+    .btn-primary { background: var(--red); color: #fff; box-shadow: 0 14px 26px rgba(227, 6, 19, 0.26); }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); }
+    .btn-secondary { background: var(--white); color: var(--red); border-color: var(--red-100); }
+    .btn-secondary:hover { border-color: var(--red); transform: translateY(-2px); }
+    .btn-ghost { background: #fff; color: var(--red); }
+    .btn:focus-visible { outline: 3px solid rgba(227,6,19,.4); outline-offset: 2px; }
+
+    /* ---------- Hero ---------- */
+    .hero { position: relative; padding: 72px 0 64px; overflow: hidden;
+      background: radial-gradient(circle at 88% 8%, rgba(227,6,19,.08), transparent 34%), linear-gradient(160deg, #fff 0%, #fff8f6 52%, #f6ece7 100%); }
+    .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px;
+      background: var(--red-soft); color: var(--red); font-weight: 700; font-size: 14px; margin-bottom: 20px; border: 1px solid var(--red-100); }
+    .eyebrow b { width: 7px; height: 7px; border-radius: 50%; background: var(--red); display: inline-block; }
+    .hero h1 { margin: 0 0 18px; font-size: clamp(32px, 4.6vw, 54px); line-height: 1.2; letter-spacing: -.5px; }
+    .hero h1 span { color: var(--red); }
+    .hero p { margin: 0 0 26px; font-size: 18.5px; color: #4f4742; max-width: 620px; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+    .hero-trust { margin-top: 22px; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14.5px; }
+    .hero-trust svg { width: 18px; height: 18px; color: var(--red); flex: none; }
+
+    /* ---------- Hero dashboard mock ---------- */
+    .hero-card { position: relative; background: rgba(255,255,255,.7); border: 1px solid var(--border); border-radius: 30px; padding: 22px; box-shadow: var(--shadow); }
+    .dashboard-mock { background: #fff; border-radius: 22px; padding: 20px; border: 1px solid #f1e7e2; }
+    .mock-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .mock-logo { display: flex; align-items: center; gap: 10px; }
+    .mock-logo img { height: 30px; }
+    .mock-logo b { font-family: var(--font-display); color: var(--red); font-size: 18px; }
+    .mock-status { display: inline-flex; align-items: center; gap: 6px; background: #e9f8ef; color: #15803d; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; }
+    .mock-status i { width: 7px; height: 7px; border-radius: 50%; background: #16a34a; display: inline-block; }
+    .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mock-item { padding: 16px; background: #fbf8f5; border: 1px solid #f1e8e2; border-radius: 16px; }
+    .mock-item strong { display: block; font-size: 23px; color: var(--red); line-height: 1.1; margin-bottom: 4px; }
+    .mock-item span { color: var(--muted); font-size: 13px; font-weight: 600; }
+    .mock-order { margin-top: 12px; padding: 14px 16px; border-radius: 16px; background: var(--red-soft); border: 1px dashed rgba(227,6,19,.28); color: var(--red-deep); font-weight: 600; font-size: 14px; display: flex; gap: 10px; align-items: center; }
+    .mock-order svg { width: 22px; height: 22px; color: var(--red); flex: none; }
+
+    /* ---------- Audience strip ---------- */
+    .audience { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #fff; }
+    .audience-inner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0; }
+    .audience-inner > span { color: var(--muted); font-weight: 600; font-size: 14px; }
+    .chip { padding: 7px 15px; border-radius: 999px; background: var(--cream); border: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+
+    /* ---------- Stats ---------- */
+    .stats { margin-top: -34px; position: relative; z-index: 5; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat-card { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 22px 18px; text-align: center; box-shadow: var(--shadow-sm); }
+    .stat-card .ic { width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 12px; background: var(--red-soft); color: var(--red); display: grid; place-items: center; }
+    .stat-card .ic svg { width: 22px; height: 22px; }
+    .stat-card strong { display: block; color: var(--red); font-size: 26px; line-height: 1; margin-bottom: 6px; }
+    .stat-card span { color: var(--muted); font-weight: 600; font-size: 13.5px; }
+
+    /* ---------- Sections ---------- */
+    .section { padding: 74px 0; }
+    .section-head { text-align: center; max-width: 720px; margin: 0 auto 44px; }
+    .section-head .tag { display: inline-block; color: var(--red); font-weight: 700; margin-bottom: 10px; font-size: 15px; }
+    .section-head h2 { margin: 0 0 12px; font-size: clamp(26px, 3.2vw, 40px); line-height: 1.28; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 17px; }
+
+    /* ---------- Features ---------- */
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .feature-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-sm); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: rgba(227,6,19,.22); }
+    .feature-card .ic { width: 50px; height: 50px; border-radius: 15px; background: var(--red-soft); color: var(--red); display: grid; place-items: center; margin-bottom: 16px; }
+    .feature-card .ic svg { width: 26px; height: 26px; }
+    .feature-card h3 { margin: 0 0 8px; font-size: 19px; }
+    .feature-card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    /* ---------- Highlight (no commission) ---------- */
+    .highlight { position: relative; overflow: hidden; color: #fff; border-radius: 30px;
+      background: radial-gradient(circle at 90% 10%, rgba(255,255,255,.12), transparent 30%), linear-gradient(135deg, var(--red-deep), var(--red)); padding: 46px; box-shadow: 0 26px 56px rgba(154,12,22,.28); display: grid; grid-template-columns: 1.1fr .9fr; gap: 36px; align-items: center; }
+    .highlight .tag { color: rgba(255,255,255,.82); font-weight: 700; margin-bottom: 10px; display: inline-block; }
+    .highlight h2 { margin: 0 0 14px; font-size: clamp(28px, 3.2vw, 40px); line-height: 1.25; }
+    .highlight > div > p { margin: 0; color: rgba(255,255,255,.88); font-size: 17px; }
+    .highlight-list { display: grid; gap: 12px; }
+    .highlight-item { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 15px; padding: 15px 18px; font-weight: 600; }
+    .highlight-item svg { width: 22px; height: 22px; flex: none; }
+
+    /* ---------- Comparison ---------- */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; }
+    .compare-card { padding: 26px; border-radius: 22px; border: 1px solid var(--border); background: #fff; box-shadow: var(--shadow-sm); }
+    .compare-card.is-red { background: var(--red-soft); border-color: var(--red-100); }
+    .compare-card .ic { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; margin-bottom: 14px; background: var(--cream); color: var(--muted); }
+    .compare-card.is-red .ic { background: var(--red); color: #fff; }
+    .compare-card .ic svg { width: 24px; height: 24px; }
+    .compare-card h3 { margin: 0 0 10px; font-size: 21px; }
+    .compare-card p { margin: 0; color: var(--muted); }
+    .compare-card.is-red p { color: #6a3a36; }
+
+    /* ---------- Steps ---------- */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .step { position: relative; background: #fff; border: 1px solid var(--border); border-radius: 22px; padding: 26px; box-shadow: var(--shadow-sm); }
+    .step-num { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; background: var(--red); color: #fff; font-family: var(--font-display); font-size: 20px; margin-bottom: 16px; }
+    .step h3 { margin: 0 0 8px; font-size: 19px; }
+    .step p { margin: 0; color: var(--muted); }
+
+    /* ---------- Final CTA ---------- */
+    .cta { padding: 30px 0 86px; }
+    .cta-box { position: relative; overflow: hidden; text-align: center; color: #fff; border-radius: 32px; padding: 56px 28px;
+      background: radial-gradient(circle at 14% 18%, rgba(255,255,255,.16), transparent 26%), linear-gradient(135deg, var(--red-darkest), var(--red-dark)); box-shadow: 0 28px 66px rgba(154,12,22,.3); }
+    .cta-box h2 { margin: 0 0 14px; font-size: clamp(28px, 3.6vw, 46px); line-height: 1.22; }
+    .cta-box p { margin: 0 auto 26px; max-width: 680px; color: rgba(255,255,255,.88); font-size: 18px; }
+
+    /* ---------- Footer ---------- */
+    .foot { border-top: 1px solid var(--border); background: #fff; padding: 26px 0; }
+    .foot-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 14px; }
+    .foot a { color: var(--red); text-decoration: none; font-weight: 600; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 960px) {
+      .hero-grid, .highlight, .compare-grid { grid-template-columns: 1fr; }
+      .stats-grid, .features-grid, .steps { grid-template-columns: repeat(2, 1fr); }
+      .highlight { padding: 34px; }
+    }
+    @media (max-width: 600px) {
+      .hero { padding: 52px 0 48px; }
+      .stats-grid, .features-grid, .steps, .mock-grid { grid-template-columns: 1fr; }
+      .hero-actions { flex-direction: column; }
+      .btn { width: 100%; }
+      .bar-cta { display: none; }
+      .highlight, .cta-box, .compare-card, .step { padding: 26px 20px; }
+      .section { padding: 56px 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto; }
+      .btn:hover, .feature-card:hover { transform: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- HEADER -->
+  <header class="site-bar">
+    <div class="container site-bar__inner">
+      <a class="brand" href="https://www.dukkanci.com.tr/" aria-label="دكانجي">
+        <img src="/assets/dukkanci-logo.png?v=71" alt="دكانجي">
+        <b>دكانجي</b>
+      </a>
+      <a class="btn btn-primary bar-cta" href="https://wa.me/905551000630?text=مرحباً،%20أريد%20فتح%20متجري%20في%20دكانجي">انضم كتاجر الآن</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <span class="eyebrow"><b></b> لماذا تنضم إلى دكانجي؟</span>
+          <h1>افتح متجرك داخل <span>السوق العربي الرقمي</span> في إسطنبول</h1>
+          <p>دكانجي ليس مجرد صفحة لعرض متجرك، بل قناة بيع جديدة تجمع المتاجر والمنتجات والخدمات العربية في مكان واحد، وتسهّل على العملاء الوصول إلى احتياجاتهم اليومية بسرعة وثقة.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="https://wa.me/905551000630?text=مرحباً،%20أريد%20فتح%20متجري%20في%20دكانجي">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L4 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/></svg>
+              انضم كتاجر الآن
+            </a>
+            <a class="btn btn-secondary" href="#features">شاهد المزايا</a>
+          </div>
+          <div class="hero-trust">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            بدون عمولات على المبيعات · إلغاء في أي وقت
+          </div>
+        </div>
+
+        <div class="hero-card">
+          <div class="dashboard-mock">
+            <div class="mock-top">
+              <div class="mock-logo"><img src="/assets/dukkanci-logo.png?v=71" alt=""><b>لوحة متجرك</b></div>
+              <span class="mock-status"><i></i> متجرك نشط</span>
+            </div>
+            <div class="mock-grid">
+              <div class="mock-item"><strong>0%</strong><span>عمولة على المبيعات</span></div>
+              <div class="mock-item"><strong>4000+</strong><span>عميل سابق لدكانجي</span></div>
+              <div class="mock-item"><strong>24/7</strong><span>ظهور متجرك أونلاين</span></div>
+              <div class="mock-item"><strong>واتساب</strong><span>استلام مباشر للطلبات</span></div>
+            </div>
+            <div class="mock-order">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.2 11a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+              طلب جديد وصل إلى لوحة المتجر وواتساب في نفس اللحظة.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUDIENCE -->
+    <section class="audience">
+      <div class="container audience-inner">
+        <span>مناسبة لِـ:</span>
+        <span class="chip">سوبر ماركت</span>
+        <span class="chip">مطاعم</span>
+        <span class="chip">حلويات</span>
+        <span class="chip">خضار وفواكه</span>
+        <span class="chip">ملاحم</span>
+        <span class="chip">عصائر</span>
+        <span class="chip">مكسرات وبن</span>
+        <span class="chip">منتجات غذائية عربية</span>
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <section class="stats">
+      <div class="container stats-grid">
+        <div class="stat-card">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="18" x2="18" y2="6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/></svg></span>
+          <strong>0%</strong><span>لا عمولات على المبيعات</span>
+        </div>
+        <div class="stat-card">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 3-4.5 6-4.5S15 16 15 19"/><path d="M16 6a3 3 0 0 1 0 6M21 19c0-2-1-3.2-3-3.8"/></svg></span>
+          <strong>4000+</strong><span>عميل سابق على المنصة</span>
+        </div>
+        <div class="stat-card">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span>
+          <strong>Google</strong><span>تهيئة وظهور على البحث</span>
+        </div>
+        <div class="stat-card">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10"/></svg></span>
+          <strong>Social</strong><span>فيسبوك · إنستغرام · تيك توك</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <span class="tag">ماذا تحصل عند فتح متجرك؟</span>
+          <h2>كل ما يحتاجه صاحب المتجر للبيع والإدارة والتسويق</h2>
+          <p>وجودك في دكانجي يمنحك قناة بيع إضافية موجّهة للعملاء العرب، دون أن يلغي موقعك الحالي أو أي منصة أخرى تعمل عليها.</p>
+        </div>
+
+        <div class="features-grid">
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2-3h14l2 3"/><path d="M3 7h18"/><path d="M5 7v13h14V7"/><path d="M10 20v-6h4v6"/></svg></span>
+            <h3>واجهة مخصصة لمتجرك</h3>
+            <p>صفحة خاصة تعرض منتجاتك أو خدماتك بطريقة واضحة ومنظمة داخل منصة دكانجي.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 3-4.5 6-4.5S15 16 15 19"/><path d="M16 6a3 3 0 0 1 0 6M21 19c0-2-1-3.2-3-3.8"/></svg></span>
+            <h3>ظهور أمام جمهور عربي مستهدف</h3>
+            <p>تصل إلى عملاء عرب في إسطنبول يبحثون عن المتاجر العربية واحتياجاتهم اليومية.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="18" x2="18" y2="6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/></svg></span>
+            <h3>بدون عمولات على المبيعات</h3>
+            <p>لا توجد عمولات مهما بلغ حجم الطلبات. اشتراك شهري واضح، ومبيعاتك تبقى لك.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2.5"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span>
+            <h3>إدارة سهلة من الموبايل</h3>
+            <p>أضف منتجات جديدة، عدّل الأسعار، حدّث الصور، وأطلق العروض من الهاتف أو لوحة التحكم.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L4 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/></svg></span>
+            <h3>استلام الطلبات على واتساب</h3>
+            <p>تصلك الطلبات على واتساب ولوحة المتجر في نفس الوقت لتسهيل المتابعة والتنظيم.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="5"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></span>
+            <h3>متابعة المبيعات والطلبات</h3>
+            <p>راقب الطلبات واعرف المنتجات الأكثر رواجًا، وركّز على الأصناف التي تبيع أكثر.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8" cy="11" r="2"/><path d="M5 16.5c.4-1.4 1.6-2.2 3-2.2s2.6.8 3 2.2"/><line x1="14" y1="10" x2="18" y2="10"/><line x1="14" y1="14" x2="18" y2="14"/></svg></span>
+            <h3>تنظيم بيانات العملاء</h3>
+            <p>حفظ الاسم ورقم الهاتف والعنوان ومعلومات الطلب لتسهيل الشراء المتكرر.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/></svg></span>
+            <h3>إدارة التوصيل بمرونة</h3>
+            <p>اضبط أجور التوصيل بسعر ثابت أو حسب عدد الكيلومترات إلى عنوان العميل.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+            <h3>رسوم توصيل لمناطق محددة</h3>
+            <p>أضف رسوم توصيل ثابتة لمجمعات سكنية أو مناطق جغرافية محددة من لوحة التحكم.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></span>
+            <h3>إرسال عروض حسب المنطقة</h3>
+            <p>أطلق عروضًا خاصة وأشعِر مستخدمي المنصة ضمن منطقة جغرافية محددة.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/></svg></span>
+            <h3>دعم تسويقي مستمر</h3>
+            <p>المنصة موصولة بمحرك البحث Google ويتم دعمها عبر فيسبوك وإنستغرام وتيك توك.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4"/></svg></span>
+            <h3>تحكم كامل بالمتجر</h3>
+            <p>شغّل أو أوقف متجرك، عدّل المنتجات، أدِر الطلبات، وتحكم بظهور متجرك حسب حاجتك.</p>
+          </article>
+          <article class="feature-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></span>
+            <h3>تمييز المتجر عند الحاجة</h3>
+            <p>إمكانية تمييز متجرك داخل المنصة ونشر بنرات خارجية للعروض أو الحملات الخاصة.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- HIGHLIGHT: NO COMMISSION -->
+    <section class="section" style="padding-top: 0;">
+      <div class="container">
+        <div class="highlight">
+          <div>
+            <span class="tag">الميزة التي يفهمها أي تاجر فورًا</span>
+            <h2>مبيعاتك لك… بدون عمولات</h2>
+            <p>في دكانجي لا تدفع عمولة على كل طلب. تدفع اشتراكًا شهريًا واضحًا، وتحتفظ بقيمة مبيعاتك مهما زاد حجم الطلبات.</p>
+          </div>
+          <div class="highlight-list">
+            <div class="highlight-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg> لا عمولة على الطلبات</div>
+            <div class="highlight-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg> اشتراك شهري واضح</div>
+            <div class="highlight-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg> قابل للتوسّع بدون زيادة نسبة على المبيعات</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPARISON -->
+    <section class="section" style="padding-top: 0;">
+      <div class="container">
+        <div class="section-head">
+          <span class="tag">دكانجي ليس بديلًا عن قنواتك الحالية</span>
+          <h2>بل قناة بيع عربية جديدة أمام عملاء قد لا يصلون إليك اليوم</h2>
+          <p>إذا كان لديك موقع إلكتروني أو تعمل على منصات أخرى، فهذا جيد. دكانجي لا يطلب منك تركها، بل يفتح لك نافذة جديدة داخل سوق عربي منظم.</p>
+        </div>
+        <div class="compare-grid">
+          <div class="compare-card">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6" fill="currentColor"/></svg></span>
+            <h3>موقعك الحالي</h3>
+            <p>مهم لهويتك، لكنه يحتاج زيارات وتسويقًا مستمرًا حتى يتحوّل إلى طلبات فعلية.</p>
+          </div>
+          <div class="compare-card is-red">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2-3h14l2 3"/><path d="M3 7h18"/><path d="M5 7v13h14V7"/><path d="M10 20v-6h4v6"/></svg></span>
+            <h3>متجرك داخل دكانجي</h3>
+            <p>يظهر ضمن منصة يدخلها العميل لاكتشاف المتاجر والمنتجات العربية وشراء احتياجاته اليومية.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEPS -->
+    <section class="section" style="padding-top: 0;">
+      <div class="container">
+        <div class="section-head">
+          <span class="tag">كيف تبدأ؟</span>
+          <h2>ثلاث خطوات بسيطة لفتح متجرك</h2>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>تسجيل المتجر</h3>
+            <p>نجهّز بيانات متجرك، التصنيف، المنطقة، وطريقة استقبال الطلبات.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>إضافة المنتجات والعروض</h3>
+            <p>نرفع المنتجات والصور والأسعار وخيارات التوصيل والعروض المناسبة.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>بدء استقبال الطلبات</h3>
+            <p>يصبح متجرك ظاهرًا داخل دكانجي وتبدأ باستقبال الطلبات من العملاء.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="cta">
+      <div class="container">
+        <div class="cta-box">
+          <h2>اجعل متجرك حاضرًا داخل دكانجي</h2>
+          <p>افتح متجرك الآن داخل السوق العربي الرقمي في إسطنبول، وابدأ بعرض منتجاتك أمام عملاء يبحثون فعلًا عن احتياجاتهم اليومية.</p>
+          <a class="btn btn-ghost" href="https://wa.me/905551000630?text=مرحباً،%20أريد%20فتح%20متجري%20في%20دكانجي">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L4 20l1.1-4.3A8.5 8.5 0 1 1 21 11.5z"/></svg>
+            انضم كتاجر الآن
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="foot">
+    <div class="container foot-inner">
+      <span>© 2026 دكانجي — السوق العربي الرقمي في إسطنبول</span>
+      <span><a href="https://www.dukkanci.com.tr/">العودة إلى الموقع</a> · <a href="/privacy.html">سياسة الخصوصية</a></span>
+    </div>
+  </footer>
+</body>
+</html>

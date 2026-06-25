@@ -120,7 +120,7 @@ http.createServer(async (request, response) => {
   }
 
   // Clean-URL rewrites (mirror vercel.json so dev matches prod).
-  const cleanUrls = { "/privacy": "privacy.html", "/gizlilik": "privacy.html" };
+  const cleanUrls = { "/privacy": "privacy.html", "/gizlilik": "privacy.html", "/merchants": "merchants.html" };
   const relativePath = requestPath === "/"
     ? "index.html"
     : (cleanUrls[requestPath] || requestPath.replace(/^\/+/, ""));
