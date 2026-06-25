@@ -714,35 +714,6 @@ module.exports = async (req, res) => {
       return res.status(200).json({ stores: list, serviceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"), writeOk, generated: toCreate.length });
     }
 
-    // Secrets-free end-to-end self-test of the store-login path: write a real
-    // credential for store 5 with its phone-key username + a RANDOM password (never
-    // returned), run the exact store-login lookup, then delete the probe row. Proves
-    // the whole chain (service-role write + login read/compare + subscription) works.
-    if (q.action === "store-cred-health") {
-      const rows = await sbGet("store_credentials?select=store_id");
-      const s5 = (await sbGet("stores?id=eq.5&select=id,phone,subscription_active") || [])[0];
-      const key = s5 ? phoneKey(s5.phone) : "";
-      const testPw = genPassword();
-      let writeOk = false, writeStatus = null, loginMatch = null, subActive = null, writeErr = null;
-      if (key) {
-        const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
-          { store_id: 5, username: key, password: testPw }, "resolution=merge-duplicates,return=minimal");
-        writeOk = !!w.ok; writeStatus = w.status || null;
-        writeErr = w.ok ? null : (w.rows && (w.rows.message || w.rows.code)) || w.error || null;
-        if (writeOk) {
-          const creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
-          loginMatch = creds.some(c => c.password === testPw);
-          subActive = s5.subscription_active !== false;
-          await sbWrite("DELETE", "store_credentials?store_id=eq.5", null, "return=minimal");
-        }
-      }
-      return res.status(200).json({
-        hasServiceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"),
-        rowCount: Array.isArray(rows) ? rows.length : null,
-        keyDerived: !!key, writeOk, writeStatus, loginMatch, subActive, writeErr
-      });
-    }
-
     const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();
     if (q["hub.mode"] === "subscribe" && expected && q["hub.verify_token"] === expected) {
       res.setHeader("Content-Type", "text/plain");
