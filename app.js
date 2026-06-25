@@ -2017,6 +2017,22 @@ const CATEGORY_SUBSCRIPTION_ROWS = [
   ["سوبر ماركت", 4000], ["مطاعم", 4500], ["حلويات", 5000], ["خضار وفواكه", 4000],
   ["ملاحم", 4000], ["عصائر", 4500], ["مكسرات وبهارات / بن", 4500]
 ];
+// Per-category Whop checkout link — the renew/manage button on the merchant
+// subscription page routes each store to the plan that matches its category.
+const CATEGORY_WHOP = [
+  [/سوبر|ماركت/, "https://whop.com/dukkanci/8c415d3c-5e54-4ccb-9940-7352d478a198"],
+  [/مطعم|مطاعم/, "https://whop.com/dukkanci/060184ca-0461-45b4-8c1b-2f17ec45c15d"],
+  [/حلوي/, "https://whop.com/dukkanci/8c1fef75-9735-4788-af41-df1e9778e795"],
+  [/خضار|فواكه/, "https://whop.com/dukkanci/419a1dbf-dfd3-4391-a072-8a14889090b8"],
+  [/ملحم|ملاحم|لحوم/, "https://whop.com/dukkanci/3dadae0f-34d6-4065-8d90-ac46f2c2264c"],
+  [/عصير|عصائر/, "https://whop.com/dukkanci/ef5f6541-0986-45a2-ae55-8bf726a36908"],
+  [/مكسرات|بهارات|\bبن\b|قهوة/, "https://whop.com/dukkanci/2b72111c-3a03-4dd8-b180-45fa11f632fd"]
+];
+function categoryWhopUrl(category) {
+  const c = String(category || "");
+  for (const [re, url] of CATEGORY_WHOP) if (re.test(c)) return url;
+  return window.WHOP_CHECKOUT_URL || "https://whop.com/dukkanci/dukkanci-store-subscription/";
+}
 function formatSubDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -2030,7 +2046,7 @@ function merchantSubscription() {
   const status = store.subscriptionStatus || "none";
   const meta = SUBSCRIPTION_LABELS[status] || SUBSCRIPTION_LABELS.none;
   const active = store.subscriptionActive !== false && status !== "expired" && status !== "canceled";
-  const whopUrl = window.WHOP_CHECKOUT_URL || "https://whop.com/dukkanci/dukkanci-store-subscription/";
+  const whopUrl = categoryWhopUrl(store.category); // per-category Whop checkout link
 
   const p = (state.siteSettings && state.siteSettings.plan) || {};
   const name = p.name || "اشتراك متجر دكانجي";
