@@ -3094,6 +3094,7 @@ function updateHead(route, id) {
     desc = `تصفّح ${CATEGORY_MAP[id]} في إسطنبول على دكانجي واطلب أونلاين بتوصيل سريع.`;
   } else if (route === "stores") { title = "كل المتاجر والمطاعم | دكانجي"; desc = "تصفّح متاجر ومطاعم حيك في إسطنبول واطلب أونلاين."; }
   else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
+  else if (route === "join") { title = "انضم كتاجر — أنشئ متجرك | دكانجي"; desc = "أنشئ متجرك على دكانجي وابدأ باستقبال طلبات عملاء حيك في إسطنبول."; }
   document.title = title;
   setMetaTag('meta[name="description"]', "content", desc);
   setMetaTag('link[rel="canonical"]', "href", canonical);
@@ -3164,6 +3165,7 @@ function render() {
   updateHead(route, id);
   const routes = {
     home: renderHome,
+    join: renderHome,
     stores: renderStores,
     offers: renderOffers,
     store: () => renderStorePage(id),
@@ -3181,6 +3183,7 @@ function render() {
   updateCartBadges();
   window.scrollTo({ top: 0, behavior: "instant" });
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
+  if (route === "join") setTimeout(openJoinModal, 0);
   if (route === "admin" && state.adminTab === "messages" && state.adminKey) {
     setTimeout(() => { startInboxPolling(); scrollChatToBottom(); }, 0);
   }
