@@ -715,12 +715,26 @@ module.exports = async (req, res) => {
     }
 
     // Secrets-free health probe for the store-login plumbing (no usernames/passwords).
+    // Includes a write->readback self-test to detect a mislabeled (non-service-role)
+    // key, which silently fails RLS. Uses an existing store id; the table is empty so
+    // nothing real is clobbered, and the probe row is deleted afterwards.
     if (q.action === "store-cred-health") {
       const rows = await sbGet("store_credentials?select=store_id");
+      const probeId = 5;
+      const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
+        { store_id: probeId, username: "_probe", password: "_probe" }, "resolution=merge-duplicates,return=minimal");
+      let writeReadback = null;
+      if (w.ok) {
+        const back = await sbGet(`store_credentials?store_id=eq.${probeId}&select=store_id`);
+        writeReadback = Array.isArray(back) && back.length >= 1;
+        await sbWrite("DELETE", `store_credentials?store_id=eq.${probeId}`, null, "return=minimal");
+      }
       return res.status(200).json({
         hasServiceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"),
         tableQueryOk: rows !== null,
-        rowCount: Array.isArray(rows) ? rows.length : null
+        rowCount: Array.isArray(rows) ? rows.length : null,
+        writeOk: w.ok, writeStatus: w.status || null, writeReadback,
+        writeErr: w.ok ? null : (w.rows && (w.rows.message || w.rows.code)) || w.error || null
       });
     }
 
