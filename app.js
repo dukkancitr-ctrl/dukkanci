@@ -3871,6 +3871,9 @@ document.addEventListener("click", event => {
   const href = a.getAttribute("href");
   if (!href || a.target === "_blank" || /^(https?:|tel:|mailto:|wa\.me)/i.test(href)) return;
   if (href.startsWith("#")) { event.preventDefault(); navigate(href.replace(/^#/, "") || "home"); return; }
+  // Standalone static pages (served as their own HTML, not SPA routes) must do a
+  // real navigation — don't let the client router swallow them into renderHome.
+  if (/^\/(merchants|privacy|gizlilik)(\/|\?|$)/i.test(href)) return;
   if (href.startsWith("/") && !href.startsWith("//") && !/\.[a-z0-9]+(\?|$)/i.test(href)) { event.preventDefault(); navigate(href); }
 });
 
