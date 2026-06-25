@@ -714,27 +714,32 @@ module.exports = async (req, res) => {
       return res.status(200).json({ stores: list, serviceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"), writeOk, generated: toCreate.length });
     }
 
-    // Secrets-free health probe for the store-login plumbing (no usernames/passwords).
-    // Includes a write->readback self-test to detect a mislabeled (non-service-role)
-    // key, which silently fails RLS. Uses an existing store id; the table is empty so
-    // nothing real is clobbered, and the probe row is deleted afterwards.
+    // Secrets-free end-to-end self-test of the store-login path: write a real
+    // credential for store 5 with its phone-key username + a RANDOM password (never
+    // returned), run the exact store-login lookup, then delete the probe row. Proves
+    // the whole chain (service-role write + login read/compare + subscription) works.
     if (q.action === "store-cred-health") {
       const rows = await sbGet("store_credentials?select=store_id");
-      const probeId = 5;
-      const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
-        { store_id: probeId, username: "_probe", password: "_probe" }, "resolution=merge-duplicates,return=minimal");
-      let writeReadback = null;
-      if (w.ok) {
-        const back = await sbGet(`store_credentials?store_id=eq.${probeId}&select=store_id`);
-        writeReadback = Array.isArray(back) && back.length >= 1;
-        await sbWrite("DELETE", `store_credentials?store_id=eq.${probeId}`, null, "return=minimal");
+      const s5 = (await sbGet("stores?id=eq.5&select=id,phone,subscription_active") || [])[0];
+      const key = s5 ? phoneKey(s5.phone) : "";
+      const testPw = genPassword();
+      let writeOk = false, writeStatus = null, loginMatch = null, subActive = null, writeErr = null;
+      if (key) {
+        const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
+          { store_id: 5, username: key, password: testPw }, "resolution=merge-duplicates,return=minimal");
+        writeOk = !!w.ok; writeStatus = w.status || null;
+        writeErr = w.ok ? null : (w.rows && (w.rows.message || w.rows.code)) || w.error || null;
+        if (writeOk) {
+          const creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
+          loginMatch = creds.some(c => c.password === testPw);
+          subActive = s5.subscription_active !== false;
+          await sbWrite("DELETE", "store_credentials?store_id=eq.5", null, "return=minimal");
+        }
       }
       return res.status(200).json({
         hasServiceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"),
-        tableQueryOk: rows !== null,
         rowCount: Array.isArray(rows) ? rows.length : null,
-        writeOk: w.ok, writeStatus: w.status || null, writeReadback,
-        writeErr: w.ok ? null : (w.rows && (w.rows.message || w.rows.code)) || w.error || null
+        keyDerived: !!key, writeOk, writeStatus, loginMatch, subActive, writeErr
       });
     }
 
