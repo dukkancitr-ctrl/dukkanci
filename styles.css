@@ -5576,6 +5576,14 @@ table {
   white-space: nowrap;
 }
 
+/* Category chip on the merchant subscription hero */
+.sub-cat-chip {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  background: rgba(255,255,255,0.18); color: #fff; border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700;
+}
+.sub-cat-chip .icon { width: 15px; }
+
 /* Store login accounts (admin "حسابات المتاجر") */
 .creds-summary { margin: 4px 0 14px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .creds-table code { background: #f5f0ee; border: 1px solid #e3dad7; border-radius: 6px; padding: 2px 8px; font-size: 13px; letter-spacing: .5px; }

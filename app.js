@@ -1759,7 +1759,6 @@ function dashboardSidebar(type, active) {
     ["messages", "whatsapp", "المحادثات"],
     ["complaints", "megaphone", "الشكاوى"],
     ["delivery", "bike", "التوصيل"],
-    ["billing", "wallet", "الاشتراكات"],
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"]
   ];
@@ -1993,6 +1992,31 @@ const SUBSCRIPTION_LABELS = {
   expired:  { text: "منتهي",       pill: "red" },
   none:     { text: "غير مشترك",   pill: "gray" }
 };
+
+// Monthly store-subscription price (ل.ت) by store category. Matched loosely so
+// variant/dynamic category names ("خضار وفواكه", "مطعم", "مكسرات وبهارات") still
+// resolve. Each merchant only ever sees the price for THEIR category (rendered in
+// merchantSubscription); the full table is admin-only (adminContentPlans).
+const CATEGORY_SUBSCRIPTION = [
+  [/سوبر|ماركت/, 4000],          // سوبر ماركت
+  [/مطعم|مطاعم/, 4500],          // مطاعم
+  [/حلوي/, 5000],                // حلويات
+  [/خضار|فواكه/, 4000],          // خضار وفواكه
+  [/ملحم|ملاحم|لحوم/, 4000],     // ملاحم
+  [/عصير|عصائر/, 4500],          // عصائر
+  [/مكسرات|بهارات|\bبن\b|قهوة/, 4500] // مكسرات وبهارات / بن
+];
+const DEFAULT_SUBSCRIPTION_PRICE = 4500;
+function categorySubscriptionPrice(category) {
+  const c = String(category || "");
+  for (const [re, price] of CATEGORY_SUBSCRIPTION) if (re.test(c)) return price;
+  return DEFAULT_SUBSCRIPTION_PRICE;
+}
+// Display rows for the admin-only category pricing table.
+const CATEGORY_SUBSCRIPTION_ROWS = [
+  ["سوبر ماركت", 4000], ["مطاعم", 4500], ["حلويات", 5000], ["خضار وفواكه", 4000],
+  ["ملاحم", 4000], ["عصائر", 4500], ["مكسرات وبهارات / بن", 4500]
+];
 function formatSubDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -2011,8 +2035,11 @@ function merchantSubscription() {
   const p = (state.siteSettings && state.siteSettings.plan) || {};
   const name = p.name || "اشتراك متجر دكانجي";
   const tagline = p.tagline || "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.";
-  const price = (p.price != null && p.price !== "") ? p.price : "2,499";
-  const period = p.period || "ل.ت / شهرياً";
+  // Price is fixed per store category and billed MONTHLY only. Each merchant sees
+  // only their own category's price — never the other categories' figures.
+  const catLabel = store.category || "متجر";
+  const price = categorySubscriptionPrice(store.category).toLocaleString("ar");
+  const period = "ل.ت / شهرياً";
   const features = (Array.isArray(p.features) && p.features.length) ? p.features
     : ["تجربة مجانية ٧ أيام", "استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
 
@@ -2027,13 +2054,15 @@ function merchantSubscription() {
   return `
     ${banner}
     <div class="subscription-hero dashboard-card">
-      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
+      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p><span class="sub-cat-chip">${icon("store")} باقة ${esc(catLabel)}</span></div>
       <div class="subscription-price"><strong>${escAttr(String(price))}</strong><span>${escAttr(period)}</span></div>
     </div>
     <div class="subscription-details">
       <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3>
         <div class="detail-list">
           <span><small>الحالة</small><strong>${meta.text}</strong></span>
+          <span><small>الباقة</small><strong>${esc(catLabel)}</strong></span>
+          <span><small>السعر الشهري</small><strong>${escAttr(String(price))} ل.ت / شهرياً</strong></span>
           <span><small>${endLabel}</small><strong>${formatSubDate(endIso)}</strong></span>
           <span><small>التجديد</small><strong>تلقائي عبر Whop</strong></span>
           <span><small>طريقة الدفع</small><strong>Whop (بطاقة)</strong></span>
@@ -2312,18 +2341,17 @@ function adminOverview() {
   const revenue = state.orders.reduce((sum, o) => sum + (o.total || 0), 0);
   const catCount = new Set(stores.map(s => s.category)).size;
   const openComplaints = state.customerComplaints.filter(c => c.status !== "تم الحل").length;
-  const pending = stores.filter(s => (s.approvalStatus || "approved") === "pending");
   return `
     <div class="stats-grid admin-stats">
-      ${statCard("store", "إجمالي المتاجر", stores.length.toLocaleString("ar"), pending.length ? `${pending.length.toLocaleString("ar")} بانتظار المراجعة` : `${catCount.toLocaleString("ar")} تصنيفاً`, "green")}
+      ${statCard("store", "إجمالي المتاجر", stores.length.toLocaleString("ar"), `${catCount.toLocaleString("ar")} تصنيفاً`, "green")}
       ${statCard("box", "إجمالي المنتجات", products.length.toLocaleString("ar"), "منشورة على المنصة", "blue")}
       ${statCard("receipt", "الطلبات", orderCount.toLocaleString("ar"), orderCount ? `${revenue.toLocaleString("ar")} ل.ت` : "لا طلبات بعد", "orange")}
       ${statCard("megaphone", "الشكاوى المفتوحة", openComplaints.toLocaleString("ar"), openComplaints ? "تحتاج متابعة" : "لا شكاوى", "yellow")}
     </div>
     <div class="admin-panels">
       <section class="dashboard-card">
-        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>${pending.length ? `${pending.length.toLocaleString("ar")} متجر بانتظار المراجعة` : "تحتاج إلى المراجعة"}</p></div>${pending.length > 5 ? `<button class="text-button" data-action="admin-tab" data-tab="stores">عرض الكل ${icon("arrowLeft")}</button>` : ""}</div>
-        ${pending.length ? `<div class="admin-store-list">${pending.slice(0, 5).map(store => `<article>${storeAvatar(store)}<div style="flex:1 1 auto;min-width:0"><strong>${escAttr(store.name)}</strong><small>${escAttr(store.category || "")}</small></div><button class="table-action approve" data-action="store-approve" data-id="${store.id}" data-status="approved" title="قبول">${icon("check")}</button><button class="table-action danger" data-action="store-approve" data-id="${store.id}" data-status="rejected" title="رفض">${icon("close")}</button><button class="table-action" data-action="open-store" data-id="${store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`).join("")}</div>` : `<div class="empty-managed">${icon("store")}<p>لا توجد طلبات انضمام جديدة حالياً.</p></div>`}
+        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>تحتاج إلى المراجعة</p></div></div>
+        <div class="empty-managed">${icon("store")}<p>لا توجد طلبات انضمام جديدة حالياً.</p></div>
       </section>
       <section class="dashboard-card">
         <div class="card-heading"><div><h3>أحدث الطلبات</h3><p>على مستوى المنصة</p></div><button class="text-button" data-action="admin-tab" data-tab="orders">عرض الكل ${icon("arrowLeft")}</button></div>
@@ -2372,43 +2400,11 @@ function adminStores() {
   `;
 }
 
-// Admin > العملاء: real customer directory derived from platform orders (there's
-// no separate customer login yet). Aggregates by phone (falls back to name):
-// order count, total spent, last order — sorted by spend. Populates automatically
-// as orders arrive; shows a helpful empty state until then.
 function adminCustomers() {
-  const orders = state.orders || [];
-  const map = new Map();
-  orders.forEach(o => {
-    const key = (o.customerPhone || "").replace(/\D/g, "") || ("name:" + (o.customer || "—"));
-    if (!map.has(key)) map.set(key, { name: o.customer || "—", phone: o.customerPhone || "", count: 0, total: 0, last: null });
-    const c = map.get(key);
-    c.count++; c.total += (o.total || 0);
-    if (!c.last) c.last = o.time || null;
-    if ((!c.name || c.name === "—") && o.customer) c.name = o.customer;
-  });
-  const customers = Array.from(map.values()).sort((a, b) => b.total - a.total || b.count - a.count);
-  const totalRevenue = customers.reduce((s, c) => s + c.total, 0);
   return `
-    <div class="stats-grid admin-stats">
-      ${statCard("users", "إجمالي العملاء", customers.length.toLocaleString("ar"), customers.length ? "عميل اشترى من المنصة" : "لا عملاء بعد", "blue")}
-      ${statCard("receipt", "إجمالي الطلبات", orders.length.toLocaleString("ar"), "على مستوى المنصة", "green")}
-      ${statCard("wallet", "إجمالي المبيعات", `${totalRevenue.toLocaleString("ar")} ل.ت`, "من كل العملاء", "orange")}
-    </div>
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions">${customers.length ? `<button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير</button>` : ""}</div></div>
-    <section class="dashboard-card orders-table-card customers-table">
-      ${customers.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>العميل</th><th>الهاتف</th><th>الطلبات</th><th>إجمالي الإنفاق</th><th>آخر طلب</th><th></th></tr></thead>
-        <tbody>${customers.map(c => `<tr>
-          <td><strong>${escAttr(c.name)}</strong></td>
-          <td dir="ltr">${escAttr(c.phone || "—")}</td>
-          <td>${c.count.toLocaleString("ar")}</td>
-          <td><strong>${c.total.toLocaleString("ar")} ل.ت</strong></td>
-          <td>${escAttr(c.last || "—")}</td>
-          <td>${c.phone ? `<a class="table-action" href="https://wa.me/${c.phone.replace(/\D/g, "")}" target="_blank" rel="noopener" aria-label="مراسلة عبر واتساب">${icon("whatsapp")}</a>` : ""}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>` : `<div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد — ستظهر بياناتهم تلقائياً بعد أول طلب على المنصة.</p></div>`}
-    </section>`;
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
+    <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء مسجّلون بعد. ستظهر بيانات العملاء هنا بعد ربط نظام تسجيل الدخول.</p></div></section>
+  `;
 }
 
 function adminOrders() {
@@ -2454,82 +2450,6 @@ function adminDeliveryZones() {
 // Store login accounts: one row per store with username (phone) + generated
 // password + live subscription status. Data comes ONLY from the admin-gated
 // server endpoint (store_credentials is invisible to the anon client).
-// Admin > الاشتراكات: platform-wide subscription & revenue view, built entirely
-// from each store's Whop fields (subscriptionStatus/subscriptionActive,
-// trialEndsAt, currentPeriodEnd) plus the plan price from site_settings. Read-only
-// — renewals happen in Whop; per-store login passwords live in "حسابات المتاجر".
-function adminBilling() {
-  const plan = (state.siteSettings && state.siteSettings.plan) || {};
-  const planPrice = Number(String(plan.price != null && plan.price !== "" ? plan.price : "2499").replace(/[^\d.]/g, "")) || 0;
-
-  const rows = stores.map(s => {
-    const status = s.subscriptionStatus || "none";
-    const active = s.subscriptionActive !== false && status !== "expired" && status !== "canceled";
-    const endIso = (status === "trialing" && s.trialEndsAt) ? s.trialEndsAt : s.currentPeriodEnd;
-    return { store: s, status, active, endIso };
-  });
-
-  const activeCount = rows.filter(r => r.active).length;
-  const trialCount = rows.filter(r => r.status === "trialing").length;
-  const inactiveCount = rows.filter(r => !r.active).length;
-  const mrr = activeCount * planPrice;
-
-  const now = Date.now();
-  const soon = rows
-    .filter(r => { const t = r.endIso ? new Date(r.endIso).getTime() : NaN; return !isNaN(t) && t >= now && t - now <= 7 * 86400000; })
-    .sort((a, b) => new Date(a.endIso) - new Date(b.endIso));
-
-  const dist = ["trialing", "active", "past_due", "expired", "canceled", "none"]
-    .map(k => ({ k, n: rows.filter(r => r.status === k).length, meta: SUBSCRIPTION_LABELS[k] }))
-    .filter(d => d.n);
-
-  const sf = state.billingFilter || "all";
-  const counts = {
-    all: rows.length, active: activeCount, inactive: inactiveCount,
-    trialing: trialCount,
-    past_due: rows.filter(r => r.status === "past_due").length,
-    expired: rows.filter(r => r.status === "expired").length,
-    canceled: rows.filter(r => r.status === "canceled").length
-  };
-  let list = rows.slice();
-  if (sf === "active") list = list.filter(r => r.active);
-  else if (sf === "inactive") list = list.filter(r => !r.active);
-  else if (sf !== "all") list = list.filter(r => r.status === sf);
-  list.sort((a, b) => {
-    const ta = a.endIso ? new Date(a.endIso).getTime() : Infinity;
-    const tb = b.endIso ? new Date(b.endIso).getTime() : Infinity;
-    return (ta - tb) || String(a.store.name).localeCompare(String(b.store.name), "ar");
-  });
-
-  const chips = [["all", "الكل"], ["active", "نشطة"], ["trialing", "تجريبية"], ["past_due", "متأخرة"], ["expired", "منتهية"], ["canceled", "ملغاة"], ["inactive", "غير نشطة"]];
-
-  return `
-    <div class="stats-grid admin-stats">
-      ${statCard("wallet", "الإيراد الشهري التقديري", `${mrr.toLocaleString("ar")} ل.ت`, planPrice ? `${activeCount.toLocaleString("ar")} نشط × ${planPrice.toLocaleString("ar")} ل.ت` : "حدّد سعر الخطة في «المحتوى»", "green")}
-      ${statCard("store", "اشتراكات نشطة", activeCount.toLocaleString("ar"), `من ${rows.length.toLocaleString("ar")} متجر`, "blue")}
-      ${statCard("clock", "فترات تجريبية", trialCount.toLocaleString("ar"), trialCount ? "ستتحول إلى مدفوعة" : "لا فترات تجريبية", "orange")}
-      ${statCard("shield", "غير نشطة", inactiveCount.toLocaleString("ar"), inactiveCount ? "منتهية أو ملغاة" : "كل المتاجر نشطة", inactiveCount ? "yellow" : "green")}
-    </div>
-    <div class="review-note" style="margin:0 0 16px">${icon("info")} <span><strong>الإيراد رقم تقديري</strong><small>عدد المتاجر النشطة × سعر الخطة. الحالة الفعلية للاشتراك (من Whop) معروضة في «التوزيع» بالأسفل؛ المتاجر بحالة «غير مشترك» لم تُربَط باشتراك Whop بعد.</small></span></div>
-    ${dist.length ? `<section class="dashboard-card"><div class="card-heading"><div><h3>توزيع الاشتراكات</h3><p>حسب الحالة الفعلية في Whop</p></div></div><div style="display:flex;flex-wrap:wrap;gap:8px">${dist.map(d => `<span class="status-pill ${d.meta.pill}">${d.meta.text}: ${d.n.toLocaleString("ar")}</span>`).join("")}</div></section>` : ""}
-    ${soon.length ? `<section class="dashboard-card"><div class="card-heading"><div><h3>تنتهي خلال ٧ أيام</h3><p>اشتراكات تحتاج إلى متابعة التجديد</p></div></div><div class="admin-store-list">${soon.map(r => { const meta = SUBSCRIPTION_LABELS[r.status] || SUBSCRIPTION_LABELS.none; return `<article>${storeAvatar(r.store)}<div style="flex:1 1 auto;min-width:0"><strong>${escAttr(r.store.name)}</strong><small>${r.status === "trialing" ? "تنتهي التجربة" : "تاريخ التجديد"}: ${formatSubDate(r.endIso)}</small></div><span class="status-pill ${meta.pill}">${meta.text}</span><button class="table-action" data-action="open-store" data-id="${r.store.id}" aria-label="عرض المتجر">${icon("eye")}</button></article>`; }).join("")}</div></section>` : ""}
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="billing-search" placeholder="ابحث باسم المتجر"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="subscriptions">${icon("download")} تصدير</button></div></div>
-    <div class="product-cat-filter">${chips.map(([k, label]) => `<button class="cat-chip ${sf === k ? "active" : ""}" data-action="billing-filter" data-filter="${k}">${label} <span>${(counts[k] || 0).toLocaleString("ar")}</span></button>`).join("")}</div>
-    <section class="dashboard-card orders-table-card billing-table">
-      <div class="table-wrap"><table>
-        <thead><tr><th>المتجر</th><th>الحالة</th><th>الخطة الشهرية</th><th>تنتهي / تجديد</th><th></th></tr></thead>
-        <tbody>${list.map(r => { const meta = SUBSCRIPTION_LABELS[r.status] || SUBSCRIPTION_LABELS.none; return `<tr>
-          <td><strong>${escAttr(r.store.name)}</strong></td>
-          <td><span class="status-pill ${meta.pill}">${meta.text}</span></td>
-          <td>${["active", "trialing", "past_due"].includes(r.status) && planPrice ? `${planPrice.toLocaleString("ar")} ل.ت` : "—"}</td>
-          <td>${formatSubDate(r.endIso)}</td>
-          <td><button class="table-action" data-action="open-store" data-id="${r.store.id}" aria-label="عرض المتجر">${icon("eye")}</button></td>
-        </tr>`; }).join("")}</tbody>
-      </table></div>
-      ${list.length ? "" : `<div class="empty-managed">${icon("wallet")}<p>لا اشتراكات مطابقة</p></div>`}
-    </section>`;
-}
-
 function adminCredentials() {
   if (!state.adminKey) return `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>سجّل دخول الإدارة لعرض حسابات المتاجر.</p></div></section>`;
   if (state.adminCreds === null) return `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>جارٍ تحميل حسابات المتاجر…</p></div></section>`;
@@ -2613,12 +2533,20 @@ function adminContentPlans() {
     : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
   return `
     <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>أسعار الاشتراك حسب التصنيف</h3><p>سعر شهري ثابت لكل تصنيف. يرى كل تاجر سعر تصنيفه فقط في صفحة «الاشتراك» — لا يرى أسعار التصنيفات الأخرى.</p></div></div>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>التصنيف</th><th>السعر الشهري</th></tr></thead>
+          <tbody>${CATEGORY_SUBSCRIPTION_ROWS.map(([cat, price]) => `<tr><td>${esc(cat)}</td><td><strong>${price.toLocaleString("ar")}</strong> ل.ت / شهرياً</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <p class="creds-summary">التصنيفات غير المذكورة: ${DEFAULT_SUBSCRIPTION_PRICE.toLocaleString("ar")} ل.ت / شهرياً · لا يوجد اشتراك سنوي.</p>
+    </section>
     <section class="dashboard-card form-card">
-      <div class="card-heading"><div><h3>خطة الاشتراك والسعر</h3><p>تظهر للتجار في صفحة «الاشتراك». أي تعديل يُحفظ ويظهر للجميع فوراً.</p></div></div>
+      <div class="card-heading"><div><h3>محتوى الخطة (مشترك لكل التصنيفات)</h3><p>الاسم والوصف والمزايا تظهر للتجار في صفحة «الاشتراك». السعر يُحسب تلقائياً حسب تصنيف المتجر.</p></div></div>
       <form id="admin-plan-form" class="form-grid">
-        <label class="input-label"><span>اسم الخطة</span><input name="name" value="${v("name", "الخطة الاحترافية")}" required></label>
-        <label class="input-label"><span>السعر</span><input name="price" value="${v("price", "499")}" inputmode="numeric"></label>
-        <label class="input-label"><span>وحدة السعر</span><input name="period" value="${v("period", "ل.ت / شهرياً")}"></label>
+        <label class="input-label" style="grid-column:1/-1"><span>اسم الخطة</span><input name="name" value="${v("name", "اشتراك متجر دكانجي")}" required></label>
         <label class="input-label" style="grid-column:1/-1"><span>وصف مختصر</span><input name="tagline" value="${v("tagline", "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.")}"></label>
         <label class="input-label" style="grid-column:1/-1"><span>المزايا (ميزة واحدة في كل سطر)</span><textarea name="features" rows="6">${escAttr(features.join("\n"))}</textarea></label>
         <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ الخطة</button>
@@ -2978,35 +2906,6 @@ function adminProducts() {
     </section>`;
 }
 
-// Build the list of things needing the admin's attention (used by the header bell
-// dot and the notifications modal). Each item links to the tab that resolves it.
-function adminNotificationItems() {
-  const items = [];
-  const pending = stores.filter(s => (s.approvalStatus || "approved") === "pending");
-  if (pending.length) items.push({ icon: "store", title: `${pending.length.toLocaleString("ar")} طلب انضمام بانتظار المراجعة`, tab: "stores" });
-  const waUnread = (state.adminThreads || []).reduce((s, t) => s + (t.unread || 0), 0);
-  if (waUnread) items.push({ icon: "whatsapp", title: `${waUnread.toLocaleString("ar")} رسالة واتساب غير مقروءة`, tab: "messages" });
-  const openComplaints = (state.customerComplaints || []).filter(c => c.status !== "تم الحل").length;
-  if (openComplaints) items.push({ icon: "megaphone", title: `${openComplaints.toLocaleString("ar")} شكوى مفتوحة`, tab: "complaints" });
-  const now = Date.now();
-  const soon = stores.filter(s => {
-    const status = s.subscriptionStatus || "none";
-    const endIso = (status === "trialing" && s.trialEndsAt) ? s.trialEndsAt : s.currentPeriodEnd;
-    const t = endIso ? new Date(endIso).getTime() : NaN;
-    return !isNaN(t) && t >= now && t - now <= 7 * 86400000;
-  }).length;
-  if (soon) items.push({ icon: "wallet", title: `${soon.toLocaleString("ar")} اشتراك ينتهي خلال ٧ أيام`, tab: "billing" });
-  return items;
-}
-function openAdminNotifications() {
-  const items = adminNotificationItems();
-  showModal(`
-    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <span class="section-kicker">الإشعارات</span><h2>ما يحتاج انتباهك</h2>
-    ${items.length ? `<div class="admin-store-list">${items.map(it => `<article data-action="goto-admin-tab" data-tab="${it.tab}" style="cursor:pointer">${icon(it.icon)}<div style="flex:1 1 auto;min-width:0"><strong>${escAttr(it.title)}</strong></div>${icon("arrowLeft")}</article>`).join("")}</div>` : `<div class="empty-managed">${icon("bell")}<p>لا إشعارات جديدة — كل شيء على ما يرام.</p></div>`}
-  `, "");
-}
-
 function renderAdmin() {
   // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
   if (!state.adminKey) return adminLoginScreen();
@@ -3017,11 +2916,10 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, delivery: adminDeliveryZones, billing: adminBilling, credentials: adminCredentials, content: adminContent }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], billing: ["الاشتراكات والإيرادات", "تابع الاشتراكات النشطة والإيراد الشهري التقديري وتواريخ التجديد"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"] };
   const [title, subtitle] = titles[state.adminTab];
-  const notifCount = adminNotificationItems().length;
-  return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات" data-action="admin-notifications">${icon("bell")}${notifCount ? "<b></b>" : ""}</button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
+  return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
 
 function renderDeliveryQuoteDetails(store, quote, status = "") {
@@ -3938,15 +3836,7 @@ function openComplaintDetail(data) {
 function exportCsv(kind) {
   let rows = [];
   if (kind === "stores") rows = [["المتجر", "التصنيف", "التقييم", "رسوم التوصيل"], ...stores.map(store => [store.name, store.category, store.rating, deliveryPriceLabel(store)])];
-  else if (kind === "customers") {
-    const map = new Map();
-    (state.orders || []).forEach(o => {
-      const key = (o.customerPhone || "").replace(/\D/g, "") || ("name:" + (o.customer || "—"));
-      if (!map.has(key)) map.set(key, { name: o.customer || "—", phone: o.customerPhone || "", count: 0, total: 0 });
-      const c = map.get(key); c.count++; c.total += (o.total || 0);
-    });
-    rows = [["العميل", "الهاتف", "عدد الطلبات", "إجمالي الإنفاق"], ...Array.from(map.values()).sort((a, b) => b.total - a.total).map(c => [c.name, c.phone, c.count, c.total])];
-  }
+  else if (kind === "customers") rows = [["العميل", "الهاتف", "الطلبات"]];
   else if (kind === "complaints") rows = [["الرقم", "العنوان", "الحالة"], ...(state.customerComplaints || []).map(c => [c.id, c.subject, c.status])];
   else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId)?.name || "-", order.total, order.status])];
   const csv = "\uFEFF" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -4215,9 +4105,6 @@ document.addEventListener("click", event => {
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
   if (action === "admin-tab") { state.adminTab = target.dataset.tab; state.adminContentSection = null; render(); }
-  if (action === "billing-filter") { state.billingFilter = target.dataset.filter || "all"; render(); }
-  if (action === "admin-notifications") openAdminNotifications();
-  if (action === "goto-admin-tab") { closeModal(); state.adminTab = target.dataset.tab; state.adminContentSection = null; render(); }
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
   if (action === "copy-creds") {
     const u = target.dataset.username, p = target.dataset.password, n = target.dataset.name;
@@ -4525,18 +4412,6 @@ document.addEventListener("input", event => {
     const q = normalizeAr(event.target.value.trim());
     document.querySelectorAll(".admin-store-list article").forEach(card => {
       card.style.display = !q || normalizeAr(card.textContent).includes(q) ? "" : "none";
-    });
-  }
-  if (event.target.id === "billing-search") {
-    const q = normalizeAr(event.target.value.trim());
-    document.querySelectorAll(".billing-table tbody tr").forEach(row => {
-      row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
-    });
-  }
-  if (event.target.id === "admin-customer-search") {
-    const q = normalizeAr(event.target.value.trim());
-    document.querySelectorAll(".customers-table tbody tr").forEach(row => {
-      row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
     });
   }
   if (event.target.name === "image" && event.target.closest("#merchant-product-form")) {
