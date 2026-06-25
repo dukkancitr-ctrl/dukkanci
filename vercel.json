@@ -21,6 +21,7 @@
     { "source": "/category/:slug", "destination": "/api/category?slug=:slug" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/gizlilik", "destination": "/privacy.html" },
+    { "source": "/merchants", "destination": "/merchants.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
