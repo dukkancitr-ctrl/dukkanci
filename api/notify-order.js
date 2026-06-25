@@ -696,8 +696,10 @@ module.exports = async (req, res) => {
           toCreate.push(row);
         }
       }
+      let writeOk = true;
       if (toCreate.length) {
-        await sbWrite("POST", "store_credentials?on_conflict=store_id", toCreate, "resolution=merge-duplicates,return=minimal");
+        const w = await sbWrite("POST", "store_credentials?on_conflict=store_id", toCreate, "resolution=merge-duplicates,return=minimal");
+        writeOk = !!w.ok;
       }
       const list = storeRows.map(s => {
         const cr = byId.get(Number(s.id));
@@ -708,7 +710,8 @@ module.exports = async (req, res) => {
           no_phone: !phoneKey(s.phone)
         };
       });
-      return res.status(200).json({ stores: list });
+      // serviceRole/writeOk let the admin UI warn if credentials can't actually persist.
+      return res.status(200).json({ stores: list, serviceRole: !!env("SUPABASE_SERVICE_ROLE_KEY"), writeOk, generated: toCreate.length });
     }
 
     const expected = (process.env.WHATSAPP_VERIFY_TOKEN || "").trim();

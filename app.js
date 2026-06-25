@@ -222,6 +222,7 @@ const state = {
   siteSettings: {},
   adminKey: sessionStorage.getItem("dukkanci-admin-token") || null,
   adminCreds: null, // loaded store-login credentials list (null=unloaded, "error", or array)
+  adminCredsWarn: null, // "service"|"write"|null — surfaced when credentials can't persist
   adminThreads: [],
   adminActiveWa: null,
   adminThread: null,
@@ -2429,12 +2430,18 @@ function adminCredentials() {
   const dupes = new Set();
   const seen = new Map();
   rows.forEach(r => { if (!r.username) return; if (seen.has(r.username)) dupes.add(r.username); else seen.set(r.username, 1); });
+  const warn = state.adminCredsWarn === "service"
+    ? "تحذير: مفتاح الخدمة (SUPABASE_SERVICE_ROLE_KEY) غير مهيأ — لن تُحفظ كلمات المرور ولن يعمل الدخول. راجع إعدادات Vercel."
+    : state.adminCredsWarn === "write"
+    ? "تحذير: تعذّر حفظ كلمات المرور في قاعدة البيانات — تأكد أن جدول store_credentials موجود (نفّذ schema.sql). كلمات المرور المعروضة لن تعمل حتى يُحفظ."
+    : "";
   return `
     <section class="dashboard-card">
       <div class="card-heading">
         <div><h3>حسابات الدخول للمتاجر</h3><p>اسم المستخدم = رقم موبايل المتجر. سلّم المتجر بياناته بعد دفع الاشتراك — الدخول يعمل فقط عندما يكون الاشتراك فعّالاً.</p></div>
         <button class="secondary-button compact" data-action="reload-creds">تحديث</button>
       </div>
+      ${warn ? `<div class="store-closed-banner review-note" style="margin:0 0 14px">${icon("shield")} <span><strong>${warn}</strong></span></div>` : ""}
       <p class="creds-summary">${rows.length.toLocaleString("ar")} متجراً · ${active.toLocaleString("ar")} اشتراك فعّال</p>
       <div class="table-wrap">
       <table class="admin-table creds-table">
@@ -2460,6 +2467,7 @@ async function loadAdminCreds() {
   try {
     const data = await adminApi("store-creds");
     state.adminCreds = Array.isArray(data.stores) ? data.stores : [];
+    state.adminCredsWarn = data.serviceRole === false ? "service" : (data.writeOk === false ? "write" : null);
   } catch (e) {
     state.adminCreds = "error";
   }
