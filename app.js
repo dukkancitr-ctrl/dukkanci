@@ -1992,6 +1992,31 @@ const SUBSCRIPTION_LABELS = {
   expired:  { text: "منتهي",       pill: "red" },
   none:     { text: "غير مشترك",   pill: "gray" }
 };
+
+// Monthly store-subscription price (ل.ت) by store category. Matched loosely so
+// variant/dynamic category names ("خضار وفواكه", "مطعم", "مكسرات وبهارات") still
+// resolve. Each merchant only ever sees the price for THEIR category (rendered in
+// merchantSubscription); the full table is admin-only (adminContentPlans).
+const CATEGORY_SUBSCRIPTION = [
+  [/سوبر|ماركت/, 4000],          // سوبر ماركت
+  [/مطعم|مطاعم/, 4500],          // مطاعم
+  [/حلوي/, 5000],                // حلويات
+  [/خضار|فواكه/, 4000],          // خضار وفواكه
+  [/ملحم|ملاحم|لحوم/, 4000],     // ملاحم
+  [/عصير|عصائر/, 4500],          // عصائر
+  [/مكسرات|بهارات|\bبن\b|قهوة/, 4500] // مكسرات وبهارات / بن
+];
+const DEFAULT_SUBSCRIPTION_PRICE = 4500;
+function categorySubscriptionPrice(category) {
+  const c = String(category || "");
+  for (const [re, price] of CATEGORY_SUBSCRIPTION) if (re.test(c)) return price;
+  return DEFAULT_SUBSCRIPTION_PRICE;
+}
+// Display rows for the admin-only category pricing table.
+const CATEGORY_SUBSCRIPTION_ROWS = [
+  ["سوبر ماركت", 4000], ["مطاعم", 4500], ["حلويات", 5000], ["خضار وفواكه", 4000],
+  ["ملاحم", 4000], ["عصائر", 4500], ["مكسرات وبهارات / بن", 4500]
+];
 function formatSubDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -2010,8 +2035,11 @@ function merchantSubscription() {
   const p = (state.siteSettings && state.siteSettings.plan) || {};
   const name = p.name || "اشتراك متجر دكانجي";
   const tagline = p.tagline || "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.";
-  const price = (p.price != null && p.price !== "") ? p.price : "2,499";
-  const period = p.period || "ل.ت / شهرياً";
+  // Price is fixed per store category and billed MONTHLY only. Each merchant sees
+  // only their own category's price — never the other categories' figures.
+  const catLabel = store.category || "متجر";
+  const price = categorySubscriptionPrice(store.category).toLocaleString("ar");
+  const period = "ل.ت / شهرياً";
   const features = (Array.isArray(p.features) && p.features.length) ? p.features
     : ["تجربة مجانية ٧ أيام", "استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
 
@@ -2026,13 +2054,15 @@ function merchantSubscription() {
   return `
     ${banner}
     <div class="subscription-hero dashboard-card">
-      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p></div>
+      <div><span class="status-pill ${meta.pill}">${meta.text}</span><h2>${escAttr(name)}</h2><p>${escAttr(tagline)}</p><span class="sub-cat-chip">${icon("store")} باقة ${esc(catLabel)}</span></div>
       <div class="subscription-price"><strong>${escAttr(String(price))}</strong><span>${escAttr(period)}</span></div>
     </div>
     <div class="subscription-details">
       <section class="dashboard-card"><h3>تفاصيل الاشتراك</h3>
         <div class="detail-list">
           <span><small>الحالة</small><strong>${meta.text}</strong></span>
+          <span><small>الباقة</small><strong>${esc(catLabel)}</strong></span>
+          <span><small>السعر الشهري</small><strong>${escAttr(String(price))} ل.ت / شهرياً</strong></span>
           <span><small>${endLabel}</small><strong>${formatSubDate(endIso)}</strong></span>
           <span><small>التجديد</small><strong>تلقائي عبر Whop</strong></span>
           <span><small>طريقة الدفع</small><strong>Whop (بطاقة)</strong></span>
@@ -2503,12 +2533,20 @@ function adminContentPlans() {
     : ["استقبال طلبات غير محدودة", "رفع المنتجات عبر CSV", "عروض وخصومات", "تقارير شهرية عبر واتساب", "ظهور مميز في نتائج البحث"];
   return `
     <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>أسعار الاشتراك حسب التصنيف</h3><p>سعر شهري ثابت لكل تصنيف. يرى كل تاجر سعر تصنيفه فقط في صفحة «الاشتراك» — لا يرى أسعار التصنيفات الأخرى.</p></div></div>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>التصنيف</th><th>السعر الشهري</th></tr></thead>
+          <tbody>${CATEGORY_SUBSCRIPTION_ROWS.map(([cat, price]) => `<tr><td>${esc(cat)}</td><td><strong>${price.toLocaleString("ar")}</strong> ل.ت / شهرياً</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <p class="creds-summary">التصنيفات غير المذكورة: ${DEFAULT_SUBSCRIPTION_PRICE.toLocaleString("ar")} ل.ت / شهرياً · لا يوجد اشتراك سنوي.</p>
+    </section>
     <section class="dashboard-card form-card">
-      <div class="card-heading"><div><h3>خطة الاشتراك والسعر</h3><p>تظهر للتجار في صفحة «الاشتراك». أي تعديل يُحفظ ويظهر للجميع فوراً.</p></div></div>
+      <div class="card-heading"><div><h3>محتوى الخطة (مشترك لكل التصنيفات)</h3><p>الاسم والوصف والمزايا تظهر للتجار في صفحة «الاشتراك». السعر يُحسب تلقائياً حسب تصنيف المتجر.</p></div></div>
       <form id="admin-plan-form" class="form-grid">
-        <label class="input-label"><span>اسم الخطة</span><input name="name" value="${v("name", "الخطة الاحترافية")}" required></label>
-        <label class="input-label"><span>السعر</span><input name="price" value="${v("price", "499")}" inputmode="numeric"></label>
-        <label class="input-label"><span>وحدة السعر</span><input name="period" value="${v("period", "ل.ت / شهرياً")}"></label>
+        <label class="input-label" style="grid-column:1/-1"><span>اسم الخطة</span><input name="name" value="${v("name", "اشتراك متجر دكانجي")}" required></label>
         <label class="input-label" style="grid-column:1/-1"><span>وصف مختصر</span><input name="tagline" value="${v("tagline", "كل الأدوات التي تحتاجها لتنمية متجرك واستقبال طلبات بلا حدود.")}"></label>
         <label class="input-label" style="grid-column:1/-1"><span>المزايا (ميزة واحدة في كل سطر)</span><textarea name="features" rows="6">${escAttr(features.join("\n"))}</textarea></label>
         <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ الخطة</button>
