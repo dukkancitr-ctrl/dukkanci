@@ -1,4 +1,4 @@
-const CACHE = "dukkanci-v131";
+const CACHE = "dukkanci-v132";
 const APP_SHELL = [
   "/",
   "/index.html",
