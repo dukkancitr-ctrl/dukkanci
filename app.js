@@ -3682,7 +3682,7 @@ function initUserLocation() {
 function isProfileComplete() {
   const p = state.customerProfile;
   if (!p || !p.name || !p.phone) return false;
-  // must have at least one address with building + apt numbers
+  // must have at least one address with building + apt numbers (zone or full)
   return state.customerAddresses.some(a => a.structured?.bina && a.structured?.daire);
 }
 
@@ -3694,12 +3694,14 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
   const safaZones = storeId === 50 ? (getDeliverySettings(50)?.namedZones || []) : [];
   const currentZone = existingAddr.namedZone || "";
 
+  const isZone = safaZones.length && !!currentZone;
+
   const zoneBlock = safaZones.length ? `
     <div class="named-zone-picker">
       <p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت 50 ل.ت</small></p>
       <div class="zone-picker-options">
         ${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}
-        <label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label>
+        <label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>عنوان آخر</span></label>
       </div>
     </div>` : `<input type="hidden" name="namedZone" value="${escAttr(currentZone)}">`;
 
@@ -3715,15 +3717,24 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
         <label><span>رقم الواتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" required dir="ltr" value="${escAttr(p.phone || "")}" placeholder="+90 555 000 00 00"></label>
       </div>
       ${zoneBlock}
-      <p class="address-section-title">${icon("map")} العنوان التفصيلي</p>
-      <div class="form-grid">
-        <label><span>İl (المدينة)</span><input name="sf_il" value="${escAttr(sf.il || "İstanbul")}" placeholder="İstanbul" required></label>
-        <label><span>İlçe (المنطقة)</span><input name="sf_ilce" value="${escAttr(sf.ilce || "")}" placeholder="Esenyurt" required></label>
-        <label class="wide"><span>Mahalle</span><input name="sf_mahalle" value="${escAttr(sf.mahalle || "")}" placeholder="Cumhuriyet Mahallesi" required></label>
-        <label class="wide"><span>Cadde / Sokak</span><input name="sf_sokak" value="${escAttr(sf.sokak || "")}" placeholder="Atatürk Caddesi"></label>
-        <label><span>Bina No <i class="req">*</i></span><input name="sf_bina" value="${escAttr(sf.bina || "")}" placeholder="12" required inputmode="numeric"></label>
-        <label><span>Kat</span><input name="sf_kat" value="${escAttr(sf.kat || "")}" placeholder="3" inputmode="numeric"></label>
-        <label><span>Daire No <i class="req">*</i></span><input name="sf_daire" value="${escAttr(sf.daire || "")}" placeholder="5" required inputmode="numeric"></label>
+      <div id="zone-address-fields" ${isZone ? "" : 'style="display:none"'}>
+        <p class="address-section-title">${icon("pin")} تفاصيل المجمع</p>
+        <div class="form-grid">
+          <label><span>Bina No <i class="req">*</i></span><input name="zf_bina" value="${escAttr(sf.bina || "")}" placeholder="12A"></label>
+          <label><span>Daire No <i class="req">*</i></span><input name="zf_daire" value="${escAttr(sf.daire || "")}" placeholder="5"></label>
+        </div>
+      </div>
+      <div id="full-address-fields" ${isZone ? 'style="display:none"' : ""}>
+        <p class="address-section-title">${icon("map")} العنوان التفصيلي</p>
+        <div class="form-grid">
+          <label><span>İl (المدينة)</span><input name="sf_il" value="${escAttr(sf.il || "İstanbul")}" placeholder="İstanbul"></label>
+          <label><span>İlçe (المنطقة)</span><input name="sf_ilce" value="${escAttr(sf.ilce || "")}" placeholder="Esenyurt"></label>
+          <label class="wide"><span>Mahalle</span><input name="sf_mahalle" value="${escAttr(sf.mahalle || "")}" placeholder="Cumhuriyet Mahallesi"></label>
+          <label class="wide"><span>Cadde / Sokak</span><input name="sf_sokak" value="${escAttr(sf.sokak || "")}" placeholder="Atatürk Caddesi"></label>
+          <label><span>Bina No <i class="req">*</i></span><input name="sf_bina" value="${escAttr(sf.bina || "")}" placeholder="12A"></label>
+          <label><span>Kat</span><input name="sf_kat" value="${escAttr(sf.kat || "")}" placeholder="3" inputmode="numeric"></label>
+          <label><span>Daire No <i class="req">*</i></span><input name="sf_daire" value="${escAttr(sf.daire || "")}" placeholder="5" inputmode="numeric"></label>
+        </div>
       </div>
       <button class="primary-button full large" type="submit">${icon("check")} حفظ وإضافة للسلة</button>
     </form>
@@ -4456,6 +4467,11 @@ document.addEventListener("change", event => {
     state.deliveryQuote = null;
     requestDeliveryQuote();
   }
+  if (event.target.name === "namedZone" && document.getElementById("zone-address-fields")) {
+    const isNamed = event.target.value !== "";
+    document.getElementById("zone-address-fields").style.display = isNamed ? "" : "none";
+    document.getElementById("full-address-fields").style.display = isNamed ? "none" : "";
+  }
   if (event.target.name === "storeOpen") {
     const label = event.target.closest(".delivery-toggle").querySelector("b");
     if (label) label.textContent = event.target.checked ? "المتجر مفتوح" : "المتجر مغلق";
@@ -4981,11 +4997,21 @@ document.addEventListener("submit", event => {
     const form = new FormData(event.target);
     // save profile
     state.customerProfile = { ...state.customerProfile, name: form.get("name").trim(), phone: form.get("phone").trim() };
-    // save address
-    const structured = { il: (form.get("sf_il")||"").trim(), ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
-    const addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
-    const detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
+    // save address — two modes: named zone (bina+daire only) vs full Turkish address
     const namedZone = (form.get("namedZone") || "").trim();
+    let structured, addrParts, detailParts;
+    if (namedZone) {
+      // zone mode: only bina + daire needed
+      const bina = (form.get("zf_bina") || "").trim();
+      const daire = (form.get("zf_daire") || "").trim();
+      structured = { bina, daire };
+      addrParts = [namedZone];
+      detailParts = [bina ? `Bina:${bina}` : "", daire ? `D:${daire}` : ""].filter(Boolean);
+    } else {
+      structured = { il: (form.get("sf_il")||"").trim(), ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
+      addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
+      detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
+    }
     const addressData = { id: Date.now(), label: "المنزل", address: addrParts.join("، "), details: detailParts.join(" "), structured, namedZone, lat: null, lng: null, isDefault: true };
     state.customerAddresses = state.customerAddresses.map(a => ({ ...a, isDefault: false }));
     state.customerAddresses.unshift(addressData);
