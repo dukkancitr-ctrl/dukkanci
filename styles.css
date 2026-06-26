@@ -4299,6 +4299,61 @@ img {
   font-size: 10px;
 }
 
+/* ── Named Zone Picker (Safa special zones) ─────────────────────── */
+.named-zone-picker {
+  background: var(--surface-alt);
+  border: 1.5px solid var(--primary);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 4px;
+}
+.zone-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zone-picker-label small { color: var(--muted); font-weight: 400; }
+.zone-picker-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.zone-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color .15s, background .15s;
+}
+.zone-option:has(input:checked) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  font-weight: 600;
+}
+.zone-option input { display: none; }
+
+/* ── Address section title ──────────────────────────────────────── */
+.address-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 0 2px;
+}
+
 .merchant-delivery-settings {
   margin-top: 22px;
   padding: 20px;
