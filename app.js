@@ -2004,7 +2004,7 @@ function merchantStore() {
           <label class="delivery-toggle"><input type="checkbox" name="distanceEnabled" ${deliverySettings.mode === "distance" ? "checked" : ""}><span></span><b>${deliverySettings.mode === "distance" ? "مفعّل" : "غير مفعّل"}</b></label>
         </div>
         <div class="distance-settings-fields ${deliverySettings.mode === "distance" ? "active" : ""}">
-          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="20" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 20 ليرة.</small></label>
+          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="40" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 40 ليرة.</small></label>
           <label><span>مدة تجهيز الطلب</span><div class="input-with-unit"><input name="prepMinutes" type="number" min="5" max="120" step="5" value="${deliverySettings.prepMinutes}"><b>دقيقة</b></div></label>
           <label><span>أقصى مسافة ذهاباً وإياباً</span><div class="input-with-unit"><input name="maxRoundTripKm" type="number" min="5" max="200" value="${deliverySettings.maxRoundTripKm}"><b>كم</b></div></label>
           <div class="delivery-formula-preview"><small>مثال مباشر</small><strong><span id="delivery-example-distance">20</span> كم × <span id="delivery-example-rate">${deliverySettings.ratePerKm}</span> ل.ت = <b id="delivery-example-total">${20 * deliverySettings.ratePerKm} ل.ت</b></strong></div>
@@ -4563,7 +4563,7 @@ document.addEventListener("input", event => {
     });
   }
   if (event.target.name === "ratePerKm") {
-    const rate = Math.min(20, Math.max(10, Number(event.target.value) || 10));
+    const rate = Math.min(40, Math.max(10, Number(event.target.value) || 10));
     const exampleRate = document.getElementById("delivery-example-rate");
     const exampleTotal = document.getElementById("delivery-example-total");
     if (exampleRate) exampleRate.textContent = rate;
@@ -4930,7 +4930,7 @@ document.addEventListener("submit", event => {
       if (cover) store.coverImage = cover;
       pushStoreCloud(store);
     }
-    const ratePerKm = Math.min(20, Math.max(10, Number(form.get("ratePerKm")) || 15));
+    const ratePerKm = Math.min(40, Math.max(10, Number(form.get("ratePerKm")) || 15));
     const zones = [];
     for (let zi = 0; form.has(`zone-label-${zi}`); zi++) {
       const label = (form.get(`zone-label-${zi}`) || "").toString().trim();
