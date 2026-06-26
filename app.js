@@ -3148,6 +3148,10 @@ function updateHead(route, id) {
   document.title = title;
   setMetaTag('meta[name="description"]', "content", desc);
   setMetaTag('link[rel="canonical"]', "href", canonical);
+  // Soft-404 guard: unknown paths fall back to renderHome (and #about/#contact/#faq/
+  // #terms render home too), so only mark real content routes indexable — everything
+  // else gets noindex so junk URLs aren't indexed as duplicate-home soft-404s.
+  setMetaTag('meta[name="robots"]', "content", ["home", "stores", "offers", "store", "product", "category"].includes(route) ? "index,follow" : "noindex,follow");
   setMetaTag('meta[property="og:title"]', "content", title);
   setMetaTag('meta[property="og:description"]', "content", desc);
   setMetaTag('meta[property="og:image"]', "content", image);
