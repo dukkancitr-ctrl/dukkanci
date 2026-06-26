@@ -195,3 +195,31 @@ create table if not exists public.store_credentials (
 );
 alter table public.store_credentials enable row level security;
 create index if not exists store_credentials_username_idx on public.store_credentials(username);
+
+-- =====================================================================
+-- Integration settings (GA4, Meta Pixel, GTM, TikTok, Ads…)
+-- Editable via admin "التكاملات" tab → integrations.js reads + injects.
+-- Public SELECT (anon) so the browser can load settings without auth.
+-- Writes are service-role only (admin panel uses service-role key).
+-- =====================================================================
+create table if not exists public.integration_settings (
+  setting_key   text primary key,
+  setting_value text not null default '',
+  is_enabled    boolean not null default false,
+  updated_at    timestamptz default now()
+);
+
+-- seed the keys so rows always exist (upsert-safe)
+insert into public.integration_settings (setting_key) values
+  ('meta_pixel_id'), ('meta_capi_token'), ('meta_test_event_code'),
+  ('tiktok_pixel_id'), ('snapchat_pixel_id'), ('pinterest_tag_id'),
+  ('google_tag_manager_id'), ('ga4_measurement_id'),
+  ('google_ads_conversion_id'), ('google_ads_conversion_label')
+on conflict (setting_key) do nothing;
+
+-- anon can read (so integrations.js boots without auth)
+alter table public.integration_settings enable row level security;
+create policy "public read integration_settings"
+  on public.integration_settings for select using (true);
+
+grant select on public.integration_settings to anon, authenticated;

@@ -10,6 +10,28 @@ const { parse: parseUrl } = require("url");
 const port = Number(process.env.PORT) || 4173;
 const host = process.env.HOST || "0.0.0.0";
 const root = __dirname;
+
+// Local dev only: load KEY=value pairs from a .env file (if present) into
+// process.env, so the /api/* handlers see the same secrets they get from Vercel
+// in production (e.g. ADMIN_PASSWORD for the admin panel login). .env is
+// gitignored and never committed; Vercel injects its own env vars, so this is a
+// no-op in production.
+(function loadDotenv() {
+  try {
+    const envPath = path.join(root, ".env");
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      if (!line || /^\s*#/.test(line)) continue;
+      const eq = line.indexOf("=");
+      if (eq < 1) continue;
+      const key = line.slice(0, eq).trim();
+      let val = line.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+      if (key && !(key in process.env)) process.env[key] = val;
+    }
+  } catch (e) { /* ignore — dev convenience only */ }
+})();
+
 const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",

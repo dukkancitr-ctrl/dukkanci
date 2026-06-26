@@ -10,6 +10,8 @@ Thumbs.db
 
 # Scratch dir for restaurant-import scraping (raw HTML, JS bundles, manifests)
 scripts/_scrape/
+# Scratch dir for the صفا الشام inventory import (build/match/push toolkit + dumps)
+scripts/_safa/
 
 # Secrets — never commit credentials/passwords to the repo
 dukkanci project passwords.txt
