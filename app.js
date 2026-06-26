@@ -3388,8 +3388,17 @@ function openAddressModal(addressId = null) {
     <h2>${address ? address.label : "إضافة عنوان توصيل"}</h2>
     <form id="customer-address-form" class="modal-form" data-id="${address?.id || ""}">
       <label class="input-label"><span>اسم العنوان</span><select name="label"><option ${address?.label === "المنزل" ? "selected" : ""}>المنزل</option><option ${address?.label === "العمل" ? "selected" : ""}>العمل</option><option ${address?.label === "عنوان آخر" ? "selected" : ""}>عنوان آخر</option></select></label>
-      <label class="input-label"><span>العنوان الكامل</span><input name="address" required value="${address?.address || ""}" placeholder="الشارع، الحي، المدينة"></label>
-      <label class="input-label"><span>تفاصيل إضافية</span><textarea name="details" required placeholder="رقم البناء، الطابق، الشقة...">${address?.details || ""}</textarea></label>
+      ${(()=>{ const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت 50 ل.ت</small></p><div class="zone-picker-options">${safaZones.map(z=>`<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone===z.match[0]?"checked":""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone?"checked":""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone||"")}">` })()}
+      <p class="address-section-title">${icon("map")} العنوان بالتنسيق التركي</p>
+      <div class="form-grid">
+        <label><span>المدينة (İl)</span><input name="sf_il" value="${escAttr(address?.structured?.il||"إسطنبول")}" placeholder="إسطنبول" required></label>
+        <label><span>المنطقة (İlçe)</span><input name="sf_ilce" value="${escAttr(address?.structured?.ilce||"")}" placeholder="Esenyurt" required></label>
+        <label class="wide"><span>المحلة (Mahalle)</span><input name="sf_mahalle" value="${escAttr(address?.structured?.mahalle||"")}" placeholder="Cumhuriyet Mahallesi" required></label>
+        <label class="wide"><span>الشارع (Cadde / Sokak)</span><input name="sf_sokak" value="${escAttr(address?.structured?.sokak||"")}" placeholder="Atatürk Caddesi"></label>
+        <label><span>رقم البناء (Bina No)</span><input name="sf_bina" value="${escAttr(address?.structured?.bina||"")}" placeholder="12" required inputmode="numeric"></label>
+        <label><span>الطابق (Kat)</span><input name="sf_kat" value="${escAttr(address?.structured?.kat||"")}" placeholder="3" inputmode="numeric"></label>
+        <label><span>رقم الشقة (Daire No)</span><input name="sf_daire" value="${escAttr(address?.structured?.daire||"")}" placeholder="5" required inputmode="numeric"></label>
+      </div>
       <div class="address-location-picker">
         <input type="hidden" name="lat" value="${address?.lat || ""}">
         <input type="hidden" name="lng" value="${address?.lng || ""}">
@@ -4919,11 +4928,21 @@ document.addEventListener("submit", event => {
     const addressId = Number(event.target.dataset.id);
     const wasDefault = state.customerAddresses.find(address => address.id === addressId)?.isDefault;
     const makeDefault = form.get("isDefault") === "on" || !state.customerAddresses.length || Boolean(wasDefault);
+    // build structured Turkish address fields
+    const structured = { il: (form.get("sf_il")||"").trim(), ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
+    // compose a readable address string from structured fields
+    const addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
+    const detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
+    const composedAddress = addrParts.join("، ");
+    const composedDetails = detailParts.join(" ");
+    const namedZone = (form.get("namedZone") || "").trim();
     const addressData = {
       id: addressId || Date.now(),
       label: form.get("label"),
-      address: form.get("address").trim(),
-      details: form.get("details").trim(),
+      address: composedAddress || form.get("address")?.trim() || "",
+      details: composedDetails,
+      structured,
+      namedZone,
       lat: Number(form.get("lat")) || null,
       lng: Number(form.get("lng")) || null,
       isDefault: makeDefault
