@@ -247,6 +247,10 @@ const state = {
   adminActiveWa: null,
   adminThread: null,
   adminThreadLoading: false,
+  adminCampaigns: null,
+  adminCampaignForm: null,   // null | "open"
+  adminCampaignActive: null, // campaign being polled
+  _campaignPollTimer: null,
   user: null,
   deferredInstall: null
 };
@@ -1827,6 +1831,7 @@ function dashboardSidebar(type, active) {
     ["customers", "users", "العملاء"],
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
+    ["campaigns", "megaphone", "الحملات"],
     ["complaints", "megaphone", "الشكاوى"],
     ["delivery", "bike", "التوصيل"],
     ["credentials", "shield", "حسابات المتاجر"],
@@ -2997,6 +3002,166 @@ function adminProducts() {
     </section>`;
 }
 
+// ─── WhatsApp Campaign Management ────────────────────────────────────────────
+
+async function campaignApi(action, { method = "GET", id = null, body = null } = {}) {
+  const qs = new URLSearchParams({ action, ...(id ? { id } : {}) }).toString();
+  const opts = { method, headers: { "x-admin-token": state.adminKey || "", "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`/api/campaign?${qs}`, opts);
+  if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
+  return res.json().catch(() => ({}));
+}
+
+async function loadAdminCampaigns() {
+  try {
+    const data = await campaignApi("list");
+    state.adminCampaigns = data.campaigns || [];
+    render();
+  } catch (e) { state.adminCampaigns = []; render(); }
+}
+
+function campaignStatusLabel(status) {
+  return { draft: "مسودة", ready: "جاهزة", sending: "جارٍ الإرسال", paused: "موقوفة", paused_daily_limit: "وصل الحد اليومي", done: "منتهية", canceled: "ملغاة" }[status] || status;
+}
+function campaignStatusClass(status) {
+  return { draft: "gray", ready: "blue", sending: "green", paused: "yellow", paused_daily_limit: "yellow", done: "teal", canceled: "gray" }[status] || "gray";
+}
+
+function campaignProgress(c) {
+  if (!c.total_recipients) return 0;
+  return Math.min(100, Math.round(((c.sent_count || 0) + (c.failed_count || 0)) / c.total_recipients * 100));
+}
+
+function adminCampaigns() {
+  if (!state.adminCampaigns) {
+    loadAdminCampaigns();
+    return `<div class="dashboard-card"><div class="empty-managed">${icon("megaphone")}<p>جارٍ تحميل الحملات...</p></div></div>`;
+  }
+
+  const showForm = state.adminCampaignForm === "open";
+  const camps = state.adminCampaigns;
+
+  return `
+    <div class="dashboard-toolbar">
+      <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
+    </div>
+
+    ${showForm ? `
+    <section class="dashboard-card campaign-form-card">
+      <div class="card-heading"><div><h3>إنشاء حملة ترويجية</h3><p>ترسَل عبر رقم واتساب المنصة +90 555 100 06 30</p></div></div>
+      <div class="campaign-form">
+        <label>اسم الحملة <small>(داخلي فقط)</small>
+          <input id="cf-name" placeholder="مثال: عروض رمضان 2026" maxlength="80">
+        </label>
+        <label>اسم القالب <small>(approved في Meta — مثال: <code>platform_promo</code>)</small>
+          <input id="cf-tpl" placeholder="template_name" dir="ltr" maxlength="60">
+        </label>
+        <label>لغة القالب
+          <select id="cf-lang">
+            <option value="ar" selected>عربي (ar)</option>
+            <option value="tr">تركي (tr)</option>
+            <option value="en_US">إنجليزي (en_US)</option>
+          </select>
+        </label>
+        <label>معاملات القالب {{1}}, {{2}} ... <small>(مفصولة بفاصلة — اتركها فارغة إن لم يكن للقالب متغيرات)</small>
+          <input id="cf-params" placeholder="دكانجي, https://dukkanci.com.tr" dir="ltr">
+        </label>
+        <label>الجمهور المستهدف
+          <select id="cf-audience">
+            <option value="all_customers">جميع العملاء الذين طلبوا مسبقاً</option>
+            <option value="no_order_30d">العملاء الذين لم يطلبوا منذ 30 يوماً</option>
+          </select>
+        </label>
+        <label>ملاحظة <small>(اختياري)</small>
+          <input id="cf-note" placeholder="ملاحظة داخلية">
+        </label>
+        <div class="form-notice">
+          ${icon("megaphone")}
+          <span>تأكد أن القالب <strong>معتمد (Approved)</strong> في Meta كـ <em>Marketing</em> قبل الإرسال. ${icon("arrowLeft")} <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener">فتح مدير القوالب</a></span>
+        </div>
+        <div class="form-actions">
+          <button class="primary-button" data-action="campaign-create">إنشاء الحملة</button>
+          <button class="secondary-button" data-action="campaign-form-close">إلغاء</button>
+        </div>
+      </div>
+    </section>
+    ` : ""}
+
+    <section class="dashboard-card">
+      ${camps.length === 0 ? `<div class="empty-managed">${icon("megaphone")}<p>لا حملات بعد. أنشئ أولى حملاتك الترويجية!</p></div>` : `
+      <table class="admin-table campaigns-table">
+        <thead><tr><th>الاسم</th><th>القالب</th><th>الجمهور</th><th>الحالة</th><th>التقدم</th><th>الإجراءات</th></tr></thead>
+        <tbody>
+          ${camps.map(c => {
+            const pct = campaignProgress(c);
+            const stat = campaignStatusClass(c.status);
+            const canBuild  = ["draft"].includes(c.status);
+            const canStart  = c.status === "ready";
+            const canResume = ["paused", "paused_daily_limit"].includes(c.status);
+            const canPause  = c.status === "sending";
+            const canCancel = !["done", "canceled"].includes(c.status);
+            return `<tr>
+              <td><strong>${esc(c.name)}</strong><br><small style="color:#888">${new Date(c.created_at).toLocaleDateString("ar")}</small></td>
+              <td><code style="font-size:11px">${esc(c.template_name)}</code><br><small>${esc(c.template_lang)}</small></td>
+              <td><small>${c.audience_type === "no_order_30d" ? "غير نشطين 30 يوماً" : "كل العملاء"}</small></td>
+              <td><span class="status-pill ${stat}">${campaignStatusLabel(c.status)}</span></td>
+              <td>
+                <div class="campaign-progress-wrap">
+                  <div class="campaign-progress-bar"><div class="campaign-progress-fill" style="width:${pct}%"></div></div>
+                  <small>${(c.sent_count || 0).toLocaleString("ar")} / ${(c.total_recipients || 0).toLocaleString("ar")} · ${pct}%${c.failed_count ? ` · ${c.failed_count} فشل` : ""}</small>
+                </div>
+              </td>
+              <td class="campaign-actions">
+                ${canBuild  ? `<button class="secondary-button compact" data-action="campaign-build"   data-id="${c.id}">بناء القائمة</button>` : ""}
+                ${canStart  ? `<button class="primary-button compact"   data-action="campaign-start"   data-id="${c.id}">ابدأ الإرسال</button>` : ""}
+                ${canResume ? `<button class="primary-button compact"   data-action="campaign-resume"  data-id="${c.id}">استئناف</button>` : ""}
+                ${canPause  ? `<button class="secondary-button compact" data-action="campaign-pause"   data-id="${c.id}">إيقاف مؤقت</button>` : ""}
+                ${canCancel ? `<button class="danger-button compact"    data-action="campaign-cancel"  data-id="${c.id}">إلغاء</button>` : ""}
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      `}
+    </section>
+
+    <section class="dashboard-card" style="margin-top:16px">
+      <div class="card-heading"><div><h3>إرشادات الإرسال</h3><p>لضمان قبول الرسائل من Meta</p></div></div>
+      <ul class="campaign-tips">
+        <li>${icon("shield")} الحد اليومي <strong>2000 رسالة</strong> — الحملات الطويلة تُستأنف تلقائياً في اليوم التالي.</li>
+        <li>${icon("megaphone")} القالب يجب أن يكون <strong>Approved – Marketing</strong> في Meta Business Manager.</li>
+        <li>${icon("whatsapp")} إذا رفض Meta الرسالة تأكد من صحة اسم القالب واللغة وعدد المتغيرات {{1}} {{2}}.</li>
+        <li>${icon("users")} العملاء في قائمة الحظر (Opt-out) يُستثنَون تلقائياً.</li>
+      </ul>
+    </section>
+  `;
+}
+
+// Campaign action polling: auto-calls send-batch every 3s while a campaign is sending
+let _campaignPollTimer = null;
+function startCampaignPoll(id) {
+  stopCampaignPoll();
+  state.adminCampaignActive = id;
+  _campaignPollTimer = setInterval(async () => {
+    if (state.adminTab !== "campaigns" || !state.adminKey) { stopCampaignPoll(); return; }
+    try {
+      const result = await campaignApi("send-batch", { method: "POST", id });
+      // Refresh campaign list to show updated progress
+      const listData = await campaignApi("list");
+      state.adminCampaigns = listData.campaigns || [];
+      render();
+      if (result.done || result.paused || !result.ok) stopCampaignPoll();
+    } catch (e) { stopCampaignPoll(); }
+  }, 3000);
+}
+function stopCampaignPoll() {
+  if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
+  state.adminCampaignActive = null;
+}
+
+// ─── renderAdmin ──────────────────────────────────────────────────────────────
+
 function renderAdmin() {
   // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
   if (!state.adminKey) return adminLoginScreen();
@@ -3007,8 +3172,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -4279,7 +4444,78 @@ document.addEventListener("click", event => {
     saveState(); render(); showToast("تم حذف الشكوى", "success");
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
-  if (action === "admin-tab") { state.adminTab = target.dataset.tab; state.adminContentSection = null; render(); }
+  if (action === "admin-tab") {
+    state.adminTab = target.dataset.tab;
+    state.adminContentSection = null;
+    if (target.dataset.tab !== "campaigns") stopCampaignPoll();
+    if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
+    render();
+  }
+  // ── Campaign actions ──
+  if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); }
+  if (action === "campaign-form-close") { state.adminCampaignForm = null; render(); }
+  if (action === "campaign-create") {
+    const name     = document.getElementById("cf-name")?.value.trim();
+    const tpl      = document.getElementById("cf-tpl")?.value.trim();
+    const lang     = document.getElementById("cf-lang")?.value || "ar";
+    const rawParams = document.getElementById("cf-params")?.value || "";
+    const audience = document.getElementById("cf-audience")?.value || "all_customers";
+    const note     = document.getElementById("cf-note")?.value.trim() || null;
+    if (!name || !tpl) { showToast("اسم الحملة واسم القالب مطلوبان", "error"); return; }
+    const params = rawParams.trim() ? rawParams.split(",").map(s => s.trim()).filter(Boolean) : [];
+    campaignApi("create", { method: "POST", body: { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, note } })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر إنشاء الحملة", "error"); return; }
+        state.adminCampaignForm = null;
+        state.adminCampaigns = null;
+        loadAdminCampaigns();
+        showToast("تم إنشاء الحملة — ابنِ القائمة الآن", "success");
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-build") {
+    const id = target.dataset.id;
+    showToast("جارٍ بناء قائمة المستلمين...", "");
+    campaignApi("build", { method: "POST", id })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر بناء القائمة", "error"); return; }
+        showToast(`تم — ${(data.total || 0).toLocaleString("ar")} مستلم جاهز للإرسال`, "success");
+        state.adminCampaigns = null; loadAdminCampaigns();
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-start") {
+    const id = target.dataset.id;
+    if (!confirm("سيبدأ إرسال الرسائل فوراً. هل أنت متأكد؟")) return;
+    campaignApi("start", { method: "POST", id })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر بدء الإرسال", "error"); return; }
+        showToast("بدأ الإرسال — سيُحدَّث التقدم تلقائياً", "success");
+        state.adminCampaigns = null; loadAdminCampaigns();
+        startCampaignPoll(id);
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-pause") {
+    const id = target.dataset.id;
+    stopCampaignPoll();
+    campaignApi("pause", { method: "POST", id })
+      .then(() => { state.adminCampaigns = null; loadAdminCampaigns(); showToast("تم إيقاف الحملة مؤقتاً", ""); });
+  }
+  if (action === "campaign-resume") {
+    const id = target.dataset.id;
+    campaignApi("resume", { method: "POST", id })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر الاستئناف", "error"); return; }
+        showToast("استُؤنف الإرسال", "success");
+        state.adminCampaigns = null; loadAdminCampaigns();
+        startCampaignPoll(id);
+      }).catch(() => showToast("خطأ", "error"));
+  }
+  if (action === "campaign-cancel") {
+    const id = target.dataset.id;
+    if (!confirm("إلغاء الحملة نهائياً؟ لا يمكن التراجع.")) return;
+    stopCampaignPoll();
+    campaignApi("cancel", { method: "POST", id })
+      .then(() => { state.adminCampaigns = null; loadAdminCampaigns(); showToast("تم إلغاء الحملة", ""); });
+  }
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
   if (action === "copy-creds") {
     const u = target.dataset.username, p = target.dataset.password, n = target.dataset.name;

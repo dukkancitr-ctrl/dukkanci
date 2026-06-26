@@ -8300,3 +8300,25 @@ tbody tr:hover {
 .wa-float__pulse { position: absolute; inset: 0; border-radius: 50%; background: #25d366; opacity: .55; animation: wa-float-pulse 2.4s ease-out infinite; }
 @keyframes wa-float-pulse { 0% { transform: scale(1); opacity: .5; } 70% { transform: scale(1.7); opacity: 0; } 100% { transform: scale(1.7); opacity: 0; } }
 @media (max-width: 768px) { .wa-float { width: 50px; height: 50px; right: 16px; bottom: 16px; } .wa-float svg { width: 26px; height: 26px; } }
+
+/* ─── WhatsApp Campaign Management ─── */
+.campaign-form-card .campaign-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 4px 0 8px; }
+.campaign-form label { display: flex; flex-direction: column; gap: 5px; font-size: 14px; font-weight: 500; }
+.campaign-form label input, .campaign-form label select { padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg); color: var(--text); }
+.campaign-form label input:focus, .campaign-form label select:focus { border-color: var(--accent); outline: none; }
+.campaign-form .form-notice { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: #92400e; }
+.campaign-form .form-notice svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.campaign-form .form-actions { grid-column: 1 / -1; display: flex; gap: 10px; }
+.campaign-progress-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+.campaign-progress-bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.campaign-progress-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width .4s ease; }
+.campaign-progress-wrap small { font-size: 11px; color: var(--muted); }
+.campaigns-table td { vertical-align: middle; }
+.campaign-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.campaign-tips { padding: 4px 0 4px 16px; display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.campaign-tips li { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.6; list-style: none; }
+.campaign-tips li svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--accent); }
+.danger-button { background: #dc2626; color: #fff; border: none; border-radius: var(--radius-sm); padding: 7px 14px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.danger-button:hover { background: #b91c1c; }
+.danger-button.compact { padding: 5px 10px; font-size: 12px; }
+@media (max-width: 760px) { .campaign-form { grid-template-columns: 1fr; } }
