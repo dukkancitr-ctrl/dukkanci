@@ -53,14 +53,20 @@
     return this.settings;
   };
 
-  I.save = async function (map) {
+  I.save = async function (map, adminPassword) {
     // map: { key: { setting_value, is_enabled } }
     this.settings = map;
     localStorage.setItem(LS_KEY, JSON.stringify(map));
-    if (window.supabaseClient) {
-      const rows = Object.keys(map).map(k => ({ setting_key: k, setting_value: map[k].setting_value || "", is_enabled: !!map[k].is_enabled }));
-      try { await window.supabaseClient.from("integration_settings").upsert(rows, { onConflict: "setting_key" }); } catch (e) { /* ignore */ }
-    }
+    const rows = Object.keys(map).map(k => ({ setting_key: k, setting_value: map[k].setting_value || "", is_enabled: !!map[k].is_enabled }));
+    // use service-role API endpoint (anon key cannot write due to RLS)
+    const pwd = adminPassword || (typeof state !== "undefined" && state.adminKey) || "";
+    try {
+      await fetch("/api/save-integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": pwd },
+        body: JSON.stringify({ rows })
+      });
+    } catch (e) { /* offline — localStorage fallback above is enough */ }
     this.inject();
   };
 
