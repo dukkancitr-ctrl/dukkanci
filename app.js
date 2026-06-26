@@ -447,6 +447,51 @@ async function loadCatalogFromSupabase() {
     return true;
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
+
+// On-demand catalog hydration. A /store/<id>, /product/<slug> or /offers deep-link
+// must NOT wait for the full ~7600-product catalog (loadCatalogFromSupabase loads
+// it all, paginated — several seconds). Instead fetch only the rows this route
+// needs, merge them, and re-render. Deduped + guarded so it never double-fetches
+// or fights the background full load (which later supersedes it with the complete set).
+const _hydratedKeys = new Set();
+function _mergeProducts(rows) {
+  if (!rows || !rows.length) return false;
+  let added = 0;
+  rows.map(mapDbProduct).forEach(p => { if (!allProducts.some(x => x.id === p.id)) { allProducts.push(p); added++; } });
+  if (!added) return false;
+  const published = applyPublishingRules(allProducts);
+  products.length = 0; published.forEach(p => products.push(p));
+  return true;
+}
+async function hydratePageData() {
+  const sb = window.supabaseClient;
+  if (!sb) return;
+  const { route, id } = parseRoute();
+  const cb = Date.now();
+  let key, needed, run;
+  if (route === "store" && id != null) {
+    const sid = Number(id) || (getStore(id) || {}).id;
+    if (sid == null) return;
+    key = "store:" + sid; needed = !products.some(p => p.storeId === sid);
+    run = () => sb.from("products").select("*").eq("store_id", sid).gt("id", -cb);
+  } else if (route === "product" && id != null) {
+    key = "product:" + id; needed = !getProductBySlug(id);
+    const nid = Number(id);
+    run = () => Number.isFinite(nid)
+      ? sb.from("products").select("*").or(`slug.eq.${id},id.eq.${nid}`).gt("id", -cb)
+      : sb.from("products").select("*").eq("slug", id).gt("id", -cb);
+  } else if (route === "offers") {
+    key = "offers"; needed = !products.some(p => p.oldPrice && p.available);
+    run = () => sb.from("products").select("*").not("old_price", "is", null).gt("id", -cb);
+  } else return;
+  if (!needed || _hydratedKeys.has(key)) return;
+  _hydratedKeys.add(key);
+  try {
+    const { data, error } = await run();
+    if (!error && _mergeProducts(data)) render();
+  } catch (e) { /* the background full load will fill this in */ }
+}
+
 // Fire-and-forget: ask the server to notify Google's Indexing API about a URL.
 // No-ops on the server when credentials aren't configured.
 function notifyGoogleIndex(path) {
@@ -625,6 +670,11 @@ async function loadOrdersFromSupabase(storeId) {
 async function initCatalog() {
   await window.__supabaseReady;
   loadSiteSettings();
+  // Defer the heavy full-catalog load (~7600 products) so /store, /product and
+  // /offers deep-links hydrate just their own rows first (hydratePageData) and
+  // render fast, instead of competing with the full load for bandwidth. Stores
+  // come from bundled data meanwhile, so home/stores stay populated.
+  await new Promise(r => setTimeout(r, 1800));
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
   else { applyProductPersistence(); render(); }
@@ -3184,6 +3234,7 @@ function render() {
   window.scrollTo({ top: 0, behavior: "instant" });
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
   if (route === "join") setTimeout(openJoinModal, 0);
+  if (route === "store" || route === "product" || route === "offers") hydratePageData();
   if (route === "admin" && state.adminTab === "messages" && state.adminKey) {
     setTimeout(() => { startInboxPolling(); scrollChatToBottom(); }, 0);
   }

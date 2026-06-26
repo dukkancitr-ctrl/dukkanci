@@ -24,17 +24,29 @@
     try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
   }
 
+  // Remember when the integration_settings table isn't provisioned in this project,
+  // so we don't re-issue a request that 404s in the console on every page load.
+  const ABSENT_FLAG = "dukkanci-int-settings-absent";
+  function tableLooksAbsent(error) {
+    if (!error) return false;
+    const code = error.code || "";
+    return code === "PGRST205" || code === "PGRST202" || code === "42P01" ||
+      /does not exist|could not find the table|not found/i.test(error.message || "");
+  }
+
   I.load = async function () {
     // try Supabase first (global), fall back to localStorage (per-device)
     try {
       await (window.__supabaseReady || Promise.resolve());
-      if (window.supabaseClient) {
+      if (window.supabaseClient && localStorage.getItem(ABSENT_FLAG) !== "1") {
         const { data, error } = await window.supabaseClient.from("integration_settings").select("*");
         if (!error && data) {
           this.settings = {};
           data.forEach(r => { this.settings[r.setting_key] = { setting_value: r.setting_value || "", is_enabled: !!r.is_enabled }; });
           return this.settings;
         }
+        // Table absent (not provisioned here): stop querying it on future loads.
+        if (tableLooksAbsent(error)) { try { localStorage.setItem(ABSENT_FLAG, "1"); } catch (e) {} }
       }
     } catch (e) { /* table may not exist yet — fall through */ }
     this.settings = localSettings();
