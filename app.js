@@ -158,7 +158,27 @@ function loadCustomerAddresses() {
   });
 }
 
+// One-time migration: an earlier build seeded khawali (store 31) at 15 ل.ت/كم, and
+// saveState froze that snapshot into each browser's localStorage, which shadows the
+// bundled value on load. Realign the stale saved rate to the updated value (40) once,
+// so the new delivery pricing reaches returning users; later explicit edits still stick.
+function runDeliveryMigrations() {
+  try {
+    const KEY = "dukkanci-delivery-migrations";
+    const done = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (done.khawali40) return;
+    const saved = JSON.parse(localStorage.getItem("dukkanci-delivery-settings") || "{}");
+    if (saved["31"] && saved["31"].ratePerKm !== 40) {
+      saved["31"].ratePerKm = 40;
+      localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
+    }
+    done.khawali40 = true;
+    localStorage.setItem(KEY, JSON.stringify(done));
+  } catch (e) { /* localStorage unavailable — bundled value applies */ }
+}
+
 function loadDeliverySettings() {
+  runDeliveryMigrations();
   const saved = JSON.parse(localStorage.getItem("dukkanci-delivery-settings") || "{}");
   return Object.fromEntries(Object.entries(initialDeliverySettings).map(([storeId, settings]) => [
     storeId,
