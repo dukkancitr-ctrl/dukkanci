@@ -389,7 +389,44 @@ module.exports = async (req, res) => {
       );
       return res.json({ ok: true, errors: rows || [] });
     }
+    if (action === "images-list") {
+      const { url, key } = sb();
+      const r = await fetch(`${url}/storage/v1/object/list/campaign-images`, {
+        method: "POST",
+        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 100, offset: 0, sortBy: { column: "created_at", order: "desc" } })
+      });
+      const files = await r.json().catch(() => []);
+      const publicBase = `${url}/storage/v1/object/public/campaign-images`;
+      const images = Array.isArray(files) ? files.map(f => ({
+        name: f.name,
+        url: `${publicBase}/${f.name}`,
+        size: f.metadata?.size,
+        created_at: f.created_at
+      })) : [];
+      return res.json({ ok: true, images });
+    }
     return res.status(400).json({ error: "unknown action" });
+  }
+
+  // ── Multipart upload (POST /api/campaign?action=image-upload) ──
+  if (req.method === "POST" && action === "image-upload") {
+    // Vercel disables bodyParser for multipart — forward raw request to Supabase Storage
+    const { url, key } = sb();
+    const filename = q.get("filename") || `img_${Date.now()}.jpg`;
+    const contentType = req.headers["content-type"] || "image/jpeg";
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    const r = await fetch(`${url}/storage/v1/object/campaign-images/${encodeURIComponent(filename)}`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": contentType, "x-upsert": "true" },
+      body: buffer
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: data.error || "upload failed" });
+    const publicUrl = `${url}/storage/v1/object/public/campaign-images/${encodeURIComponent(filename)}`;
+    return res.json({ ok: true, url: publicUrl, name: filename });
   }
 
   // ── POST endpoints ──
@@ -410,9 +447,12 @@ module.exports = async (req, res) => {
         if (button_url_param !== undefined) patch.button_url_param = button_url_param;
         if (header_image_url !== undefined) patch.header_image_url = header_image_url;
       }
-      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
+      // Reset failed → pending first, then count actual pending to fix total_recipients
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.failed`,
         { status: "pending", error: null, sent_at: null }, "return=minimal");
+      const allPending = await sbGet(`wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.pending&select=id&limit=10000`);
+      patch.total_recipients = (allPending || []).length;
+      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
       return res.json({ ok: true });
     }
 

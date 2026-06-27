@@ -8342,3 +8342,11 @@ tbody tr:hover {
 .campaign-error-row { font-size: 12px; line-height: 1.5; word-break: break-all; }
 .campaign-error-row code { color: #374151; background: #f3f4f6; padding: 1px 5px; border-radius: 3px; direction: ltr; display: inline-block; }
 .inline-link { background: none; border: none; color: #dc2626; cursor: pointer; font-size: inherit; padding: 0; text-decoration: underline; }
+
+/* ─── Image library ─── */
+.images-upload-zone { display: flex; align-items: center; gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
+.images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.image-card { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+.image-card img { width: 100%; height: 120px; object-fit: cover; display: block; background: var(--bg-subtle); }
+.image-card-footer { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.image-name { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
