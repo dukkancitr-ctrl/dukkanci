@@ -409,22 +409,34 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: "unknown action" });
   }
 
-  // ── Multipart upload (POST /api/campaign?action=image-upload) ──
+  // ── Image upload (POST /api/campaign?action=image-upload) ──
   if (req.method === "POST" && action === "image-upload") {
-    // Vercel disables bodyParser for multipart — forward raw request to Supabase Storage
     const { url, key } = sb();
     const filename = q.get("filename") || `img_${Date.now()}.jpg`;
-    const contentType = req.headers["content-type"] || "image/jpeg";
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const buffer = Buffer.concat(chunks);
+    const contentType = (req.headers["content-type"] || "image/jpeg").split(";")[0].trim();
+
+    // Vercel may buffer the body into req.body (Buffer) or leave it as a stream
+    let buffer;
+    if (req.body && (Buffer.isBuffer(req.body) || typeof req.body === "string")) {
+      buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body, "binary");
+    } else if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
+      // Vercel parsed binary as object — unlikely but guard
+      buffer = Buffer.from(JSON.stringify(req.body));
+    } else {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+      buffer = Buffer.concat(chunks);
+    }
+
+    if (!buffer || buffer.length === 0) return res.status(400).json({ error: "empty file" });
+
     const r = await fetch(`${url}/storage/v1/object/campaign-images/${encodeURIComponent(filename)}`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": contentType, "x-upsert": "true" },
       body: buffer
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) return res.status(r.status).json({ error: data.error || "upload failed" });
+    if (!r.ok) return res.status(r.status).json({ error: data.message || data.error || "upload failed", detail: data });
     const publicUrl = `${url}/storage/v1/object/public/campaign-images/${encodeURIComponent(filename)}`;
     return res.json({ ok: true, url: publicUrl, name: filename });
   }

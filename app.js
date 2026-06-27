@@ -3123,7 +3123,8 @@ async function campaignApi(action, { method = "GET", id = null, body = null } = 
 
 async function uploadCampaignImage(file) {
   const status = document.getElementById("img-upload-status");
-  if (status) status.textContent = "جارٍ الرفع...";
+  const setStatus = t => { if (status) status.textContent = t; };
+  setStatus("جارٍ الرفع...");
   const filename = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
   try {
     const res = await fetch(`/api/campaign?action=image-upload&filename=${encodeURIComponent(filename)}`, {
@@ -3132,15 +3133,37 @@ async function uploadCampaignImage(file) {
       body: file
     });
     const data = await res.json().catch(() => ({}));
-    if (!data.ok) { showToast(`فشل الرفع: ${data.error || "خطأ"}`, "error"); if (status) status.textContent = ""; return; }
-    showToast("تم رفع الصورة بنجاح", "success");
-    state.adminImages = null; // force reload
-    state.adminCampaignForm = "images";
-    campaignApi("images-list").then(d => { state.adminImages = { list: d.images || [] }; render(); setTimeout(() => {
-      const inp = document.getElementById("img-file-input");
-      if (inp) inp.onchange = () => { if (inp.files[0]) uploadCampaignImage(inp.files[0]); };
-    }, 50); });
-  } catch (e) { showToast("خطأ في الاتصال", "error"); if (status) status.textContent = ""; }
+    if (!data.ok) {
+      const msg = data.error || "خطأ غير معروف";
+      showToast(`فشل الرفع: ${msg}`, "error");
+      setStatus(`❌ ${msg}`);
+      return;
+    }
+    setStatus("");
+    showToast("تم رفع الصورة — انتظر ثانية...", "success");
+    // Show URL immediately without waiting for list refresh
+    if (data.url) {
+      const grid = document.getElementById("images-grid");
+      if (grid) grid.insertAdjacentHTML("afterbegin", `
+        <div class="image-card">
+          <img src="${data.url}" alt="${filename}" loading="lazy">
+          <div class="image-card-footer">
+            <span class="image-name">${filename}</span>
+            <button class="secondary-button compact" data-action="image-copy-url" data-url="${data.url}">نسخ الرابط</button>
+            <button class="secondary-button compact" data-action="image-use-in-form" data-url="${data.url}">استخدام ↗</button>
+          </div>
+        </div>`);
+    }
+    // Refresh full list in background
+    campaignApi("images-list").then(d => {
+      state.adminImages = { list: d.images || [] };
+      render();
+      setTimeout(() => {
+        const inp = document.getElementById("img-file-input");
+        if (inp) inp.onchange = () => { if (inp.files[0]) uploadCampaignImage(inp.files[0]); };
+      }, 50);
+    });
+  } catch (e) { showToast(`خطأ: ${e.message}`, "error"); setStatus(""); }
 }
 
 async function loadAdminCampaigns() {
