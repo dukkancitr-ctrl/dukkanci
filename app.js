@@ -355,7 +355,22 @@ function getMerchantStore() {
 }
 
 function getProduct(id) {
-  return products.find(product => product.id === Number(id));
+  const numId = Number(id);
+  return allProducts.find(product => product.id === numId) || products.find(product => product.id === numId);
+}
+
+function refreshPublishedProducts() {
+  const published = applyPublishingRules(allProducts);
+  products.length = 0;
+  published.forEach(product => products.push(product));
+}
+
+function upsertCatalogProduct(product) {
+  const numId = Number(product.id);
+  const allIndex = allProducts.findIndex(item => item.id === numId);
+  if (allIndex >= 0) allProducts[allIndex] = product;
+  else allProducts.push(product);
+  refreshPublishedProducts();
 }
 
 function saveState() {
@@ -532,29 +547,46 @@ function notifyGoogleIndex(path) {
   } catch (e) { /* ignore */ }
 }
 
-function pushProductCloud(product) {
+async function pushProductCloud(product) {
   // Merchant/admin sessions have no Supabase Auth (auth.uid() = null), so RLS
   // blocks a direct upsert. Route through the backend API (service-role key).
   if (state.adminKey || (state.merchantPwAuth && state.merchantPwAuth.token)) {
     const headers = { "Content-Type": "application/json" };
     if (state.adminKey) headers["x-admin-token"] = state.adminKey;
     if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
-    fetch("/api/notify-order?action=save-product", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ product: toDbProduct(product), storeId: product.storeId })
-    }).then(r => {
-      if (r.ok) notifyGoogleIndex(`/product/${product.slug || product.id}`);
-      else r.json().then(e => console.warn("product cloud save:", e.error)).catch(() => {});
-    });
-    return;
+    try {
+      const response = await fetch("/api/notify-order?action=save-product", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ product: toDbProduct(product), storeId: product.storeId })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.ok !== false) {
+        notifyGoogleIndex(`/product/${product.slug || product.id}`);
+        return { ok: true };
+      }
+      return { ok: false, status: response.status, error: data.error || "save failed", detail: data.detail };
+    } catch (error) {
+      return { ok: false, error: error.message || "network failed" };
+    }
   }
   const sb = window.supabaseClient;
-  if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => {
-    if (error) console.warn("product cloud save:", error.message);
-    else notifyGoogleIndex(`/product/${product.slug || product.id}`);
-  });
+  if (!sb) return { ok: false, error: "supabase unavailable" };
+  const { error } = await sb.from("products").upsert(toDbProduct(product), { onConflict: "id" });
+  if (error) {
+    console.warn("product cloud save:", error.message);
+    return { ok: false, error: error.message };
+  }
+  notifyGoogleIndex(`/product/${product.slug || product.id}`);
+  return { ok: true };
 }
+
+function productSaveErrorMessage(result) {
+  if (result && result.status === 403) return "انتهت جلسة المتجر. سجّل الدخول من جديد ثم أعد الحفظ.";
+  if (result && result.status === 413) return "الصورة كبيرة جداً. جرّب صورة أصغر أو اضغط تحسين الصورة أولاً.";
+  return "تعذّر حفظ المنتج على الخادم. لم يتم اعتماد التعديل.";
+}
+
 function toDbStore(s) {
   return {
     id: s.id, name: s.name, category: s.category, image: s.image, cover_image: s.coverImage,
@@ -2037,9 +2069,9 @@ function merchantProducts() {
   let merchantProducts = activeCat ? allStoreProducts.filter(p => p.category === activeCat) : allStoreProducts;
   if (normQuery) merchantProducts = merchantProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery));
   const catBar = `<div class="product-cat-filter">
-    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
-    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
-    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+    <button type="button" class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
+    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button type="button" class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button type="button" class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
   </div>`;
   const rows = merchantProducts.map(product => `
         <article>
@@ -3083,9 +3115,9 @@ function adminProducts() {
   if (nq) list = list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq));
   const shownCount = list.filter(isShownOnStore).length;
   const catBar = `<div class="product-cat-filter">
-    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
-    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
-    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+    <button type="button" class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
+    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button type="button" class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button type="button" class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
   </div>`;
   const rows = list.slice(0, 400).map(p => {
     const forced = HIDDEN_PRODUCTS.has(p.id);
@@ -4374,7 +4406,7 @@ function escAttr(value) {
 const esc = escAttr;
 
 // Read an uploaded image, downscale it (so it stays light for storage), return a JPEG data URL.
-function readImageFileResized(file, maxDim = 900) {
+function readImageFileResized(file, maxDim = 900, quality = 0.82) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) { reject(new Error("ليس ملف صورة")); return; }
     const reader = new FileReader();
@@ -4389,7 +4421,7 @@ function readImageFileResized(file, maxDim = 900) {
         const canvas = document.createElement("canvas");
         canvas.width = w; canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        try { resolve(canvas.toDataURL("image/jpeg", 0.85)); }
+        try { resolve(canvas.toDataURL("image/jpeg", quality)); }
         catch (e) { resolve(reader.result); }
       };
       img.src = reader.result;
@@ -4472,10 +4504,14 @@ function openDeleteProductConfirm(id) {
 
 function deleteProduct(id) {
   const numId = Number(id);
-  const index = products.findIndex(p => p.id === numId);
-  if (index === -1) { closeModal(); return; }
-  const name = products[index].name;
-  products.splice(index, 1);
+  const product = getProduct(numId);
+  if (!product) { closeModal(); return; }
+  const name = product.name;
+  const productIndex = products.findIndex(p => p.id === numId);
+  if (productIndex >= 0) products.splice(productIndex, 1);
+  const allIndex = allProducts.findIndex(p => p.id === numId);
+  if (allIndex >= 0) allProducts.splice(allIndex, 1);
+  refreshPublishedProducts();
   deleteProductLocal(numId);
   deleteProductCloud(numId);
   closeModal();
@@ -4579,6 +4615,14 @@ document.addEventListener("click", event => {
     navigate(slug ? `category/${slug}` : "stores");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
+  if (action === "admin-cat-filter") {
+    state.adminProductCategory = target.dataset.cat || null;
+    render();
+  }
+  if (action === "merchant-cat-filter") {
+    state.merchantProductCategory = target.dataset.cat || null;
+    render();
+  }
   if (action === "product-category") {
     const category = target.dataset.category;
     state.storeProductFilter = category;
@@ -5258,7 +5302,7 @@ document.addEventListener("change", event => {
     const form = event.target.closest("form");
     const preview = document.getElementById("product-image-preview");
     if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
-    readImageFileResized(file).then(dataUrl => {
+    readImageFileResized(file, 720, 0.78).then(dataUrl => {
       form.imageData.value = dataUrl;
       form.image.value = "";
       if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
@@ -5276,9 +5320,13 @@ document.addEventListener("change", event => {
   }
   if (event.target.dataset.action === "toggle-product") {
     const product = getProduct(event.target.dataset.id);
+    if (!product) { showToast("تعذّر العثور على المنتج"); return; }
     product.available = event.target.checked;
+    upsertCatalogProduct(product);
     saveProductOverride(product.id, { available: product.available });
-    pushProductCloud(product);
+    pushProductCloud(product).then(result => {
+      if (!result.ok) showToast(productSaveErrorMessage(result));
+    });
     showToast(`أصبح المنتج ${product.available ? "متوفراً" : "غير متوفر"}`, "success");
     render();
   }
@@ -5295,14 +5343,6 @@ document.addEventListener("change", event => {
     state.adminProductStoreId = Number(event.target.value);
     state.adminProductSearch = "";
     state.adminProductCategory = null;
-    render();
-  }
-  if (event.target.dataset.action === "admin-cat-filter") {
-    state.adminProductCategory = event.target.dataset.cat || null;
-    render();
-  }
-  if (event.target.dataset.action === "merchant-cat-filter") {
-    state.merchantProductCategory = event.target.dataset.cat || null;
     render();
   }
   if (event.target.dataset.action === "toggle-featured") {
@@ -5446,7 +5486,7 @@ document.addEventListener("input", event => {
   }
 });
 
-document.addEventListener("submit", event => {
+document.addEventListener("submit", async event => {
   event.preventDefault();
   if (event.target.id === "admin-login-form") {
     const input = document.getElementById("admin-login-input");
@@ -5557,6 +5597,12 @@ document.addEventListener("submit", event => {
   if (event.target.id === "merchant-product-form") {
     const f = event.target;
     if (f.category?.value === "__new__") { showToast("اختر تصنيفاً من القائمة أولاً", ""); return; }
+    const submitBtn = f.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الحفظ..."; }
+    const restoreSubmit = () => {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+    };
     // Parse optional size/option lines ("الاسم | فرق السعر") into one option group.
     let options = [];
     const optLines = (f.optionLines?.value || "").trim();
@@ -5578,21 +5624,26 @@ document.addEventListener("submit", event => {
       available: f.available.checked,
       options
     };
-    if (!data.name) { showToast("يرجى إدخال اسم المنتج"); return; }
+    if (!data.name) { restoreSubmit(); showToast("يرجى إدخال اسم المنتج"); return; }
     if (f.dataset.id) {
       const edited = getProduct(f.dataset.id);
+      if (!edited) { restoreSubmit(); showToast("تعذّر العثور على المنتج لتعديله"); return; }
+      const updatedProduct = { ...edited, ...data };
+      const result = await pushProductCloud(updatedProduct);
+      if (!result.ok) { restoreSubmit(); showToast(productSaveErrorMessage(result)); return; }
       Object.assign(edited, data);
+      upsertCatalogProduct(edited);
       saveProductOverride(f.dataset.id, data);
-      pushProductCloud(edited);
       showToast("تم حفظ تعديلات المنتج", "success");
     } else {
       const formStoreId = Number(f.dataset.storeId) || getMerchantStore().id;
       const store = getStore(formStoreId) || getMerchantStore();
-      const newId = Math.max(0, ...products.map(p => p.id)) + 1;
+      const newId = Math.max(0, ...allProducts.map(p => Number(p.id) || 0), ...products.map(p => Number(p.id) || 0)) + 1;
       const newProduct = { id: newId, storeId: store.id, sourceId: `m-${newId}`, imageFit: "cover", options: [], featured: false, ...data };
-      products.push(newProduct);
+      const result = await pushProductCloud(newProduct);
+      if (!result.ok) { restoreSubmit(); showToast(productSaveErrorMessage(result)); return; }
+      upsertCatalogProduct(newProduct);
       saveCustomProduct(newProduct);
-      pushProductCloud(newProduct);
       showToast("تمت إضافة المنتج بنجاح", "success");
     }
     state.merchantTab = "products";
