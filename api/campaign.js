@@ -352,6 +352,18 @@ module.exports = async (req, res) => {
       const groups = await getContactGroups();
       return res.json({ ok: true, groups });
     }
+    if (action === "template-inspect") {
+      const { template_name } = req.query;
+      if (!template_name) return res.status(400).json({ error: "template_name required" });
+      const token = env("WHATSAPP_TOKEN");
+      const wabaId = env("WHATSAPP_WABA_ID") || "1365756035460473";
+      const version = env("WHATSAPP_API_VERSION") || "v21.0";
+      const r = await fetch(`https://graph.facebook.com/${version}/${wabaId}/message_templates?name=${encodeURIComponent(template_name)}&fields=name,status,language,components`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await r.json();
+      return res.json({ ok: r.ok, data });
+    }
     // Update template params (and reset failed recipients to pending for retry)
     if (action === "update-params") {
       if (!id) return res.status(400).json({ error: "id required" });
