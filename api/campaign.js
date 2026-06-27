@@ -378,9 +378,12 @@ module.exports = async (req, res) => {
     // Update template params (and reset failed recipients to pending for retry)
     if (action === "update-params") {
       if (!id) return res.status(400).json({ error: "id required" });
-      const { template_params, button_url_param } = body;
-      const patch = { template_params: Array.isArray(template_params) ? template_params : [], status: "ready", sent_count: 0, failed_count: 0 };
-      if (button_url_param !== undefined) patch.button_url_param = button_url_param;
+      const { template_params, button_url_param, keep_params } = body;
+      const patch = { status: "ready", sent_count: 0, failed_count: 0 };
+      if (!keep_params) {
+        patch.template_params = Array.isArray(template_params) ? template_params : [];
+        if (button_url_param !== undefined) patch.button_url_param = button_url_param;
+      }
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(id)}`, patch, "return=minimal");
       // Reset all failed recipients back to pending so they get retried
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(id)}&status=eq.failed`,

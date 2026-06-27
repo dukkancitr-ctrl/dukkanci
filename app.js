@@ -3271,6 +3271,7 @@ function adminCampaigns() {
                 ${canResume ? `<button class="primary-button compact"   data-action="campaign-resume"  data-id="${c.id}">استئناف</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-send-manual" data-id="${c.id}" title="أرسل دفعة واحدة الآن">إرسال دفعة ▶</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-pause"   data-id="${c.id}">إيقاف مؤقت</button>` : ""}
+                ${(c.failed_count > 0 && c.status !== "sending") ? `<button class="primary-button compact" data-action="campaign-retry-failed" data-id="${c.id}">↺ إعادة إرسال الفاشلين</button>` : ""}
                 <button class="secondary-button compact" data-action="campaign-edit-params" data-id="${c.id}"
                   data-params="${escAttr(JSON.stringify(c.template_params || []))}"
                   data-button-url="${escAttr(c.button_url_param ?? "")}" title="تعديل معاملات القالب">تعديل المعاملات</button>
@@ -4733,6 +4734,17 @@ document.addEventListener("click", event => {
         }
         state.adminCampaigns = null; loadAdminCampaigns();
       }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-retry-failed") {
+    const id = target.dataset.id;
+    campaignApi("update-params", { method: "POST", id, body: { keep_params: true } })
+      .then(data => {
+        if (!data.ok) { showToast(`خطأ: ${data.error}`, "error"); return; }
+        campaignApi("start", { method: "POST", id })
+          .then(() => { startCampaignPoll(id); state.adminCampaigns = null; loadAdminCampaigns(); showToast("جارٍ إعادة إرسال الفاشلين...", "success"); })
+          .catch(() => showToast("خطأ في بدء الإرسال", "error"));
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+    return;
   }
   if (action === "campaign-edit-params") {
     const id = target.dataset.id;
