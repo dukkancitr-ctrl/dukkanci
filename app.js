@@ -2035,9 +2035,9 @@ function merchantProducts() {
   let merchantProducts = activeCat ? allStoreProducts.filter(p => p.category === activeCat) : allStoreProducts;
   if (normQuery) merchantProducts = merchantProducts.filter(product => normalizeAr(`${product.name} ${product.category}`).includes(normQuery));
   const catBar = `<div class="product-cat-filter">
-    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
-    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
-    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+    <button type="button" class="cat-chip ${!activeCat ? "active" : ""}" data-action="merchant-cat-filter" data-cat="">الكل <span>${allStoreProducts.length}</span></button>
+    ${storeCats.map(c => { const cnt = allStoreProducts.filter(p => p.category === c).length; return `<button type="button" class="cat-chip ${activeCat === c ? "active" : ""}" data-action="merchant-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button type="button" class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
   </div>`;
   const rows = merchantProducts.map(product => `
         <article>
@@ -3081,9 +3081,9 @@ function adminProducts() {
   if (nq) list = list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq));
   const shownCount = list.filter(isShownOnStore).length;
   const catBar = `<div class="product-cat-filter">
-    <button class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
-    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
-    <button class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
+    <button type="button" class="cat-chip ${!activeCat ? "active" : ""}" data-action="admin-cat-filter" data-cat="">الكل <span>${allProducts.filter(p=>p.storeId===store.id).length}</span></button>
+    ${storeCats.map(c => { const cnt = allProducts.filter(p => p.storeId === store.id && p.category === c).length; return `<button type="button" class="cat-chip ${activeCat === c ? "active" : ""}" data-action="admin-cat-filter" data-cat="${escAttr(c)}">${esc(c)} <span>${cnt}</span></button>`; }).join("")}
+    <button type="button" class="cat-chip add-cat-chip" data-action="add-store-category" data-id="${store.id}">${icon("plus")} تصنيف جديد</button>
   </div>`;
   const rows = list.slice(0, 400).map(p => {
     const forced = HIDDEN_PRODUCTS.has(p.id);
@@ -4577,6 +4577,14 @@ document.addEventListener("click", event => {
     navigate(slug ? `category/${slug}` : "stores");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
+  if (action === "admin-cat-filter") {
+    state.adminProductCategory = target.dataset.cat || null;
+    render();
+  }
+  if (action === "merchant-cat-filter") {
+    state.merchantProductCategory = target.dataset.cat || null;
+    render();
+  }
   if (action === "product-category") {
     const category = target.dataset.category;
     state.storeProductFilter = category;
@@ -5293,14 +5301,6 @@ document.addEventListener("change", event => {
     state.adminProductStoreId = Number(event.target.value);
     state.adminProductSearch = "";
     state.adminProductCategory = null;
-    render();
-  }
-  if (event.target.dataset.action === "admin-cat-filter") {
-    state.adminProductCategory = event.target.dataset.cat || null;
-    render();
-  }
-  if (event.target.dataset.action === "merchant-cat-filter") {
-    state.merchantProductCategory = event.target.dataset.cat || null;
     render();
   }
   if (event.target.dataset.action === "toggle-featured") {
