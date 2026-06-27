@@ -1142,6 +1142,7 @@ function activeDeliveryQuote(store, address) {
 
 function deliveryPriceLabel(store) {
   const settings = getDeliverySettings(store.id);
+  if (!settings) return "حسب المسافة";
   return settings.mode === "distance" ? `حسب المسافة · ${money(settings.ratePerKm)}/كم` : money(settings.fixedFee);
 }
 
@@ -3487,7 +3488,7 @@ function updateHead(route, id) {
   // Soft-404 guard: unknown paths fall back to renderHome (and #about/#contact/#faq/
   // #terms render home too), so only mark real content routes indexable — everything
   // else gets noindex so junk URLs aren't indexed as duplicate-home soft-404s.
-  setMetaTag('meta[name="robots"]', "content", ["home", "stores", "offers", "store", "product", "category"].includes(route) ? "index,follow" : "noindex,follow");
+  setMetaTag('meta[name="robots"]', "content", ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms"].includes(route) ? "index,follow" : "noindex,follow");
   setMetaTag('meta[property="og:title"]', "content", title);
   setMetaTag('meta[property="og:description"]', "content", desc);
   setMetaTag('meta[property="og:image"]', "content", image);
@@ -3529,6 +3530,54 @@ function renderProductPage(slugOrId) {
 
 const CATEGORY_MAP = (typeof CATEGORY_SLUGS !== "undefined") ? CATEGORY_SLUGS : {};
 
+function renderStaticPage(titleAr, icon1, lines) {
+  return `
+    <section class="page-hero compact"><div class="container"><h1>${titleAr}</h1></div></section>
+    <section class="section"><div class="container" style="max-width:720px">
+      ${lines.map(l => `<p style="margin-bottom:16px;line-height:1.8">${l}</p>`).join("")}
+      <a href="/" data-action="route-home" class="secondary-button" style="display:inline-flex;margin-top:24px">${icon("arrowLeft")} العودة للرئيسية</a>
+    </div></section>`;
+}
+function renderAboutPage() {
+  return renderStaticPage("من نحن", "store", [
+    "دكانجي منصة متخصصة في ربط سكان إسطنبول بالمتاجر المحلية في أحيائهم.",
+    "نهدف إلى تسهيل طلب المنتجات اليومية من خضار ولحوم وحلويات وسوبرماركت مع توصيل سريع.",
+    "نعمل على توفير تجربة تسوق موثوقة وشفافة تدعم الاقتصاد المحلي وتخدم المجتمع العربي في تركيا."
+  ]);
+}
+function renderContactPage() {
+  const sitePhone = (state.siteSettings && state.siteSettings.contactPhone) || "";
+  const siteWa = (state.siteSettings && state.siteSettings.contactWa) || sitePhone;
+  return renderStaticPage("تواصل معنا", "phone", [
+    "للاستفسارات العامة أو الشراكات التجارية، تواصل معنا عبر واتساب.",
+    siteWa ? `<a href="https://wa.me/${siteWa.replace(/\D/g,"")}" target="_blank" rel="noopener" class="primary-button" style="display:inline-flex;gap:8px">${icon("whatsapp")} تواصل عبر واتساب</a>` : "سيتوفر رقم التواصل قريباً.",
+    "بريدنا الإلكتروني: <a href='mailto:info@dukkanci.com.tr'>info@dukkanci.com.tr</a>"
+  ]);
+}
+function renderFaqPage() {
+  const faqs = [
+    ["كيف أطلب من متجر؟", "اختر المتجر، أضف المنتجات للسلة، وأكمل الطلب — سيتواصل معك المتجر عبر واتساب."],
+    ["ما هي مناطق التوصيل؟", "تغطي المتاجر مناطق متعددة في إسطنبول. يظهر نطاق التوصيل في صفحة كل متجر."],
+    ["هل يمكنني إلغاء الطلب؟", "تواصل مع المتجر مباشرة عبر واتساب بعد تقديم الطلب لطلب الإلغاء."],
+    ["كيف أضيف متجري؟", "انقر على 'انضم كتاجر' في القائمة وأكمل نموذج التسجيل."]
+  ];
+  return `
+    <section class="page-hero compact"><div class="container"><h1>الأسئلة الشائعة</h1></div></section>
+    <section class="section"><div class="container" style="max-width:720px">
+      ${faqs.map(([q, a]) => `<details style="border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:12px"><summary style="font-weight:700;cursor:pointer;list-style:none">${q}</summary><p style="margin-top:12px;line-height:1.8;color:var(--muted)">${a}</p></details>`).join("")}
+      <a href="/" data-action="route-home" class="secondary-button" style="display:inline-flex;margin-top:24px">${icon("arrowLeft")} العودة للرئيسية</a>
+    </div></section>`;
+}
+function renderTermsPage() {
+  return renderStaticPage("الشروط والأحكام", "shield", [
+    "باستخدام تطبيق دكانجي، توافق على الشروط والأحكام التالية.",
+    "الطلبات: يُعدّ الطلب ملزماً بعد تأكيده من المتجر. يتحمل العميل رسوم التوصيل المحددة لكل متجر.",
+    "المنتجات: الأسعار والتوفر مسؤولية المتجر الشريك. دكانجي وسيط تقني فقط.",
+    "الخصوصية: نحمي بياناتك وفق سياسة الخصوصية المعتمدة. لا نشارك بياناتك مع أطراف ثالثة دون إذنك.",
+    "للاستفسار عن أي بند، تواصل معنا عبر صفحة 'تواصل معنا'."
+  ]);
+}
+
 // Main-category landing page for /category/<slug>: stores in the category + a
 // sample of their products, all as links.
 function renderCategoryPage(slug) {
@@ -3566,7 +3615,11 @@ function render() {
     orders: renderOrders,
     merchant: () => renderMerchant(id),
     admin: renderAdmin,
-    checkout: renderCheckout
+    checkout: renderCheckout,
+    about: renderAboutPage,
+    contact: renderContactPage,
+    faq: renderFaqPage,
+    terms: renderTermsPage
   };
   app.innerHTML = (routes[route] || renderHome)();
   document.body.classList.toggle("dashboard-view", route === "merchant" || route === "admin");
@@ -4339,7 +4392,12 @@ document.addEventListener("click", event => {
   if (!a) return;
   const href = a.getAttribute("href");
   if (!href || a.target === "_blank" || /^(https?:|tel:|mailto:|wa\.me)/i.test(href)) return;
-  if (href.startsWith("#")) { event.preventDefault(); navigate(href.replace(/^#/, "") || "home"); return; }
+  if (href.startsWith("#")) {
+    const routeName = href.replace(/^#/, "") || "home";
+    const knownRoutes = new Set(["home", "join", "stores", "offers", "store", "product", "category", "orders", "merchant", "admin", "checkout", "about", "contact", "faq", "terms"]);
+    if (!knownRoutes.has(routeName)) return; // let browser handle unknown hashes (footer links, anchors)
+    event.preventDefault(); navigate(routeName); return;
+  }
   // Standalone static pages (served as their own HTML, not SPA routes) must do a
   // real navigation — don't let the client router swallow them into renderHome.
   if (/^\/(merchants|privacy|gizlilik)(\/|\?|$)/i.test(href)) return;
@@ -4441,6 +4499,16 @@ document.addEventListener("click", event => {
     state.cart = []; saveState(); closeModal(); addToCart(target.dataset.id); updateCartBadges();
   }
   if (action === "login") { if (state.user) navigate("orders"); else openLoginModal(); }
+  if (action === "confirm-receipt") {
+    const order = state.orders.find(o => o.id === target.dataset.id);
+    if (order) {
+      order.status = "مكتمل";
+      pushOrderCloud(order);
+      saveState();
+      render();
+      showToast("شكراً! تم تأكيد استلام طلبك.", "success");
+    }
+  }
   if (action === "google-login") signInWithGoogle();
   if (action === "resend-otp") {
     const sb = window.supabaseClient;
@@ -4772,8 +4840,17 @@ document.addEventListener("click", event => {
   if (action === "scroll-products") document.getElementById("store-products")?.scrollIntoView({ behavior: "smooth" });
   if (action === "share-store") {
     const store = getStore(target.dataset.id);
-    navigator.clipboard?.writeText(`${store.name} على دكانجي - ${location.href}`);
-    showToast("تم نسخ رابط المتجر", "success");
+    const shareUrl = location.origin + location.pathname;
+    const shareText = `${store.name} على دكانجي`;
+    if (navigator.share) {
+      navigator.share({ title: shareText, url: shareUrl }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(`${shareText} - ${shareUrl}`).then(
+        () => showToast("تم نسخ رابط المتجر", "success"),
+        () => showToast("تعذّر النسخ، انسخ الرابط يدوياً")
+      );
+      if (!navigator.clipboard) showToast("تم نسخ رابط المتجر", "success");
+    }
   }
   if (action === "whatsapp-store") {
     const store = getStore(target.dataset.id);
@@ -4876,6 +4953,11 @@ document.addEventListener("keydown", event => {
 });
 
 document.addEventListener("change", event => {
+  if (event.target.id === "cf-audience") {
+    const isContacts = event.target.value === "wa_contacts";
+    const groupLabel = document.getElementById("cf-group-label");
+    if (groupLabel) groupLabel.style.display = isContacts ? "" : "none";
+  }
   if (event.target.id === "store-sort") { state.storeSort = event.target.value; render(); }
   if (event.target.id === "merchant-store-switch") {
     state.merchantStoreId = Number(event.target.value);
