@@ -251,12 +251,11 @@ async function buildRecipients(campaignId, audienceType, campaign) {
 async function sendBatch(campaignId) {
   const campaign = (await sbGet(`wa_campaigns?id=eq.${encodeURIComponent(campaignId)}&select=*`))?.[0];
   if (!campaign) return { ok: false, error: "campaign not found" };
-  if (!["sending", "paused_daily_limit"].includes(campaign.status) && campaign.status !== "sending") {
-    // Accept "sending" only; paused_daily_limit needs a fresh day
-    if (campaign.status === "paused_daily_limit") {
-      return { ok: false, error: "daily_limit_reached", detail: "حد الإرسال اليومي (2000) وصل. ستُستأنف الحملة غداً تلقائياً أو يمكنك استئنافها يدوياً." };
-    }
-    return { ok: false, error: `campaign status is "${campaign.status}", not sending` };
+  if (campaign.status === "paused_daily_limit") {
+    return { ok: false, error: "daily_limit_reached", detail: "حد الإرسال اليومي (2000) وصل." };
+  }
+  if (campaign.status !== "sending") {
+    return { ok: false, error: `campaign_not_sending`, status: campaign.status };
   }
 
   // Count today's sends across ALL campaigns (daily cap enforced per Meta tier)
