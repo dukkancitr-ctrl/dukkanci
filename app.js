@@ -4727,6 +4727,23 @@ document.addEventListener("click", event => {
         state.adminCampaigns = null; loadAdminCampaigns();
       }).catch(() => showToast("خطأ في الاتصال", "error"));
   }
+  if (action === "campaign-edit-params") {
+    const id = target.dataset.id;
+    const currentParams = JSON.parse(target.dataset.params || "[]");
+    const newVal = prompt(
+      "معاملات القالب (مفصولة بفاصلة — اتركها فارغة إذا كان القالب بدون متغيرات):",
+      currentParams.join(", ")
+    );
+    if (newVal === null) return; // cancelled
+    const parsed = newVal.trim() === "" ? [] : newVal.split(",").map(s => s.trim()).filter(Boolean);
+    campaignApi("update-params", { method: "POST", id, body: { template_params: parsed } })
+      .then(data => {
+        if (!data.ok) { showToast(`خطأ: ${data.error}`, "error"); return; }
+        showToast("تم تحديث المعاملات وإعادة ضبط الحملة — يمكنك الآن ابدأ الإرسال من جديد", "success");
+        state.adminCampaigns = null; loadAdminCampaigns();
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+    return;
+  }
   if (action === "campaign-show-errors") {
     const id = target.dataset.id;
     if (state.adminCampaignErrors && state.adminCampaignErrors.id === id) {

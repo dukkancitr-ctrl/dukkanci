@@ -352,6 +352,17 @@ module.exports = async (req, res) => {
       const groups = await getContactGroups();
       return res.json({ ok: true, groups });
     }
+    // Update template params (and reset failed recipients to pending for retry)
+    if (action === "update-params") {
+      if (!id) return res.status(400).json({ error: "id required" });
+      const { template_params } = body;
+      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(id)}`,
+        { template_params: Array.isArray(template_params) ? template_params : [], status: "ready", sent_count: 0, failed_count: 0 }, "return=minimal");
+      // Reset all failed recipients back to pending so they get retried
+      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(id)}&status=eq.failed`,
+        { status: "pending", error: null, sent_at: null }, "return=minimal");
+      return res.json({ ok: true });
+    }
     // Fetch failed recipients with their error messages for debugging
     if (action === "errors") {
       if (!id) return res.status(400).json({ error: "id required" });
