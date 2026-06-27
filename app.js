@@ -252,6 +252,7 @@ const state = {
   adminCampaignActive: null,
   adminContacts: null,       // { total, preview[], groups[] }
   adminCampaignErrors: null, // { id, rows[] }
+  adminImages: null,         // null | { loading } | { list: [] }
   _campaignPollTimer: null,
   user: null,
   deferredInstall: null
@@ -530,6 +531,22 @@ function notifyGoogleIndex(path) {
 }
 
 function pushProductCloud(product) {
+  // Merchant/admin sessions have no Supabase Auth (auth.uid() = null), so RLS
+  // blocks a direct upsert. Route through the backend API (service-role key).
+  if (state.adminKey || (state.merchantPwAuth && state.merchantPwAuth.token)) {
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    fetch("/api/notify-order?action=save-product", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ product: toDbProduct(product), storeId: product.storeId })
+    }).then(r => {
+      if (r.ok) notifyGoogleIndex(`/product/${product.slug || product.id}`);
+      else r.json().then(e => console.warn("product cloud save:", e.error)).catch(() => {});
+    });
+    return;
+  }
   const sb = window.supabaseClient;
   if (sb) sb.from("products").upsert(toDbProduct(product), { onConflict: "id" }).then(({ error }) => {
     if (error) console.warn("product cloud save:", error.message);
@@ -3104,6 +3121,28 @@ async function campaignApi(action, { method = "GET", id = null, body = null } = 
   return res.json().catch(() => ({}));
 }
 
+async function uploadCampaignImage(file) {
+  const status = document.getElementById("img-upload-status");
+  if (status) status.textContent = "جارٍ الرفع...";
+  const filename = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  try {
+    const res = await fetch(`/api/campaign?action=image-upload&filename=${encodeURIComponent(filename)}`, {
+      method: "POST",
+      headers: { "x-admin-token": state.adminKey || "", "Content-Type": file.type || "image/jpeg" },
+      body: file
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) { showToast(`فشل الرفع: ${data.error || "خطأ"}`, "error"); if (status) status.textContent = ""; return; }
+    showToast("تم رفع الصورة بنجاح", "success");
+    state.adminImages = null; // force reload
+    state.adminCampaignForm = "images";
+    campaignApi("images-list").then(d => { state.adminImages = { list: d.images || [] }; render(); setTimeout(() => {
+      const inp = document.getElementById("img-file-input");
+      if (inp) inp.onchange = () => { if (inp.files[0]) uploadCampaignImage(inp.files[0]); };
+    }, 50); });
+  } catch (e) { showToast("خطأ في الاتصال", "error"); if (status) status.textContent = ""; }
+}
+
 async function loadAdminCampaigns() {
   try {
     const data = await campaignApi("list");
@@ -3135,9 +3174,11 @@ function adminCampaigns() {
 
   const showForm     = state.adminCampaignForm === "open";
   const showContacts = state.adminCampaignForm === "contacts";
+  const showImages   = state.adminCampaignForm === "images";
   const camps    = state.adminCampaigns;
   const contacts = state.adminContacts || null; // { total, preview[], groups[] }
   const groups   = (contacts && contacts.groups) || [];
+  const images   = state.adminImages || null; // null | { loading } | { list: [] }
 
   const audienceLabel = (t, g) => {
     if (t === "wa_contacts") return g ? `مجموعة: ${g}` : "كل الأرقام المرفوعة";
@@ -3148,6 +3189,7 @@ function adminCampaigns() {
     <div class="dashboard-toolbar">
       <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
       <button class="secondary-button compact" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
+      <button class="secondary-button compact" data-action="images-panel">🖼 مكتبة الصور</button>
     </div>
 
     ${showContacts ? `
@@ -3186,6 +3228,41 @@ function adminCampaigns() {
           <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ</button>
           ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل</button>` : ""}
           <button class="secondary-button" data-action="contacts-panel-close">إغلاق</button>
+        </div>
+      </div>
+    </section>
+    ` : ""}
+
+    ${showImages ? `
+    <section class="dashboard-card campaign-form-card">
+      <div class="card-heading">
+        <div><h3>مكتبة الصور</h3><p>ارفع صوراً واحصل على روابط مباشرة لاستخدامها في الحملات</p></div>
+        <button class="icon-button" data-action="images-panel-close" title="إغلاق">✕</button>
+      </div>
+      <div class="form-body">
+        <div class="images-upload-zone">
+          <label class="primary-button compact" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            📤 رفع صورة جديدة
+            <input type="file" id="img-file-input" accept="image/*" style="display:none">
+          </label>
+          <small style="color:var(--text-muted);margin-right:8px">JPG / PNG / WebP — حتى 5 ميغابايت</small>
+          <span id="img-upload-status"></span>
+        </div>
+        <div class="images-grid" id="images-grid">
+          ${!images ? `<p style="color:var(--text-muted)">جارٍ التحميل...</p>` :
+            images.loading ? `<p style="color:var(--text-muted)">جارٍ الرفع...</p>` :
+            (images.list || []).length === 0 ? `<p style="color:var(--text-muted)">لا توجد صور مرفوعة بعد</p>` :
+            (images.list || []).map(img => `
+              <div class="image-card">
+                <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
+                <div class="image-card-footer">
+                  <span class="image-name" title="${esc(img.name)}">${esc(img.name)}</span>
+                  <button class="secondary-button compact" data-action="image-copy-url" data-url="${escAttr(img.url)}">نسخ الرابط</button>
+                  <button class="secondary-button compact" data-action="image-use-in-form" data-url="${escAttr(img.url)}">استخدام ↗</button>
+                </div>
+              </div>
+            `).join("")
+          }
         </div>
       </div>
     </section>
@@ -4862,6 +4939,33 @@ document.addEventListener("click", event => {
     render();
   }
   if (action === "contacts-panel-close") { state.adminCampaignForm = null; render(); }
+  if (action === "images-panel") {
+    state.adminCampaignForm = "images";
+    if (!state.adminImages) {
+      state.adminImages = { loading: true };
+      campaignApi("images-list").then(d => { state.adminImages = { list: d.images || [] }; render(); }).catch(() => { state.adminImages = { list: [] }; render(); });
+    }
+    render();
+    // Wire file input after render
+    setTimeout(() => {
+      const inp = document.getElementById("img-file-input");
+      if (inp) inp.onchange = () => { if (inp.files[0]) uploadCampaignImage(inp.files[0]); };
+    }, 50);
+    return;
+  }
+  if (action === "images-panel-close") { state.adminCampaignForm = null; render(); }
+  if (action === "image-copy-url") {
+    navigator.clipboard.writeText(target.dataset.url).then(() => showToast("تم نسخ الرابط", "success")).catch(() => showToast(target.dataset.url, ""));
+  }
+  if (action === "image-use-in-form") {
+    const url = target.dataset.url;
+    state.adminCampaignForm = "open";
+    render();
+    setTimeout(() => {
+      const inp = document.getElementById("cf-header-image");
+      if (inp) { inp.value = url; inp.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    }, 80);
+  }
   if (action === "contacts-upload") {
     const text      = document.getElementById("contacts-textarea")?.value || "";
     const groupName = document.getElementById("contacts-group-name")?.value.trim() || "default";
