@@ -1,4 +1,4 @@
-const stores = [
+﻿const stores = [
   {
     id: 5,
     name: "ملحمة الهلال",
@@ -2849,9 +2849,18 @@ async function loadAdminThreads(silent) {
   try {
     const data = await adminApi("threads");
     state.adminThreads = data.threads || [];
+    state._adminThreadsError = null;
+    // If empty, fetch inbox status once to show a diagnostic
+    if (!state.adminThreads.length && !state._inboxStatusFetched) {
+      state._inboxStatusFetched = true;
+      adminApi("inbox-status").then(s => { state._inboxStatus = s; if (!silent) render(); else updateThreadListDOM(); }).catch(() => {});
+    }
     if (!silent) render();
     else updateThreadListDOM();
-  } catch (e) { if (!silent) render(); }
+  } catch (e) {
+    state._adminThreadsError = true;
+    if (!silent) render();
+  }
 }
 
 async function loadAdminThread(wa, silent) {
@@ -2946,7 +2955,22 @@ function startInboxPolling() {
 
 function adminThreadListHTML() {
   const threads = state.adminThreads || [];
-  if (!threads.length) return `<div class="wa-empty">${icon("whatsapp")}<p>لا توجد محادثات بعد.<br>ستظهر هنا فور أن يراسلك عميل على رقم واتساب.</p></div>`;
+  if (!threads.length) {
+    if (state._adminThreadsError) {
+      return `<div class="wa-empty wa-empty--error">${icon("shield")}<p>تعذّر تحميل المحادثات.<br><small>تحقق من إعدادات ADMIN_PASSWORD في Vercel وأعد تسجيل الدخول.</small></p><button class="secondary-button compact" data-action="wa-refresh">إعادة المحاولة</button></div>`;
+    }
+    const s = state._inboxStatus;
+    if (s) {
+      const issues = [];
+      if (!s.hasServiceRole) issues.push("SUPABASE_SERVICE_ROLE_KEY غير مضبوط — لا يمكن قراءة الرسائل");
+      if (!s.hasMetaSecret)  issues.push("META_APP_SECRET غير مضبوط — الرسائل الواردة مرفوضة");
+      if (!s.hasWaToken)     issues.push("WHATSAPP_TOKEN غير مضبوط — الإرسال معطّل");
+      if (issues.length) {
+        return `<div class="wa-empty wa-empty--warn">${icon("shield")}<p><strong>إعداد ناقص</strong></p>${issues.map(i => `<p class="wa-issue"><small>⚠ ${i}</small></p>`).join("")}<p><small>أضف المتغيّرات الناقصة في لوحة Vercel → Settings → Environment Variables ثم أعد النشر.</small></p></div>`;
+      }
+    }
+    return `<div class="wa-empty">${icon("whatsapp")}<p>لا توجد محادثات بعد.<br>ستظهر هنا فور أن يراسلك عميل على رقم واتساب.</p></div>`;
+  }
   return threads.map(t => `
     <button class="wa-thread ${t.wa_id === state.adminActiveWa ? "active" : ""}" data-action="wa-open" data-wa="${escAttr(t.wa_id)}">
       <span class="wa-thread__avatar">${icon("whatsapp")}</span>
@@ -3512,15 +3536,17 @@ function renderCategoryPage(slug) {
   if (!catText) {
     return `<section class="section empty-page">${renderEmpty("الفئة غير موجودة", "تصفح كل المتاجر بدلاً من ذلك.", "تصفح المتاجر", "stores")}</section>`;
   }
-  const catStores = stores.filter(s => s.category === catText && isStoreApproved(s));
+  const catStores = collapseBranchGroups(stores.filter(s => s.category === catText && isStoreApproved(s)));
   const storeIds = new Set(catStores.map(s => s.id));
   const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
   return `
-    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length} متجراً في إسطنبول على دكانجي.</p></div></section>
+    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="/" data-action="route-home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length ? `${catStores.length} متجر في إسطنبول على دكانجي.` : "قريباً في منطقتك."}</p></div></section>
     <section class="section"><div class="container">
-      <div class="section-heading small"><h2>المتاجر</h2></div>
-      <div class="store-grid">${catStores.map(storeCard).join("")}</div>
-      ${catProducts.length ? `<div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div>` : ""}
+      ${catStores.length ? `
+        <div class="section-heading small"><h2>المتاجر</h2></div>
+        <div class="store-grid">${catStores.map(storeCard).join("")}</div>
+        ${catProducts.length ? `<div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div>` : ""}
+      ` : renderEmpty("لا توجد متاجر في هذا التصنيف حالياً", "نعمل على إضافة متاجر جديدة قريباً.", "تصفح كل المتاجر", "stores")}
     </div></section>
   `;
 }
