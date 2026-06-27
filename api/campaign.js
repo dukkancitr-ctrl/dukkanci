@@ -397,10 +397,9 @@ module.exports = async (req, res) => {
         body: JSON.stringify({ limit: 100, offset: 0, sortBy: { column: "created_at", order: "desc" } })
       });
       const files = await r.json().catch(() => []);
-      const publicBase = `${url}/storage/v1/object/public/campaign-images`;
       const images = Array.isArray(files) ? files.map(f => ({
         name: f.name,
-        url: `${publicBase}/${f.name}`,
+        url: `/media/campaign-images/${f.name}`,
         size: f.metadata?.size,
         created_at: f.created_at
       })) : [];
@@ -437,7 +436,7 @@ module.exports = async (req, res) => {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return res.status(r.status).json({ error: data.message || data.error || "upload failed", detail: data });
-    const publicUrl = `${url}/storage/v1/object/public/campaign-images/${encodeURIComponent(filename)}`;
+    const publicUrl = `/media/campaign-images/${encodeURIComponent(filename)}`;
     return res.json({ ok: true, url: publicUrl, name: filename });
   }
 

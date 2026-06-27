@@ -15,6 +15,7 @@
     { "path": "/api/notify-order?action=subscription-cron", "schedule": "0 6 * * *" }
   ],
   "rewrites": [
+    { "source": "/media/:path*", "destination": "https://tzcqnqzltrjemdnkzpzn.supabase.co/storage/v1/object/public/:path*" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/sitemap-stores.xml", "destination": "/api/sitemap?type=stores" },
     { "source": "/sitemap-products.xml", "destination": "/api/sitemap?type=products" },
