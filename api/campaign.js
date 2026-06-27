@@ -397,9 +397,10 @@ module.exports = async (req, res) => {
         body: JSON.stringify({ limit: 100, offset: 0, sortBy: { column: "created_at", order: "desc" } })
       });
       const files = await r.json().catch(() => []);
+      const siteBase = "https://www.dukkanci.com.tr";
       const images = Array.isArray(files) ? files.map(f => ({
         name: f.name,
-        url: `/media/campaign-images/${f.name}`,
+        url: `${siteBase}/media/campaign-images/${f.name}`,
         size: f.metadata?.size,
         created_at: f.created_at
       })) : [];
@@ -436,7 +437,7 @@ module.exports = async (req, res) => {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return res.status(r.status).json({ error: data.message || data.error || "upload failed", detail: data });
-    const publicUrl = `/media/campaign-images/${encodeURIComponent(filename)}`;
+    const publicUrl = `https://www.dukkanci.com.tr/media/campaign-images/${encodeURIComponent(filename)}`;
     return res.json({ ok: true, url: publicUrl, name: filename });
   }
 
