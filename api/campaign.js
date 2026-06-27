@@ -102,7 +102,9 @@ function toE164(raw, cc = "90") {
 
 // ─── WhatsApp send ───────────────────────────────────────────────────────────
 
-async function sendTemplateMsg(to, templateName, templateLang, params) {
+// params: array of body text params
+// buttonUrlSuffix: string suffix for a dynamic URL button (index 0), e.g. "" or "stores"
+async function sendTemplateMsg(to, templateName, templateLang, params, buttonUrlSuffix) {
   const token = env("WHATSAPP_TOKEN");
   const phoneId = env("WHATSAPP_PHONE_NUMBER_ID");
   const version = env("WHATSAPP_API_VERSION") || "v21.0";
@@ -113,6 +115,15 @@ async function sendTemplateMsg(to, templateName, templateLang, params) {
     components.push({
       type: "body",
       parameters: params.map(p => ({ type: "text", text: String(p) }))
+    });
+  }
+  // Dynamic URL button: even an empty suffix must be sent when the template uses {{1}} in the button URL
+  if (buttonUrlSuffix !== undefined && buttonUrlSuffix !== null) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: String(buttonUrlSuffix) }]
     });
   }
 
@@ -289,7 +300,7 @@ async function sendBatch(campaignId) {
   // Send messages; natural API latency (~300ms each) gives sufficient pacing
   // without artificial sleep — at BATCH_SIZE=8 this is well under 10s
   for (const r of pending) {
-    const result = await sendTemplateMsg(r.phone, campaign.template_name, campaign.template_lang || "ar", params);
+    const result = await sendTemplateMsg(r.phone, campaign.template_name, campaign.template_lang || "ar", params, campaign.button_url_param ?? undefined);
     const update = result.ok
       ? { status: "sent", sent_at: new Date().toISOString() }
       : { status: "failed", error: String(result.error || "").slice(0, 300) };
@@ -367,9 +378,10 @@ module.exports = async (req, res) => {
     // Update template params (and reset failed recipients to pending for retry)
     if (action === "update-params") {
       if (!id) return res.status(400).json({ error: "id required" });
-      const { template_params } = body;
-      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(id)}`,
-        { template_params: Array.isArray(template_params) ? template_params : [], status: "ready", sent_count: 0, failed_count: 0 }, "return=minimal");
+      const { template_params, button_url_param } = body;
+      const patch = { template_params: Array.isArray(template_params) ? template_params : [], status: "ready", sent_count: 0, failed_count: 0 };
+      if (button_url_param !== undefined) patch.button_url_param = button_url_param;
+      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(id)}`, patch, "return=minimal");
       // Reset all failed recipients back to pending so they get retried
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(id)}&status=eq.failed`,
         { status: "pending", error: null, sent_at: null }, "return=minimal");

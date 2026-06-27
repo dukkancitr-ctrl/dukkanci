@@ -2651,7 +2651,6 @@ function adminIntegrations() {
   return merchantIntegrations();
 }
 
-
 function adminContent() {
   if (state.adminContentSection === "featured") return adminContentFeatured();
   if (state.adminContentSection === "plans") return adminContentPlans();
@@ -3193,8 +3192,11 @@ function adminCampaigns() {
             <option value="en_US">إنجليزي (en_US)</option>
           </select>
         </label>
-        <label>معاملات القالب {{1}}, {{2}} ... <small>(مفصولة بفاصلة — اتركها فارغة إن لم يكن للقالب متغيرات)</small>
-          <input id="cf-params" placeholder="دكانجي, https://dukkanci.com.tr" dir="ltr">
+        <label>معاملات جسم القالب {{1}}, {{2}} ... <small>(مفصولة بفاصلة — اتركها فارغة إن لم يكن للقالب متغيرات نصية)</small>
+          <input id="cf-params" placeholder="" dir="ltr">
+        </label>
+        <label>لاحقة رابط الزر <small>(إذا كان الزر يحتوي <code dir="ltr">{{1}}</code> في رابطه — اتركها فارغة إن كان الرابط ثابتاً)</small>
+          <input id="cf-button-url" placeholder="مثال: stores أو اتركه فارغاً" dir="ltr">
         </label>
         <label>الجمهور المستهدف
           <select id="cf-audience" data-action="cf-audience-change">
@@ -3269,6 +3271,9 @@ function adminCampaigns() {
                 ${canResume ? `<button class="primary-button compact"   data-action="campaign-resume"  data-id="${c.id}">استئناف</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-send-manual" data-id="${c.id}" title="أرسل دفعة واحدة الآن">إرسال دفعة ▶</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-pause"   data-id="${c.id}">إيقاف مؤقت</button>` : ""}
+                <button class="secondary-button compact" data-action="campaign-edit-params" data-id="${c.id}"
+                  data-params="${escAttr(JSON.stringify(c.template_params || []))}"
+                  data-button-url="${escAttr(c.button_url_param ?? "")}" title="تعديل معاملات القالب">تعديل المعاملات</button>
                 ${canCancel ? `<button class="danger-button compact"    data-action="campaign-cancel"  data-id="${c.id}">إلغاء</button>` : ""}
               </td>
             </tr>`;
@@ -4696,13 +4701,16 @@ document.addEventListener("click", event => {
     const name      = document.getElementById("cf-name")?.value.trim();
     const tpl       = document.getElementById("cf-tpl")?.value.trim();
     const lang      = document.getElementById("cf-lang")?.value || "ar";
-    const rawParams = document.getElementById("cf-params")?.value || "";
-    const audience  = document.getElementById("cf-audience")?.value || "all_customers";
-    const group     = audience === "wa_contacts" ? (document.getElementById("cf-group")?.value || "") : "";
-    const note      = document.getElementById("cf-note")?.value.trim() || null;
+    const rawParams    = document.getElementById("cf-params")?.value || "";
+    const buttonUrl    = document.getElementById("cf-button-url")?.value.trim();
+    const audience     = document.getElementById("cf-audience")?.value || "all_customers";
+    const group        = audience === "wa_contacts" ? (document.getElementById("cf-group")?.value || "") : "";
+    const note         = document.getElementById("cf-note")?.value.trim() || null;
     if (!name || !tpl) { showToast("اسم الحملة واسم القالب مطلوبان", "error"); return; }
     const params = rawParams.trim() ? rawParams.split(",").map(s => s.trim()).filter(Boolean) : [];
-    campaignApi("create", { method: "POST", body: { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, contact_group: group || null, note } })
+    const body = { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, contact_group: group || null, note };
+    if (buttonUrl !== undefined && buttonUrl !== "") body.button_url_param = buttonUrl;
+    campaignApi("create", { method: "POST", body })
       .then(data => {
         if (!data.ok) { showToast("تعذّر إنشاء الحملة", "error"); return; }
         state.adminCampaignForm = null;
@@ -4729,13 +4737,20 @@ document.addEventListener("click", event => {
   if (action === "campaign-edit-params") {
     const id = target.dataset.id;
     const currentParams = JSON.parse(target.dataset.params || "[]");
+    const currentBtn = target.dataset.buttonUrl || "";
     const newVal = prompt(
-      "معاملات القالب (مفصولة بفاصلة — اتركها فارغة إذا كان القالب بدون متغيرات):",
+      "معاملات جسم القالب (مفصولة بفاصلة — اتركها فارغة إن لم يكن للقالب متغيرات نصية):",
       currentParams.join(", ")
     );
-    if (newVal === null) return; // cancelled
+    if (newVal === null) return;
+    const newBtn = prompt(
+      "لاحقة رابط الزر {{1}} — أدخل قيمة إذا كان القالب يحتوي زراً بـ URL ديناميكي، وإلا اضغط OK فارغاً:",
+      currentBtn
+    );
+    if (newBtn === null) return;
     const parsed = newVal.trim() === "" ? [] : newVal.split(",").map(s => s.trim()).filter(Boolean);
-    campaignApi("update-params", { method: "POST", id, body: { template_params: parsed } })
+    const bodyData = { template_params: parsed, button_url_param: newBtn.trim() || null };
+    campaignApi("update-params", { method: "POST", id, body: bodyData })
       .then(data => {
         if (!data.ok) { showToast(`خطأ: ${data.error}`, "error"); return; }
         showToast("تم تحديث المعاملات وإعادة ضبط الحملة — يمكنك الآن ابدأ الإرسال من جديد", "success");
