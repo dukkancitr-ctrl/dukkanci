@@ -4949,7 +4949,15 @@ document.addEventListener("click", event => {
     state.adminCampaignForm = "images";
     if (!state.adminImages) {
       state.adminImages = { loading: true };
-      campaignApi("images-list").then(d => { state.adminImages = { list: d.images || [] }; render(); }).catch(() => { state.adminImages = { list: [] }; render(); });
+      campaignApi("images-list").then(d => {
+        const fromApi = d.images || [];
+        const current = state.adminImages?.list || [];
+        // Keep locally-added images that may not yet be in the API response
+        const apiNames = new Set(fromApi.map(i => i.name));
+        const merged = [...fromApi, ...current.filter(i => !apiNames.has(i.name))];
+        state.adminImages = { list: merged };
+        render();
+      }).catch(() => { if (!state.adminImages?.list) { state.adminImages = { list: [] }; render(); } });
     }
     render();
     // Wire file input after render
