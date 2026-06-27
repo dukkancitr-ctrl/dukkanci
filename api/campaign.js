@@ -103,21 +103,27 @@ function toE164(raw, cc = "90") {
 // ─── WhatsApp send ───────────────────────────────────────────────────────────
 
 // params: array of body text params
-// buttonUrlSuffix: string suffix for a dynamic URL button (index 0), e.g. "" or "stores"
-async function sendTemplateMsg(to, templateName, templateLang, params, buttonUrlSuffix) {
+// buttonUrlSuffix: string suffix for a dynamic URL button {{1}}
+// headerImageUrl: URL of image for dynamic image header
+async function sendTemplateMsg(to, templateName, templateLang, params, buttonUrlSuffix, headerImageUrl) {
   const token = env("WHATSAPP_TOKEN");
   const phoneId = env("WHATSAPP_PHONE_NUMBER_ID");
   const version = env("WHATSAPP_API_VERSION") || "v21.0";
   if (!token || !phoneId) return { ok: false, error: "whatsapp_not_configured" };
 
   const components = [];
+  if (headerImageUrl) {
+    components.push({
+      type: "header",
+      parameters: [{ type: "image", image: { link: headerImageUrl } }]
+    });
+  }
   if (Array.isArray(params) && params.length > 0) {
     components.push({
       type: "body",
       parameters: params.map(p => ({ type: "text", text: String(p) }))
     });
   }
-  // Dynamic URL button: even an empty suffix must be sent when the template uses {{1}} in the button URL
   if (buttonUrlSuffix !== undefined && buttonUrlSuffix !== null) {
     components.push({
       type: "button",
@@ -300,7 +306,7 @@ async function sendBatch(campaignId) {
   // Send messages; natural API latency (~300ms each) gives sufficient pacing
   // without artificial sleep — at BATCH_SIZE=8 this is well under 10s
   for (const r of pending) {
-    const result = await sendTemplateMsg(r.phone, campaign.template_name, campaign.template_lang || "ar", params, campaign.button_url_param ?? undefined);
+    const result = await sendTemplateMsg(r.phone, campaign.template_name, campaign.template_lang || "ar", params, campaign.button_url_param ?? undefined, campaign.header_image_url || null);
     const update = result.ok
       ? { status: "sent", sent_at: new Date().toISOString() }
       : { status: "failed", error: String(result.error || "").slice(0, 300) };
@@ -397,10 +403,12 @@ module.exports = async (req, res) => {
     if (action === "update-params") {
       if (!cid) return res.status(400).json({ error: "id required" });
       const { template_params, button_url_param, keep_params } = body;
+      const { header_image_url } = body;
       const patch = { status: "ready", sent_count: 0, failed_count: 0 };
       if (!keep_params) {
         patch.template_params = Array.isArray(template_params) ? template_params : [];
         if (button_url_param !== undefined) patch.button_url_param = button_url_param;
+        if (header_image_url !== undefined) patch.header_image_url = header_image_url;
       }
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.failed`,
@@ -409,7 +417,7 @@ module.exports = async (req, res) => {
     }
 
     if (action === "create") {
-      const { name, template_name, template_lang, template_params, audience_type, contact_group, note } = body;
+      const { name, template_name, template_lang, template_params, audience_type, contact_group, note, button_url_param: bup, header_image_url: hiu } = body;
       if (!name || !template_name) return res.status(400).json({ error: "name و template_name مطلوبان" });
       const row = {
         name,
@@ -422,7 +430,9 @@ module.exports = async (req, res) => {
         sent_count: 0,
         failed_count: 0,
         total_recipients: 0,
-        note: note || null
+        note: note || null,
+        ...(bup ? { button_url_param: bup } : {}),
+        ...(hiu ? { header_image_url: hiu } : {})
       };
       const r = await sbWrite("POST", "wa_campaigns", row);
       if (!r.ok) return res.status(500).json({ error: "فشل في إنشاء الحملة", detail: r.rows });
