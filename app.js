@@ -1909,6 +1909,7 @@ function dashboardSidebar(type, active) {
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
     ["campaigns", "megaphone", "الحملات"],
+    ["media", "image", "مكتبة الصور"],
     ["complaints", "megaphone", "الشكاوى"],
     ["delivery", "bike", "التوصيل"],
     ["credentials", "shield", "حسابات المتاجر"],
@@ -3172,6 +3173,51 @@ function campaignProgress(c) {
   return Math.min(100, Math.round(((c.sent_count || 0) + (c.failed_count || 0)) / c.total_recipients * 100));
 }
 
+function adminMedia() {
+  const images = state.adminImages;
+  if (!images) {
+    state.adminImages = { loading: true };
+    campaignApi("images-list").then(d => {
+      const fromApi = d.images || [];
+      const current = state.adminImages?.list || [];
+      const apiNames = new Set(fromApi.map(i => i.name));
+      state.adminImages = { list: [...fromApi, ...current.filter(i => !apiNames.has(i.name))] };
+      render();
+    }).catch(() => { state.adminImages = { list: [] }; render(); });
+  }
+  const list = images?.list || [];
+  return `
+    <div class="dashboard-card" style="padding:24px">
+      <h3 style="margin:0 0 6px">📸 صور الحملات التسويقية</h3>
+      <p style="color:var(--text-muted);margin:0 0 20px;font-size:14px">ارفع صورة واحصل على رابط مباشر لاستخدامه في الحملات أو أي مكان آخر</p>
+
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:20px;flex-wrap:wrap">
+        <label class="primary-button" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+          📤 رفع صورة جديدة
+          <input type="file" id="img-file-input" accept="image/*" style="display:none">
+        </label>
+        <small style="color:var(--text-muted)">JPG · PNG · WebP — حتى 5 ميغابايت</small>
+        <span id="img-upload-status" style="color:var(--accent);font-size:13px"></span>
+      </div>
+
+      ${!images || images.loading ? `<p style="color:var(--text-muted)">جارٍ التحميل...</p>` :
+        list.length === 0 ? `<p style="color:var(--text-muted)">لا توجد صور مرفوعة بعد — ارفع أول صورة</p>` :
+        `<div class="images-grid">
+          ${list.map(img => `
+            <div class="image-card">
+              <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
+              <div class="image-card-footer">
+                <span class="image-name" title="${esc(img.name)}">${esc(img.name)}</span>
+                <input class="url-readonly" value="${esc(img.url)}" readonly dir="ltr" onclick="this.select()" title="انقر لتحديد الرابط">
+                <button class="primary-button compact" data-action="image-copy-url" data-url="${escAttr(img.url)}">نسخ الرابط</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>`
+      }
+    </div>`;
+}
+
 function adminCampaigns() {
   if (!state.adminCampaigns) {
     loadAdminCampaigns();
@@ -3180,11 +3226,9 @@ function adminCampaigns() {
 
   const showForm     = state.adminCampaignForm === "open";
   const showContacts = state.adminCampaignForm === "contacts";
-  const showImages   = state.adminCampaignForm === "images";
   const camps    = state.adminCampaigns;
-  const contacts = state.adminContacts || null; // { total, preview[], groups[] }
+  const contacts = state.adminContacts || null;
   const groups   = (contacts && contacts.groups) || [];
-  const images   = state.adminImages || null; // null | { loading } | { list: [] }
 
   const audienceLabel = (t, g) => {
     if (t === "wa_contacts") return g ? `مجموعة: ${g}` : "كل الأرقام المرفوعة";
@@ -3195,7 +3239,6 @@ function adminCampaigns() {
     <div class="dashboard-toolbar">
       <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
       <button class="secondary-button compact" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
-      <button class="secondary-button compact" data-action="images-panel">🖼 مكتبة الصور</button>
     </div>
 
     ${showContacts ? `
@@ -3234,41 +3277,6 @@ function adminCampaigns() {
           <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ</button>
           ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل</button>` : ""}
           <button class="secondary-button" data-action="contacts-panel-close">إغلاق</button>
-        </div>
-      </div>
-    </section>
-    ` : ""}
-
-    ${showImages ? `
-    <section class="dashboard-card campaign-form-card">
-      <div class="card-heading">
-        <div><h3>مكتبة الصور</h3><p>ارفع صوراً واحصل على روابط مباشرة لاستخدامها في الحملات</p></div>
-        <button class="icon-button" data-action="images-panel-close" title="إغلاق">✕</button>
-      </div>
-      <div class="form-body">
-        <div class="images-upload-zone">
-          <label class="primary-button compact" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-            📤 رفع صورة جديدة
-            <input type="file" id="img-file-input" accept="image/*" style="display:none">
-          </label>
-          <small style="color:var(--text-muted);margin-right:8px">JPG / PNG / WebP — حتى 5 ميغابايت</small>
-          <span id="img-upload-status"></span>
-        </div>
-        <div class="images-grid" id="images-grid">
-          ${!images ? `<p style="color:var(--text-muted)">جارٍ التحميل...</p>` :
-            images.loading ? `<p style="color:var(--text-muted)">جارٍ الرفع...</p>` :
-            (images.list || []).length === 0 ? `<p style="color:var(--text-muted)">لا توجد صور مرفوعة بعد</p>` :
-            (images.list || []).map(img => `
-              <div class="image-card">
-                <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
-                <div class="image-card-footer">
-                  <span class="image-name" title="${esc(img.name)}">${esc(img.name)}</span>
-                  <button class="secondary-button compact" data-action="image-copy-url" data-url="${escAttr(img.url)}">نسخ الرابط</button>
-                  <button class="secondary-button compact" data-action="image-use-in-form" data-url="${escAttr(img.url)}">استخدام ↗</button>
-                </div>
-              </div>
-            `).join("")
-          }
         </div>
       </div>
     </section>
@@ -3448,8 +3456,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
