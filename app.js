@@ -3210,6 +3210,7 @@ function adminMedia() {
                 <span class="image-name" title="${esc(img.name)}">${esc(img.name)}</span>
                 <input class="url-readonly" value="${esc(img.url)}" readonly dir="ltr" onclick="this.select()" title="انقر لتحديد الرابط">
                 <button class="primary-button compact" data-action="image-copy-url" data-url="${escAttr(img.url)}">نسخ الرابط</button>
+                <button class="danger-button compact" data-action="image-delete" data-name="${escAttr(img.name)}">🗑 حذف</button>
               </div>
             </div>
           `).join("")}
@@ -4978,6 +4979,20 @@ document.addEventListener("click", event => {
   if (action === "images-panel-close") { state.adminCampaignForm = null; render(); }
   if (action === "image-copy-url") {
     navigator.clipboard.writeText(target.dataset.url).then(() => showToast("تم نسخ الرابط", "success")).catch(() => showToast(target.dataset.url, ""));
+  }
+  if (action === "image-delete") {
+    const name = target.dataset.name;
+    if (!confirm(`حذف الصورة "${name}"؟`)) return;
+    campaignApi("image-delete", { id: null, method: "GET" });
+    // Call directly with filename param
+    fetch(`/api/campaign?action=image-delete&filename=${encodeURIComponent(name)}`, {
+      headers: { "x-admin-token": state.adminKey || "" }
+    }).then(r => r.json()).then(d => {
+      if (!d.ok) { showToast("فشل الحذف", "error"); return; }
+      state.adminImages = { list: (state.adminImages?.list || []).filter(i => i.name !== name) };
+      render();
+      showToast("تم الحذف", "success");
+    }).catch(() => showToast("خطأ في الاتصال", "error"));
   }
   if (action === "image-use-in-form") {
     const url = target.dataset.url;

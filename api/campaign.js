@@ -406,6 +406,16 @@ module.exports = async (req, res) => {
       })) : [];
       return res.json({ ok: true, images });
     }
+    if (action === "image-delete") {
+      const filename = q.get("filename");
+      if (!filename) return res.status(400).json({ error: "filename required" });
+      const { url, key } = sb();
+      const r = await fetch(`${url}/storage/v1/object/campaign-images/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+        headers: { apikey: key, Authorization: `Bearer ${key}` }
+      });
+      return res.json({ ok: r.ok });
+    }
     return res.status(400).json({ error: "unknown action" });
   }
 
