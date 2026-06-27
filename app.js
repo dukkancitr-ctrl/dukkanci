@@ -3140,29 +3140,12 @@ async function uploadCampaignImage(file) {
       return;
     }
     setStatus("");
-    showToast("تم رفع الصورة — انتظر ثانية...", "success");
-    // Show URL immediately without waiting for list refresh
-    if (data.url) {
-      const grid = document.getElementById("images-grid");
-      if (grid) grid.insertAdjacentHTML("afterbegin", `
-        <div class="image-card">
-          <img src="${data.url}" alt="${filename}" loading="lazy">
-          <div class="image-card-footer">
-            <span class="image-name">${filename}</span>
-            <button class="secondary-button compact" data-action="image-copy-url" data-url="${data.url}">نسخ الرابط</button>
-            <button class="secondary-button compact" data-action="image-use-in-form" data-url="${data.url}">استخدام ↗</button>
-          </div>
-        </div>`);
-    }
-    // Refresh full list in background
-    campaignApi("images-list").then(d => {
-      state.adminImages = { list: d.images || [] };
-      render();
-      setTimeout(() => {
-        const inp = document.getElementById("img-file-input");
-        if (inp) inp.onchange = () => { if (inp.files[0]) uploadCampaignImage(inp.files[0]); };
-      }, 50);
-    });
+    showToast("تم رفع الصورة بنجاح", "success");
+    // Add immediately to state so render() shows it right away
+    const newImg = { name: filename, url: data.url };
+    if (!state.adminImages || !state.adminImages.list) state.adminImages = { list: [] };
+    state.adminImages = { list: [newImg, ...state.adminImages.list] };
+    render();
   } catch (e) { showToast(`خطأ: ${e.message}`, "error"); setStatus(""); }
 }
 
