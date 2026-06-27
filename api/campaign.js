@@ -375,21 +375,6 @@ module.exports = async (req, res) => {
       const data = await r.json();
       return res.json({ ok: r.ok, data });
     }
-    // Update template params (and reset failed recipients to pending for retry)
-    if (action === "update-params") {
-      if (!id) return res.status(400).json({ error: "id required" });
-      const { template_params, button_url_param, keep_params } = body;
-      const patch = { status: "ready", sent_count: 0, failed_count: 0 };
-      if (!keep_params) {
-        patch.template_params = Array.isArray(template_params) ? template_params : [];
-        if (button_url_param !== undefined) patch.button_url_param = button_url_param;
-      }
-      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(id)}`, patch, "return=minimal");
-      // Reset all failed recipients back to pending so they get retried
-      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(id)}&status=eq.failed`,
-        { status: "pending", error: null, sent_at: null }, "return=minimal");
-      return res.json({ ok: true });
-    }
     // Fetch failed recipients with their error messages for debugging
     if (action === "errors") {
       if (!id) return res.status(400).json({ error: "id required" });
@@ -408,6 +393,20 @@ module.exports = async (req, res) => {
     if (typeof body === "string") { try { body = JSON.parse(body); } catch (e) { body = {}; } }
 
     const cid = id || body.id || "";
+
+    if (action === "update-params") {
+      if (!cid) return res.status(400).json({ error: "id required" });
+      const { template_params, button_url_param, keep_params } = body;
+      const patch = { status: "ready", sent_count: 0, failed_count: 0 };
+      if (!keep_params) {
+        patch.template_params = Array.isArray(template_params) ? template_params : [];
+        if (button_url_param !== undefined) patch.button_url_param = button_url_param;
+      }
+      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
+      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.failed`,
+        { status: "pending", error: null, sent_at: null }, "return=minimal");
+      return res.json({ ok: true });
+    }
 
     if (action === "create") {
       const { name, template_name, template_lang, template_params, audience_type, contact_group, note } = body;
