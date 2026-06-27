@@ -3093,6 +3093,9 @@ async function loadAdminCampaigns() {
     const data = await campaignApi("list");
     state.adminCampaigns = data.campaigns || [];
     render();
+    // Auto-restart poll if a campaign is still sending (e.g. after page refresh)
+    const active = state.adminCampaigns.find(c => c.status === "sending");
+    if (active && !_campaignPollTimer) startCampaignPoll(active.id);
   } catch (e) { state.adminCampaigns = []; render(); }
 }
 
@@ -3242,13 +3245,21 @@ function adminCampaigns() {
               <td>
                 <div class="campaign-progress-wrap">
                   <div class="campaign-progress-bar"><div class="campaign-progress-fill" style="width:${pct}%"></div></div>
-                  <small>${(c.sent_count || 0).toLocaleString("ar")} / ${(c.total_recipients || 0).toLocaleString("ar")} · ${pct}%${c.failed_count ? ` · ${c.failed_count} فشل` : ""}</small>
+                  <small>
+                    ${(c.sent_count || 0).toLocaleString("ar")} / ${(c.total_recipients || 0).toLocaleString("ar")} · ${pct}%
+                    ${c.failed_count ? ` · <span style="color:#dc2626">${c.failed_count} فشل</span>` : ""}
+                    ${c.total_recipients === 0 && c.status !== "draft" ? ` · <span style="color:#f59e0b">⚠ لا مستلمين — أعد بناء القائمة</span>` : ""}
+                  </small>
+                  ${c.status === "sending" ? `<small style="color:var(--accent);font-size:10px">● إرسال تلقائي نشط</small>` : ""}
                 </div>
               </td>
               <td class="campaign-actions">
                 ${canBuild  ? `<button class="secondary-button compact" data-action="campaign-build"   data-id="${c.id}">بناء القائمة</button>` : ""}
+                ${c.status !== "draft" && c.status !== "ready" && c.status !== "done" && c.status !== "canceled"
+                  ? `<button class="secondary-button compact" data-action="campaign-build" data-id="${c.id}" title="إعادة بناء قائمة المستلمين">↺ إعادة بناء</button>` : ""}
                 ${canStart  ? `<button class="primary-button compact"   data-action="campaign-start"   data-id="${c.id}">ابدأ الإرسال</button>` : ""}
                 ${canResume ? `<button class="primary-button compact"   data-action="campaign-resume"  data-id="${c.id}">استئناف</button>` : ""}
+                ${canPause  ? `<button class="secondary-button compact" data-action="campaign-send-manual" data-id="${c.id}" title="أرسل دفعة واحدة الآن">إرسال دفعة ▶</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-pause"   data-id="${c.id}">إيقاف مؤقت</button>` : ""}
                 ${canCancel ? `<button class="danger-button compact"    data-action="campaign-cancel"  data-id="${c.id}">إلغاء</button>` : ""}
               </td>
@@ -4697,10 +4708,28 @@ document.addEventListener("click", event => {
     showToast("جارٍ بناء قائمة المستلمين...", "");
     campaignApi("build", { method: "POST", id })
       .then(data => {
-        if (!data.ok) { showToast("تعذّر بناء القائمة", "error"); return; }
-        showToast(`تم — ${(data.total || 0).toLocaleString("ar")} مستلم جاهز للإرسال`, "success");
+        if (!data.ok) { showToast("تعذّر بناء القائمة — تحقق من وجود جدول wa_contacts في Supabase", "error"); return; }
+        const total = data.total || 0;
+        if (total === 0) {
+          showToast("⚠ لا أرقام في القائمة — ارفع أرقام العملاء أولاً من قسم «إدارة الأرقام المرفوعة»", "error");
+        } else {
+          showToast(`تم — ${total.toLocaleString("ar")} مستلم جاهز للإرسال`, "success");
+        }
         state.adminCampaigns = null; loadAdminCampaigns();
       }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-send-manual") {
+    const id = target.dataset.id;
+    target.disabled = true;
+    target.textContent = "جارٍ...";
+    campaignApi("send-batch", { method: "POST", id })
+      .then(data => {
+        if (!data.ok) { showToast(`خطأ: ${data.error || "فشل الإرسال"}`, "error"); }
+        else if (data.done) { showToast("اكتملت الحملة", "success"); }
+        else { showToast(`أُرسلت ${(data.sent||0)} رسالة — ${data.failed||0} فشل`, data.failed ? "error" : "success"); }
+        state.adminCampaigns = null; loadAdminCampaigns();
+      }).catch(e => showToast("خطأ في الاتصال", "error"))
+      .finally(() => { target.disabled = false; target.textContent = "إرسال دفعة ▶"; });
   }
   if (action === "campaign-start") {
     const id = target.dataset.id;
