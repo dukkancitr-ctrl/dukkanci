@@ -8322,3 +8322,11 @@ tbody tr:hover {
 .danger-button:hover { background: #b91c1c; }
 .danger-button.compact { padding: 5px 10px; font-size: 12px; }
 @media (max-width: 760px) { .campaign-form { grid-template-columns: 1fr; } }
+
+/* ─── Contacts Upload Panel ─── */
+.contacts-upload-area { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 4px 0 8px; }
+.contacts-upload-area label { display: flex; flex-direction: column; gap: 5px; font-size: 14px; font-weight: 500; }
+.contacts-upload-area textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-family: monospace; font-size: 13px; background: var(--bg); color: var(--text); resize: vertical; }
+.contacts-upload-area textarea:focus { border-color: var(--accent); outline: none; }
+.contacts-preview { display: flex; flex-wrap: wrap; gap: 6px; }
+.contacts-preview code { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 12px; direction: ltr; }

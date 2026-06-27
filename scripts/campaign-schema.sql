@@ -39,6 +39,14 @@ CREATE INDEX IF NOT EXISTS idx_wcr_sent_at
   ON wa_campaign_recipients (sent_at)
   WHERE sent_at IS NOT NULL;
 
+-- Uploaded contacts: phone numbers imported by admin (past customers, leads, etc.)
+CREATE TABLE IF NOT EXISTS wa_contacts (
+  phone      text PRIMARY KEY,
+  group_name text NOT NULL DEFAULT 'default',
+  source     text NOT NULL DEFAULT 'manual',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Opt-out list: customers who asked not to receive marketing messages
 CREATE TABLE IF NOT EXISTS wa_optout (
   phone      text PRIMARY KEY,

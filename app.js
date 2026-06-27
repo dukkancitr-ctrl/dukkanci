@@ -248,8 +248,9 @@ const state = {
   adminThread: null,
   adminThreadLoading: false,
   adminCampaigns: null,
-  adminCampaignForm: null,   // null | "open"
-  adminCampaignActive: null, // campaign being polled
+  adminCampaignForm: null,   // null | "open" | "contacts"
+  adminCampaignActive: null,
+  adminContacts: null,       // { total, preview[] }
   _campaignPollTimer: null,
   user: null,
   deferredInstall: null
@@ -3039,13 +3040,43 @@ function adminCampaigns() {
     return `<div class="dashboard-card"><div class="empty-managed">${icon("megaphone")}<p>جارٍ تحميل الحملات...</p></div></div>`;
   }
 
-  const showForm = state.adminCampaignForm === "open";
+  const showForm    = state.adminCampaignForm === "open";
+  const showContacts = state.adminCampaignForm === "contacts";
   const camps = state.adminCampaigns;
+  const contacts = state.adminContacts || null; // { total, preview[] } or null
+
+  const audienceLabel = t => ({ all_customers: "كل عملاء المنصة", no_order_30d: "غير نشطين 30 يوماً", wa_contacts: "قائمة الأرقام المرفوعة" }[t] || t);
 
   return `
     <div class="dashboard-toolbar">
       <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
+      <button class="secondary-button compact" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
     </div>
+
+    ${showContacts ? `
+    <section class="dashboard-card campaign-form-card">
+      <div class="card-heading">
+        <div><h3>قائمة الأرقام المرفوعة</h3><p>عملاء سابقون أو جمهور خارجي — يمكن استهدافهم في أي حملة</p></div>
+        ${contacts ? `<span style="font-size:13px;color:var(--muted)">${contacts.total.toLocaleString("ar")} رقم محفوظ</span>` : ""}
+      </div>
+      <div class="contacts-upload-area">
+        <label style="grid-column:1/-1">
+          الصق الأرقام هنا <small>(رقم لكل سطر، أو مفصولة بفواصل — أي تنسيق يُقبَل)</small>
+          <textarea id="contacts-textarea" rows="8" dir="ltr" placeholder="0501234567&#10;+90 532 111 22 33&#10;905001112233&#10;..."></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ الأرقام</button>
+          ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل (${contacts.total.toLocaleString("ar")})</button>` : ""}
+          <button class="secondary-button" data-action="contacts-panel-close">إغلاق</button>
+        </div>
+        ${contacts && contacts.preview && contacts.preview.length ? `
+        <div style="grid-column:1/-1;margin-top:8px">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:6px">آخر الأرقام المحفوظة:</p>
+          <div class="contacts-preview">${contacts.preview.map(r => `<code>${esc(r.phone)}</code>`).join("")}</div>
+        </div>` : ""}
+      </div>
+    </section>
+    ` : ""}
 
     ${showForm ? `
     <section class="dashboard-card campaign-form-card">
@@ -3069,8 +3100,9 @@ function adminCampaigns() {
         </label>
         <label>الجمهور المستهدف
           <select id="cf-audience">
-            <option value="all_customers">جميع العملاء الذين طلبوا مسبقاً</option>
-            <option value="no_order_30d">العملاء الذين لم يطلبوا منذ 30 يوماً</option>
+            <option value="wa_contacts">📋 قائمة الأرقام المرفوعة${contacts && contacts.total ? ` (${contacts.total.toLocaleString("ar")} رقم)` : ""}</option>
+            <option value="all_customers">جميع عملاء المنصة الذين طلبوا مسبقاً</option>
+            <option value="no_order_30d">العملاء غير النشطين منذ 30 يوماً</option>
           </select>
         </label>
         <label>ملاحظة <small>(اختياري)</small>
@@ -3104,7 +3136,7 @@ function adminCampaigns() {
             return `<tr>
               <td><strong>${esc(c.name)}</strong><br><small style="color:#888">${new Date(c.created_at).toLocaleDateString("ar")}</small></td>
               <td><code style="font-size:11px">${esc(c.template_name)}</code><br><small>${esc(c.template_lang)}</small></td>
-              <td><small>${c.audience_type === "no_order_30d" ? "غير نشطين 30 يوماً" : "كل العملاء"}</small></td>
+              <td><small>${audienceLabel(c.audience_type)}</small></td>
               <td><span class="status-pill ${stat}">${campaignStatusLabel(c.status)}</span></td>
               <td>
                 <div class="campaign-progress-wrap">
@@ -3129,13 +3161,21 @@ function adminCampaigns() {
     <section class="dashboard-card" style="margin-top:16px">
       <div class="card-heading"><div><h3>إرشادات الإرسال</h3><p>لضمان قبول الرسائل من Meta</p></div></div>
       <ul class="campaign-tips">
+        <li>${icon("users")} ارفع أرقام العملاء السابقين أولاً عبر زر <strong>إدارة الأرقام المرفوعة</strong> ثم اختر "قائمة الأرقام المرفوعة" عند إنشاء الحملة.</li>
         <li>${icon("shield")} الحد اليومي <strong>2000 رسالة</strong> — الحملات الطويلة تُستأنف تلقائياً في اليوم التالي.</li>
         <li>${icon("megaphone")} القالب يجب أن يكون <strong>Approved – Marketing</strong> في Meta Business Manager.</li>
         <li>${icon("whatsapp")} إذا رفض Meta الرسالة تأكد من صحة اسم القالب واللغة وعدد المتغيرات {{1}} {{2}}.</li>
-        <li>${icon("users")} العملاء في قائمة الحظر (Opt-out) يُستثنَون تلقائياً.</li>
       </ul>
     </section>
   `;
+}
+
+async function loadContacts() {
+  try {
+    const data = await campaignApi("contacts-list");
+    state.adminContacts = { total: data.total || 0, preview: data.contacts || [] };
+    render();
+  } catch (e) { state.adminContacts = { total: 0, preview: [] }; render(); }
 }
 
 // Campaign action polling: auto-calls send-batch every 3s while a campaign is sending
@@ -4515,6 +4555,32 @@ document.addEventListener("click", event => {
     stopCampaignPoll();
     campaignApi("cancel", { method: "POST", id })
       .then(() => { state.adminCampaigns = null; loadAdminCampaigns(); showToast("تم إلغاء الحملة", ""); });
+  }
+  // ── Contacts panel ──
+  if (action === "contacts-panel") {
+    state.adminCampaignForm = "contacts";
+    if (!state.adminContacts) loadContacts();
+    render();
+  }
+  if (action === "contacts-panel-close") { state.adminCampaignForm = null; render(); }
+  if (action === "contacts-upload") {
+    const text = document.getElementById("contacts-textarea")?.value || "";
+    if (!text.trim()) { showToast("الرجاء لصق أرقام الهاتف أولاً", "error"); return; }
+    showToast("جارٍ رفع الأرقام...", "");
+    campaignApi("upload-contacts", { method: "POST", body: { text } })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر رفع الأرقام", "error"); return; }
+        state.adminContacts = null;
+        loadContacts();
+        showToast(`تم حفظ ${(data.added || 0).toLocaleString("ar")} رقم — الإجمالي: ${(data.total || 0).toLocaleString("ar")}`, "success");
+        const ta = document.getElementById("contacts-textarea");
+        if (ta) ta.value = "";
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "contacts-clear") {
+    if (!confirm("حذف جميع الأرقام المرفوعة نهائياً؟")) return;
+    campaignApi("contacts-clear", { method: "POST", body: {} })
+      .then(() => { state.adminContacts = null; loadContacts(); showToast("تم حذف جميع الأرقام", ""); });
   }
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
   if (action === "copy-creds") {
