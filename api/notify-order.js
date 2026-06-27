@@ -714,6 +714,22 @@ module.exports = async (req, res) => {
       return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform });
     }
 
+    // Admin: inbox diagnostics — tells the panel whether the inbox is fully configured.
+    // Returns a JSON object the conversations tab uses to show a helpful empty-state.
+    if (q.action === "inbox-status") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      const hasServiceRole = !!env("SUPABASE_SERVICE_ROLE_KEY");
+      const hasMetaSecret  = !!(env("META_APP_SECRET") || env("WHATSAPP_APP_SECRET"));
+      const hasWaToken     = !!env("WHATSAPP_TOKEN");
+      // Count messages only when we have service-role (otherwise the count would be 0 anyway).
+      let msgCount = null;
+      if (hasServiceRole) {
+        const rows = await sbGet("whatsapp_messages?select=id&limit=1");
+        msgCount = Array.isArray(rows) ? (rows.length > 0 ? "1+" : "0") : null;
+      }
+      return res.status(200).json({ hasServiceRole, hasMetaSecret, hasWaToken, msgCount });
+    }
+
     // Admin: all orders (service-role read, bypasses anon RLS)
     if (q.action === "orders") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
