@@ -8336,3 +8336,9 @@ tbody tr:hover {
 .contacts-groups-list { margin-bottom: 4px; }
 .groups-heading { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
 .groups-heading svg { width: 15px; height: 15px; }
+
+/* ─── Campaign error display ─── */
+.campaign-errors-box { margin-top: 8px; padding: 10px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 5px; }
+.campaign-error-row { font-size: 12px; line-height: 1.5; word-break: break-all; }
+.campaign-error-row code { color: #374151; background: #f3f4f6; padding: 1px 5px; border-radius: 3px; direction: ltr; display: inline-block; }
+.inline-link { background: none; border: none; color: #dc2626; cursor: pointer; font-size: inherit; padding: 0; text-decoration: underline; }

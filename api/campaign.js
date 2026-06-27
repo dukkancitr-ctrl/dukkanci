@@ -352,6 +352,14 @@ module.exports = async (req, res) => {
       const groups = await getContactGroups();
       return res.json({ ok: true, groups });
     }
+    // Fetch failed recipients with their error messages for debugging
+    if (action === "errors") {
+      if (!id) return res.status(400).json({ error: "id required" });
+      const rows = await sbGet(
+        `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(id)}&status=eq.failed&select=phone,error,sent_at&limit=50&order=id.asc`
+      );
+      return res.json({ ok: true, errors: rows || [] });
+    }
     return res.status(400).json({ error: "unknown action" });
   }
 

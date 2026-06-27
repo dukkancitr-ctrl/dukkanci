@@ -250,7 +250,8 @@ const state = {
   adminCampaigns: null,
   adminCampaignForm: null,   // null | "open" | "contacts"
   adminCampaignActive: null,
-  adminContacts: null,       // { total, preview[] }
+  adminContacts: null,       // { total, preview[], groups[] }
+  adminCampaignErrors: null, // { id, rows[] }
   _campaignPollTimer: null,
   user: null,
   deferredInstall: null
@@ -3247,10 +3248,17 @@ function adminCampaigns() {
                   <div class="campaign-progress-bar"><div class="campaign-progress-fill" style="width:${pct}%"></div></div>
                   <small>
                     ${(c.sent_count || 0).toLocaleString("ar")} / ${(c.total_recipients || 0).toLocaleString("ar")} · ${pct}%
-                    ${c.failed_count ? ` · <span style="color:#dc2626">${c.failed_count} فشل</span>` : ""}
+                    ${c.failed_count ? ` · <span style="color:#dc2626">${c.failed_count} فشل <button class="inline-link" data-action="campaign-show-errors" data-id="${c.id}">(عرض السبب)</button></span>` : ""}
                     ${c.total_recipients === 0 && c.status !== "draft" ? ` · <span style="color:#f59e0b">⚠ لا مستلمين — أعد بناء القائمة</span>` : ""}
                   </small>
                   ${c.status === "sending" ? `<small style="color:var(--accent);font-size:10px">● إرسال تلقائي نشط</small>` : ""}
+                  ${state.adminCampaignErrors && state.adminCampaignErrors.id === c.id ? `
+                  <div class="campaign-errors-box">
+                    <strong style="font-size:12px;color:#dc2626">أخطاء الإرسال:</strong>
+                    ${(state.adminCampaignErrors.rows || []).slice(0,5).map(r =>
+                      `<div class="campaign-error-row"><code dir="ltr">${esc(r.phone)}</code> — <span>${esc(r.error || "خطأ غير معروف")}</span></div>`
+                    ).join("")}
+                  </div>` : ""}
                 </div>
               </td>
               <td class="campaign-actions">
@@ -4512,7 +4520,7 @@ document.addEventListener("click", event => {
   }
   if (action === "login") { if (state.user) navigate("orders"); else openLoginModal(); }
   if (action === "confirm-receipt") {
-    const order = state.orders.find(o => o.id === target.dataset.id);
+    const order = (state.myOrders || state.orders || []).find(o => o.id === target.dataset.id);
     if (order) {
       order.status = "مكتمل";
       pushOrderCloud(order);
@@ -4717,6 +4725,16 @@ document.addEventListener("click", event => {
         }
         state.adminCampaigns = null; loadAdminCampaigns();
       }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "campaign-show-errors") {
+    const id = target.dataset.id;
+    if (state.adminCampaignErrors && state.adminCampaignErrors.id === id) {
+      state.adminCampaignErrors = null; render(); return; // toggle off
+    }
+    campaignApi("errors", { id })
+      .then(data => { state.adminCampaignErrors = { id, rows: data.errors || [] }; render(); })
+      .catch(() => showToast("تعذّر جلب الأخطاء", "error"));
+    return;
   }
   if (action === "campaign-send-manual") {
     const id = target.dataset.id;
