@@ -142,6 +142,37 @@ async function sendTemplateMsg(to, templateName, templateLang, params) {
   }
 }
 
+// ─── Contacts upload ─────────────────────────────────────────────────────────
+
+// Parse a raw text blob into a clean list of E.164 phones.
+// Accepts: one number per line, CSV, spaces, mixed formats, optional names.
+function parsePhoneList(raw, cc = "90") {
+  const seen = new Set();
+  const phones = [];
+  // Split on newlines, commas, semicolons
+  const tokens = String(raw || "").split(/[\n\r,;]+/);
+  for (const tok of tokens) {
+    // Strip everything except digits and leading +
+    const cleaned = tok.replace(/[^\d+]/g, "");
+    const p = toE164(cleaned, cc);
+    if (p && p.length >= 10 && !seen.has(p)) { seen.add(p); phones.push(p); }
+  }
+  return phones;
+}
+
+async function upsertContacts(phones, groupName) {
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < phones.length; i += CHUNK) {
+    const rows = phones.slice(i, i + CHUNK).map(phone => ({
+      phone, group_name: groupName || "default", source: "manual"
+    }));
+    const r = await sbWrite("POST", "wa_contacts", rows, "resolution=merge-duplicates,return=minimal");
+    if (r.ok) inserted += rows.length;
+  }
+  return inserted;
+}
+
 // ─── Build recipients ────────────────────────────────────────────────────────
 
 async function buildRecipients(campaignId, audienceType) {
@@ -161,6 +192,14 @@ async function buildRecipients(campaignId, audienceType) {
     for (const r of (allRows || [])) {
       const p = toE164(r.customer_phone, cc);
       if (p && !seen.has(p) && !recent.has(p)) { seen.add(p); phones.push(p); }
+    }
+  } else if (audienceType === "wa_contacts") {
+    // Uploaded contacts list
+    const rows = await sbGet(`wa_contacts?select=phone&order=created_at.desc&limit=10000`);
+    const seen = new Set();
+    for (const r of (rows || [])) {
+      const p = toE164(r.phone, cc);
+      if (p && !seen.has(p)) { seen.add(p); phones.push(p); }
     }
   } else {
     // all_customers: every unique customer phone that ever ordered
@@ -285,6 +324,16 @@ module.exports = async (req, res) => {
       if (!row) return res.status(404).json({ error: "not found" });
       return res.json({ ok: true, campaign: row });
     }
+    if (action === "contacts-count") {
+      const rows = await sbGet("wa_contacts?select=id&limit=1&count=exact") || [];
+      // Supabase returns count in Content-Range header; fall back to row count
+      return res.json({ ok: true, count: Array.isArray(rows) ? rows.length : 0 });
+    }
+    if (action === "contacts-list") {
+      const rows = await sbGet("wa_contacts?select=phone,group_name,created_at&order=created_at.desc&limit=20");
+      const total = await sbGet("wa_contacts?select=id&limit=10000");
+      return res.json({ ok: true, contacts: rows || [], total: (total || []).length });
+    }
     return res.status(400).json({ error: "unknown action" });
   }
 
@@ -315,6 +364,30 @@ module.exports = async (req, res) => {
       if (!r.ok) return res.status(500).json({ error: "فشل في إنشاء الحملة", detail: r.rows });
       const created = Array.isArray(r.rows) ? r.rows[0] : r.rows;
       return res.json({ ok: true, campaign: created });
+    }
+
+    // Upload contacts (no campaign id needed)
+    if (action === "upload-contacts") {
+      const { phones: rawPhones, text: rawText, group_name } = body;
+      const cc = env("WHATSAPP_DEFAULT_COUNTRY_CODE") || "90";
+      let phones = [];
+      if (Array.isArray(rawPhones)) {
+        phones = rawPhones.map(p => toE164(String(p), cc)).filter(Boolean);
+        const seen = new Set(); phones = phones.filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
+      } else if (rawText) {
+        phones = parsePhoneList(rawText, cc);
+      }
+      if (!phones.length) return res.status(400).json({ error: "لا أرقام صالحة في القائمة" });
+      await upsertContacts(phones, group_name || "default");
+      // Return fresh total
+      const total = await sbGet("wa_contacts?select=id&limit=10000");
+      return res.json({ ok: true, added: phones.length, total: (total || []).length });
+    }
+
+    // Clear all contacts
+    if (action === "contacts-clear") {
+      await sbWrite("DELETE", "wa_contacts?id=not.is.null", undefined, "return=minimal");
+      return res.json({ ok: true });
     }
 
     if (!cid) return res.status(400).json({ error: "id required" });
