@@ -563,6 +563,21 @@ function deleteProductCloud(id) {
 // every field the merchant needs to FULFILL the order (phone, address, the actual
 // line items, notes) into delivery_details so no schema migration is required.
 function pushOrderCloud(order) {
+  // Admin and phone+password merchant sessions have no Supabase Auth (auth.uid() is null),
+  // so the RLS UPDATE policy blocks them. Route status updates through the backend API
+  // (service-role key) for these sessions. New customer orders always use the anon client
+  // (INSERT policy allows any anon for approved stores).
+  if (state.adminKey || (state.merchantPwAuth && state.merchantPwAuth.token)) {
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    fetch("/api/notify-order?action=update-order", {
+      method: "POST", headers,
+      body: JSON.stringify({ id: order.id, storeId: order.storeId, status: order.status, items: order.items })
+    }).catch(e => console.warn("order cloud update:", e.message));
+    return;
+  }
+  // Anon (customer placing new order) or Supabase-authenticated merchant
   const sb = window.supabaseClient;
   if (!sb) return;
   const payload = {
@@ -676,17 +691,43 @@ function formatOrderDate(iso) {
 }
 // Merchants must see orders placed from ANY device, so the dashboard reads them
 // back from the cloud (the previous version only pushed, never loaded).
+// RLS on the orders table requires auth.uid(); admin and pw-auth merchant sessions
+// have no Supabase session, so we route those reads through the backend API (service-role key).
 async function loadOrdersFromSupabase(storeId) {
   const sb = window.supabaseClient;
-  if (!sb) return false;
   try {
-    const cb = Date.now(); // vary the URL to dodge Cloudflare's edge cache (see loadCatalogFromSupabase)
+    // Admin (no storeId): use the admin-gated API endpoint (service-role key bypasses RLS)
+    if (!storeId && state.adminKey) {
+      const r = await fetch("/api/notify-order?action=orders", {
+        headers: { "x-admin-token": state.adminKey }
+      });
+      if (!r.ok) return false;
+      const json = await r.json().catch(() => ({}));
+      if (!Array.isArray(json.orders)) return false;
+      state.orders = json.orders.map(mapDbOrder);
+      return true;
+    }
+    // Merchant (phone+password session): use the merchant-gated API endpoint
+    if (storeId && state.merchantPwAuth && state.merchantPwAuth.token) {
+      const r = await fetch(`/api/notify-order?action=store-orders&storeId=${storeId}`, {
+        headers: { "x-merchant-token": state.merchantPwAuth.token }
+      });
+      if (!r.ok) return false;
+      const json = await r.json().catch(() => ({}));
+      if (!Array.isArray(json.orders)) return false;
+      const mapped = json.orders.map(mapDbOrder);
+      const others = state.orders.filter(o => o.storeId !== Number(storeId));
+      state.orders = [...mapped, ...others.filter(o => !mapped.some(m => m.id === o.id))];
+      return true;
+    }
+    // Supabase Auth path (authenticated user with store_users link): direct client read
+    if (!sb) return false;
+    const cb = Date.now(); // vary the URL to dodge Cloudflare's edge cache
     let q = sb.from("orders").select("*").order("created_at", { ascending: false }).neq("id", "__cb" + cb);
     if (storeId) q = q.eq("store_id", storeId);
     const { data, error } = await q;
     if (error || !data) return false;
     const mapped = data.map(mapDbOrder);
-    // Replace this store's orders with the cloud truth; keep any unrelated local orders.
     const others = state.orders.filter(o => storeId ? o.storeId !== Number(storeId) : false);
     state.orders = [...mapped, ...others.filter(o => !mapped.some(m => m.id === o.id))];
     return true;
@@ -2280,7 +2321,7 @@ async function submitMerchantPwLogin(form) {
       return restore();
     }
     const ids = data.multi ? data.stores.map(s => Number(s.id)) : [Number(data.store_id)];
-    state.merchantPwAuth = { storeIds: ids, username };
+    state.merchantPwAuth = { storeIds: ids, username, token: data.token || null };
     localStorage.setItem("dukkanci-merchant-session", JSON.stringify(state.merchantPwAuth));
     state._merchantResolved = false; state._merchantOrdersFetched = false;
     state.merchantStoreId = ids[0]; state.merchantTab = "overview";
@@ -2349,6 +2390,13 @@ function renderMerchant(id) {
   // and active subscription, so resolve straight to the store(s) it logged into —
   // no Supabase session / store_users lookup needed.
   if (state.merchantPwAuth) {
+    // If the stored session predates the token system (old localStorage entry), force re-login
+    // so a fresh token is issued and order reads/writes work correctly.
+    if (!state.merchantPwAuth.token) {
+      state.merchantPwAuth = null;
+      localStorage.removeItem("dukkanci-merchant-session");
+      return merchantLogin();
+    }
     if (!state._merchantResolved) {
       const ids = state.merchantPwAuth.storeIds || [];
       const owned = ids.map(getStore).filter(Boolean);

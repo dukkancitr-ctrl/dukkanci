@@ -346,6 +346,33 @@ function verifyAdminToken(token) {
   return !!m && Date.now() < Number(m[1]);
 }
 
+// Merchant session tokens: signed JWT-like token encoding the list of store ids
+// the merchant owns. Uses the same ADMIN_PASSWORD / ADMIN_SESSION_SECRET pepper.
+// Format: base64url(storeIds=1,2&exp=<ms>) + "." + hmac
+function signMerchantToken(storeIds, ttlMs = 12 * 60 * 60 * 1000) {
+  const secret = adminSecret();
+  if (!secret || !storeIds || !storeIds.length) return null;
+  const payload = `storeIds=${storeIds.join(",")}&exp=${Date.now() + ttlMs}`;
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return Buffer.from(payload).toString("base64url") + "." + sig;
+}
+
+// Returns the list of store ids the token grants access to, or null if invalid/expired.
+function verifyMerchantToken(token) {
+  const secret = adminSecret();
+  if (!secret) return null;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  let payload;
+  try { payload = Buffer.from(parts[0], "base64url").toString("utf8"); } catch (e) { return null; }
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const a = Buffer.from(parts[1]), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const pm = /storeIds=([^&]+)&exp=(\d+)/.exec(payload);
+  if (!pm || Date.now() >= Number(pm[2])) return null;
+  return pm[1].split(",").map(Number).filter(Boolean);
+}
+
 // Verify the typed admin password (used ONLY at login to mint a token).
 function adminPasswordOk(req) {
   const expected = env("ADMIN_PASSWORD");
@@ -364,6 +391,16 @@ function adminPasswordOk(req) {
 function adminOk(req) {
   if (verifyAdminToken(req.headers && req.headers["x-admin-token"])) return true;
   return adminPasswordOk(req);
+}
+
+// Merchant gate: verifies the signed merchant token (x-merchant-token header) and
+// checks the requested storeId is in the token's allowed store list. Synchronous —
+// no DB round-trip needed after login.
+function merchantOk(req, storeId) {
+  const token = String(req.headers["x-merchant-token"] || "").trim();
+  if (!token || !storeId) return false;
+  const ids = verifyMerchantToken(token);
+  return Array.isArray(ids) && ids.includes(Number(storeId));
 }
 
 // Shared-secret gate for system/internal callers (Supabase DB webhook, cron).
@@ -677,6 +714,22 @@ module.exports = async (req, res) => {
       return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform });
     }
 
+    // Admin: all orders (service-role read, bypasses anon RLS)
+    if (q.action === "orders") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      const rows = await sbGet("orders?select=*&order=created_at.desc&limit=1000") || [];
+      return res.status(200).json({ orders: rows });
+    }
+
+    // Merchant: their store's orders only (verified by phone+password credentials)
+    if (q.action === "store-orders") {
+      const storeId = Number(q.storeId);
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      if (!merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
+      const rows = await sbGet(`orders?store_id=eq.${storeId}&select=*&order=created_at.desc&limit=500`) || [];
+      return res.status(200).json({ orders: rows });
+    }
+
     // Admin: list every store with its login credentials (phone=username +
     // generated password). Lazily generates+persists a password for any store
     // that has a phone but no credential row yet. Passwords live in
@@ -765,8 +818,10 @@ module.exports = async (req, res) => {
     const sList = await sbGet(`stores?id=in.(${matched.join(",")})&select=id,name,subscription_active`) || [];
     const active = sList.filter(s => s.subscription_active !== false);
     if (!active.length) return res.status(403).json({ ok: false, error: "subscription-inactive" });
-    if (active.length === 1) return res.status(200).json({ ok: true, store_id: active[0].id, name: active[0].name });
-    return res.status(200).json({ ok: true, multi: true, stores: active.map(s => ({ id: s.id, name: s.name })) });
+    const activeIds = active.map(s => Number(s.id));
+    const token = signMerchantToken(activeIds);
+    if (active.length === 1) return res.status(200).json({ ok: true, store_id: active[0].id, name: active[0].name, token });
+    return res.status(200).json({ ok: true, multi: true, stores: active.map(s => ({ id: s.id, name: s.name })), token });
   }
 
   // Admin: regenerate one store's login password.
@@ -926,6 +981,26 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: false, reason: "invalid" });
     }
     await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, "return=minimal");
+    return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: update an order's status using the service-role key.
+  // Required because the anon client cannot UPDATE orders (RLS blocks non-auth users).
+  if (pq.action === "update-order") {
+    const orderId = String(body.id || "").trim();
+    const newStatus = String(body.status || "").trim();
+    if (!orderId || !newStatus) return res.status(400).json({ error: "id and status required" });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed) {
+      const storeId = Number(body.storeId);
+      if (storeId) authed = merchantOk(req, storeId);
+    }
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const patch = { status: newStatus };
+    if (body.items !== undefined) patch.items = body.items;
+    const r = await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(orderId)}`, patch, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });
     return res.status(200).json({ ok: true });
   }
 
