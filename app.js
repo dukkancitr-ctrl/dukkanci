@@ -3268,6 +3268,8 @@ function adminCampaigns() {
                 ${canResume ? `<button class="primary-button compact"   data-action="campaign-resume"  data-id="${c.id}">استئناف</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-send-manual" data-id="${c.id}" title="أرسل دفعة واحدة الآن">إرسال دفعة ▶</button>` : ""}
                 ${canPause  ? `<button class="secondary-button compact" data-action="campaign-pause"   data-id="${c.id}">إيقاف مؤقت</button>` : ""}
+                <button class="secondary-button compact" data-action="campaign-edit-params" data-id="${c.id}"
+                  data-params="${escAttr(JSON.stringify(c.template_params || []))}" title="تعديل معاملات القالب">تعديل المعاملات</button>
                 ${canCancel ? `<button class="danger-button compact"    data-action="campaign-cancel"  data-id="${c.id}">إلغاء</button>` : ""}
               </td>
             </tr>`;

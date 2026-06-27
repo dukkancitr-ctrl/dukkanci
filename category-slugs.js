@@ -11,9 +11,19 @@ const CATEGORY_SLUGS = {
 };
 
 // text -> slug
-const CATEGORY_TEXT_TO_SLUG = Object.fromEntries(
-  Object.entries(CATEGORY_SLUGS).map(([slug, text]) => [text, slug])
-);
+const CATEGORY_TEXT_TO_SLUG = {
+  ...Object.fromEntries(Object.entries(CATEGORY_SLUGS).map(([slug, text]) => [text, slug])),
+  // Home-page display labels that differ from the canonical store-category text:
+  "ملاحم": "butcher",
+  "مكسرات وبهارات": "nuts",
+  "خضار و فواكه": "vegetables"
+};
+
+// Extra slugs for home-page labels that have no stores yet (forward-compat).
+Object.assign(CATEGORY_SLUGS, {
+  nuts: "مكسرات وبهارات",
+  vegetables: "خضار و فواكه"
+});
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { CATEGORY_SLUGS, CATEGORY_TEXT_TO_SLUG };
