@@ -557,8 +557,24 @@ function pushStoreCloud(store) {
   });
 }
 function deleteProductCloud(id) {
+  const numId = Number(id);
+  // Merchant/admin sessions have no Supabase Auth (auth.uid() = null), so RLS
+  // blocks a direct DELETE. Route through the backend API (service-role key)
+  // for these sessions, exactly like update-order does.
+  if (state.adminKey || (state.merchantPwAuth && state.merchantPwAuth.token)) {
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    const store = getMerchantStore();
+    fetch("/api/notify-order?action=delete-product", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: numId, storeId: store ? store.id : undefined })
+    }).then(r => { if (!r.ok) r.json().then(e => console.warn("product delete:", e.error)).catch(() => {}); });
+    return;
+  }
   const sb = window.supabaseClient;
-  if (sb) sb.from("products").delete().eq("id", Number(id)).then(({ error }) => { if (error) console.warn("product delete:", error.message); });
+  if (sb) sb.from("products").delete().eq("id", numId).then(({ error }) => { if (error) console.warn("product delete:", error.message); });
 }
 // The orders table has fixed columns + a flexible delivery_details jsonb. We pack
 // every field the merchant needs to FULFILL the order (phone, address, the actual
@@ -3198,6 +3214,9 @@ function adminCampaigns() {
         <label>لاحقة رابط الزر <small>(إذا كان الزر يحتوي <code dir="ltr">{{1}}</code> في رابطه — اتركها فارغة إن كان الرابط ثابتاً)</small>
           <input id="cf-button-url" placeholder="مثال: stores أو اتركه فارغاً" dir="ltr">
         </label>
+        <label>رابط صورة الهيدر <small>(مطلوب إذا كان هيدر القالب صورة ديناميكية)</small>
+          <input id="cf-header-image" placeholder="https://www.dukkanci.com.tr/assets/..." dir="ltr">
+        </label>
         <label>الجمهور المستهدف
           <select id="cf-audience" data-action="cf-audience-change">
             <option value="wa_contacts">📋 الأرقام المرفوعة${contacts && contacts.total ? ` (${contacts.total.toLocaleString("ar")} رقم)` : ""}</option>
@@ -3274,7 +3293,8 @@ function adminCampaigns() {
                 ${(c.failed_count > 0 && c.status !== "sending") ? `<button class="primary-button compact" data-action="campaign-retry-failed" data-id="${c.id}">↺ إعادة إرسال الفاشلين</button>` : ""}
                 <button class="secondary-button compact" data-action="campaign-edit-params" data-id="${c.id}"
                   data-params="${escAttr(JSON.stringify(c.template_params || []))}"
-                  data-button-url="${escAttr(c.button_url_param ?? "")}" title="تعديل معاملات القالب">تعديل المعاملات</button>
+                  data-button-url="${escAttr(c.button_url_param ?? "")}"
+                  data-header-image="${escAttr(c.header_image_url ?? "")}" title="تعديل معاملات القالب">تعديل المعاملات</button>
                 ${canCancel ? `<button class="danger-button compact"    data-action="campaign-cancel"  data-id="${c.id}">إلغاء</button>` : ""}
               </td>
             </tr>`;
@@ -4704,13 +4724,15 @@ document.addEventListener("click", event => {
     const lang      = document.getElementById("cf-lang")?.value || "ar";
     const rawParams    = document.getElementById("cf-params")?.value || "";
     const buttonUrl    = document.getElementById("cf-button-url")?.value.trim();
+    const headerImage  = document.getElementById("cf-header-image")?.value.trim();
     const audience     = document.getElementById("cf-audience")?.value || "all_customers";
     const group        = audience === "wa_contacts" ? (document.getElementById("cf-group")?.value || "") : "";
     const note         = document.getElementById("cf-note")?.value.trim() || null;
     if (!name || !tpl) { showToast("اسم الحملة واسم القالب مطلوبان", "error"); return; }
     const params = rawParams.trim() ? rawParams.split(",").map(s => s.trim()).filter(Boolean) : [];
     const body = { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, contact_group: group || null, note };
-    if (buttonUrl !== undefined && buttonUrl !== "") body.button_url_param = buttonUrl;
+    if (buttonUrl) body.button_url_param = buttonUrl;
+    if (headerImage) body.header_image_url = headerImage;
     campaignApi("create", { method: "POST", body })
       .then(data => {
         if (!data.ok) { showToast("تعذّر إنشاء الحملة", "error"); return; }
@@ -4750,18 +4772,24 @@ document.addEventListener("click", event => {
     const id = target.dataset.id;
     const currentParams = JSON.parse(target.dataset.params || "[]");
     const currentBtn = target.dataset.buttonUrl || "";
+    const currentHeaderImg = target.dataset.headerImage || "";
     const newVal = prompt(
       "معاملات جسم القالب (مفصولة بفاصلة — اتركها فارغة إن لم يكن للقالب متغيرات نصية):",
       currentParams.join(", ")
     );
     if (newVal === null) return;
+    const newImg = prompt(
+      "رابط صورة الهيدر الديناميكية (اتركه فارغاً إن لم يكن للقالب هيدر صورة ديناميكية):",
+      currentHeaderImg
+    );
+    if (newImg === null) return;
     const newBtn = prompt(
-      "لاحقة رابط الزر {{1}} — أدخل قيمة إذا كان القالب يحتوي زراً بـ URL ديناميكي، وإلا اضغط OK فارغاً:",
+      "لاحقة رابط الزر (اتركه فارغاً إن كان الزر ثابتاً):",
       currentBtn
     );
     if (newBtn === null) return;
     const parsed = newVal.trim() === "" ? [] : newVal.split(",").map(s => s.trim()).filter(Boolean);
-    const bodyData = { template_params: parsed, button_url_param: newBtn.trim() || null };
+    const bodyData = { template_params: parsed, button_url_param: newBtn.trim() || null, header_image_url: newImg.trim() || null };
     campaignApi("update-params", { method: "POST", id, body: bodyData })
       .then(data => {
         if (!data.ok) { showToast(`خطأ: ${data.error}`, "error"); return; }
