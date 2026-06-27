@@ -3089,12 +3089,16 @@ function adminCampaigns() {
     return `<div class="dashboard-card"><div class="empty-managed">${icon("megaphone")}<p>جارٍ تحميل الحملات...</p></div></div>`;
   }
 
-  const showForm    = state.adminCampaignForm === "open";
+  const showForm     = state.adminCampaignForm === "open";
   const showContacts = state.adminCampaignForm === "contacts";
-  const camps = state.adminCampaigns;
-  const contacts = state.adminContacts || null; // { total, preview[] } or null
+  const camps    = state.adminCampaigns;
+  const contacts = state.adminContacts || null; // { total, preview[], groups[] }
+  const groups   = (contacts && contacts.groups) || [];
 
-  const audienceLabel = t => ({ all_customers: "كل عملاء المنصة", no_order_30d: "غير نشطين 30 يوماً", wa_contacts: "قائمة الأرقام المرفوعة" }[t] || t);
+  const audienceLabel = (t, g) => {
+    if (t === "wa_contacts") return g ? `مجموعة: ${g}` : "كل الأرقام المرفوعة";
+    return { all_customers: "كل عملاء المنصة", no_order_30d: "غير نشطين 30 يوماً" }[t] || t;
+  };
 
   return `
     <div class="dashboard-toolbar">
@@ -3106,23 +3110,39 @@ function adminCampaigns() {
     <section class="dashboard-card campaign-form-card">
       <div class="card-heading">
         <div><h3>قائمة الأرقام المرفوعة</h3><p>عملاء سابقون أو جمهور خارجي — يمكن استهدافهم في أي حملة</p></div>
-        ${contacts ? `<span style="font-size:13px;color:var(--muted)">${contacts.total.toLocaleString("ar")} رقم محفوظ</span>` : ""}
+        ${contacts ? `<span style="font-size:13px;color:var(--muted)">${contacts.total.toLocaleString("ar")} رقم إجمالاً</span>` : ""}
       </div>
+
+      ${groups.length ? `
+      <div class="contacts-groups-list">
+        <p class="groups-heading">${icon("users")} المجموعات المحفوظة</p>
+        <table class="admin-table" style="margin-bottom:20px">
+          <thead><tr><th>اسم المجموعة</th><th>عدد الأرقام</th><th></th></tr></thead>
+          <tbody>
+            ${groups.map(g => `<tr>
+              <td><strong>${esc(g.group_name)}</strong></td>
+              <td>${g.count.toLocaleString("ar")} رقم</td>
+              <td><button class="danger-button compact" data-action="contacts-delete-group" data-group="${escAttr(g.group_name)}">حذف المجموعة</button></td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : contacts ? `<p style="font-size:13px;color:var(--muted);margin-bottom:16px">لا مجموعات بعد — ارفع أرقامك الأولى أدناه.</p>` : ""}
+
       <div class="contacts-upload-area">
-        <label style="grid-column:1/-1">
-          الصق الأرقام هنا <small>(رقم لكل سطر، أو مفصولة بفواصل — أي تنسيق يُقبَل)</small>
-          <textarea id="contacts-textarea" rows="8" dir="ltr" placeholder="0501234567&#10;+90 532 111 22 33&#10;905001112233&#10;..."></textarea>
+        <p style="font-weight:600;font-size:14px;margin-bottom:4px">${icon("users")} رفع مجموعة جديدة</p>
+        <label>
+          اسم المجموعة <small>(مثال: عملاء 2024، قاعدة صفا، متابعو انستغرام)</small>
+          <input id="contacts-group-name" placeholder="اسم المجموعة" maxlength="60">
+        </label>
+        <label>
+          الصق الأرقام هنا <small>(رقم لكل سطر أو مفصولة بفواصل — أي تنسيق يُقبَل)</small>
+          <textarea id="contacts-textarea" rows="7" dir="ltr" placeholder="0501234567&#10;+90 532 111 22 33&#10;905001112233&#10;..."></textarea>
         </label>
         <div class="form-actions">
-          <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ الأرقام</button>
-          ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل (${contacts.total.toLocaleString("ar")})</button>` : ""}
+          <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ</button>
+          ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل</button>` : ""}
           <button class="secondary-button" data-action="contacts-panel-close">إغلاق</button>
         </div>
-        ${contacts && contacts.preview && contacts.preview.length ? `
-        <div style="grid-column:1/-1;margin-top:8px">
-          <p style="font-size:12px;color:var(--muted);margin-bottom:6px">آخر الأرقام المحفوظة:</p>
-          <div class="contacts-preview">${contacts.preview.map(r => `<code>${esc(r.phone)}</code>`).join("")}</div>
-        </div>` : ""}
       </div>
     </section>
     ` : ""}
@@ -3148,10 +3168,17 @@ function adminCampaigns() {
           <input id="cf-params" placeholder="دكانجي, https://dukkanci.com.tr" dir="ltr">
         </label>
         <label>الجمهور المستهدف
-          <select id="cf-audience">
-            <option value="wa_contacts">📋 قائمة الأرقام المرفوعة${contacts && contacts.total ? ` (${contacts.total.toLocaleString("ar")} رقم)` : ""}</option>
-            <option value="all_customers">جميع عملاء المنصة الذين طلبوا مسبقاً</option>
+          <select id="cf-audience" data-action="cf-audience-change">
+            <option value="wa_contacts">📋 الأرقام المرفوعة${contacts && contacts.total ? ` (${contacts.total.toLocaleString("ar")} رقم)` : ""}</option>
+            <option value="all_customers">جميع عملاء المنصة</option>
             <option value="no_order_30d">العملاء غير النشطين منذ 30 يوماً</option>
+          </select>
+        </label>
+        <label id="cf-group-label">
+          المجموعة <small>(اتركها "الكل" لاستهداف جميع الأرقام المرفوعة)</small>
+          <select id="cf-group">
+            <option value="">الكل${contacts && contacts.total ? ` — ${contacts.total.toLocaleString("ar")} رقم` : ""}</option>
+            ${groups.map(g => `<option value="${escAttr(g.group_name)}">${esc(g.group_name)} — ${g.count.toLocaleString("ar")} رقم</option>`).join("")}
           </select>
         </label>
         <label>ملاحظة <small>(اختياري)</small>
@@ -3185,7 +3212,7 @@ function adminCampaigns() {
             return `<tr>
               <td><strong>${esc(c.name)}</strong><br><small style="color:#888">${new Date(c.created_at).toLocaleDateString("ar")}</small></td>
               <td><code style="font-size:11px">${esc(c.template_name)}</code><br><small>${esc(c.template_lang)}</small></td>
-              <td><small>${audienceLabel(c.audience_type)}</small></td>
+              <td><small>${audienceLabel(c.audience_type, c.contact_group)}</small></td>
               <td><span class="status-pill ${stat}">${campaignStatusLabel(c.status)}</span></td>
               <td>
                 <div class="campaign-progress-wrap">
@@ -3221,10 +3248,17 @@ function adminCampaigns() {
 
 async function loadContacts() {
   try {
-    const data = await campaignApi("contacts-list");
-    state.adminContacts = { total: data.total || 0, preview: data.contacts || [] };
+    const [listData, groupsData] = await Promise.all([
+      campaignApi("contacts-list"),
+      campaignApi("contacts-groups")
+    ]);
+    state.adminContacts = {
+      total:   listData.total  || 0,
+      preview: listData.contacts || [],
+      groups:  groupsData.groups || []
+    };
     render();
-  } catch (e) { state.adminContacts = { total: 0, preview: [] }; render(); }
+  } catch (e) { state.adminContacts = { total: 0, preview: [], groups: [] }; render(); }
 }
 
 // Campaign action polling: auto-calls send-batch every 3s while a campaign is sending
@@ -4315,9 +4349,11 @@ document.addEventListener("click", event => {
     showToast(target.classList.contains("active") ? "تمت الإضافة إلى المفضلة" : "تمت الإزالة من المفضلة", "success");
   }
   if (action === "category") {
-    state.storeFilter = target.dataset.category;
+    const catName = target.dataset.category;
+    state.storeFilter = catName;
     state.search = "";
-    navigate("stores");
+    const slug = (typeof CATEGORY_TEXT_TO_SLUG !== "undefined") && CATEGORY_TEXT_TO_SLUG[catName];
+    navigate(slug ? `category/${slug}` : "stores");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "product-category") {
@@ -4544,15 +4580,16 @@ document.addEventListener("click", event => {
   if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); }
   if (action === "campaign-form-close") { state.adminCampaignForm = null; render(); }
   if (action === "campaign-create") {
-    const name     = document.getElementById("cf-name")?.value.trim();
-    const tpl      = document.getElementById("cf-tpl")?.value.trim();
-    const lang     = document.getElementById("cf-lang")?.value || "ar";
+    const name      = document.getElementById("cf-name")?.value.trim();
+    const tpl       = document.getElementById("cf-tpl")?.value.trim();
+    const lang      = document.getElementById("cf-lang")?.value || "ar";
     const rawParams = document.getElementById("cf-params")?.value || "";
-    const audience = document.getElementById("cf-audience")?.value || "all_customers";
-    const note     = document.getElementById("cf-note")?.value.trim() || null;
+    const audience  = document.getElementById("cf-audience")?.value || "all_customers";
+    const group     = audience === "wa_contacts" ? (document.getElementById("cf-group")?.value || "") : "";
+    const note      = document.getElementById("cf-note")?.value.trim() || null;
     if (!name || !tpl) { showToast("اسم الحملة واسم القالب مطلوبان", "error"); return; }
     const params = rawParams.trim() ? rawParams.split(",").map(s => s.trim()).filter(Boolean) : [];
-    campaignApi("create", { method: "POST", body: { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, note } })
+    campaignApi("create", { method: "POST", body: { name, template_name: tpl, template_lang: lang, template_params: params, audience_type: audience, contact_group: group || null, note } })
       .then(data => {
         if (!data.ok) { showToast("تعذّر إنشاء الحملة", "error"); return; }
         state.adminCampaignForm = null;
@@ -4613,21 +4650,30 @@ document.addEventListener("click", event => {
   }
   if (action === "contacts-panel-close") { state.adminCampaignForm = null; render(); }
   if (action === "contacts-upload") {
-    const text = document.getElementById("contacts-textarea")?.value || "";
+    const text      = document.getElementById("contacts-textarea")?.value || "";
+    const groupName = document.getElementById("contacts-group-name")?.value.trim() || "default";
     if (!text.trim()) { showToast("الرجاء لصق أرقام الهاتف أولاً", "error"); return; }
     showToast("جارٍ رفع الأرقام...", "");
-    campaignApi("upload-contacts", { method: "POST", body: { text } })
+    campaignApi("upload-contacts", { method: "POST", body: { text, group_name: groupName } })
       .then(data => {
         if (!data.ok) { showToast("تعذّر رفع الأرقام", "error"); return; }
         state.adminContacts = null;
         loadContacts();
-        showToast(`تم حفظ ${(data.added || 0).toLocaleString("ar")} رقم — الإجمالي: ${(data.total || 0).toLocaleString("ar")}`, "success");
+        showToast(`تم حفظ ${(data.added || 0).toLocaleString("ar")} رقم في مجموعة "${groupName}"`, "success");
         const ta = document.getElementById("contacts-textarea");
+        const gn = document.getElementById("contacts-group-name");
         if (ta) ta.value = "";
+        if (gn) gn.value = "";
       }).catch(() => showToast("خطأ في الاتصال", "error"));
   }
+  if (action === "contacts-delete-group") {
+    const group = target.dataset.group;
+    if (!confirm(`حذف مجموعة "${group}" نهائياً؟`)) return;
+    campaignApi("contacts-clear-group", { method: "POST", body: { group_name: group } })
+      .then(() => { state.adminContacts = null; loadContacts(); showToast(`تم حذف مجموعة "${group}"`, ""); });
+  }
   if (action === "contacts-clear") {
-    if (!confirm("حذف جميع الأرقام المرفوعة نهائياً؟")) return;
+    if (!confirm("حذف جميع الأرقام المرفوعة من كل المجموعات نهائياً؟")) return;
     campaignApi("contacts-clear", { method: "POST", body: {} })
       .then(() => { state.adminContacts = null; loadContacts(); showToast("تم حذف جميع الأرقام", ""); });
   }
