@@ -167,15 +167,26 @@ async function upsertContacts(phones, groupName) {
     const rows = phones.slice(i, i + CHUNK).map(phone => ({
       phone, group_name: groupName || "default", source: "manual"
     }));
-    const r = await sbWrite("POST", "wa_contacts", rows, "resolution=merge-duplicates,return=minimal");
+    // ON CONFLICT (phone): update group_name so re-uploading a number to a new group moves it
+    const r = await sbWrite("POST", "wa_contacts", rows,
+      "resolution=merge-duplicates,return=minimal");
     if (r.ok) inserted += rows.length;
   }
   return inserted;
 }
 
+// Return each group_name with its contact count
+async function getContactGroups() {
+  const rows = await sbGet("wa_contacts?select=group_name&limit=10000") || [];
+  const counts = {};
+  for (const r of rows) { const g = r.group_name || "default"; counts[g] = (counts[g] || 0) + 1; }
+  return Object.entries(counts).map(([group_name, count]) => ({ group_name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 // ─── Build recipients ────────────────────────────────────────────────────────
 
-async function buildRecipients(campaignId, audienceType) {
+async function buildRecipients(campaignId, audienceType, campaign) {
   const cc = env("WHATSAPP_DEFAULT_COUNTRY_CODE") || "90";
 
   let phones = [];
@@ -194,8 +205,12 @@ async function buildRecipients(campaignId, audienceType) {
       if (p && !seen.has(p) && !recent.has(p)) { seen.add(p); phones.push(p); }
     }
   } else if (audienceType === "wa_contacts") {
-    // Uploaded contacts list
-    const rows = await sbGet(`wa_contacts?select=phone&order=created_at.desc&limit=10000`);
+    // Uploaded contacts — optionally filtered to a specific group
+    const groupFilter = campaign?.contact_group;
+    const path = groupFilter
+      ? `wa_contacts?select=phone&group_name=eq.${encodeURIComponent(groupFilter)}&limit=10000`
+      : `wa_contacts?select=phone&limit=10000`;
+    const rows = await sbGet(path);
     const seen = new Set();
     for (const r of (rows || [])) {
       const p = toE164(r.phone, cc);
@@ -334,6 +349,10 @@ module.exports = async (req, res) => {
       const total = await sbGet("wa_contacts?select=id&limit=10000");
       return res.json({ ok: true, contacts: rows || [], total: (total || []).length });
     }
+    if (action === "contacts-groups") {
+      const groups = await getContactGroups();
+      return res.json({ ok: true, groups });
+    }
     return res.status(400).json({ error: "unknown action" });
   }
 
@@ -346,7 +365,7 @@ module.exports = async (req, res) => {
     const cid = id || body.id || "";
 
     if (action === "create") {
-      const { name, template_name, template_lang, template_params, audience_type, note } = body;
+      const { name, template_name, template_lang, template_params, audience_type, contact_group, note } = body;
       if (!name || !template_name) return res.status(400).json({ error: "name و template_name مطلوبان" });
       const row = {
         name,
@@ -354,6 +373,7 @@ module.exports = async (req, res) => {
         template_lang: template_lang || "ar",
         template_params: Array.isArray(template_params) ? template_params : [],
         audience_type: audience_type || "all_customers",
+        contact_group: (audience_type === "wa_contacts" && contact_group) ? contact_group : null,
         status: "draft",
         sent_count: 0,
         failed_count: 0,
@@ -390,12 +410,20 @@ module.exports = async (req, res) => {
       return res.json({ ok: true });
     }
 
+    // Delete a specific group
+    if (action === "contacts-clear-group") {
+      const { group_name } = body;
+      if (!group_name) return res.status(400).json({ error: "group_name required" });
+      await sbWrite("DELETE", `wa_contacts?group_name=eq.${encodeURIComponent(group_name)}`, undefined, "return=minimal");
+      return res.json({ ok: true });
+    }
+
     if (!cid) return res.status(400).json({ error: "id required" });
 
     if (action === "build") {
-      const camp = (await sbGet(`wa_campaigns?id=eq.${encodeURIComponent(cid)}&select=audience_type`))?.[0];
+      const camp = (await sbGet(`wa_campaigns?id=eq.${encodeURIComponent(cid)}&select=*`))?.[0];
       if (!camp) return res.status(404).json({ error: "campaign not found" });
-      const total = await buildRecipients(cid, camp.audience_type || "all_customers");
+      const total = await buildRecipients(cid, camp.audience_type || "all_customers", camp);
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`,
         { status: "ready", total_recipients: total }, "return=minimal");
       return res.json({ ok: true, total });

@@ -747,6 +747,7 @@ img {
   align-items: center;
   gap: 13px;
   cursor: pointer;
+  touch-action: manipulation;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
@@ -8330,3 +8331,8 @@ tbody tr:hover {
 .contacts-upload-area textarea:focus { border-color: var(--accent); outline: none; }
 .contacts-preview { display: flex; flex-wrap: wrap; gap: 6px; }
 .contacts-preview code { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 12px; direction: ltr; }
+
+/* ─── Contacts groups list ─── */
+.contacts-groups-list { margin-bottom: 4px; }
+.groups-heading { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.groups-heading svg { width: 15px; height: 15px; }
