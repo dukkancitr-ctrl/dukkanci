@@ -29,16 +29,35 @@ const env = k => (process.env[k] || "").trim();
 // at the END of this file — AFTER module.exports is assigned the handler — so it
 // is not overwritten. We parse JSON ourselves from the raw buffer.
 
-function readRawBody(req) {
+function payloadTooLargeError() {
+  const error = new Error("payload_too_large");
+  error.statusCode = 413;
+  return error;
+}
+
+function readRawBody(req, limit = 4_000_000) {
   return new Promise((resolve, reject) => {
-    if (typeof req.body === "string") return resolve(req.body);
-    if (req.body && typeof req.body === "object") return resolve(JSON.stringify(req.body));
+    if (typeof req.body === "string") {
+      return Buffer.byteLength(req.body, "utf8") > limit ? reject(payloadTooLargeError()) : resolve(req.body);
+    }
+    if (req.body && typeof req.body === "object") {
+      const raw = JSON.stringify(req.body);
+      return Buffer.byteLength(raw, "utf8") > limit ? reject(payloadTooLargeError()) : resolve(raw);
+    }
     let data = "";
+    let bytes = 0;
+    let tooLarge = false;
     req.on("data", chunk => {
+      if (tooLarge) return;
+      bytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), "utf8");
+      if (bytes > limit) {
+        tooLarge = true;
+        data = "";
+        return;
+      }
       data += chunk;
-      if (data.length > 1_000_000) req.destroy(); // 1MB hard cap — webhooks are tiny
     });
-    req.on("end", () => resolve(data));
+    req.on("end", () => tooLarge ? reject(payloadTooLargeError()) : resolve(data));
     req.on("error", reject);
   });
 }
@@ -796,7 +815,13 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const rawBody = await readRawBody(req);
+  let rawBody;
+  try {
+    rawBody = await readRawBody(req);
+  } catch (e) {
+    if (e && e.statusCode === 413) return res.status(413).json({ error: "payload too large" });
+    throw e;
+  }
   let body;
   try { body = rawBody ? JSON.parse(rawBody) : {}; } catch (e) { body = {}; }
   let pq = {};
@@ -997,6 +1022,50 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: false, reason: "invalid" });
     }
     await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, "return=minimal");
+    return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: upsert a product using the service-role key.
+  // Required because the anon client cannot UPDATE/INSERT products (RLS blocks non-auth users).
+  if (pq.action === "save-product") {
+    const storeId = Number(body.storeId || (body.product && body.product.store_id));
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const product = body.product;
+    if (product && storeId && !product.store_id) product.store_id = storeId;
+    if (!product || !product.id || !product.store_id) {
+      return res.status(400).json({
+        error: "product with id and store_id required",
+        detail: {
+          hasProduct: !!product,
+          productId: product && product.id,
+          storeId,
+          productStoreId: product && product.store_id
+        }
+      });
+    }
+    const r = await sbWrite("POST", "products?on_conflict=id", product, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) {
+      console.warn("save-product failed", { status: r.status, detail: r.rows });
+      return res.status(502).json({ error: "save failed", detail: r.rows });
+    }
+    return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: delete a product using the service-role key.
+  // Required because the anon client cannot DELETE products (RLS blocks non-auth users).
+  if (pq.action === "delete-product") {
+    const productId = Number(body.id);
+    if (!productId) return res.status(400).json({ error: "id required" });
+    const storeId = Number(body.storeId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const r = await sbWrite("DELETE", `products?id=eq.${productId}`, undefined, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "delete failed", detail: r.rows });
     return res.status(200).json({ ok: true });
   }
 
