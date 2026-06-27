@@ -1000,6 +1000,50 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // Merchant/Admin: upsert a product using the service-role key.
+  // Required because the anon client cannot UPDATE/INSERT products (RLS blocks non-auth users).
+  if (pq.action === "save-product") {
+    const storeId = Number(body.storeId || (body.product && body.product.store_id));
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const product = body.product;
+    if (product && storeId && !product.store_id) product.store_id = storeId;
+    if (!product || !product.id || !product.store_id) {
+      return res.status(400).json({
+        error: "product with id and store_id required",
+        detail: {
+          hasProduct: !!product,
+          productId: product && product.id,
+          storeId,
+          productStoreId: product && product.store_id
+        }
+      });
+    }
+    const r = await sbWrite("POST", "products?on_conflict=id", product, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) {
+      console.warn("save-product failed", { status: r.status, detail: r.rows });
+      return res.status(502).json({ error: "save failed", detail: r.rows });
+    }
+    return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: delete a product using the service-role key.
+  // Required because the anon client cannot DELETE products (RLS blocks non-auth users).
+  if (pq.action === "delete-product") {
+    const productId = Number(body.id);
+    if (!productId) return res.status(400).json({ error: "id required" });
+    const storeId = Number(body.storeId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const r = await sbWrite("DELETE", `products?id=eq.${productId}`, undefined, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "delete failed", detail: r.rows });
+    return res.status(200).json({ ok: true });
+  }
+
   // Merchant/Admin: update an order's status using the service-role key.
   // Required because the anon client cannot UPDATE orders (RLS blocks non-auth users).
   if (pq.action === "update-order") {
