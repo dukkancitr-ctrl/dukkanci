@@ -5200,6 +5200,11 @@ document.addEventListener("keydown", event => {
 });
 
 document.addEventListener("change", event => {
+  if (event.target.id === "img-file-input") {
+    const file = event.target.files && event.target.files[0];
+    if (file) uploadCampaignImage(file);
+    return;
+  }
   if (event.target.id === "cf-audience") {
     const isContacts = event.target.value === "wa_contacts";
     const groupLabel = document.getElementById("cf-group-label");
