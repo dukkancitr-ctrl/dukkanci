@@ -664,6 +664,7 @@ function pushOrderCloud(order) {
       payment: order.payment || "",
       scheduleDay: order.scheduleDay || "",
       scheduleTime: order.scheduleTime || "",
+      closedWhenOrdered: order.closedWhenOrdered || false,
       createdAt: order.createdAt || ""
     }
   };
@@ -3616,6 +3617,7 @@ function renderCheckout() {
   const dayOptions = `<option>اليوم · ${dayFmt.format(today)}</option><option>غداً · ${dayFmt.format(tomorrow)}</option>`;
   return `
     <section class="page-hero compact checkout-hero"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>إتمام الطلب</strong></div><h1>إتمام طلبك</h1><p>راجع التفاصيل وحدد طريقة الاستلام والدفع.</p></div></section>
+    ${!isStoreOpenNow(store) ? `<div class="container"><div class="review-note order-closed-note" style="margin-top:16px">${icon("clock")} <span><strong>المتجر مغلق الآن.</strong><small>يمكنك إتمام طلبك الآن، وسيتم تنفيذه في اليوم التالي عند فتح المتجر.</small></span></div></div>` : ""}
     <section class="section checkout-section">
       <form class="container checkout-grid" id="checkout-form">
         <div class="checkout-forms">
@@ -5831,6 +5833,9 @@ document.addEventListener("submit", async event => {
     state.customerProfile = { ...state.customerProfile, name: contactName, phone: contactPhone };
     const finalTotal = totals.subtotal + (isPickup ? 0 : totals.delivery);
     const storeId = state.cart[0].storeId;
+    // If the store is outside its working hours, the order is still accepted but
+    // will only be fulfilled the next working day — flag it and tell the customer.
+    const storeClosedNow = !isStoreOpenNow(getStore(storeId));
     const addrObj = isPickup ? null : (getCheckoutAddress(els.address.value) || getDefaultAddress());
     // Snapshot exactly what was ordered (incl. productId so reorder can rebuild it).
     const lineItems = state.cart.map(it => {
@@ -5855,6 +5860,7 @@ document.addEventListener("submit", async event => {
       payment: els.payment?.value === "cash" ? "الدفع عند الاستلام" : "الدفع بالبطاقة",
       scheduleDay: els.day?.value || "",
       scheduleTime: els.time?.value || "",
+      closedWhenOrdered: storeClosedNow,
       deliveryDetails: isPickup ? null : totals.quote,
       createdAt: new Date().toISOString()
     };
@@ -5878,8 +5884,9 @@ document.addEventListener("submit", async event => {
           <span>${icon("box")}<small>المنتجات</small><b>${itemCount.toLocaleString("ar")}</b></span>
           <span>${icon("wallet")}<small>الإجمالي</small><b>${money(finalTotal)}</b></span>
           <span>${icon(isPickup ? "store" : "bike")}<small>${isPickup ? "الاستلام" : "التوصيل إلى"}</small><b>${isPickup ? "من المتجر" : (newOrder.address || "عنوانك")}</b></span>
-          <span>${icon("clock")}<small>الوقت المتوقع</small><b>~${etaMin} دقيقة</b></span>
+          <span>${icon("clock")}<small>${storeClosedNow ? "موعد التنفيذ" : "الوقت المتوقع"}</small><b>${storeClosedNow ? "اليوم التالي" : `~${etaMin} دقيقة`}</b></span>
         </div>
+        ${storeClosedNow ? `<p class="success-note order-closed-note">${icon("clock")} المتجر مغلق الآن — تم استلام طلبك وسيتم تنفيذه في اليوم التالي عند فتح المتجر.</p>` : ""}
         <p class="success-note">${icon("whatsapp")} سنخبرك عبر واتساب على <strong dir="ltr">${escAttr(contactPhone)}</strong> فور تأكيد المتجر.</p>
         <div class="modal-actions"><button class="secondary-button" data-action="close-modal">متابعة التسوق</button><button class="primary-button" data-action="go-orders">تتبّع الطلب</button></div>`, "success-modal");
     };

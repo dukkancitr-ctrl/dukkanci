@@ -3410,6 +3410,22 @@ img {
   gap: 9px;
 }
 
+.review-note.order-closed-note {
+  background: #fff0ed;
+  color: #b85046;
+}
+
+.review-note.order-closed-note small {
+  color: #c2675c;
+}
+
+p.success-note.order-closed-note {
+  background: #fff0ed;
+  color: #b85046;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
 .review-note > span {
   display: flex;
   flex-direction: column;
