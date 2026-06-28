@@ -1258,13 +1258,87 @@ function categoryCard(name, image, caption) {
   `;
 }
 
+// --- Automatic open/closed by working hours -------------------------------
+// Stores carry a free-text `hours` string (e.g. "يومياً من 2:00 ظهراً حتى 1:00
+// منتصف الليل"). We parse it and compare against the store's local time (Turkey
+// and Syria are both UTC+3 year-round) so a visitor in any timezone sees the
+// store's real status. Unparseable hours fail OPEN; a manual owner-close wins.
+const STORE_TZ_OFFSET_MIN = 3 * 60; // UTC+3
+const HOURS_DAY_NAMES = [
+  ["الأحد", "الاحد"],
+  ["الإثنين", "الاثنين"],
+  ["الثلاثاء"],
+  ["الأربعاء", "الاربعاء"],
+  ["الخميس"],
+  ["الجمعة"],
+  ["السبت"],
+];
+
+function nowInStoreTz() {
+  const now = new Date();
+  return new Date(now.getTime() + now.getTimezoneOffset() * 60000 + STORE_TZ_OFFSET_MIN * 60000);
+}
+
+function hoursTimeToMinutes(hour, minute, marker) {
+  const m = (marker || "").trim();
+  // AM markers: ص / صباحاً / فجراً / منتصف الليل. Everything else (م / مساءً /
+  // ظهراً / عصراً / ليلاً / بعد الظهر) is treated as PM.
+  const isAM = !m || /^(منتصف|صباح|فجر|ص)/.test(m);
+  let h = hour % 12;
+  if (!isAM) h += 12;
+  if (!m) h = hour % 24; // no marker → take the literal 24h value
+  return ((h % 24) * 60 + minute) % 1440;
+}
+
+function parseHoursTimeRange(text) {
+  const re = /(\d{1,2})(?::(\d{2}))?\s*(منتصف\s*الليل|بعد\s*الظهر|صباحاً|صباحا|مساءً|مساءاً|مساء|ظهراً|ظهرا|عصراً|عصرا|ليلاً|ليلا|فجراً|فجرا|ص|م)?/g;
+  const times = [];
+  let m;
+  while ((m = re.exec(text)) && times.length < 2) {
+    const h = parseInt(m[1], 10);
+    const min = m[2] ? parseInt(m[2], 10) : 0;
+    if (h > 23 || min > 59) continue;
+    times.push(hoursTimeToMinutes(h, min, m[3]));
+  }
+  if (times.length < 2) return null;
+  return { open: times[0], close: times[1] };
+}
+
+// Returns "open" | "closed" | null (null = unknown → caller should fail open).
+function storeHoursStatus(hoursText) {
+  if (!hoursText) return null;
+  const t = String(hoursText).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  if (/على\s*مدار\s*الساعة/.test(t)) return "open";
+  const now = nowInStoreTz();
+  const day = now.getDay();
+  // Day-specific closures, e.g. "(الأحد مغلق)".
+  for (const name of HOURS_DAY_NAMES[day]) {
+    if (new RegExp(name + "\\s*مغلق").test(t)) return "closed";
+  }
+  const range = parseHoursTimeRange(t);
+  if (!range) return null;
+  if (range.open === range.close) return "open"; // full-day range
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const within = range.open < range.close
+    ? cur >= range.open && cur < range.close
+    : cur >= range.open || cur < range.close; // overnight wrap
+  return within ? "open" : "closed";
+}
+
+// Effective open state: a manual owner-close always wins; otherwise derive it
+// from the working hours, defaulting to open when they can't be parsed.
+function isStoreOpenNow(store) {
+  if (!store || store.open === false) return false;
+  return storeHoursStatus(store.hours) !== "closed";
+}
+
 function storeCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   return `
     <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""} ${hasBannerCover(store) ? "store-card--banner" : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
-        <span class="status-badge ${store.open ? "open" : "closed"}">${store.open ? "مفتوح" : "مغلق الآن"}</span>
+        <span class="status-badge ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح" : "مغلق الآن"}</span>
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
         ${store.hasOffer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
       </button>
@@ -1564,12 +1638,12 @@ function getFilteredStores() {
   if (state.storeSort === "rating") result.sort((a, b) => b.rating - a.rating);
   else if (state.storeSort === "delivery") result.sort((a, b) => deliverySortValue(a) - deliverySortValue(b));
   else if (state.storeSort === "distance") result.sort(compareStoresByDistance);
-  else if (state.storeSort === "open") result.sort((a, b) => Number(b.open) - Number(a.open));
+  else if (state.storeSort === "open") result.sort((a, b) => Number(isStoreOpenNow(b)) - Number(isStoreOpenNow(a)));
   else if (state.storeSort === "offers") result.sort((a, b) => Number(b.hasOffer) - Number(a.hasOffer));
   else if (state.userLocation) {
     // Default "recommended" view: once we know where the visitor is, surface the
     // genuinely nearest stores (open ones first) instead of the bundled order.
-    result.sort((a, b) => Number(b.open) - Number(a.open) || compareStoresByDistance(a, b));
+    result.sort((a, b) => Number(isStoreOpenNow(b)) - Number(isStoreOpenNow(a)) || compareStoresByDistance(a, b));
   }
   return result;
 }
@@ -1682,7 +1756,7 @@ function renderStorePage(id) {
         <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""} ${hasBannerCover(store) ? "store-cover--banner" : ""}">
           <img src="${store.coverImage || store.image}" alt="${store.name}">
           <div class="store-cover__gradient"></div>
-          <span class="status-badge large ${store.open ? "open" : "closed"}">${store.open ? "مفتوح ويستقبل الطلبات" : "مغلق حالياً"}</span>
+          <span class="status-badge large ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح ويستقبل الطلبات" : "مغلق الآن"}</span>
           ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
         </div>
         ${store.subscriptionActive === false ? `<div class="store-closed-banner review-note" style="margin:12px 0">${icon("shield")} <span><strong>هذا المتجر لا يستقبل طلبات حالياً.</strong><small>اشتراك المتجر منتهٍ — يمكنك تصفّح المنتجات، وسيعود الطلب فور تجديد المتجر لاشتراكه.</small></span></div>` : ""}
@@ -3798,7 +3872,15 @@ function render() {
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   hydrateIcons(app);
   updateCartBadges();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  // Only reset scroll on actual navigation (route/id change). Data-refresh
+  // re-renders (catalog load, site settings, polling) must preserve the user's
+  // scroll position — otherwise the page snaps to top a few seconds after load
+  // when the async full-catalog fetch completes.
+  const navKey = route + "/" + (id || "");
+  if (navKey !== state._lastNavKey) {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    state._lastNavKey = navKey;
+  }
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
   if (route === "join") setTimeout(openJoinModal, 0);
   if (route === "store" || route === "product" || route === "offers") hydratePageData();
@@ -4203,17 +4285,66 @@ function captureUserLocation() {
   );
 }
 
-// On every page open we attempt to detect the location automatically. If the
-// permission is already granted this resolves silently; if denied/unavailable
-// the pill falls back to "حدّد موقعك" (or the last saved location).
-function initUserLocation() {
-  updateLocationPill();
+// Detect the location silently — used when the browser has ALREADY granted the
+// geolocation permission, so no native prompt appears.
+function detectLocationSilently() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(
     position => applyUserPosition({ lat: position.coords.latitude, lng: position.coords.longitude }, { silent: true }),
     () => { state.locatingUser = false; updateLocationPill(); },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
   );
+}
+
+// Welcome + location-consent modal. Greets the visitor as "دكانجي ماركت بليس"
+// and asks for an explicit tap before triggering the browser's location prompt,
+// so the native dialog arrives with context (instead of cold on page load).
+function showWelcomeLocationModal() {
+  try { localStorage.setItem("dukkanci-welcomed", "1"); } catch {}
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="welcome-modal">
+      <div class="welcome-modal__icon">${icon("pin")}</div>
+      <h2 class="welcome-modal__title">مرحباً بك في دكانجي ماركت بليس</h2>
+      <p class="welcome-modal__sub">منصّتك للطلب من متاجر ومطاعم حيّك بسهولة. اسمح لنا بتحديد موقعك لنعرض لك المتاجر الأقرب إليك ونحسب التوصيل تلقائياً.</p>
+      <div class="welcome-modal__actions">
+        <button class="primary-button full large" data-action="welcome-allow-location">${icon("pin")} اسمح بتحديد موقعي</button>
+        <button class="text-button" data-action="welcome-later">تصفّح بدون تحديد الموقع</button>
+      </div>
+      <small class="welcome-modal__note">يمكنك تغيير موقعك في أي وقت من شريط العنوان بالأعلى.</small>
+    </div>
+  `, "welcome-location-modal");
+}
+
+// On every page open: if the location is already authorized, resolve it
+// silently; otherwise greet the visitor once and ask for consent before
+// prompting. Deep-links into admin/merchant/checkout are never interrupted.
+function initUserLocation() {
+  updateLocationPill();
+  if (!navigator.geolocation) return;
+  // We already know where the visitor is (saved from a previous visit) — just
+  // refresh it quietly, no welcome needed.
+  if (state.userLocation) { detectLocationSilently(); return; }
+
+  const route = parseRoute().route;
+  const intrusive = route === "admin" || route === "merchant" || route === "checkout";
+  const alreadyWelcomed = (() => { try { return localStorage.getItem("dukkanci-welcomed"); } catch { return null; } })();
+
+  const decide = permState => {
+    if (permState === "granted") { detectLocationSilently(); return; }
+    if (permState === "denied") return; // pill stays on "حدّد موقعك"
+    // "prompt" (or unknown): show the welcome consent — but only once per device
+    // and never over a sensitive deep-link.
+    if (!alreadyWelcomed && !intrusive) showWelcomeLocationModal();
+  };
+
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: "geolocation" })
+      .then(status => decide(status.state))
+      .catch(() => decide("prompt"));
+  } else {
+    decide("prompt");
+  }
 }
 
 function isProfileComplete() {
@@ -5172,6 +5303,13 @@ document.addEventListener("click", event => {
   }
   if (action === "location") {
     captureUserLocation();
+  }
+  if (action === "welcome-allow-location") {
+    closeModal();
+    captureUserLocation();
+  }
+  if (action === "welcome-later") {
+    closeModal();
   }
   if (action === "install-app") {
     if (state.deferredInstall) {

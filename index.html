@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#e30613">
     <meta name="google-site-verification" content="0GOuXKhhzbC98atjp_3M6WOHvPquirS6-3zu7Ka2nLg" />
     <meta name="description" content="دكانجي - اطلب من متاجر حيك بسهولة">
@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://tzcqnqzltrjemdnkzpzn.supabase.co" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=104">
+    <link rel="stylesheet" href="/styles.css?v=105">
     <title>دكانجي | سوق الحي بين يديك</title>
     <meta property="og:type" content="website">
     <meta property="og:title" content="دكانجي | سوق الحي بين يديك">
@@ -192,8 +192,24 @@
     <script src="/hallab-data.js?v=126"></script>
     <script src="/safa-data.js?v=126"></script>
     <script src="/rody-data.js?v=126"></script>
-    <script src="/app.js?v=152"></script>
+    <script src="/app.js?v=155"></script>
     <script src="/integrations.js?v=82"></script>
+    <script>
+      // منع التقريب (pinch / double-tap) على iOS Safari الذي يتجاهل user-scalable=no
+      (function () {
+        // إيماءة التكبير بإصبعين
+        document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+        document.addEventListener('gesturechange', function (e) { e.preventDefault(); }, { passive: false });
+        document.addEventListener('gestureend', function (e) { e.preventDefault(); }, { passive: false });
+        // النقر المزدوج للتكبير
+        var lastTouch = 0;
+        document.addEventListener('touchend', function (e) {
+          var now = Date.now();
+          if (now - lastTouch <= 300) { e.preventDefault(); }
+          lastTouch = now;
+        }, { passive: false });
+      })();
+    </script>
   </body>
 </html>
 
