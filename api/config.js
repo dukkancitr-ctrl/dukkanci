@@ -12,10 +12,15 @@ module.exports = (request, response) => {
   // Public Whop checkout link for the store subscription (used by the merchant
   // "renew" button). Falls back to the live Dukkanci product link.
   const whopCheckoutUrl = (process.env.WHOP_CHECKOUT_URL || "https://whop.com/dukkanci/dukkanci-store-subscription/").trim();
+  // Public VAPID key for Web Push subscriptions (safe to expose — it is the
+  // "application server key" the browser needs to subscribe). The matching
+  // private key stays server-side in VAPID_PRIVATE_KEY (api/notify-order.js).
+  const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || "").trim();
   return response.status(200).json({
     url,
     anonKey,
     whopCheckoutUrl,
+    vapidPublicKey,
     configured: Boolean(url && anonKey)
   });
 };

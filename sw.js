@@ -1,11 +1,11 @@
-const CACHE = "dukkanci-v138";
+const CACHE = "dukkanci-v141";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=102",
+  "/styles.css?v=106",
   "/store-slugs.js?v=81",
   "/category-slugs.js?v=81",
-  "/supabase-config.js?v=81",
+  "/supabase-config.js?v=82",
   "/heelal-products.js?v=126",
   "/alsultan-data.js?v=126",
   "/zaitoune-data.js?v=126",
@@ -32,7 +32,7 @@ const APP_SHELL = [
   "/alfursan-data.js?v=126",
   "/hallab-data.js?v=126",
   "/safa-data.js?v=126",
-  "/app.js?v=151",
+  "/app.js?v=157",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
@@ -159,6 +159,47 @@ self.addEventListener("fetch", event => {
           return response;
         })
         .catch(() => caches.match("/index.html"));
+    })
+  );
+});
+
+// ───────────────────────── Web Push notifications ─────────────────────────
+// The server (api/notify-order.js) sends an encrypted push with a JSON payload:
+//   { title, body, url, tag, icon }
+// We show it as a system notification; a tap focuses an existing tab on `url`
+// (or opens a new one). Payload is optional — fall back to a generic message so a
+// keep-alive/empty push never shows a blank notification.
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || "دكانجي";
+  const options = {
+    body: data.body || "",
+    icon: data.icon || "/assets/dukkanci-app-icon-192.png",
+    badge: "/assets/dukkanci-mark.png?v=86",
+    tag: data.tag || undefined,            // collapse repeats for the same order
+    renotify: !!data.tag,
+    dir: "rtl",
+    lang: "ar",
+    data: { url: data.url || "/" }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        // Focus an open tab on this origin and route it to the target.
+        if ("focus" in client) {
+          client.focus();
+          if ("navigate" in client && target !== "/") { try { client.navigate(target); } catch (e) {} }
+          return;
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     })
   );
 });

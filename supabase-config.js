@@ -28,6 +28,7 @@ window.__supabaseReady = (async () => {
           window.SUPABASE_ANON_KEY = cfg.anonKey;
         }
         if (cfg.whopCheckoutUrl) window.WHOP_CHECKOUT_URL = cfg.whopCheckoutUrl;
+        if (cfg.vapidPublicKey) window.VAPID_PUBLIC_KEY = cfg.vapidPublicKey;
       }
     }
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && window.supabase?.createClient) {

@@ -1,7 +1,18 @@
 // Human-readable English slugs for store URLs: /store/<slug> instead of /store/<id>.
 // Single source of truth shared by the SPA (app.js, as a global), the SSR route
 // (api/store.js) and the sitemap (api/sitemap.js, via require). Numeric /store/<id>
-// URLs keep working for backward compatibility. When adding a store, add its slug here.
+// URLs keep working for backward compatibility.
+//
+// RULE (mandatory for every new store): a store MUST never be exposed by its numeric
+// id. Before a store goes live, add a clean Latin slug here keyed by its id. The site
+// canonical, sitemap and in-app links all read this map, so a missing entry leaks an
+// ugly /store/<number> URL. Conventions, matching the entries below:
+//   • Latin letters, lowercase, words joined by "-"; no Arabic, spaces or punctuation.
+//   • Restaurants end in "-restaurant"; markets "-market"; sweets "-sweets"; butchers
+//     "-butcher". Multi-branch brands: "<brand>-<type>-<area>" (e.g. anas-chicken-taksim).
+//   • Base the slug on the store's real Latin/brand name (from the menu/source), not a
+//     transliteration of the Arabic — e.g. "anas-chicken", not "mataam-anas".
+//   • Keep slugs unique and stable; once published, never rename (it breaks live links).
 const STORE_SLUGS = {
   5: "alheelal-butcher",
   6: "alsultan-sweets-fatih",
@@ -40,7 +51,15 @@ const STORE_SLUGS = {
   39: "zaitoune-sweets-findikzade",
   40: "zaitoune-sweets-florya",
   41: "zaitoune-sweets-fatih",
-  42: "zaitoune-sweets-zeytinburnu"
+  42: "zaitoune-sweets-zeytinburnu",
+  44: "anas-chicken-aksaray",
+  45: "anas-chicken-taksim",
+  46: "anas-chicken-kayasehir",
+  47: "mandy-meydan-restaurant",
+  48: "alfursan-restaurant",
+  49: "hallab-1881-restaurant",
+  50: "safa-alsham-market",
+  51: "rody-restaurant"
 };
 
 // Reverse: slug -> id.

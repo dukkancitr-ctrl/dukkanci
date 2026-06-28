@@ -3334,6 +3334,87 @@ img {
   transform: translateX(50%);
 }
 
+/* Password field with a show/hide toggle */
+.pw-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.pw-input input {
+  flex: 1;
+  width: 100%;
+  padding-left: 44px;
+}
+.pw-toggle {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.pw-toggle:hover { background: rgba(0,0,0,.05); }
+.pw-toggle.is-on { color: var(--red, #e30613); }
+.pw-toggle svg { width: 20px; height: 20px; }
+
+/* Sign in / sign up switch + forgot-password links */
+.auth-switch {
+  text-align: center;
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.auth-switch .text-button { font-weight: 700; }
+.auth-forgot {
+  display: block;
+  margin: -4px 0 12px auto;
+  font-size: 13px;
+}
+
+/* Join modal: the account-creation section above the store fields */
+.join-account { margin-bottom: 6px; }
+.join-account__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--red-soft, #fdeaec);
+  color: var(--ink, #1f2430);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  margin: 0 0 14px;
+}
+.join-account__hint svg { width: 18px; height: 18px; flex: none; color: var(--red, #e30613); margin-top: 1px; }
+
+/* Post-creation onboarding checklist */
+.onboarding-checklist {
+  list-style: none;
+  margin: 18px 0 6px;
+  padding: 0;
+  text-align: right;
+  display: grid;
+  gap: 10px;
+}
+.onboarding-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-2, #f7f8fa);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.onboarding-checklist li svg { width: 22px; height: 22px; flex: none; color: var(--red, #e30613); }
+
 .input-label {
   margin-bottom: 14px;
   text-align: right;

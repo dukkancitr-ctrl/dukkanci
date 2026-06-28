@@ -238,7 +238,8 @@ const state = {
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   // Admin-issued phone+password merchant session (server-verified, subscription-gated).
   merchantPwAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-session") || "null"),
-  merchantLoginMode: "password",
+  merchantLoginMode: "email",
+  merchantEmailMode: "signin",
   adminTab: "overview",
   adminContentSection: null,
   siteSettings: {},
@@ -340,6 +341,22 @@ const SLUG_TO_ID = (typeof STORE_SLUG_TO_ID !== "undefined") ? STORE_SLUG_TO_ID 
 // The URL segment for a store: its English slug if defined, else the numeric id.
 function storeParam(store) {
   return (store && SLUG_MAP[store.id]) || (store && store.id) || "";
+}
+
+// Rule guard: every VISIBLE store MUST have a clean Latin slug in store-slugs.js — a
+// missing one leaks an ugly /store/<number> URL. Warn loudly in dev so it's fixed
+// before deploy. Hidden stores (pending/rejected) are skipped — they're never exposed.
+function warnUnslugged() {
+  try {
+    const visible = store => typeof isStoreApproved !== "function" || isStoreApproved(store);
+    const missing = stores.filter(store => store && store.id != null && !SLUG_MAP[store.id] && visible(store));
+    if (missing.length) {
+      console.warn(
+        "[dukkanci] متاجر بلا رابط نظيف (أضِف slug في store-slugs.js):",
+        missing.map(store => `${store.id} → ${store.name}`)
+      );
+    }
+  } catch (e) { /* never block boot over a dev check */ }
 }
 
 function getStore(id) {
@@ -488,6 +505,7 @@ async function loadCatalogFromSupabase() {
     const published = applyPublishingRules(mapped);
     products.length = 0; published.forEach(p => products.push(p));
     console.info(`Supabase: loaded ${stores.length} stores, ${published.length}/${mapped.length} products (publishing rules dropped ${mapped.length - published.length})`);
+    warnUnslugged();   // flag any visible store still exposed by its numeric id
     return true;
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
@@ -694,11 +712,16 @@ function notifyOrderWhatsapp(order) {
 function notifyOrderStatusWhatsapp(order, note) {
   try {
     const store = getStore(order.storeId);
+    // Send whatever auth the dashboard has so the server can authorize the call:
+    // admins use the admin token; phone+password merchants use the merchant token.
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
     fetch("/api/notify-order?action=status", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
-        id: order.id, customerPhone: order.customerPhone,
+        id: order.id, storeId: order.storeId, customerPhone: order.customerPhone,
         storeName: store ? store.name : "المتجر", status: order.status, note: note || ""
       })
     }).catch(() => {});
@@ -873,7 +896,11 @@ async function initAuth() {
   if (!sb || !sb.auth) return;
   try {
     const { data } = await sb.auth.getSession();
-    if (data && data.session) { state.user = data.session.user; applyUserToProfile(state.user); }
+    if (data && data.session) {
+      state.user = data.session.user; applyUserToProfile(state.user);
+      // Returning from an email-confirmation / Google redirect mid-signup → finish the store.
+      if (hasPendingJoin()) setTimeout(finalizePendingJoin, 0);
+    }
   } catch (e) { /* ignore */ }
   updateAccountButton();
   sb.auth.onAuthStateChange((event, session) => {
@@ -881,10 +908,136 @@ async function initAuth() {
     if (state.user) applyUserToProfile(state.user);
     else if (event === "SIGNED_OUT") clearUserIdentity();
     updateAccountButton();
-    if (event === "SIGNED_IN") { state._merchantResolved = false; state._merchantResolving = false; closeModal(); showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success"); }
+    if (event === "SIGNED_IN") {
+      state._merchantResolved = false; state._merchantResolving = false; closeModal();
+      // If the user authenticated mid-way through creating a store, finish it now.
+      if (hasPendingJoin()) { finalizePendingJoin(); }
+      else showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success");
+    }
     if (event === "SIGNED_OUT") { state.merchantAuth = null; state.merchantStores = null; state._merchantResolved = false; showToast("تم تسجيل الخروج", "success"); }
     if (state.route === "orders" || state.route === "merchant") render();
   });
+}
+
+// ---- Auth / verification feature flags ----------------------------------
+// Phone-number login and OTP verification (WhatsApp / SMS) are turned OFF until
+// the WhatsApp/OTP delivery service is operational. The whole phone-OTP code
+// path is kept intact behind these flags — flip a flag to `true` to re-enable
+// it instantly with no other change.
+const AUTH_FLAGS = {
+  phoneOtpLogin: false, // Supabase phone OTP login (customer + merchant)
+  checkoutOtp: false    // WhatsApp OTP gate before placing an order
+};
+
+// Friendly Arabic message for a Supabase auth error.
+function authErrorAr(error, fallback) {
+  const m = (error && error.message) || "";
+  if (/Email not confirmed/i.test(m)) return "لم تُفعّل بريدك بعد. افتح رسالة التفعيل في بريدك ثم سجّل الدخول.";
+  if (/Invalid login credentials/i.test(m)) return "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
+  if (/User already registered|already been registered/i.test(m)) return "هذا البريد مسجّل من قبل. سجّل الدخول بدل إنشاء حساب.";
+  if (/Password should be at least|at least 6/i.test(m)) return "كلمة المرور قصيرة جداً (٦ أحرف على الأقل).";
+  if (/rate limit|too many/i.test(m)) return "محاولات كثيرة، انتظر قليلاً ثم حاول مجدداً.";
+  if (/provider is not enabled|not enabled|not configured/i.test(m)) return "خدمة الدخول غير مُفعّلة بعد في الإعدادات.";
+  if (/network|fetch/i.test(m)) return "تعذّر الاتصال بالخادم. تحقّق من اتصالك ثم حاول مجدداً.";
+  return fallback || (m || "تعذّر إتمام العملية، حاول مجدداً.");
+}
+
+// Basic email shape check (UI-side only; Supabase is the source of truth).
+function isValidEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim());
+}
+
+// Sign in with email + password. On success, onAuthStateChange(SIGNED_IN)
+// closes the modal and refreshes the UI. Returns true on success.
+async function signInWithEmail(email, password, { errEl, btn } = {}) {
+  const sb = window.supabaseClient;
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  if (errEl) errEl.hidden = true;
+  if (!isValidEmail(email)) { showErr("أدخل بريداً إلكترونياً صحيحاً."); return false; }
+  if (!password) { showErr("أدخل كلمة المرور."); return false; }
+  if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return false; }
+  const restore = setBtnBusy(btn, "جارٍ الدخول…");
+  const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+  if (error) { restore(); showErr(authErrorAr(error, "تعذّر تسجيل الدخول.")); return false; }
+  return true; // SIGNED_IN handler takes over
+}
+
+// Create an account with email + password. `meta` is stored on the user
+// (e.g. full_name). Handles the email-confirmation case gracefully: if the
+// Supabase project requires confirmation, no session is returned — we surface a
+// "check your inbox" state instead of pretending the user is logged in.
+async function signUpWithEmail(email, password, meta = {}, { errEl, btn, onConfirmNeeded } = {}) {
+  const sb = window.supabaseClient;
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  if (errEl) errEl.hidden = true;
+  if (!isValidEmail(email)) { showErr("أدخل بريداً إلكترونياً صحيحاً."); return false; }
+  if (!password || password.length < 6) { showErr("اختر كلمة مرور من ٦ أحرف على الأقل."); return false; }
+  if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return false; }
+  const restore = setBtnBusy(btn, "جارٍ إنشاء الحساب…");
+  const { data, error } = await sb.auth.signUp({
+    email: email.trim(), password,
+    options: { data: meta, emailRedirectTo: location.origin + location.pathname }
+  });
+  if (error) { restore(); showErr(authErrorAr(error, "تعذّر إنشاء الحساب.")); return false; }
+  // Session present → confirmation disabled → user is logged in immediately.
+  if (data && data.session) return true; // SIGNED_IN handler takes over
+  // No session → email confirmation required.
+  restore();
+  if (typeof onConfirmNeeded === "function") onConfirmNeeded(email.trim());
+  return "confirm";
+}
+
+// Send a password-reset email. Best-effort; we always show the same neutral
+// message so the form can't be used to probe which emails exist.
+async function sendPasswordReset(email, { errEl, btn } = {}) {
+  const sb = window.supabaseClient;
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
+  if (!isValidEmail(email)) { showErr("أدخل بريدك الإلكتروني أولاً ثم اضغط \"نسيت كلمة المرور\"."); return; }
+  if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return; }
+  const restore = setBtnBusy(btn, "جارٍ الإرسال…");
+  try { await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: location.origin + location.pathname }); }
+  catch (e) { /* ignore — neutral response below */ }
+  restore();
+  showToast("إن كان البريد مسجّلاً ستصلك رسالة لإعادة تعيين كلمة المرور.", "success");
+}
+
+// Toggle a submit button into a busy state and return a restore() callback.
+function setBtnBusy(btn, label) {
+  if (!btn) return () => {};
+  btn.disabled = true;
+  btn.dataset.label = btn.dataset.label || btn.innerHTML;
+  btn.textContent = label;
+  return () => { btn.disabled = false; btn.innerHTML = btn.dataset.label || btn.textContent; };
+}
+
+// Handle the shared email+password auth form (used by the customer login modal
+// and the merchant login screen). data-mode = "signin" | "signup".
+async function submitEmailAuth(form) {
+  const f = new FormData(form);
+  const email = (f.get("email") || "").toString().trim();
+  const password = (f.get("password") || "").toString();
+  const name = (f.get("name") || "").toString().trim();
+  const errEl = form.querySelector(".auth-error") || document.getElementById("email-auth-error");
+  const btn = form.querySelector('button[type="submit"]');
+  if (form.dataset.mode === "signup") {
+    await signUpWithEmail(email, password, name ? { full_name: name } : {}, {
+      errEl, btn, onConfirmNeeded: openCheckEmailModal
+    });
+  } else {
+    await signInWithEmail(email, password, { errEl, btn });
+  }
+}
+
+// Shown after sign-up when the Supabase project requires email confirmation.
+function openCheckEmailModal(email) {
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
+    <h2>فعّل بريدك الإلكتروني</h2>
+    <p>أرسلنا رابط تفعيل إلى <strong dir="ltr">${escAttr(email)}</strong>. افتح الرسالة واضغط الرابط، ثم عُد وسجّل الدخول.</p>
+    <button class="primary-button full large" data-action="auth-switch-signin">${icon("check")} حسناً، سأسجّل الدخول</button>
+    <p class="merchant-auth__note">${icon("shield")} لم تصلك الرسالة؟ تحقّق من مجلد البريد المزعج (Spam).</p>
+  `, "auth-modal");
 }
 
 async function signInWithGoogle() {
@@ -992,6 +1145,9 @@ async function sendOrderOtpRequest(phone) {
 // (soft fail) or the network is down, fall through and place the order so a real
 // customer is never blocked; once the OTP template is live it enforces automatically.
 async function startCheckoutOtp(phone, displayPhone, onVerified) {
+  // OTP verification is disabled until the WhatsApp/SMS service is live. Place the
+  // order directly. Flip AUTH_FLAGS.checkoutOtp to re-enable the gate.
+  if (!AUTH_FLAGS.checkoutOtp) { onVerified(); return; }
   pendingOtpCommit = onVerified;
   showToast("جارٍ إرسال رمز التحقق إلى واتساب…");
   const r = await sendOrderOtpRequest(phone);
@@ -2394,8 +2550,8 @@ function merchantIntegrations() {
 // one-time code sent to the store's WhatsApp/SMS number, or Google. Knowing a
 // store's public number is no longer enough; you must RECEIVE the code on it.
 function merchantLogin() {
-  // Secondary path: the original WhatsApp-OTP login (kept, behind a toggle).
-  if (state.merchantLoginMode === "otp") {
+  // Secondary, flag-gated path: WhatsApp-OTP login (kept for when the service is live).
+  if (state.merchantLoginMode === "otp" && AUTH_FLAGS.phoneOtpLogin) {
     return `
     <div class="merchant-auth">
       <form class="merchant-auth__card" id="login-form">
@@ -2406,31 +2562,52 @@ function merchantLogin() {
         <p class="auth-error" id="login-error" hidden></p>
         <button class="primary-button full large" type="submit">${icon("whatsapp")} إرسال رمز التحقق</button>
         <div class="merchant-auth__divider"><span>أو</span></div>
-        <button type="button" class="secondary-button full" data-action="merchant-password-login">${icon("shield")} دخول باسم المستخدم وكلمة المرور</button>
+        <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بالبريد وكلمة المرور</button>
         <button type="button" class="secondary-button full" data-action="merchant-google">متابعة عبر Google</button>
-        <p class="merchant-auth__note">${icon("shield")} دخول آمن عبر رمز تحقّق. للمساعدة تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
       </form>
     </div>
   `;
   }
-  // Default: admin-issued credentials — username = store mobile number, password
-  // generated by the admin and handed over after the subscription is paid.
-  return `
+  // Secondary path: admin-issued credentials — username = store mobile number,
+  // password generated by the admin and handed over after the subscription is paid.
+  if (state.merchantLoginMode === "admin") {
+    return `
     <div class="merchant-auth">
       <form class="merchant-auth__card" id="merchant-pw-form">
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
-        <h2>لوحة المتجر</h2>
-        <p>سجّل الدخول باسم المستخدم (رقم موبايل متجرك) وكلمة المرور التي زوّدتك بها إدارة دكانجي بعد تفعيل اشتراكك.</p>
+        <h2>دخول إدارة دكانجي</h2>
+        <p>للمتاجر المُفعّلة باشتراك: سجّل الدخول باسم المستخدم (رقم موبايل متجرك) وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
         <label class="input-label"><span>اسم المستخدم (رقم الموبايل)</span><input name="username" type="tel" inputmode="tel" autocomplete="username" required placeholder="05XX XXX XX XX" dir="ltr"></label>
-        <label class="input-label"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"></label>
-        <p class="auth-error" id="merchant-pw-error" hidden></p>
+        <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
+        <p class="auth-error" id="merchant-pw-error" role="alert" hidden></p>
         <button class="primary-button full large" type="submit">${icon("shield")} دخول</button>
         <div class="merchant-auth__divider"><span>طرق دخول أخرى</span></div>
-        <button type="button" class="secondary-button full" data-action="merchant-otp">${icon("whatsapp")} دخول برمز واتساب</button>
-        <button type="button" class="secondary-button full" data-action="merchant-google">متابعة عبر Google</button>
+        <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بالبريد وكلمة المرور</button>
+        <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+      </form>
+    </div>
+  `;
+  }
+  // Default: self-serve email + password (or Google). Sign in or create an account.
+  const signup = state.merchantEmailMode === "signup";
+  return `
+    <div class="merchant-auth">
+      <form class="merchant-auth__card" id="email-auth-form" data-mode="${signup ? "signup" : "signin"}">
+        <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
+        <h2>لوحة المتجر</h2>
+        <p>${signup ? "أنشئ حساب متجرك ببريدك الإلكتروني، ثم أكمل بيانات المتجر." : "سجّل الدخول بالبريد الإلكتروني وكلمة المرور، أو عبر Google."}</p>
+        <button type="button" class="google-button" data-action="merchant-google"><b>G</b> المتابعة باستخدام Google</button>
+        <div class="merchant-auth__divider"><span>أو بالبريد الإلكتروني</span></div>
+        ${signup ? `<label class="input-label"><span>اسم صاحب المتجر</span><input name="name" autocomplete="name" placeholder="الاسم الكامل"></label>` : ""}
+        <label class="input-label"><span>البريد الإلكتروني</span><input name="email" type="email" inputmode="email" autocomplete="email" required dir="ltr" placeholder="you@example.com"></label>
+        <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" required dir="ltr" placeholder="${signup ? "٦ أحرف على الأقل" : "••••••••"}"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
+        <p class="auth-error" id="email-auth-error" role="alert" hidden></p>
+        ${signup ? "" : `<button type="button" class="text-button auth-forgot" data-action="forgot-password">نسيت كلمة المرور؟</button>`}
+        <button class="primary-button full large" type="submit">${signup ? "إنشاء الحساب" : "تسجيل الدخول"}</button>
+        <p class="auth-switch">${signup ? `لديك حساب؟ <button type="button" class="text-button" data-action="merchant-email-signin">سجّل الدخول</button>` : `ليس لديك حساب؟ <button type="button" class="text-button" data-action="merchant-email-signup">أنشئ حساباً</button>`}</p>
         <div class="merchant-auth__divider"><span>ليس لديك متجر بعد؟</span></div>
         <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
-        <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+        <button type="button" class="text-button" data-action="merchant-admin-login">${icon("shield")} دخول المتاجر المُفعّلة بكلمة مرور الإدارة</button>
       </form>
     </div>
   `;
@@ -2611,7 +2788,7 @@ function renderMerchant(id) {
                 : `<span class="store-switcher store-switcher--single">${icon("store")} ${escAttr(store.name)}</span>`;
             })()}
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
-            <button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button>
+            <button class="icon-button" data-action="merchant-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button>
             <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
             <button class="icon-button" data-action="merchant-logout" aria-label="تسجيل الخروج" title="تسجيل الخروج">${icon("logout")}</button>
           </div>
@@ -3569,7 +3746,7 @@ function renderAdmin() {
   const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
   const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
   const [title, subtitle] = titles[state.adminTab];
-  return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" aria-label="الإشعارات">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
+  return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
 
 function renderDeliveryQuoteDetails(store, quote, status = "") {
@@ -4465,14 +4642,28 @@ function showToast(message, type = "") {
   setTimeout(() => { toast.classList.remove("show"); setTimeout(() => toast.remove(), 250); }, 3500);
 }
 
-function openLoginModal() {
+function openLoginModal(mode = "signin") {
+  const signup = mode === "signup";
+  // Secondary, flag-gated path: WhatsApp OTP login (kept for when the service is live).
+  const phoneBlock = AUTH_FLAGS.phoneOtpLogin ? `
+    <div class="or-line"><span>أو عبر واتساب</span></div>
+    <form id="login-form"><label class="input-label"><span>رقم واتساب</span><div class="phone-input"><span dir="ltr">+90</span><input name="phone" type="tel" required placeholder="555 000 00 00" dir="ltr"></div></label><p class="auth-error" id="login-error" hidden></p><button class="secondary-button full" type="submit">${icon("whatsapp")} إرسال رمز التحقق</button></form>` : "";
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
-    <h2>أهلاً بك في دكانجي</h2><p>سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك.</p>
+    <h2>${signup ? "أنشئ حسابك في دكانجي" : "أهلاً بك في دكانجي"}</h2><p>${signup ? "أنشئ حساباً ببريدك الإلكتروني لمتابعة طلباتك وحفظ عناوينك." : "سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك."}</p>
     <button class="google-button" data-action="google-login"><b>G</b> المتابعة باستخدام Google</button>
-    <div class="or-line"><span>أو</span></div>
-    <form id="login-form"><label class="input-label"><span>رقم واتساب</span><div class="phone-input"><span dir="ltr">+90</span><input name="phone" type="tel" required placeholder="555 000 00 00" dir="ltr"></div></label><p class="auth-error" id="login-error" hidden></p><button class="primary-button full large" type="submit">${icon("whatsapp")} إرسال رمز التحقق</button></form>
+    <div class="or-line"><span>أو بالبريد الإلكتروني</span></div>
+    <form id="email-auth-form" data-mode="${signup ? "signup" : "signin"}">
+      ${signup ? `<label class="input-label"><span>الاسم</span><input name="name" autocomplete="name" placeholder="الاسم الكامل"></label>` : ""}
+      <label class="input-label"><span>البريد الإلكتروني</span><input name="email" type="email" inputmode="email" autocomplete="email" required dir="ltr" placeholder="you@example.com"></label>
+      <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" required dir="ltr" placeholder="${signup ? "٦ أحرف على الأقل" : "••••••••"}"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
+      <p class="auth-error" id="email-auth-error" role="alert" hidden></p>
+      ${signup ? "" : `<button type="button" class="text-button auth-forgot" data-action="forgot-password">نسيت كلمة المرور؟</button>`}
+      <button class="primary-button full large" type="submit">${signup ? "إنشاء الحساب" : "تسجيل الدخول"}</button>
+    </form>
+    <p class="auth-switch">${signup ? `لديك حساب بالفعل؟ <button type="button" class="text-button" data-action="auth-switch-signin">سجّل الدخول</button>` : `ليس لديك حساب؟ <button type="button" class="text-button" data-action="auth-switch-signup">أنشئ حساباً</button>`}</p>
+    ${phoneBlock}
     <small class="auth-terms">بالمتابعة أنت توافق على الشروط وسياسة الخصوصية.</small>
   `, "auth-modal");
 }
@@ -4481,22 +4672,180 @@ function openJoinModal() {
   const jp = (state.siteSettings && state.siteSettings.joinPage) || {};
   const jTitle = jp.title || "انضم إلى دكانجي";
   const jSub = jp.subtitle || "ابدأ باستقبال طلبات جديدة من عملاء منطقتك.";
-  const jNote = jp.note || "بعد الإنشاء تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك، ثم يظهر متجرك للعملاء.";
+  const jNote = jp.note || "يُنشأ متجرك ويُراجَع من الإدارة قبل أن يظهر للعملاء. أثناء المراجعة تدخل لوحة التحكم لإكمال البيانات وإضافة منتجاتك.";
+  const loggedIn = !!state.user;
+  // When not signed in, we create an email+password account as part of the flow
+  // (the store is bound to that account). Signed-in users skip this section.
+  const accountSection = loggedIn ? "" : `
+      <div class="join-account">
+        <p class="join-account__hint">${icon("shield")} لإنشاء متجرك ننشئ لك حساباً بالبريد الإلكتروني للدخول إلى لوحة التحكم.</p>
+        <button type="button" class="google-button" data-action="join-google"><b>G</b> المتابعة باستخدام Google</button>
+        <div class="or-line"><span>أو بالبريد الإلكتروني</span></div>
+        <div class="form-grid">
+          <label><span>البريد الإلكتروني <i class="req">*</i></span><input name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" placeholder="you@example.com"></label>
+          <label><span>كلمة المرور <i class="req">*</i></span><div class="pw-input"><input name="password" type="password" autocomplete="new-password" dir="ltr" placeholder="٦ أحرف على الأقل"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
+        </div>
+      </div>
+      <div class="merchant-auth__divider"><span>بيانات المتجر</span></div>`;
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="join-modal-head"><span>${icon("store")}</span><div><h2>${escAttr(jTitle)}</h2><p>${escAttr(jSub)}</p></div></div>
-    <form id="join-form" class="join-form">
+    <form id="join-form" class="join-form" novalidate>
+      ${accountSection}
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
         <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option>${storeCategoryNames().map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
         <label><span>اسم صاحب المتجر</span><input name="ownerName" autocomplete="name" placeholder="الاسم الكامل"></label>
-        <label><span>رقم واتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">سيكون رقم دخولك للوحة، وعليه تصلك الطلبات.</small></label>
+        <label><span>رقم واتساب للتواصل <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">رقم تواصل المتجر، وعليه تصلك إشعارات الطلبات.</small></label>
         <label class="wide"><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
+        <label class="wide"><span>شعار المتجر (اختياري)</span><input name="logo" type="file" accept="image/*"><small class="field-hint">يساعد عملاءك على التعرّف على متجرك. يمكنك إضافته لاحقاً من اللوحة.</small></label>
       </div>
-      <div class="review-note">${icon("store")} <span><strong>متجرك يُنشأ فوراً</strong><small>${escAttr(jNote)}</small></span></div>
-      <button class="primary-button full large" type="submit">${icon("store")} إنشاء المتجر والدخول</button>
+      <p class="auth-error" id="join-error" role="alert" hidden></p>
+      <div class="review-note">${icon("shield")} <span><strong>يُراجَع متجرك قبل الظهور</strong><small>${escAttr(jNote)}</small></span></div>
+      <button class="primary-button full large" type="submit">${icon("store")} ${loggedIn ? "إنشاء المتجر والدخول" : "إنشاء الحساب والمتجر"}</button>
     </form>
   `, "join-modal");
+}
+
+// Validate a Turkish mobile number (with or without +90 / leading 0). Returns the
+// normalized digits (without country code) or null if it doesn't look valid.
+function normalizeTrMobile(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("0090")) d = d.slice(4);
+  if (d.startsWith("90")) d = d.slice(2);
+  d = d.replace(/^0+/, "");
+  // Turkish mobiles are 10 digits starting with 5 (e.g. 5XX XXX XX XX).
+  return /^5\d{9}$/.test(d) ? d : null;
+}
+
+// Read the store fields out of the join form, validating each. On error it shows
+// a message in #join-error, focuses the offending field, and returns null.
+function readJoinStoreFields(form) {
+  const f = new FormData(form);
+  const errEl = document.getElementById("join-error");
+  const fail = (msg, name) => {
+    if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
+    const el = form.querySelector(`[name="${name}"]`); if (el) el.focus();
+    return null;
+  };
+  const name = (f.get("storeName") || "").toString().trim();
+  const category = (f.get("category") || "").toString().trim();
+  const owner = (f.get("ownerName") || "").toString().trim();
+  const phoneRaw = (f.get("phone") || "").toString().trim();
+  const address = (f.get("address") || "").toString().trim();
+  if (!name) return fail("أدخل اسم المتجر.", "storeName");
+  if (!category) return fail("اختر تصنيف المتجر.", "category");
+  const trMobile = normalizeTrMobile(phoneRaw);
+  if (!trMobile) return fail("أدخل رقم موبايل تركي صحيح (يبدأ بـ 5 ويتكوّن من ١٠ أرقام).", "phone");
+  if (errEl) errEl.hidden = true;
+  return { name, category, owner, phoneRaw: "+90" + trMobile, phoneDigits: trMobile, address };
+}
+
+// Build + register a store from collected join data, bind ownership, and drop the
+// owner into their dashboard. Shared by the immediate and the resumed-after-auth paths.
+function createStoreFromJoinData(data) {
+  const norm = s => (s || "").replace(/\D/g, "");
+  const existing = stores.find(s => norm(s.phone) === data.phoneDigits || norm(s.whatsapp) === data.phoneDigits);
+  if (existing) {
+    closeModal(); state._merchantResolved = false; navigate("merchant");
+    showToast("يوجد متجر بهذا الرقم — سجّل الدخول للوصول إليه", "");
+    return;
+  }
+  const newId = Math.max(0, ...stores.map(s => Number(s.id) || 0)) + 1;
+  const store = {
+    id: newId, name: data.name, category: data.category, ownerName: data.owner,
+    logo: data.name.charAt(0) || "م", image: "/assets/photos/store-market.jpg", coverImage: "/assets/photos/store-market.jpg",
+    logoImage: data.logoDataUrl || "", rating: 0, reviews: 0, newStore: true, delivery: 35, minOrder: 0,
+    time: "", distance: 0, location: undefined, mapUrl: "", open: true, featured: false,
+    hasOffer: false, offer: "", description: "", address: data.address, phone: data.phoneRaw, whatsapp: data.phoneRaw,
+    email: (state.user && state.user.email) || "",
+    website: "", sourceUrl: "", hours: "", areas: data.address ? [data.address] : [],
+    fulfillment: "توصيل واستلام", subscription: "احترافي", orderCount: 0, officialStore: false,
+    approvalStatus: "pending" // hidden from customers until the admin approves it
+  };
+  stores.push(store);
+  pushStoreCloud(store);
+  bindStoreToUser(newId); // link ownership so RLS lets this merchant manage it
+  state.deliverySettings[newId] = { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 };
+  state.merchantStores = [...(state.merchantStores || []), store];
+  state._merchantResolved = true;
+  state.merchantAuth = { storeId: newId, phone: data.phoneDigits, userId: state.user && state.user.id };
+  state.merchantStoreId = newId; state.merchantTab = "store"; state._merchantOrdersFetched = true;
+  saveState(); closeModal(); navigate("merchant");
+  openJoinSuccessModal(store);
+}
+
+// Persist the in-progress store data so it survives an email-confirmation redirect
+// (a full page reload) and is created once the account is authenticated.
+function stashPendingJoin(data) {
+  state._pendingJoin = data;
+  try { localStorage.setItem("dukkanci-pending-join", JSON.stringify(data)); } catch (e) {}
+}
+
+// True if a store-creation is waiting to be finalized (in memory or persisted).
+function hasPendingJoin() {
+  if (state._pendingJoin) return true;
+  try { return !!localStorage.getItem("dukkanci-pending-join"); } catch (e) { return false; }
+}
+
+// Create the stashed store once the user is authenticated (called from SIGNED_IN
+// and on session restore). No-op if there's nothing pending or no session yet.
+function finalizePendingJoin() {
+  let data = state._pendingJoin;
+  if (!data) { try { data = JSON.parse(localStorage.getItem("dukkanci-pending-join") || "null"); } catch (e) { data = null; } }
+  if (!data || !state.user) return;
+  state._pendingJoin = null;
+  try { localStorage.removeItem("dukkanci-pending-join"); } catch (e) {}
+  createStoreFromJoinData(data);
+}
+
+// Post-creation onboarding: confirm success and give a clear next-steps checklist
+// instead of a vanishing toast.
+function openJoinSuccessModal(store) {
+  showModal(`
+    <div class="success-animation">${icon("check")}</div>
+    <h2>تم إنشاء متجرك 🎉</h2>
+    <p><strong>${escAttr(store.name)}</strong> قيد المراجعة من إدارة دكانجي وسيظهر للعملاء بعد الموافقة. أكمل هذه الخطوات الآن من لوحتك:</p>
+    <ul class="onboarding-checklist">
+      <li>${icon("store")} <span>أضف شعار وصورة المتجر</span></li>
+      <li>${icon("box")} <span>أضف أول منتجاتك بالأسعار والصور</span></li>
+      <li>${icon("bike")} <span>اضبط مناطق وأجور التوصيل</span></li>
+      <li>${icon("shield")} <span>فعّل اشتراكك لاستقبال الطلبات</span></li>
+    </ul>
+    <div class="modal-actions"><button class="primary-button" data-action="close-modal">${icon("check")} ابدأ بإكمال متجري</button></div>
+  `, "success-modal");
+}
+
+// Handle the join form submit. Validates store fields; if the user isn't signed in
+// yet, creates an email+password account first and resumes store creation after
+// authentication (no dead-end). Reads the optional logo file inline.
+async function submitJoinForm(form) {
+  const fields = readJoinStoreFields(form);
+  if (!fields) return; // validation already surfaced the error + focused the field
+  const errEl = document.getElementById("join-error");
+  const btn = form.querySelector('button[type="submit"]');
+  // Optional logo → downscaled data URL (kept small for storage).
+  const logoFile = form.querySelector('input[name="logo"]')?.files?.[0];
+  if (logoFile) {
+    try { fields.logoDataUrl = await readImageFileResized(logoFile, 400, 0.85); }
+    catch (e) { /* ignore a bad image — the store can add it later */ }
+  }
+  // Already signed in → create immediately.
+  if (state.user) { createStoreFromJoinData(fields); return; }
+  // Not signed in → create the account, then resume via SIGNED_IN / session restore.
+  const f = new FormData(form);
+  const email = (f.get("email") || "").toString().trim();
+  const password = (f.get("password") || "").toString();
+  if (!isValidEmail(email)) { if (errEl) { errEl.textContent = "أدخل بريداً إلكترونياً صحيحاً لإنشاء حسابك."; errEl.hidden = false; } form.querySelector('[name="email"]')?.focus(); return; }
+  if (!password || password.length < 6) { if (errEl) { errEl.textContent = "اختر كلمة مرور من ٦ أحرف على الأقل."; errEl.hidden = false; } form.querySelector('[name="password"]')?.focus(); return; }
+  stashPendingJoin(fields);
+  const result = await signUpWithEmail(email, password, fields.owner ? { full_name: fields.owner } : {}, {
+    errEl, btn, onConfirmNeeded: openCheckEmailModal
+  });
+  // On immediate session, finalizePendingJoin runs from the SIGNED_IN handler.
+  // On "confirm", the store is created after the user confirms + logs in.
+  // On false (error), drop the stash so a later unrelated login doesn't create it.
+  if (result === false) { state._pendingJoin = null; try { localStorage.removeItem("dukkanci-pending-join"); } catch (e) {} }
 }
 
 function openOrderManager(orderId) {
@@ -4827,6 +5176,18 @@ document.addEventListener("click", event => {
     }
   }
   if (action === "google-login") signInWithGoogle();
+  if (action === "auth-switch-signup") openLoginModal("signup");
+  if (action === "auth-switch-signin") openLoginModal("signin");
+  if (action === "toggle-password") {
+    const wrap = target.closest(".pw-input");
+    const inp = wrap && wrap.querySelector("input");
+    if (inp) { inp.type = inp.type === "password" ? "text" : "password"; target.classList.toggle("is-on", inp.type === "text"); }
+  }
+  if (action === "forgot-password") {
+    const form = target.closest("form");
+    const email = form && form.querySelector('input[name="email"]') ? form.querySelector('input[name="email"]').value : "";
+    sendPasswordReset(email, { errEl: document.getElementById("email-auth-error"), btn: target });
+  }
   if (action === "resend-otp") {
     const sb = window.supabaseClient;
     if (sb && sb.auth) sb.auth.signInWithOtp({ phone: target.dataset.phone, options: { channel: "whatsapp" } }).then(({ error }) => showToast(error ? "تعذّر إعادة الإرسال" : "تم إرسال الرمز مجدداً", error ? "" : "success"));
@@ -4834,6 +5195,23 @@ document.addEventListener("click", event => {
   if (action === "resend-order-otp") resendOrderOtp(target.dataset.phone);
   if (action === "logout") signOutUser();
   if (action === "join-merchant") openJoinModal();
+  if (action === "join-google") {
+    // Stash the store fields, then sign in with Google. After the redirect back,
+    // SIGNED_IN → finalizePendingJoin creates the store.
+    const form = document.getElementById("join-form");
+    const fields = form ? readJoinStoreFields(form) : null;
+    if (!fields) return;
+    const logoFile = form && form.querySelector('input[name="logo"]')?.files?.[0];
+    if (logoFile) {
+      readImageFileResized(logoFile, 400, 0.85).then(
+        d => { fields.logoDataUrl = d; stashPendingJoin(fields); signInWithGoogle(); },
+        () => { stashPendingJoin(fields); signInWithGoogle(); }
+      );
+      return;
+    }
+    stashPendingJoin(fields);
+    signInWithGoogle();
+  }
   if (action === "account-tab") { state.accountTab = target.dataset.tab; render(); }
   if (action === "customer-order-details") openCustomerOrderDetails(target.dataset.id);
   if (action === "reorder") reorderCustomerOrder(target.dataset.id);
@@ -5336,7 +5714,7 @@ document.addEventListener("click", event => {
     localStorage.removeItem("dukkanci-merchant-session");
     if (wasPwSession) {
       // No Supabase session to end — just reset to the login screen.
-      state.merchantLoginMode = "password";
+      state.merchantLoginMode = "email";
       showToast("تم تسجيل الخروج", "success");
       render();
     } else {
@@ -5344,8 +5722,24 @@ document.addEventListener("click", event => {
       showToast("تم تسجيل الخروج", "success");
     }
   }
+  if (action === "merchant-enable-push") {
+    const token = state.merchantPwAuth && state.merchantPwAuth.token;
+    if (!token) { showToast("سجّل الدخول بحساب المتجر (هاتف + كلمة مرور) لتفعيل الإشعارات"); return; }
+    showToast("جارٍ تفعيل الإشعارات…");
+    enablePush({ role: "store", storeId: state.merchantStoreId, token })
+      .then(ok => showToast(ok ? "تم تفعيل إشعارات الطلبات الجديدة 🔔" : "تعذّر تفعيل الإشعارات", ok ? "success" : undefined));
+  }
+  if (action === "admin-enable-push") {
+    if (!state.adminKey) { showToast("سجّل دخول الإدارة أولاً"); return; }
+    showToast("جارٍ تفعيل الإشعارات…");
+    enablePush({ role: "admin", adminToken: state.adminKey })
+      .then(ok => showToast(ok ? "تم تفعيل إشعارات كل الطلبات الجديدة 🔔" : "تعذّر تفعيل الإشعارات", ok ? "success" : undefined));
+  }
   if (action === "merchant-otp") { state.merchantLoginMode = "otp"; render(); }
-  if (action === "merchant-password-login") { state.merchantLoginMode = "password"; render(); }
+  if (action === "merchant-email") { state.merchantLoginMode = "email"; render(); }
+  if (action === "merchant-admin-login") { state.merchantLoginMode = "admin"; render(); }
+  if (action === "merchant-email-signup") { state.merchantEmailMode = "signup"; render(); }
+  if (action === "merchant-email-signin") { state.merchantEmailMode = "signin"; render(); }
   if (action === "merchant-google") signInWithGoogle();
   if (action === "store-approve") {
     const id = Number(target.dataset.id);
@@ -5896,6 +6290,9 @@ document.addEventListener("submit", async event => {
     if (state.verifiedPhone === verifyPhone) commitOrder();
     else startCheckoutOtp(verifyPhone, contactPhone, commitOrder);
   }
+  if (event.target.id === "email-auth-form") {
+    submitEmailAuth(event.target);
+  }
   if (event.target.id === "login-form") {
     sendWhatsappOtp(event.target);
   }
@@ -5909,56 +6306,27 @@ document.addEventListener("submit", async event => {
     verifyOrderOtp(event.target);
   }
   if (event.target.id === "join-form") {
-    // Must be authenticated before creating a store (so we can bind ownership).
-    if (!state.user) { showToast("سجّل الدخول أولاً عبر رمز واتساب لإنشاء متجرك"); closeModal(); navigate("merchant"); return; }
-    const f = new FormData(event.target);
-    const name = (f.get("storeName") || "").toString().trim();
-    const category = (f.get("category") || "").toString().trim();
-    const owner = (f.get("ownerName") || "").toString().trim();
-    const phoneRaw = (f.get("phone") || "").toString().trim();
-    const address = (f.get("address") || "").toString().trim();
-    const norm = s => (s || "").replace(/\D/g, "");
-    const phone = norm(phoneRaw);
-    if (!name || !category || !phone) { showToast("يرجى إكمال الحقول المطلوبة (الاسم، التصنيف، رقم واتساب)"); return; }
-    // A store already exists for this number → don't duplicate; send them to log in.
-    const existing = stores.find(s => norm(s.phone) === phone || norm(s.whatsapp) === phone);
-    if (existing) {
-      closeModal(); state._merchantResolved = false; navigate("merchant");
-      showToast("يوجد متجر بهذا الرقم — سجّل الدخول للوصول إليه", "");
-      return;
-    }
-    const newId = Math.max(0, ...stores.map(s => Number(s.id) || 0)) + 1;
-    const store = {
-      id: newId, name, category, ownerName: owner,
-      logo: name.charAt(0) || "م", image: "/assets/photos/store-market.jpg", coverImage: "/assets/photos/store-market.jpg",
-      logoImage: "", rating: 0, reviews: 0, newStore: true, delivery: 35, minOrder: 0,
-      time: "", distance: 0, location: undefined, mapUrl: "", open: true, featured: false,
-      hasOffer: false, offer: "", description: "", address, phone: phoneRaw, whatsapp: phoneRaw, email: "",
-      website: "", sourceUrl: "", hours: "", areas: address ? [address] : [],
-      fulfillment: "توصيل واستلام", subscription: "احترافي", orderCount: 0, officialStore: false,
-      approvalStatus: "pending" // item 9: hidden from customers until the admin approves it
-    };
-    stores.push(store);
-    pushStoreCloud(store);
-    bindStoreToUser(newId); // link ownership so RLS lets this merchant manage it
-    state.deliverySettings[newId] = { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 };
-    state.merchantStores = [...(state.merchantStores || []), store];
-    state._merchantResolved = true;
-    state.merchantAuth = { storeId: newId, phone, userId: state.user.id };
-    state.merchantStoreId = newId; state.merchantTab = "store"; state._merchantOrdersFetched = true;
-    saveState(); closeModal(); navigate("merchant");
-    showToast("تم استلام طلب إنشاء متجرك! سيظهر للعملاء بعد موافقة الإدارة.", "success");
+    submitJoinForm(event.target);
     return;
   }
   if (event.target.id === "customer-profile-form") {
     const form = new FormData(event.target);
+    const wantNotif = form.get("notifications") === "on";
     state.customerProfile = {
       name: form.get("name").trim(),
       phone: form.get("phone").trim(),
       email: form.get("email").trim(),
-      notifications: form.get("notifications") === "on"
+      notifications: wantNotif
     };
     saveState(); render(); showToast("تم حفظ بيانات حسابك", "success");
+    // Sync the browser push subscription with the toggle. Needs a phone to bind
+    // order-status notifications to this customer.
+    if (wantNotif && state.customerProfile.phone) {
+      enablePush({ role: "customer", customerPhone: state.customerProfile.phone })
+        .then(ok => { if (ok) showToast("تم تفعيل إشعارات حالة الطلب 🔔", "success"); });
+    } else if (!wantNotif) {
+      disablePush();
+    }
   }
   if (event.target.id === "profile-setup-form") {
     const form = new FormData(event.target);
@@ -6096,6 +6464,78 @@ window.addEventListener("beforeinstallprompt", event => {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+
+// ───────────────────────── Web Push subscriptions ─────────────────────────
+// The browser subscribes to push, then we register that subscription with the
+// backend (api/notify-order.js → push_subscriptions). The server later sends an
+// encrypted push on new orders (store/admin) and status changes (customer).
+function pushSupported() {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+async function getVapidKey() {
+  if (window.VAPID_PUBLIC_KEY) return window.VAPID_PUBLIC_KEY;
+  try {
+    const r = await fetch("/api/config", { headers: { Accept: "application/json" } });
+    const j = await r.json();
+    if (j && j.vapidPublicKey) { window.VAPID_PUBLIC_KEY = j.vapidPublicKey; return j.vapidPublicKey; }
+  } catch (e) {}
+  return null;
+}
+// Subscribe this browser and register it with the backend.
+//   meta = { role:'customer', customerPhone }
+//        | { role:'store', storeId, token }      (merchant token)
+//        | { role:'admin', adminToken }
+async function enablePush(meta) {
+  if (!pushSupported()) { showToast("متصفحك لا يدعم الإشعارات"); return false; }
+  let perm = Notification.permission;
+  if (perm === "default") perm = await Notification.requestPermission();
+  if (perm !== "granted") { showToast("لم يتم تفعيل الإشعارات (الإذن مرفوض)"); return false; }
+  const key = await getVapidKey();
+  if (!key) { showToast("الإشعارات غير مُهيّأة على الخادم بعد"); return false; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+    const json = sub.toJSON();
+    const headers = { "Content-Type": "application/json" };
+    if (meta.token) headers["x-merchant-token"] = meta.token;
+    if (meta.adminToken) headers["x-admin-token"] = meta.adminToken;
+    const r = await fetch("/api/notify-order?action=push-subscribe", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        endpoint: json.endpoint, keys: json.keys,
+        role: meta.role || "customer",
+        customerPhone: meta.customerPhone || "",
+        storeId: meta.storeId || null,
+        userAgent: navigator.userAgent
+      })
+    });
+    return r.ok;
+  } catch (e) { console.warn("push subscribe failed:", e.message); return false; }
+}
+// Unsubscribe this browser and remove the row.
+async function disablePush() {
+  if (!pushSupported()) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    const endpoint = sub.endpoint;
+    await sub.unsubscribe().catch(() => {});
+    await fetch("/api/notify-order?action=push-unsubscribe", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint })
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 // Backward-compat: convert old shared #routes (e.g. /#store/5) to real paths.

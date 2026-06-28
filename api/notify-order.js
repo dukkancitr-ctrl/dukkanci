@@ -314,6 +314,133 @@ async function sbWrite(method, path, body, prefer) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
+// ───────────────────────── Web Push (browser notifications) ────────────────
+// Self-contained Web Push sender — RFC 8291 ("aes128gcm" payload encryption) +
+// RFC 8292 (VAPID auth) — built on Node's crypto so we add NO dependency (matches
+// the rest of this file). Sends an encrypted JSON payload to a browser push
+// subscription row in push_subscriptions. No-ops gracefully when VAPID is unset.
+
+function b64uToBuf(s) {
+  s = String(s || "").replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return Buffer.from(s, "base64");
+}
+function bufToB64u(buf) {
+  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Node KeyObject for the VAPID private key, built from the raw base64url values
+// (32-byte d; x/y come from the 65-byte uncompressed public point).
+function vapidPrivateKey() {
+  const pub = b64uToBuf(env("VAPID_PUBLIC_KEY"));
+  const d = b64uToBuf(env("VAPID_PRIVATE_KEY"));
+  if (pub.length !== 65 || !d.length) return null;
+  const jwk = { kty: "EC", crv: "P-256", x: bufToB64u(pub.slice(1, 33)), y: bufToB64u(pub.slice(33, 65)), d: bufToB64u(d) };
+  try { return crypto.createPrivateKey({ key: jwk, format: "jwk" }); } catch (e) { return null; }
+}
+
+// Signed VAPID JWT (ES256) bound to the push service origin (`aud`).
+function vapidJwt(audience) {
+  const key = vapidPrivateKey();
+  if (!key) return null;
+  const header = bufToB64u(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const sub = env("VAPID_SUBJECT") || "mailto:newmarketconsult@gmail.com";
+  const payload = bufToB64u(Buffer.from(JSON.stringify({ aud: audience, exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60, sub })));
+  const input = `${header}.${payload}`;
+  // dsaEncoding 'ieee-p1363' → raw 64-byte R||S (JOSE format), not DER.
+  const sig = crypto.sign("sha256", Buffer.from(input), { key, dsaEncoding: "ieee-p1363" });
+  return `${input}.${bufToB64u(sig)}`;
+}
+
+// Encrypt `payload` (string) for a subscription per RFC 8291 (aes128gcm).
+// Returns the request body Buffer: salt(16)|rs(4)|idlen(1)|keyid(as_public)|ciphertext.
+function encryptPush(payload, p256dhB64, authB64) {
+  const uaPublic = b64uToBuf(p256dhB64);      // 65 bytes
+  const authSecret = b64uToBuf(authB64);      // 16 bytes
+  const ec = crypto.createECDH("prime256v1");
+  ec.generateKeys();
+  const asPublic = ec.getPublicKey();         // 65 bytes
+  const sharedSecret = ec.computeSecret(uaPublic);
+
+  const salt = crypto.randomBytes(16);
+  const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0", "utf8"), uaPublic, asPublic]);
+  const ikm = Buffer.from(crypto.hkdfSync("sha256", sharedSecret, authSecret, keyInfo, 32));
+  const cek = Buffer.from(crypto.hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: aes128gcm\0", "utf8"), 16));
+  const nonce = Buffer.from(crypto.hkdfSync("sha256", ikm, salt, Buffer.from("Content-Encoding: nonce\0", "utf8"), 12));
+
+  const plaintext = Buffer.concat([Buffer.from(payload, "utf8"), Buffer.from([0x02])]); // single-record delimiter
+  const cipher = crypto.createCipheriv("aes-128-gcm", cek, nonce);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+
+  const rs = Buffer.alloc(4); rs.writeUInt32BE(4096, 0);
+  const idlen = Buffer.from([asPublic.length]);
+  return Buffer.concat([salt, rs, idlen, asPublic, ciphertext]);
+}
+
+// Deliver one push. gone=true (404/410) means the subscription is dead → prune it.
+async function sendOnePush(sub, payloadStr) {
+  let endpoint;
+  try { endpoint = new URL(sub.endpoint); } catch (e) { return { ok: false, gone: true }; }
+  const jwt = vapidJwt(`${endpoint.protocol}//${endpoint.host}`);
+  if (!jwt) return { ok: false, reason: "vapid" };
+  let body;
+  try { body = encryptPush(payloadStr, sub.p256dh, sub.auth); } catch (e) { return { ok: false, reason: e.message }; }
+  try {
+    const r = await fetch(sub.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Encoding": "aes128gcm",
+        "Content-Type": "application/octet-stream",
+        TTL: "86400",
+        Authorization: `vapid t=${jwt}, k=${env("VAPID_PUBLIC_KEY")}`
+      },
+      body
+    });
+    return { ok: r.ok, status: r.status, gone: r.status === 404 || r.status === 410 };
+  } catch (e) { return { ok: false, reason: e.message }; }
+}
+
+// Push `payload` (object) to every subscription matching a PostgREST filter,
+// pruning dead ones. No-ops when VAPID isn't configured.
+async function pushToSubscriptions(filter, payload) {
+  if (!env("VAPID_PUBLIC_KEY") || !env("VAPID_PRIVATE_KEY")) return { skipped: true, reason: "vapid not configured" };
+  const subs = await sbGet(`push_subscriptions?${filter}&select=id,endpoint,p256dh,auth`);
+  if (!Array.isArray(subs) || !subs.length) return { sent: 0 };
+  const payloadStr = JSON.stringify(payload);
+  let sent = 0; const dead = [];
+  for (const sub of subs) {
+    const r = await sendOnePush(sub, payloadStr);
+    if (r.ok) sent++; else if (r.gone) dead.push(sub.id);
+  }
+  if (dead.length) await sbWrite("DELETE", `push_subscriptions?id=in.(${dead.join(",")})`, undefined, "return=minimal");
+  return { sent, pruned: dead.length };
+}
+
+// New order → notify the store's subscribers + any admin subscribers (all stores).
+async function pushNewOrder(order) {
+  const payload = {
+    title: "🛒 طلب جديد",
+    body: `طلب ${order.id} • ${order.customer || ""} • ${money(order.total)}`.replace(/\s+•\s+•/g, " •").trim(),
+    // "/" → the SW only focuses the already-open merchant/admin tab (no redirect
+    // that could bounce an admin onto the merchant login or vice-versa).
+    url: "/",
+    tag: "order-" + order.id
+  };
+  return pushToSubscriptions(`or=(store_id.eq.${encodeURIComponent(order.storeId)},role.eq.admin)`, payload);
+}
+
+// Status change → notify the customer who placed the order (matched by phone key).
+async function pushOrderStatus(orderId, custPhoneKey, storeName, status, line) {
+  if (!custPhoneKey) return { skipped: true };
+  const payload = {
+    title: `تحديث طلبك ${orderId}`,
+    body: `${storeName}: ${status}${line ? " — " + line : ""}`,
+    url: "/orders",                                   // opens the customer's "طلباتي" page
+    tag: "order-" + orderId
+  };
+  return pushToSubscriptions(`customer_phone=eq.${encodeURIComponent(custPhoneKey)}&role=eq.customer`, payload);
+}
+
 // Admin gate: the panel sends the password as `x-admin-key` (or ?key=). It must
 // match ADMIN_PASSWORD. If ADMIN_PASSWORD is unset, the inbox endpoints are
 // closed (403) rather than open — fail safe, never expose customer chats.
@@ -1000,6 +1127,47 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // ── Web Push: register this browser's subscription ─────────────────────────
+  //   role=customer → open; binds to the customer's phone (order-status push).
+  //   role=store    → requires a valid merchant token for THAT store.
+  //   role=admin    → requires the admin token (receives every store's orders).
+  // Upserts on endpoint so re-subscribing the same browser updates in place.
+  if (pq.action === "push-subscribe") {
+    const endpoint = String(body && body.endpoint || "").trim();
+    const keys = (body && body.keys) || {};
+    if (!endpoint || !keys.p256dh || !keys.auth) return res.status(400).json({ error: "endpoint and keys required" });
+    const role = ["customer", "store", "admin"].includes(body.role) ? body.role : "customer";
+    const row = {
+      endpoint, p256dh: keys.p256dh, auth: keys.auth, role,
+      customer_phone: null, store_id: null,
+      user_agent: String(body.userAgent || "").slice(0, 300),
+      updated_at: new Date().toISOString()
+    };
+    if (role === "store") {
+      const storeId = Number(body.storeId);
+      if (!storeId || !merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
+      row.store_id = storeId;
+    } else if (role === "admin") {
+      if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    } else {
+      const key = phoneKey(body.customerPhone);
+      if (!key) return res.status(400).json({ error: "customerPhone required" });
+      row.customer_phone = key;
+    }
+    const w = await sbWrite("POST", "push_subscriptions?on_conflict=endpoint", row, "resolution=merge-duplicates,return=minimal");
+    if (!w.ok) return res.status(502).json({ error: "save failed", detail: w.rows || w.error });
+    return res.status(200).json({ ok: true });
+  }
+
+  // Web Push: remove this browser's subscription (open — deleting your own
+  // endpoint is harmless and lets a toggle-off / unsubscribe clean up the row).
+  if (pq.action === "push-unsubscribe") {
+    const endpoint = String(body && body.endpoint || "").trim();
+    if (!endpoint) return res.status(400).json({ error: "endpoint required" });
+    await sbWrite("DELETE", `push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`, undefined, "return=minimal");
+    return res.status(200).json({ ok: true });
+  }
+
   // Merchant/Admin: upsert a product using the service-role key.
   // Required because the anon client cannot UPDATE/INSERT products (RLS blocks non-auth users).
   if (pq.action === "save-product") {
@@ -1082,24 +1250,38 @@ module.exports = async (req, res) => {
   // customer phone, store name, the new status, and an optional note.
   if (pq.action === "status") {
     // SECURITY: previously OPEN — anyone could send a WhatsApp message to any
-    // customer phone. Now requires admin or the internal shared secret. (Once
-    // merchant Supabase Auth lands, also verify the caller owns this order's store.)
-    if (!adminOk({ headers: req.headers, query: pq }) && !secretOk(req, pq, c)) {
-      return res.status(403).json({ error: "unauthorized" });
+    // customer phone. Now requires admin, the internal shared secret, OR a valid
+    // merchant token for the order's own store (so a merchant can notify their
+    // own customers when they advance the order).
+    {
+      const storeId = Number(body.storeId);
+      const authed = adminOk({ headers: req.headers, query: pq })
+        || secretOk(req, pq, c)
+        || (storeId && merchantOk(req, storeId));
+      if (!authed) return res.status(403).json({ error: "unauthorized" });
     }
-    if (!c.token || !c.phoneId) return res.status(200).json({ skipped: true, reason: "whatsapp not configured" });
     const id = String(body.id || "").trim();
     const status = String(body.status || "").trim();
     if (!id || !status) return res.status(400).json({ error: "id and status required" });
-    const custTo = toE164(body.customerPhone || "", c.cc);
-    if (!custTo) return res.status(200).json({ skipped: true, reason: "no customer phone" });
     const storeName = String(body.storeName || "المتجر").trim();
     const note = String(body.note || "").replace(/\s+/g, " ").trim();
     const line = note || statusMessage(status);
-    const params = [id, storeName, status, line];
-    const sent = await sendWhatsapp(c, custTo, { template: c.tplStatus, params, text: `تحديث طلبك ${id} من ${storeName}: ${status}. ${line}` });
-    if (!sent.ok) return res.status(502).json({ error: "send failed", detail: sent.error });
-    return res.status(200).json({ ok: true, id: sent.id });
+
+    // 1) Browser push to the customer — works even when WhatsApp isn't configured.
+    let push = { skipped: true };
+    try { push = await pushOrderStatus(id, phoneKey(body.customerPhone), storeName, status, line); } catch (e) {}
+
+    // 2) WhatsApp (only when the platform number is configured AND we have a phone).
+    let whatsapp = { skipped: true, reason: "whatsapp not configured" };
+    const custTo = toE164(body.customerPhone || "", c.cc);
+    if (c.token && c.phoneId) {
+      if (!custTo) whatsapp = { skipped: true, reason: "no customer phone" };
+      else {
+        const params = [id, storeName, status, line];
+        whatsapp = await sendWhatsapp(c, custTo, { template: c.tplStatus, params, text: `تحديث طلبك ${id} من ${storeName}: ${status}. ${line}` });
+      }
+    }
+    return res.status(200).json({ ok: true, id, push, whatsapp });
   }
 
   // Admin: save editable site content (e.g. the subscription plan) into the
@@ -1163,9 +1345,6 @@ module.exports = async (req, res) => {
     const got = req.headers["x-notify-secret"] || (req.query && req.query.secret);
     if (got !== c.secret) return res.status(401).json({ error: "unauthorized" });
   }
-  if (!c.token || !c.phoneId) {
-    return res.status(200).json({ skipped: true, reason: "whatsapp not configured" });
-  }
   const order = normalizeOrder(body);
   if (!order.id || !order.storeId) return res.status(400).json({ error: "order id/storeId required" });
 
@@ -1174,6 +1353,15 @@ module.exports = async (req, res) => {
   const rows = await sbGet(`stores?id=eq.${encodeURIComponent(order.storeId)}&select=name,phone,whatsapp&limit=1`);
   const store = rows && rows[0];
   const storeName = (store && store.name) || "متجرك";
+
+  // Browser push to the store + admins — independent of WhatsApp, so it works
+  // even while the WhatsApp number is down. Fire before the WhatsApp gate below.
+  let push = { skipped: true };
+  try { push = await pushNewOrder(order); } catch (e) {}
+
+  if (!c.token || !c.phoneId) {
+    return res.status(200).json({ ok: true, order: order.id, push, whatsapp: { skipped: true, reason: "whatsapp not configured" } });
+  }
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
   const custTo = toE164(order.customerPhone, c.cc);
   const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
@@ -1200,7 +1388,7 @@ module.exports = async (req, res) => {
     results.customer = { skipped: true, reason: "no customer phone" };
   }
 
-  return res.status(200).json({ ok: true, order: order.id, results });
+  return res.status(200).json({ ok: true, order: order.id, results, push });
 };
 
 // Set AFTER the handler assignment above so it is not overwritten. Disables the

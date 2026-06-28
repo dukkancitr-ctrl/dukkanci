@@ -3,7 +3,7 @@
 // branded images; a few items without their own photo fall back to the store cover.
 const orangeStore = {
  "id": 34,
- "name": "Orange Turkey",
+ "name": "اورانج - تركيا",
  "category": "عصائر",
  "image": "/assets/photos/orange/cover.jpg",
  "coverImage": "/assets/photos/orange/cover.jpg",
