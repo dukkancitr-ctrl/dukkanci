@@ -943,14 +943,23 @@ async function loadSiteSettings() {
 }
 
 // ---- Google sign-in via Supabase Auth ----
+// Synthetic emails minted for WhatsApp-OTP logins (wa<digits>@otp.dukkanci.app)
+// are an internal identity handle, not a real address — never surface them.
+const OTP_LOGIN_EMAIL_DOMAIN = "@otp.dukkanci.app";
+function isSyntheticEmail(email) { return /@otp\.dukkanci\.app$/i.test(String(email || "")); }
+
 function applyUserToProfile(user) {
   if (!user) return;
   const meta = user.user_metadata || {};
   const name = meta.full_name || meta.name || (state.customerProfile.name || "");
+  const realEmail = user.email && !isSyntheticEmail(user.email) ? user.email : "";
+  // user.phone (GoTrue, no "+") or the metadata phone we stamped on WhatsApp login.
+  const phone = meta.phone || (user.phone ? "+" + String(user.phone).replace(/\D/g, "") : "");
   state.customerProfile = {
     ...state.customerProfile,
     name: name || state.customerProfile.name,
-    email: user.email || state.customerProfile.email,
+    email: realEmail || state.customerProfile.email,
+    phone: state.customerProfile.phone || phone,
     avatar: meta.avatar_url || meta.picture || state.customerProfile.avatar
   };
   saveState();
@@ -960,7 +969,7 @@ function updateAccountButton() {
   const btn = document.querySelector(".account-button");
   if (!btn) return;
   const u = state.user;
-  const name = u ? (state.customerProfile.name || u.email || "حسابي") : "حسابي";
+  const name = u ? (state.customerProfile.name || state.customerProfile.email || state.customerProfile.phone || "حسابي") : "حسابي";
   const initial = (name && name.trim()[0]) || "م";
   // Only show the saved avatar while signed in — otherwise a logged-out header
   // would keep the previous user's picture and look "still logged in".
@@ -1169,15 +1178,16 @@ async function sendWhatsappOtp(form) {
   if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return; }
   const btn = form.querySelector('button[type="submit"]');
   if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.textContent = "جارٍ الإرسال..."; }
-  const { error } = await sb.auth.signInWithOtp({ phone, options: { channel: "whatsapp" } });
+  // Deliver the code via OUR Meta WhatsApp number (the same proven sender as
+  // checkout), NOT Supabase's phone provider. Login can't fail-open, so a soft
+  // "delivery unavailable" is surfaced as an error rather than silently passed.
+  const r = await sendOrderOtpRequest(phone);
   if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "إرسال رمز التحقق"; }
-  if (error) {
-    showErr(/provider|not enabled|not configured|sms/i.test(error.message)
-      ? "خدمة إرسال الرمز غير مُفعّلة بعد في إعدادات Supabase."
-      : (error.message || "تعذّر إرسال الرمز، حاول مجدداً."));
-    return;
-  }
-  openOtpModal(phone);
+  if (r && r.ok) { openOtpModal(phone); return; }
+  if (r && r.reason === "too_soon") showErr(`انتظر ${r.retryInSec || 30} ثانية ثم أعد المحاولة.`);
+  else if (r && r.reason === "rate_limited") showErr("تجاوزت عدد محاولات الإرسال، حاول لاحقاً.");
+  else if (r && r.reason === "bad_phone") showErr("يرجى إدخال رقم واتساب صحيح.");
+  else showErr("تعذّر إرسال الرمز عبر واتساب، تأكد من الرقم وحاول مجدداً.");
 }
 
 function openOtpModal(phone) {
@@ -1199,13 +1209,34 @@ async function verifyWhatsappOtp(form) {
   const errEl = document.getElementById("otp-error");
   const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } };
   const phone = form.dataset.phone;
-  const token = form.token.value.trim();
-  if (!token) { showErr("يرجى إدخال الرمز."); return; }
+  const code = form.token.value.trim();
+  if (!code) { showErr("يرجى إدخال الرمز."); return; }
+  if (!sb || !sb.auth) { showErr("الخدمة غير متاحة حالياً."); return; }
   const btn = form.querySelector('button[type="submit"]');
-  if (btn) { btn.disabled = true; }
-  const { error } = await sb.auth.verifyOtp({ phone, token, type: "sms" });
-  if (btn) { btn.disabled = false; }
-  if (error) showErr(/expired|invalid|token/i.test(error.message) ? "الرمز غير صحيح أو منتهي الصلاحية." : (error.message || "تعذّر التحقق."));
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.textContent = "جارٍ التحقق…"; }
+  // Verify the WhatsApp code on our server; on success it returns a single-use
+  // magiclink token we exchange for a real Supabase session.
+  let r;
+  try {
+    r = await fetch("/api/notify-order?action=verify-login-otp", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code })
+    }).then(x => x.json());
+  } catch (e) { r = { ok: false, reason: "network" }; }
+  if (!r || !r.ok) {
+    if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "تأكيد الدخول"; }
+    showErr(r && r.reason === "expired" ? "انتهت صلاحية الرمز، أعد الإرسال."
+          : r && r.reason === "too_many" ? "محاولات كثيرة، اطلب رمزاً جديداً."
+          : r && (r.reason === "mint_failed" || r.reason === "no_service_role") ? "تعذّر إتمام الدخول، حاول مجدداً لاحقاً."
+          : "الرمز غير صحيح، حاول مجدداً.");
+    return;
+  }
+  // Exchange the minted token for a session. token_hash is preferred; fall back
+  // to the email OTP. onAuthStateChange(SIGNED_IN) then closes the modal + greets.
+  const { error } = r.tokenHash
+    ? await sb.auth.verifyOtp({ token_hash: r.tokenHash, type: "magiclink" })
+    : await sb.auth.verifyOtp({ email: r.email, token: r.emailOtp, type: "magiclink" });
+  if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "تأكيد الدخول"; }
+  if (error) showErr(authErrorAr(error, "تعذّر إتمام الدخول، حاول مجدداً."));
   // success -> onAuthStateChange (SIGNED_IN) closes the modal and updates the UI
 }
 
@@ -6096,8 +6127,10 @@ document.addEventListener("click", event => {
     sendPasswordReset(email, { errEl: document.getElementById("email-auth-error"), btn: target });
   }
   if (action === "resend-otp") {
-    const sb = window.supabaseClient;
-    if (sb && sb.auth) sb.auth.signInWithOtp({ phone: target.dataset.phone, options: { channel: "whatsapp" } }).then(({ error }) => showToast(error ? "تعذّر إعادة الإرسال" : "تم إرسال الرمز مجدداً", error ? "" : "success"));
+    // Login OTP now rides our Meta WhatsApp sender (same as checkout), not the
+    // Supabase phone provider.
+    sendOrderOtpRequest(target.dataset.phone).then(r =>
+      showToast(r && r.ok ? "تم إرسال الرمز مجدداً" : "تعذّر إعادة الإرسال", r && r.ok ? "success" : ""));
   }
   if (action === "resend-order-otp") resendOrderOtp(target.dataset.phone);
   if (action === "logout") signOutUser();

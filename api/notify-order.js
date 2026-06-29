@@ -315,6 +315,54 @@ async function sbWrite(method, path, body, prefer) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
+// ───────────────────────── GoTrue admin: phone-login session ───────────────
+// WhatsApp OTP login is delivered through OUR Meta number (send-order-otp), NOT
+// Supabase's phone provider — so the native signInWithOtp path is dead. Instead,
+// once the WhatsApp code is verified we mint a real Supabase session here: we
+// create/reuse an auth user keyed by a synthetic email derived from the phone,
+// then ask GoTrue for a magiclink token and hand it back to the (already phone-
+// verified) client to exchange for a session via supabase.auth.verifyOtp(). No
+// SMS/WhatsApp provider needs to be enabled in Supabase Auth for this to work.
+const OTP_LOGIN_EMAIL_DOMAIN = "otp.dukkanci.app";
+function phoneLoginEmail(phoneDigits) { return `wa${phoneDigits}@${OTP_LOGIN_EMAIL_DOMAIN}`; }
+
+async function goTrue(method, path, body) {
+  const { url, key } = sb();
+  try {
+    const r = await fetch(`${url}/auth/v1/${path}`, {
+      method,
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const json = await r.json().catch(() => null);
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) { return { ok: false, status: 0, error: e.message }; }
+}
+
+// Idempotently ensure the auth user exists, then return a single-use magiclink
+// token the client exchanges for a session. Requires SUPABASE_SERVICE_ROLE_KEY.
+async function mintLoginSession(phoneDigits) {
+  if (!env("SUPABASE_SERVICE_ROLE_KEY")) return { ok: false, reason: "no_service_role" };
+  const email = phoneLoginEmail(phoneDigits);
+  // Create the user (idempotent). Setting phone keeps user.phone populated for
+  // merchant-by-phone detection; "already registered" just means it exists.
+  await goTrue("POST", "admin/users", {
+    email, email_confirm: true,
+    phone: phoneDigits, phone_confirm: true,
+    user_metadata: { phone: "+" + phoneDigits, login_via: "whatsapp" }
+  });
+  // generate_link does NOT send an email — it returns the token the email link
+  // would have carried. We pass that straight to the verified client.
+  const link = await goTrue("POST", "admin/generate_link", { type: "magiclink", email });
+  const j = link && link.json;
+  if (!link.ok || !j) return { ok: false, reason: "mint_failed" };
+  const props = j.properties || j;
+  const tokenHash = props.hashed_token || j.hashed_token;
+  const emailOtp = props.email_otp || j.email_otp;
+  if (!tokenHash && !emailOtp) return { ok: false, reason: "mint_failed" };
+  return { ok: true, tokenHash, emailOtp, email };
+}
+
 // ───────────────────────── Web Push (browser notifications) ────────────────
 // Self-contained Web Push sender — RFC 8291 ("aes128gcm" payload encryption) +
 // RFC 8292 (VAPID auth) — built on Node's crypto so we add NO dependency (matches
@@ -1138,6 +1186,37 @@ module.exports = async (req, res) => {
     }
     await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, "return=minimal");
     return res.status(200).json({ ok: true });
+  }
+
+  // WhatsApp OTP LOGIN — verify the code (same store/rules as verify-order-otp),
+  // then mint a Supabase session token the client exchanges for a real login.
+  // Replaces the dead Supabase phone-provider path. The code is sent via the
+  // shared send-order-otp action (our Meta number).
+  if (pq.action === "verify-login-otp") {
+    const phone = toE164(body && body.phone || "", c.cc);
+    const code = String(body && body.code || "").replace(/\D/g, "");
+    if (!phone || !code) return res.status(200).json({ ok: false, reason: "missing" });
+    const rows = await sbGet(`order_otps?phone=eq.${encodeURIComponent(phone)}&select=*`);
+    const row = rows && rows[0];
+    if (!row || !row.code_hash || !row.expires_at || Date.parse(row.expires_at) < Date.now()) {
+      return res.status(200).json({ ok: false, reason: "expired" });
+    }
+    if ((row.attempts || 0) >= 5) {
+      await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, updated_at: new Date().toISOString() }, "return=minimal");
+      return res.status(200).json({ ok: false, reason: "too_many" });
+    }
+    const got = Buffer.from(otpHash(phone, code)), want = Buffer.from(row.code_hash);
+    const match = got.length === want.length && crypto.timingSafeEqual(got, want);
+    if (!match) {
+      await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { attempts: (row.attempts || 0) + 1, updated_at: new Date().toISOString() }, "return=minimal");
+      return res.status(200).json({ ok: false, reason: "invalid" });
+    }
+    // Code is valid — mint the session BEFORE burning the code, so a transient
+    // GoTrue hiccup lets the user retry instead of forcing a fresh code.
+    const session = await mintLoginSession(phone);
+    if (!session.ok) return res.status(200).json({ ok: false, reason: session.reason || "mint_failed" });
+    await sbWrite("PATCH", `order_otps?phone=eq.${encodeURIComponent(phone)}`, { code_hash: null, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }, "return=minimal");
+    return res.status(200).json({ ok: true, tokenHash: session.tokenHash, emailOtp: session.emailOtp, email: session.email });
   }
 
   // ── Web Push: register this browser's subscription ─────────────────────────
