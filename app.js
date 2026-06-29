@@ -220,6 +220,8 @@ const state = {
   storeSort: "recommended",
   search: "",
   coupon: null,            // Feature 2: applied coupon (validated via RPC), session-only
+  referral: null,          // Feature 4: { code, balance } loaded for signed-in user
+  useCredit: false,        // Feature 4: whether to spend wallet credit on this order
   accountTab: "orders",
   customerProfile: JSON.parse(localStorage.getItem("dukkanci-profile") || "null") || initialCustomerProfile,
   // A WhatsApp number the customer already verified (E.164 "+90…"); skips re-OTP on
@@ -967,6 +969,7 @@ async function initAuth() {
     if (data && data.session) {
       state.user = data.session.user; applyUserToProfile(state.user);
       loadCustomerCloud();
+      loadReferralData();
       // Returning from an email-confirmation / Google redirect mid-signup → finish the store.
       if (hasPendingJoin()) setTimeout(finalizePendingJoin, 0);
     }
@@ -980,6 +983,7 @@ async function initAuth() {
     if (event === "SIGNED_IN") {
       state._merchantResolved = false; state._merchantResolving = false; closeModal();
       loadCustomerCloud();
+      loadReferralData();
       // If the user authenticated mid-way through creating a store, finish it now.
       if (hasPendingJoin()) { finalizePendingJoin(); }
       else showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success");
@@ -1126,6 +1130,7 @@ async function signInWithGoogle() {
 // user lingers in the header, account page, or checkout prefill after logout.
 function clearUserIdentity() {
   state.customerProfile = { ...initialCustomerProfile };
+  state.referral = null; state.useCredit = false;   // Feature 4: drop wallet state on logout
   saveState();
 }
 
@@ -1617,8 +1622,13 @@ function cartTotals(addressId = null) {
       discount = c.discount;
     }
   }
-  const total = Math.max(0, subtotal + delivery - discount);
-  return { subtotal, delivery, total, quote, discount, freeDelivery };
+  // Feature 4: wallet credit spent on this order (capped at the remaining total).
+  let creditApplied = 0;
+  if (isFeatureOn("feature_community_retention") && state.useCredit && state.referral && Number(state.referral.balance) > 0) {
+    creditApplied = Math.min(Number(state.referral.balance), Math.max(0, subtotal + delivery - discount));
+  }
+  const total = Math.max(0, subtotal + delivery - discount - creditApplied);
+  return { subtotal, delivery, total, quote, discount, freeDelivery, creditApplied };
 }
 
 // Apply a coupon code: validates server-side (validate_coupon RPC), then stores the
@@ -1669,6 +1679,87 @@ function recordCouponRedemption(orderId, storeId, subtotal, phone) {
   };
   setTimeout(go, 900);
 }
+
+// ─────────── Feature 4: referrals + credit wallet (feature_community_retention) ───────────
+// Loads the signed-in user's referral code + credit balance. Gated; no-ops for guests.
+async function loadReferralData() {
+  if (!isFeatureOn("feature_community_retention")) return;
+  const sb = window.supabaseClient;
+  if (!sb || !state.user || state._referralLoading) return;
+  state._referralLoading = true;
+  try {
+    const [codeRes, balRes] = await Promise.all([
+      sb.rpc("get_or_create_referral_code"),
+      sb.rpc("credit_balance")
+    ]);
+    state.referral = { code: codeRes.data || null, balance: Number(balRes.data) || 0 };
+    if (state.route === "orders" || state.route === "checkout") render();
+  } catch (e) { /* ignore */ }
+  finally { state._referralLoading = false; }
+}
+async function applyReferralCode(code, btn) {
+  const showErr = m => { const el = document.getElementById("referral-error"); if (el) { el.textContent = m; el.hidden = false; } };
+  const c = (code || "").trim();
+  if (!c) { showErr("أدخل كود الدعوة."); return; }
+  const sb = window.supabaseClient;
+  if (!sb || !state.user) { showErr("سجّل الدخول أولاً."); return; }
+  const restore = setBtnBusy(btn, "جارٍ…");
+  try {
+    const { data, error } = await sb.rpc("apply_referral_code", { p_code: c });
+    restore();
+    if (error || !data || !data.ok) { showErr(referralReasonAr(data && data.reason)); return; }
+    showToast("تم تطبيق كود الدعوة 🎉 ستحصل أنت وصديقك على رصيد عند أول طلب", "success");
+    render();
+  } catch (e) { restore(); showErr("تعذّر تطبيق الكود."); }
+}
+function referralReasonAr(reason) {
+  const m = {
+    bad_code: "كود الدعوة غير صحيح.",
+    self: "لا يمكنك استخدام كودك الخاص.",
+    already_referred: "لقد استخدمت كود دعوة من قبل.",
+    not_signed_in: "سجّل الدخول أولاً."
+  };
+  return m[reason] || "تعذّر تطبيق كود الدعوة.";
+}
+// After an order: qualify any pending referral (grants both parties credit) and
+// spend the chosen credit. Both are server-validated, idempotent, and require the
+// order row to exist — so we let pushOrderCloud's insert land first.
+function settleReferralAndCredit(orderId, creditToSpend) {
+  const sb = window.supabaseClient;
+  if (!sb || !state.user) return;
+  let tries = 0;
+  const go = () => {
+    tries++;
+    sb.rpc("qualify_referral", { p_order_id: orderId }).then(({ data }) => {
+      if (data && data.reason === "no_order" && tries < 4) { setTimeout(go, 1500); return; }
+      if (creditToSpend > 0) sb.rpc("apply_credit", { p_order_id: orderId, p_amount: creditToSpend }).catch(() => {});
+      loadReferralData();   // refresh balance after rewards/spend
+    }).catch(() => {});
+  };
+  setTimeout(go, 900);
+}
+// Account "ادعُ أصدقاءك" tab: referral code, WhatsApp share, balance, enter-a-code.
+function renderReferral() {
+  if (!state.user) {
+    return `<div class="account-empty">${icon("user")}<h3>سجّل الدخول لدعوة أصدقائك</h3><p>اجمع رصيداً عند دعوة أصدقائك للطلب من دكانجي.</p><button class="primary-button" data-action="login">تسجيل الدخول</button></div>`;
+  }
+  const data = state.referral;
+  if (!data) { loadReferralData(); return `<div class="account-empty">${icon("megaphone")}<p>جارٍ التحميل…</p></div>`; }
+  const code = data.code || "—";
+  const shareText = `اطلب من متاجر حيّك عبر دكانجي واستخدم كود دعوتي ${code} لتحصل على رصيد! ${location.origin}`;
+  return `
+    <div class="referral-card">
+      <div class="referral-balance"><small>رصيدك الحالي</small><strong>${money(data.balance || 0)}</strong></div>
+      <div class="referral-code-box"><small>كود دعوتك</small><div class="referral-code"><b dir="ltr">${escAttr(code)}</b><button class="secondary-button compact" data-action="copy-referral" data-code="${escAttr(code)}">${icon("check")} نسخ</button></div></div>
+      <a class="whatsapp-button" href="https://wa.me/?text=${encodeURIComponent(shareText)}" target="_blank" rel="noopener">${icon("whatsapp")} ادعُ أصدقاءك عبر واتساب</a>
+      <div class="referral-enter">
+        <label>هل دعاك صديق؟ أدخل كوده</label>
+        <div class="coupon-row"><input id="referral-input" type="text" placeholder="كود الدعوة" dir="ltr" autocomplete="off" onkeydown="if(event.key==='Enter')event.preventDefault()"><button class="secondary-button compact" data-action="apply-referral">تطبيق</button></div>
+        <p class="auth-error" id="referral-error" hidden></p>
+      </div>
+      <p class="referral-note">${icon("shield")} تحصل أنت وصديقك على رصيد عند أول طلب له.</p>
+    </div>`;
+}
 function couponReasonAr(reason, data) {
   const map = {
     not_found: "كود الخصم غير صحيح.",
@@ -1695,6 +1786,13 @@ function couponCheckoutBlock() {
       </div>
       <p class="auth-error" id="coupon-error" hidden></p>
     </div>`;
+}
+// Feature 4: "use my credit" toggle on checkout — only when the wallet has a balance.
+function creditCheckoutBlock() {
+  if (!isFeatureOn("feature_community_retention")) return "";
+  const bal = state.referral && Number(state.referral.balance);
+  if (!state.user || !bal || bal <= 0) return "";
+  return `<label class="credit-toggle"><input type="checkbox" ${state.useCredit ? "checked" : ""} data-action="toggle-credit"><span></span><div><strong>استخدم رصيدك</strong><small>متاح: ${money(bal)}</small></div></label>`;
 }
 
 function updateCartBadges() {
@@ -2340,6 +2438,9 @@ function renderOrders() {
     favorites: { title: "المفضلة", description: "ارجع بسرعة إلى المتاجر والمنتجات التي حفظتها.", content: renderCustomerFavorites },
     complaints: { title: "الشكاوى", description: "أرسل ملاحظة وتابع رد فريق الدعم عليها.", content: renderCustomerComplaints }
   };
+  if (isFeatureOn("feature_community_retention")) {
+    tabs.invite = { title: "ادعُ أصدقاءك", description: "شارك كود دعوتك واجمع رصيداً مع أصدقائك.", content: renderReferral };
+  }
   const current = tabs[state.accountTab] || tabs.orders;
   return `
     <section class="page-hero compact account-hero"><div class="container"><span class="section-kicker">أهلاً ${state.customerProfile.name ? state.customerProfile.name.split(" ")[0] : "بك"}</span><h1>${current.title}</h1><p>${current.description}</p></div></section>
@@ -2360,6 +2461,7 @@ function renderAccountMenu() {
     ["favorites", "heart", "المفضلة"],
     ["complaints", "megaphone", "الشكاوى"]
   ];
+  if (isFeatureOn("feature_community_retention")) items.push(["invite", "megaphone", "ادعُ أصدقاءك"]);
   const authBtn = state.user
     ? `<button class="account-logout" data-action="logout">${icon("logout")} تسجيل الخروج</button>`
     : `<button class="account-login-cta" data-action="login">${icon("user")} تسجيل الدخول</button>`;
@@ -4430,7 +4532,8 @@ function renderCheckout() {
           <div class="summary-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${store.name}</strong></div></div>
           <div class="summary-items">${state.cart.map(item => { const product = getProduct(item.productId); return `<div><img src="${product.image}" alt=""><span><strong>${product.name}</strong><small>${item.quantity} × ${money(item.finalPrice)}</small></span><b>${money(item.quantity * item.finalPrice)}</b></div>`; }).join("")}</div>
           ${isFeatureOn("feature_conversion_drivers") ? couponCheckoutBlock() : ""}
-          <div class="summary-prices"><span><small>المجموع الفرعي</small><strong>${money(totals.subtotal)}</strong></span>${totals.discount > 0 ? `<span class="summary-discount"><small>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</small><strong id="checkout-discount">−${money(totals.discount)}</strong></span>` : ""}<span><small>رسوم التوصيل</small><strong id="checkout-delivery-fee">${totals.quote?.exceedsMaxDistance ? "خارج النطاق" : (totals.freeDelivery ? "مجاني 🎉" : money(totals.delivery))}</strong></span><span class="summary-total"><small>الإجمالي</small><strong id="checkout-final-total">${money(totals.total)}</strong></span></div>
+          ${creditCheckoutBlock()}
+          <div class="summary-prices"><span><small>المجموع الفرعي</small><strong>${money(totals.subtotal)}</strong></span>${totals.discount > 0 ? `<span class="summary-discount"><small>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</small><strong id="checkout-discount">−${money(totals.discount)}</strong></span>` : ""}${totals.creditApplied > 0 ? `<span class="summary-discount"><small>رصيدك</small><strong id="checkout-credit">−${money(totals.creditApplied)}</strong></span>` : ""}<span><small>رسوم التوصيل</small><strong id="checkout-delivery-fee">${totals.quote?.exceedsMaxDistance ? "خارج النطاق" : (totals.freeDelivery ? "مجاني 🎉" : money(totals.delivery))}</strong></span><span class="summary-total"><small>الإجمالي</small><strong id="checkout-final-total">${money(totals.total)}</strong></span></div>
           <button class="primary-button full large" type="submit">${icon("shield")} إرسال الطلب للمتجر</button>
           <p class="secure-note">${icon("shield")} بياناتك وطلبك محفوظان بأمان</p>
         </aside>
@@ -4877,7 +4980,7 @@ function updateCheckoutPricing(status = "") {
   const totals = cartTotals(address.value);
   const delivery = pickup ? 0 : totals.delivery;
   document.getElementById("checkout-delivery-fee").textContent = pickup ? "مجاناً" : (totals.freeDelivery ? "مجاني 🎉" : money(delivery));
-  document.getElementById("checkout-final-total").textContent = money(Math.max(0, totals.subtotal + delivery - (totals.discount || 0)));
+  document.getElementById("checkout-final-total").textContent = money(Math.max(0, totals.subtotal + delivery - (totals.discount || 0) - (totals.creditApplied || 0)));
   const calculator = document.getElementById("delivery-calculator");
   if (calculator) {
     calculator.hidden = pickup;
@@ -5739,6 +5842,12 @@ document.addEventListener("click", event => {
   if (action === "voice-search") startVoiceSearch(target);
   if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
   if (action === "remove-coupon") removeCoupon();
+  if (action === "apply-referral") applyReferralCode(document.getElementById("referral-input")?.value, target);
+  if (action === "copy-referral") {
+    const code = target.dataset.code || "";
+    if (navigator.clipboard && code) navigator.clipboard.writeText(code).then(() => showToast("تم نسخ الكود", "success")).catch(() => {});
+  }
+  if (action === "toggle-credit") { state.useCredit = !state.useCredit; render(); }
   if (action === "focus-search") {
     if (state.route !== "home") navigate("home");
     setTimeout(() => document.getElementById("hero-search")?.focus(), 100);
@@ -6897,7 +7006,8 @@ document.addEventListener("submit", async event => {
     // Feature 2: apply the coupon discount to the charged total (free-delivery is
     // already reflected in totals.delivery). Floor at 0 so it can never go negative.
     const orderDiscount = totals.discount || 0;
-    const finalTotal = Math.max(0, totals.subtotal + (isPickup ? 0 : totals.delivery) - orderDiscount);
+    const orderCredit = totals.creditApplied || 0;   // Feature 4: wallet credit spent
+    const finalTotal = Math.max(0, totals.subtotal + (isPickup ? 0 : totals.delivery) - orderDiscount - orderCredit);
     const storeId = state.cart[0].storeId;
     // If the store is outside its working hours, the order is still accepted but
     // will only be fulfilled the next working day — flag it and tell the customer.
@@ -6930,6 +7040,7 @@ document.addEventListener("submit", async event => {
       deliveryDetails: isPickup ? null : totals.quote,
       discount: orderDiscount,
       couponCode: state.coupon ? state.coupon.code : "",
+      creditUsed: orderCredit,
       createdAt: new Date().toISOString()
     };
     const itemCount = newOrder.lineItems.reduce((s, i) => s + (i.qty || 1), 0);
@@ -6945,9 +7056,14 @@ document.addEventListener("submit", async event => {
       if (isFeatureOn("feature_conversion_drivers") && state.coupon) {
         recordCouponRedemption(newOrder.id, storeId, totals.subtotal, contactPhone);
       }
+      // Feature 4: qualify any pending referral + spend the chosen credit (server-validated).
+      if (isFeatureOn("feature_community_retention") && state.user) {
+        settleReferralAndCredit(newOrder.id, orderCredit);
+      }
       window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
       state.cart = [];
       state.coupon = null;
+      state.useCredit = false;
       state.deliveryQuote = null;
       state.checkoutLocation = null;
       saveState(); updateCartBadges();

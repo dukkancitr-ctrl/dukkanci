@@ -631,6 +631,38 @@ img {
 .free-delivery-hint .icon { width: 16px; height: 16px; }
 .free-delivery-hint.reached { background: rgba(31, 157, 87, 0.12); color: #137a43; }
 
+/* ── Feature 4: referrals + credit wallet ── */
+.referral-card { display: flex; flex-direction: column; gap: 14px; }
+.referral-balance {
+  display: flex; flex-direction: column; gap: 2px; padding: 18px;
+  background: linear-gradient(135deg, #137a43, #1f9d57); color: #fff; border-radius: 16px;
+}
+.referral-balance small { opacity: 0.85; font-size: 13px; }
+.referral-balance strong { font-size: 26px; }
+.referral-code-box { display: flex; flex-direction: column; gap: 6px; }
+.referral-code-box small { color: var(--muted); font-size: 13px; }
+.referral-code {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; border: 1.5px dashed #c7bfbc; border-radius: 12px; background: #fff;
+}
+.referral-code b { font-size: 18px; letter-spacing: 2px; }
+.referral-enter { display: flex; flex-direction: column; gap: 8px; }
+.referral-enter label { font-size: 13px; color: var(--muted); }
+.referral-enter input {
+  flex: 1; min-width: 0; height: 42px; padding: 0 14px;
+  border: 1.5px solid #d4ccc9; border-radius: 10px; background: #fff; outline: 0;
+}
+.referral-note { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.referral-note .icon { width: 15px; height: 15px; }
+.credit-toggle {
+  display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; padding: 12px 14px;
+  border: 1px solid rgba(31, 157, 87, 0.30); border-radius: 12px;
+  background: rgba(31, 157, 87, 0.06); cursor: pointer;
+}
+.credit-toggle input { width: 20px; height: 20px; accent-color: #1f9d57; flex-shrink: 0; }
+.credit-toggle strong { display: block; font-size: 14px; }
+.credit-toggle small { color: var(--muted); font-size: 12px; }
+
 .hero-trust {
   margin-top: 24px;
   display: flex;
