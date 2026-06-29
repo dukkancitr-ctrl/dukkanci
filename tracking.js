@@ -238,6 +238,12 @@
         order_id: d.orderId || d.order_id || null,
         value: d.value != null ? d.value : null,
         currency: CURRENCY,
+        content_ids: d.ids || (d.product_id != null ? [d.product_id] : null),
+        num_items: d.count != null ? d.count : null,
+        // Meta match signals (server forwards to Conversions API; never stored in cookies)
+        fbp: getCookie("_fbp") || null,
+        fbc: getCookie("_fbc") || getCookie(C.fbc) || null,
+        phone: d.phone || null,
         page_url: location.href.slice(0, 500),
         referrer: (document.referrer || "").slice(0, 300),
         language: pageLang(),

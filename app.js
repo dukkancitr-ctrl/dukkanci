@@ -1355,7 +1355,7 @@ async function verifyOrderOtp(form) {
   if (r && r.ok) {
     state.verifiedPhone = phone; saveState();
     // submit_phone (Meta Lead) — phone confirmed via WhatsApp OTP at checkout.
-    window.DUKKANCI_TRACKING?.track("submit_phone", {});
+    window.DUKKANCI_TRACKING?.track("submit_phone", { phone: phone });
     closeModal();
     const cb = pendingOtpCommit; pendingOtpCommit = null;
     if (cb) cb();
@@ -7529,7 +7529,7 @@ document.addEventListener("submit", async event => {
       if (isFeatureOn("feature_community_retention") && state.user) {
         settleReferralAndCredit(newOrder.id, orderCredit);
       }
-      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId });
+      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
       state.cart = [];
       state.coupon = null;
       state.useCredit = false;
