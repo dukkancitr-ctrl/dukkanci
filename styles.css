@@ -1940,6 +1940,53 @@ img {
   object-fit: cover;
 }
 
+/* No-photo fallback for opt-in stores (e.g. باشا بيتزريا): clean branded card
+   showing the category + dish name instead of a broken image. */
+.product-card__image.no-image,
+.product-page-media.no-image,
+.product-gallery.no-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(198, 40, 51, 0.07), transparent 55%),
+    linear-gradient(135deg, var(--cream), var(--cream-dark));
+}
+.product-noimage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.product-noimage__cat {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--red);
+  background: var(--green-50);
+  padding: 3px 11px;
+  border-radius: 999px;
+}
+.product-noimage__name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.product-page-media.no-image .product-noimage__name,
+.product-gallery.no-image .product-noimage__name { font-size: 22px; -webkit-line-clamp: 4; }
+.product-page-media.no-image .product-noimage__cat,
+.product-gallery.no-image .product-noimage__cat { font-size: 13px; }
+
 .product-card.source-branded .product-card__image {
   background:
     radial-gradient(circle at 50% 72%, rgba(197, 20, 48, 0.05), transparent 44%),

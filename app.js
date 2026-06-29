@@ -80,13 +80,19 @@ products.push(...pasapizzeriaProducts);
 function isPlaceholderImage(img) {
   return !img || /placeholder|generic-cover|coming-soon/i.test(String(img));
 }
+// Stores that opt in to showing menu items WITHOUT a photo (their source has no image for some
+// items). For these stores, imageless products render as clean no-image cards instead of being
+// hidden. Every other store keeps the default "real photo only" storefront rule. Per-store opt-in
+// so this never affects stores (e.g. صفا الشام) whose owner wants photo-only storefronts.
+const ALLOW_NO_IMAGE_STORES = new Set([56]); // 56 = باشا بيتزريا (full menu shown at owner's request)
+function storeAllowsNoImage(storeId) { return ALLOW_NO_IMAGE_STORES.has(Number(storeId)); }
 // Products the admin explicitly hid from the storefront (ids loaded from site_settings.hiddenProducts).
 // The storefront shows a product only if it has a real image, is in stock, and isn't force-hidden;
 // the management panels (merchant + admin) read `allProducts` instead, so they still see and manage
 // EVERY product — including ones without an image (shown there as "بانتظار صورة / غير معروض").
 let HIDDEN_PRODUCTS = new Set();
 function isShownOnStore(p) {
-  return p.available !== false && !HIDDEN_PRODUCTS.has(p.id) && !isPlaceholderImage(p.image);
+  return p.available !== false && !HIDDEN_PRODUCTS.has(p.id) && (!isPlaceholderImage(p.image) || storeAllowsNoImage(p.storeId));
 }
 function applyPublishingRules(list) {
   const imageUses = new Map(); // `${storeId}|${image}` -> count, real images only
@@ -98,7 +104,7 @@ function applyPublishingRules(list) {
   return list.filter(p => {
     if (p.available === false) return false;          // rule 1: unavailable
     if (HIDDEN_PRODUCTS.has(p.id)) return false;       // admin force-hide
-    if (isPlaceholderImage(p.image)) return false;     // rule 2: no real image -> hidden from storefront
+    if (isPlaceholderImage(p.image)) return storeAllowsNoImage(p.storeId); // rule 2: no real image -> hidden, unless the store opted in to show imageless items
     const k = p.storeId + "|" + String(p.image).trim();
     return imageUses.get(k) === 1;                      // rule 3: unique within its store
   });
@@ -2087,12 +2093,17 @@ function waOrderLink(product) {
   return `https://wa.me/${num}?text=${text}`;
 }
 
+// Visual fallback for products shown without a photo (opt-in stores only, e.g. باشا بيتزريا).
+function productNoImageMedia(product) {
+  return `<span class="product-noimage"><span class="product-noimage__cat">${esc(product.category || "")}</span><span class="product-noimage__name">${esc(product.name)}</span></span>`;
+}
 function productCard(product) {
   const isFavorite = state.favorites.includes(`product-${product.id}`);
+  const noImg = isPlaceholderImage(product.image);
   return `
     <article class="product-card ${product.storeId === 5 || (product.sourceBranded && product.imageFit !== "cover") ? "source-branded" : ""} ${!product.available ? "unavailable" : ""}" data-category="${escAttr(product.category || "")}">
-      <button class="product-card__image" data-action="open-product" data-id="${product.id}">
-        <img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">
+      <button class="product-card__image ${noImg ? "no-image" : ""}" data-action="open-product" data-id="${product.id}">
+        ${noImg ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">`}
         ${product.oldPrice ? `<span class="discount-chip">وفر ${Math.round((1 - product.price / product.oldPrice) * 100)}%</span>` : ""}
         ${!product.available ? `<span class="soldout-overlay">غير متوفر</span>` : ""}
       </button>
@@ -4909,7 +4920,7 @@ function renderProductPage(slugOrId) {
     <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span>${store ? `<a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a><span>/</span>` : ""}<strong>${product.name}</strong></div></div></section>
     <section class="section">
       <div class="container product-page-grid">
-        <div class="product-page-media"><img src="${esc(product.image)}" alt="${esc(product.name)}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}"></div>
+        <div class="product-page-media ${isPlaceholderImage(product.image) ? "no-image" : ""}">${isPlaceholderImage(product.image) ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}">`}</div>
         <div class="product-page-info">
           <h1>${esc(product.name)}</h1>
           ${product.category ? `<span class="cat">${esc(product.category)}</span>` : ""}
@@ -5216,7 +5227,7 @@ function openProductModal(id) {
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="product-modal-grid">
-      <div class="product-gallery"><img src="${product.image}" alt="${product.name}"><div><button class="active"><img src="${product.image}" alt=""></button><button><img src="${store.image}" alt=""></button></div></div>
+      <div class="product-gallery ${isPlaceholderImage(product.image) ? "no-image" : ""}">${isPlaceholderImage(product.image) ? productNoImageMedia(product) : `<img src="${product.image}" alt="${product.name}"><div><button class="active"><img src="${product.image}" alt=""></button><button><img src="${store.image}" alt=""></button></div>`}</div>
       <form class="product-details" id="product-form" data-id="${product.id}">
         <span class="product-breadcrumb">${esc(store.name)} · ${esc(product.category)}</span>
         <h2>${esc(product.name)}</h2>
