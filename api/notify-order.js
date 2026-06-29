@@ -638,6 +638,23 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 - لا تطلب أبداً بيانات حساسة (أرقام بطاقات، كلمات مرور، رموز).
 - للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
 أجب مباشرةً بالرسالة النهائية فقط دون شرح طريقة تفكيرك.`;
+// RAG retrieval: embed the customer's question and pull the most relevant chunks
+// from the knowledge base (platform scope on the platform WhatsApp number). Best-
+// effort with a short budget — on any failure we return "" and the reply proceeds
+// on the base prompt alone. Keeps the webhook within its serverless time budget.
+async function retrieveKnowledge(query) {
+  try {
+    const vec = await aiGateway.embed("embeddings", query, { timeoutMs: 5000 });
+    if (!vec) return "";
+    const r = await sbWrite("POST", "rpc/match_knowledge",
+      { query_embedding: "[" + vec.join(",") + "]", match_count: 4, p_store_id: null }, "return=representation");
+    const chunks = (r.ok && Array.isArray(r.rows)) ? r.rows : [];
+    const good = chunks.filter(c => c.similarity == null || c.similarity > 0.2);
+    if (!good.length) return "";
+    return good.map((c, i) => `[${i + 1}] ${String(c.content).slice(0, 700)}`).join("\n\n");
+  } catch (e) { return ""; }
+}
+
 async function aiReply(text, wa_id, timestamp) {
   // Routed through the AI Gateway: the active provider/model for the
   // whatsapp_autoreply feature is read from ai_feature_config. If no provider is
@@ -655,10 +672,17 @@ async function aiReply(text, wa_id, timestamp) {
       });
     }
   } catch (e) { /* no history → stateless reply */ }
-  messages.push({ role: "user", content: String(text == null ? "" : text).slice(0, 2000) });
+  const cleanText = String(text == null ? "" : text).slice(0, 2000);
+  messages.push({ role: "user", content: cleanText });
+  // Ground the answer in the knowledge base (RAG) when relevant chunks exist.
+  let system = AI_SYSTEM;
+  const ctx = await retrieveKnowledge(cleanText);
+  if (ctx) {
+    system = AI_SYSTEM + `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${ctx}`;
+  }
   try {
     return await aiGateway.complete("whatsapp_autoreply", {
-      system: AI_SYSTEM, messages, maxTokens: 500, temperature: 0.4, timeoutMs: 8000
+      system, messages, maxTokens: 500, temperature: 0.4, timeoutMs: 8000
     });
   } catch (e) {
     return null;

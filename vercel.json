@@ -9,6 +9,9 @@
     },
     "api/campaign.js": {
       "maxDuration": 30
+    },
+    "api/ai.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

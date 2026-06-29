@@ -3659,6 +3659,78 @@ async function loadAdminAI() {
   render();
 }
 
+async function loadAdminKB() {
+  try { state.adminKB = await aiApi("kb-list"); state._adminKBError = null; }
+  catch (e) { state._adminKBError = true; state.adminKB = state.adminKB || { documents: [], totalDocuments: 0, totalChunks: 0 }; }
+  render();
+}
+
+// Knowledge-base (RAG training) section of the AI tab.
+function adminKBSection() {
+  if (!state.adminKB) {
+    if (!state._adminKBLoading) { state._adminKBLoading = true; loadAdminKB().finally(() => { state._adminKBLoading = false; }); }
+    return `<section class="dashboard-card"><p class="creds-summary">جارٍ تحميل قاعدة المعرفة…</p></section>`;
+  }
+  const kbd = state.adminKB;
+  const docs = kbd.documents || [];
+  const storeName = id => { const s = (typeof getStore === "function") && getStore(id); return s ? s.name : ("#" + id); };
+  const storeOpts = (typeof stores !== "undefined" ? stores : []).slice()
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"))
+    .map(s => `<option value="${escAttr(s.id)}">${esc(s.name)}</option>`).join("");
+  const statusPill = st => st === "ready" ? `<span class="status-pill paid">جاهز</span>` : st === "failed" ? `<span class="status-pill">فشل</span>` : `<span class="status-pill">معالجة…</span>`;
+  const scopeField = `<label class="input-label"><span>النطاق</span><select name="scope"><option value="platform">عامة للمنصّة</option><option value="store">خاصة بمتجر</option></select></label>
+    <label class="input-label"><span>المتجر (عند اختيار «خاصة بمتجر»)</span><select name="store_id"><option value="">—</option>${storeOpts}</select></label>`;
+
+  const docsTable = docs.length ? `
+    <div class="table-wrap"><table class="admin-table">
+      <thead><tr><th>المصدر</th><th>النطاق</th><th>الحالة</th><th>المقاطع</th><th></th></tr></thead>
+      <tbody>${docs.map(doc => `<tr>
+        <td><strong>${esc(doc.file_name || "—")}</strong><br><small>${doc.source_type === "file" ? "ملف" : "نص"}${doc.error ? ` · <span style="color:#c0392b">${esc(doc.error)}</span>` : ""}</small></td>
+        <td>${doc.scope === "store" ? esc(storeName(doc.store_id)) : "عامة"}</td>
+        <td>${statusPill(doc.status)}</td>
+        <td>${doc.chunk_count || 0}</td>
+        <td><button class="icon-button" data-action="kb-delete" data-id="${escAttr(doc.id)}" data-name="${escAttr(doc.file_name || "")}" title="حذف">${icon("trash")}</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div>` : `<p class="creds-summary">لا توجد مستندات بعد. أضِف نصاً أو ارفع ملفاً بالأسفل.</p>`;
+
+  const t = state._adminKBTest;
+  const testResult = t ? `<div style="margin-top:10px">
+    ${t.answer ? `<div class="delivery-calculator">${icon("stars")}<div><strong>الرد المولّد</strong><p>${esc(t.answer)}</p></div></div>` : `<div class="delivery-calculator warning">${icon("close")}<div><strong>لا يوجد رد</strong><p>لم تُسترجَع مقاطع كافية أو مزوّد embeddings غير مهيّأ.</p></div></div>`}
+    ${(t.chunks && t.chunks.length) ? `<div class="table-wrap" style="margin-top:8px"><table class="admin-table"><thead><tr><th>المقطع المسترجَع</th><th>التشابه</th></tr></thead><tbody>${t.chunks.map(c => `<tr><td>${esc(c.content)}…</td><td>${c.similarity != null ? (c.similarity * 100).toFixed(0) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  </div>` : "";
+
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>قاعدة المعرفة</h3><p>الملفات والنصوص التي يستند إليها الذكاء الاصطناعي عند الرد (RAG). إجمالي: <strong>${kbd.totalDocuments || 0}</strong> مستند · <strong>${kbd.totalChunks || 0}</strong> مقطع مفهرَس.</p></div><button class="icon-button" data-action="kb-refresh" title="تحديث">${icon("download")}</button></div>
+      ${state._adminKBError ? `<p class="creds-summary" style="color:#c0392b">تعذّر التحميل.</p>` : docsTable}
+    </section>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>إضافة معرفة نصية</h3><p>الصق معلومة مباشرة (سياسات، أسئلة شائعة، تفاصيل) فتُقطَّع وتُفهرَس فوراً.</p></div></div>
+      <form id="kb-text-form" class="form-grid">
+        ${scopeField}
+        <label class="input-label" style="grid-column:1/-1"><span>عنوان مختصر</span><input name="title" placeholder="مثال: سياسة الإرجاع"></label>
+        <label class="input-label" style="grid-column:1/-1"><span>النص</span><textarea name="text" rows="5" placeholder="اكتب أو الصق المعرفة هنا…"></textarea></label>
+        <button type="submit" class="primary-button" style="grid-column:1/-1">${icon("check")} إضافة وفهرسة</button>
+      </form>
+    </section>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>رفع ملف</h3><p>صيغ مدعومة: txt و docx (حد أقصى 3MB). تُستخرج النصوص وتُفهرَس.</p></div></div>
+      <form id="kb-file-form" class="form-grid">
+        ${scopeField}
+        <label class="input-label" style="grid-column:1/-1"><span>الملف</span><input type="file" name="file" accept=".txt,.md,.docx"></label>
+        <button type="submit" class="primary-button" style="grid-column:1/-1">${icon("upload")} رفع وفهرسة</button>
+      </form>
+    </section>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>اختبار الاسترجاع</h3><p>اكتب سؤالاً لترى أي المقاطع ستُسترجَع وكيف سيردّ الذكاء الاصطناعي قبل اعتماده.</p></div></div>
+      <form id="kb-test-form" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>سؤال تجريبي</span><input name="query" placeholder="مثال: ما سياسة الإرجاع؟"></label>
+        <button type="submit" class="secondary-button" style="grid-column:1/-1">${icon("search")} اختبار</button>
+      </form>
+      ${testResult}
+    </section>`;
+}
+
 const AI_FEATURE_LABELS = {
   whatsapp_autoreply: ["الرد الآلي على واتساب", "يردّ على رسائل العملاء عبر رقم المنصة"],
   image_enhancement: ["تحسين صور المنتجات", "يحسّن صور المنتجات عند رفعها"],
@@ -3672,6 +3744,12 @@ function adminAI() {
     if (!state._adminAILoading) { state._adminAILoading = true; loadAdminAI().finally(() => { state._adminAILoading = false; }); }
     return `<section class="dashboard-card"><p class="creds-summary">جارٍ تحميل إعدادات الذكاء الاصطناعي…</p></section>`;
   }
+  const section = state._adminAISection || "providers";
+  const toggle = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <button class="${section === "providers" ? "primary-button" : "secondary-button"} compact" data-action="ai-section" data-section="providers">${icon("settings")} المزوّدون والميزات</button>
+    <button class="${section === "knowledge" ? "primary-button" : "secondary-button"} compact" data-action="ai-section" data-section="knowledge">${icon("box")} قاعدة المعرفة (التدريب)</button>
+  </div>`;
+  if (section === "knowledge") return toggle + adminKBSection();
   const d = state.adminAI;
   const providers = d.providers || [];
   const features = d.features || [];
@@ -3756,7 +3834,7 @@ function adminAI() {
     </form>
     ${testReply != null ? `<div class="delivery-calculator ${testReply ? "" : "warning"}" style="margin-top:10px">${icon(testReply ? "check" : "close")}<div><strong>${testReply ? "الرد" : "لا يوجد رد"}</strong><p>${testReply ? esc(testReply) : "المزوّد غير مهيّأ أو فشل الاتصال."}</p></div></div>` : ""}`;
 
-  return `
+  return toggle + `
     ${warn}${errBox}
     <section class="dashboard-card">
       <div class="card-heading"><div><h3>المزوّدون ومفاتيح API</h3><p>تُخزَّن المفاتيح مشفّرة ولا تظهر كاملة. أضِف عدة مزوّدين واختر النشط لكل ميزة بالأسفل.</p></div><button class="icon-button" data-action="ai-refresh" title="تحديث">${icon("download")}</button></div>
@@ -6465,6 +6543,24 @@ document.addEventListener("click", event => {
       .then(() => { if (state._adminAIEdit === id) state._adminAIEdit = null; state.adminAI = null; showToast("تم حذف المزوّد", "success"); loadAdminAI(); })
       .catch(() => showToast("تعذّر الحذف", ""));
   }
+  if (action === "ai-section") { state._adminAISection = target.dataset.section; render(); }
+  if (action === "kb-refresh") { state.adminKB = null; state._adminKBTest = null; loadAdminKB(); }
+  if (action === "kb-delete") {
+    const id = target.dataset.id, name = target.dataset.name || "";
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <div class="conflict-modal-icon">${icon("trash")}</div><h2>حذف «${esc(name)}»؟</h2>
+      <p>سيُحذف المستند وكل مقاطعه ومتجهاته نهائياً.</p>
+      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="danger-button" data-action="kb-confirm-delete" data-id="${escAttr(id)}">حذف</button></div>
+    `, "confirm-modal");
+  }
+  if (action === "kb-confirm-delete") {
+    const id = target.dataset.id;
+    closeModal();
+    aiApi("kb-delete", { method: "POST", body: { id } })
+      .then(() => { state.adminKB = null; showToast("تم حذف المستند", "success"); loadAdminKB(); })
+      .catch(() => showToast("تعذّر الحذف", ""));
+  }
   if (action === "cat-move") {
     const i = Number(target.dataset.index), dir = target.dataset.dir;
     const items = categoriesList().map(c => ({ ...c }));
@@ -6977,6 +7073,51 @@ document.addEventListener("submit", async event => {
     aiApi("test", { method: "POST", body })
       .then(r => { state._adminAITestReply = r && r.ok ? r.reply : ""; render(); })
       .catch(() => { state._adminAITestReply = ""; showToast("تعذّر الاختبار", ""); render(); });
+    return;
+  }
+  if (event.target.id === "kb-text-form") {
+    const f = event.target;
+    const v = n => (f.querySelector(`[name="${n}"]`)?.value || "").trim();
+    const scope = v("scope");
+    const body = { text: v("text"), title: v("title"), scope, store_id: scope === "store" ? v("store_id") : null };
+    if (!body.text) { showToast("اكتب نصاً أولاً", ""); return; }
+    if (scope === "store" && !body.store_id) { showToast("اختر المتجر", ""); return; }
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الفهرسة…"; }
+    aiApi("kb-add-text", { method: "POST", body })
+      .then(r => { state.adminKB = null; showToast(`تمت الفهرسة (${r.chunks} مقطع)`, "success"); loadAdminKB(); })
+      .catch(() => { showToast("تعذّرت الفهرسة — تحقّق من مزوّد embeddings", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} إضافة وفهرسة`; } });
+    return;
+  }
+  if (event.target.id === "kb-file-form") {
+    const f = event.target;
+    const scope = (f.querySelector('[name="scope"]')?.value || "platform");
+    const store_id = scope === "store" ? (f.querySelector('[name="store_id"]')?.value || "") : null;
+    const file = f.querySelector('[name="file"]')?.files?.[0];
+    if (!file) { showToast("اختر ملفاً", ""); return; }
+    if (scope === "store" && !store_id) { showToast("اختر المتجر", ""); return; }
+    if (file.size > 3 * 1024 * 1024) { showToast("الملف أكبر من 3MB", ""); return; }
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الرفع…"; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      aiApi("kb-upload", { method: "POST", body: { file_name: file.name, mime: file.type, data_base64: String(reader.result), scope, store_id } })
+        .then(r => { state.adminKB = null; showToast(`تمت الفهرسة (${r.chunks} مقطع)`, "success"); loadAdminKB(); })
+        .catch(() => { showToast("تعذّر الرفع/الفهرسة", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("upload")} رفع وفهرسة`; } });
+    };
+    reader.onerror = () => { showToast("تعذّرت قراءة الملف", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("upload")} رفع وفهرسة`; } };
+    reader.readAsDataURL(file);
+    return;
+  }
+  if (event.target.id === "kb-test-form") {
+    const f = event.target;
+    const query = (f.querySelector('[name="query"]')?.value || "").trim();
+    if (!query) return;
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ…"; }
+    aiApi("kb-test", { method: "POST", body: { query } })
+      .then(r => { state._adminKBTest = r && r.ok ? r : { chunks: [], answer: null }; render(); })
+      .catch(() => { state._adminKBTest = { chunks: [], answer: null }; showToast("تعذّر الاختبار", ""); render(); });
     return;
   }
   if (event.target.id === "content-edit-form") {

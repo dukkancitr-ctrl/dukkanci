@@ -5,6 +5,7 @@
 // the UI MASKED (last 4 chars only) and never in full.
 const crypto = require("crypto");
 const gw = require("../lib/ai-gateway");
+const kb = require("../lib/knowledge");
 
 const env = k => (process.env[k] || "").trim();
 
@@ -37,6 +38,26 @@ function adminOk(req) {
 
 const FEATURES = ["whatsapp_autoreply", "image_enhancement", "synonym_generation", "embeddings"];
 
+// Chunk → embed (batched) → bulk-insert chunks, then flip the document status.
+// Returns the chunk count (0 on failure, with the document marked 'failed').
+async function ingestDocument(documentId, text) {
+  const chunks = kb.chunkText(text);
+  const fail = async (error) => { await gw.sbWrite("PATCH", `knowledge_documents?id=eq.${documentId}`, { status: "failed", error }, "return=minimal"); return 0; };
+  if (!chunks.length) return fail("لا يوجد نص قابل للفهرسة");
+  const BATCH = 96; // stay under the embeddings input cap
+  const rows = [];
+  for (let i = 0; i < chunks.length; i += BATCH) {
+    const batch = chunks.slice(i, i + BATCH);
+    const vectors = await gw.embed("embeddings", batch);
+    if (!Array.isArray(vectors) || vectors.length !== batch.length) return fail("فشل توليد المتجهات (تحقّق من مفتاح embeddings)");
+    batch.forEach((content, j) => rows.push({ document_id: documentId, content, embedding: "[" + vectors[j].join(",") + "]" }));
+  }
+  const ins = await gw.sbWrite("POST", "knowledge_chunks", rows, "return=minimal");
+  if (!ins.ok) return fail("فشل تخزين المقاطع");
+  await gw.sbWrite("PATCH", `knowledge_documents?id=eq.${documentId}`, { status: "ready", chunk_count: rows.length, error: null }, "return=minimal");
+  return rows.length;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -65,6 +86,12 @@ module.exports = async (req, res) => {
       }
       const hasEnc = !!(env("KEY_ENCRYPTION_SECRET") || env("ADMIN_SESSION_SECRET") || env("ADMIN_PASSWORD"));
       return res.status(200).json({ providers, features, usage, hasEncryptionSecret: hasEnc });
+    }
+    // Knowledge base: list documents + totals.
+    if (action === "kb-list") {
+      const docs = (await gw.sbGet("knowledge_documents?select=id,file_name,source_type,scope,store_id,status,error,chunk_count,created_at&order=created_at.desc&limit=500")) || [];
+      const totalChunks = docs.reduce((s, d) => s + (d.chunk_count || 0), 0);
+      return res.status(200).json({ documents: docs, totalDocuments: docs.length, totalChunks });
     }
     return res.status(400).json({ error: "unknown action" });
   }
@@ -147,6 +174,88 @@ module.exports = async (req, res) => {
     });
     if (reply == null) return res.status(200).json({ ok: false, reply: null, note: "no reply — provider not configured or call failed" });
     return res.status(200).json({ ok: true, reply });
+  }
+
+  // ── Knowledge base: add text directly ──────────────────────────────────────
+  if (action === "kb-add-text") {
+    const text = String(body.text || "").trim();
+    if (!text) return res.status(400).json({ error: "text required" });
+    const scope = body.scope === "store" ? "store" : "platform";
+    const store_id = scope === "store" ? (Number(body.store_id) || null) : null;
+    if (scope === "store" && !store_id) return res.status(400).json({ error: "store_id required for store scope" });
+    const doc = { file_name: (body.title || "معرفة نصية").slice(0, 200), source_type: "text", scope, store_id, status: "processing" };
+    const created = await gw.sbWrite("POST", "knowledge_documents", doc, "return=representation");
+    const id = created.ok && created.rows && created.rows[0] && created.rows[0].id;
+    if (!id) return res.status(502).json({ error: "create failed", detail: created.rows || created.error });
+    const count = await ingestDocument(id, text);
+    if (!count) return res.status(502).json({ error: "ingest failed (تحقّق من مفتاح embeddings)", id });
+    return res.status(200).json({ ok: true, id, chunks: count });
+  }
+
+  // ── Knowledge base: upload a file (txt / docx) ─────────────────────────────
+  if (action === "kb-upload") {
+    const fileName = String(body.file_name || "").slice(0, 200);
+    const dataB64 = String(body.data_base64 || "");
+    if (!fileName || !dataB64) return res.status(400).json({ error: "file_name and data_base64 required" });
+    let buf;
+    try { buf = Buffer.from(dataB64.replace(/^data:[^;]+;base64,/, ""), "base64"); } catch (e) { return res.status(400).json({ error: "bad base64" }); }
+    // Vercel caps request bodies ~4.5MB; base64 inflates ~33%, so keep files ≤3MB.
+    if (buf.length > 3 * 1024 * 1024) return res.status(413).json({ error: "الملف أكبر من 3MB — قسّمه أو الصق النص" });
+    const scope = body.scope === "store" ? "store" : "platform";
+    const store_id = scope === "store" ? (Number(body.store_id) || null) : null;
+    if (scope === "store" && !store_id) return res.status(400).json({ error: "store_id required for store scope" });
+    let text;
+    try { text = kb.extractText(buf, fileName, body.mime); }
+    catch (e) { return res.status(400).json({ error: "استخراج النص فشل: " + e.message }); }
+    if (!String(text || "").trim()) return res.status(400).json({ error: "الملف لا يحتوي نصاً قابلاً للقراءة" });
+    // Best-effort: keep the original file in private Storage.
+    let storage_path = null;
+    try {
+      const { url, key } = gw.sb();
+      const path = `${Date.now()}_${fileName.replace(/[^\w.\-]+/g, "_")}`;
+      const up = await fetch(`${url}/storage/v1/object/knowledge/${encodeURIComponent(path)}`, {
+        method: "POST", headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": body.mime || "application/octet-stream", "x-upsert": "true" }, body: buf
+      });
+      if (up.ok) storage_path = `knowledge/${path}`;
+    } catch (e) { /* storage is optional */ }
+    const doc = { file_name: fileName, storage_path, source_type: "file", scope, store_id, status: "processing" };
+    const created = await gw.sbWrite("POST", "knowledge_documents", doc, "return=representation");
+    const id = created.ok && created.rows && created.rows[0] && created.rows[0].id;
+    if (!id) return res.status(502).json({ error: "create failed", detail: created.rows || created.error });
+    const count = await ingestDocument(id, text);
+    if (!count) return res.status(502).json({ error: "ingest failed (تحقّق من مفتاح embeddings)", id });
+    return res.status(200).json({ ok: true, id, chunks: count, chars: text.length });
+  }
+
+  // ── Knowledge base: delete a document (chunks cascade) ─────────────────────
+  if (action === "kb-delete") {
+    if (!body.id) return res.status(400).json({ error: "id required" });
+    const rows = await gw.sbGet(`knowledge_documents?id=eq.${encodeURIComponent(body.id)}&select=storage_path`);
+    const sp = rows && rows[0] && rows[0].storage_path;
+    const del = await gw.sbWrite("DELETE", `knowledge_documents?id=eq.${encodeURIComponent(body.id)}`, {}, "return=minimal");
+    if (!del.ok) return res.status(502).json({ error: "delete failed", detail: del.rows || del.error });
+    if (sp) { try { const { url, key } = gw.sb(); await fetch(`${url}/storage/v1/object/${sp.split("/").map(encodeURIComponent).join("/")}`, { method: "DELETE", headers: { apikey: key, Authorization: `Bearer ${key}` } }); } catch (e) {} }
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── Knowledge base: test retrieval (+ grounded answer) ─────────────────────
+  if (action === "kb-test") {
+    const query = String(body.query || "").trim();
+    if (!query) return res.status(400).json({ error: "query required" });
+    const store_id = body.store_id ? (Number(body.store_id) || null) : null;
+    const vec = await gw.embed("embeddings", query);
+    if (!vec) return res.status(200).json({ ok: false, note: "embeddings provider not configured" });
+    const r = await gw.sbWrite("POST", "rpc/match_knowledge", { query_embedding: "[" + vec.join(",") + "]", match_count: 5, p_store_id: store_id }, "return=representation");
+    const chunks = (r.ok && Array.isArray(r.rows)) ? r.rows : [];
+    let answer = null;
+    if (chunks.length) {
+      const context = chunks.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
+      answer = await gw.complete("whatsapp_autoreply", {
+        system: "أجب بالعربية اعتماداً فقط على المقاطع التالية من قاعدة المعرفة. إن لم تجد الإجابة فيها فاعتذر بوضوح ولا تختلق:\n\n" + context,
+        messages: [{ role: "user", content: query }], maxTokens: 400, timeoutMs: 15000
+      });
+    }
+    return res.status(200).json({ ok: true, chunks: chunks.map(c => ({ content: String(c.content).slice(0, 300), similarity: c.similarity })), answer });
   }
 
   return res.status(400).json({ error: "unknown action" });
