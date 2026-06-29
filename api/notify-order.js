@@ -34,12 +34,18 @@ function readRawBody(req) {
   return new Promise((resolve, reject) => {
     if (typeof req.body === "string") return resolve(req.body);
     if (req.body && typeof req.body === "object") return resolve(JSON.stringify(req.body));
-    let data = "";
+    // Collect raw Buffer chunks and concat ONCE. Concatenating into a JS string
+    // (data += chunk) decodes each chunk independently and corrupts any multi-byte
+    // UTF-8 character that straddles a chunk boundary (e.g. Arabic text) — which
+    // then breaks HMAC signature verification. Buffer.concat keeps the exact bytes.
+    const chunks = [];
+    let len = 0;
     req.on("data", chunk => {
-      data += chunk;
-      if (data.length > 1_000_000) req.destroy(); // 1MB hard cap — webhooks are tiny
+      chunks.push(chunk);
+      len += chunk.length;
+      if (len > 1_000_000) req.destroy(); // 1MB hard cap — webhooks are tiny
     });
-    req.on("end", () => resolve(data));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
 }
@@ -1447,6 +1453,24 @@ module.exports = async (req, res) => {
   // inject messages into the inbox or trigger auto-replies.
   if (body && (body.object === "whatsapp_business_account" || Array.isArray(body.entry))) {
     if (!verifyMetaSignature(rawBody, req.headers["x-hub-signature-256"])) {
+      // Diagnostic (no secrets leaked): tells us WHY the signature failed —
+      // preParsed=true means Vercel's body parser ran and we never see Meta's raw
+      // bytes (config bug); match=false with preParsed=false + hasSecret=true means
+      // the configured META_APP_SECRET value is wrong. Signature tags are public.
+      try {
+        const secret = env("META_APP_SECRET") || env("WHATSAPP_APP_SECRET");
+        const hdr = String(req.headers["x-hub-signature-256"] || "");
+        const exp = secret ? "sha256=" + crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex") : "(no-secret)";
+        console.warn("[wa-sig] reject " + JSON.stringify({
+          preParsed: !!(req.body && typeof req.body === "object"),
+          bodyType: typeof req.body,
+          hasSecret: !!secret,
+          rawLen: rawBody.length,
+          gotSig: hdr.slice(0, 23),
+          expSig: exp.slice(0, 23),
+          match: hdr === exp
+        }));
+      } catch (e) { /* diagnostic must never break the response */ }
       return res.status(401).json({ error: "invalid signature" });
     }
     try { await ingestWebhook(body); } catch (e) { try { console.error("[whatsapp-webhook] ingest", e.message); } catch (_) {} }
