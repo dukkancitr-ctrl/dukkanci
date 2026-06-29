@@ -1356,7 +1356,28 @@ function saveNamedZonesCloud(storeId, zones) {
   state.siteSettings = { ...state.siteSettings, namedZones: all };
   state.deliverySettings[storeId] = { ...state.deliverySettings[storeId], namedZones: zones };
   saveState();
-  adminApi("save-settings", { method: "POST", body: { key: "namedZones", value: all } }).catch(() => showToast("تعذّر الحفظ السحابي لمناطق التوصيل", ""));
+  // Persist through the merchant/admin-gated endpoint. Merchants have a merchant
+  // token (not an admin token), so the admin-only "save-settings" action 403s for
+  // them — route to "save-store-zones", which authorizes the store's own merchant
+  // and merges server-side. Customers (no privileged session) save locally only.
+  const headers = { "Content-Type": "application/json" };
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  if (!headers["x-admin-token"] && !headers["x-merchant-token"]) return;
+  fetch("/api/notify-order?action=save-store-zones", {
+    method: "POST", headers,
+    body: JSON.stringify({ storeId, zones })
+  }).then(r => {
+    if (r.status === 403) { if (state.adminKey) lockAdmin(); throw new Error("unauthorized"); }
+    if (!r.ok) throw new Error(`request failed (${r.status})`);
+    return r.json().catch(() => ({}));
+  }).then(data => {
+    // Adopt the server's merged map so we don't keep a partial local view.
+    if (data && data.value && typeof data.value === "object") {
+      state.siteSettings = { ...state.siteSettings, namedZones: data.value };
+      saveState();
+    }
+  }).catch(() => showToast("تعذّر الحفظ السحابي لمناطق التوصيل", ""));
 }
 
 function activeDeliveryQuote(store, address) {

@@ -1296,6 +1296,28 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // Merchant/Admin: save the fixed-price delivery zones for ONE store into the
+  // shared `namedZones` site-setting. A merchant editing their own dashboard has
+  // a merchant token (not an admin token), so the admin-only `save-settings`
+  // above 403s for them — that's the "تعذّر الحفظ السحابي لمناطق التوصيل" error.
+  // We merge server-side (read-modify-write) so a merchant with only a partial
+  // view of the map can never wipe other stores' zones.
+  if (pq.action === "save-store-zones") {
+    const storeId = Number(body.storeId);
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const zones = Array.isArray(body.zones) ? body.zones : [];
+    const rows = await sbGet("site_settings?key=eq.namedZones&select=value");
+    const current = (rows && rows[0] && rows[0].value && typeof rows[0].value === "object") ? rows[0].value : {};
+    if (zones.length) current[String(storeId)] = zones; else delete current[String(storeId)];
+    const r = await sbWrite("POST", "site_settings?on_conflict=key", { key: "namedZones", value: current, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true, value: current });
+  }
+
   // Admin: approve / reject / suspend a store (item 9 moderation). Admin-gated and
   // written with the service-role key, so it keeps working after RLS is locked
   // down (the admin panel has no Supabase Auth session of its own).
