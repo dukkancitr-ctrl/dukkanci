@@ -50,19 +50,43 @@ function readRawBody(req) {
   });
 }
 
-// Constant-time comparison of the Meta webhook signature against the app secret.
-// Returns true ONLY when META_APP_SECRET is configured AND the signature matches.
-// If the secret is unset we return false (fail closed) so unsigned bodies are
-// never trusted as genuine WhatsApp/Meta events.
-function verifyMetaSignature(rawBody, signatureHeader) {
+// The exact byte string Meta signed. Ideally this is the raw request body — but
+// Vercel's runtime parses application/json into req.body BEFORE our handler runs
+// (the `bodyParser:false` config is not honored for standalone functions), so the
+// raw bytes are gone and `rawBody` is our own re-serialization. To recover, we
+// rebuild every serialization Meta might have produced. Meta serializes with PHP's
+// json_encode, which (unlike JSON.stringify) escapes "/" as "\/" and, by default,
+// non-ASCII as \uXXXX. Key order + compactness already match. We try all 4 combos
+// (and the genuine raw body when the parser was off) and accept if ANY matches.
+function metaSigCandidates(req, rawBody) {
+  const cands = [];
+  const preParsed = !!(req.body && typeof req.body === "object");
+  if (typeof rawBody === "string" && rawBody && !preParsed) cands.push(rawBody); // raw bytes (best case)
+  if (preParsed) {
+    const base = JSON.stringify(req.body);
+    const slash = s => s.replace(/\//g, "\\/");
+    const uni = s => s.replace(new RegExp("[" + String.fromCharCode(128) + "-" + String.fromCharCode(65535) + "]", "g"), c => String.fromCharCode(92) + "u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+    cands.push(base, slash(base), uni(base), uni(slash(base)));
+  }
+  if (typeof rawBody === "string" && rawBody && !cands.includes(rawBody)) cands.push(rawBody);
+  return cands;
+}
+
+// Constant-time check of the Meta webhook signature against the app secret over
+// any of the candidate body serializations. Returns true ONLY when the secret is
+// configured AND one candidate's HMAC matches. Secret unset → false (fail closed).
+function verifyMetaSignature(candidates, signatureHeader) {
   const secret = env("META_APP_SECRET") || env("WHATSAPP_APP_SECRET");
   if (!secret) return false;
   const sig = String(signatureHeader || "");
   if (!sig.startsWith("sha256=")) return false;
-  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
   const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  for (const body of (Array.isArray(candidates) ? candidates : [candidates])) {
+    const expected = "sha256=" + crypto.createHmac("sha256", secret).update(body, "utf8").digest("hex");
+    const b = Buffer.from(expected);
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  }
+  return false;
 }
 
 // Verify a Supabase "Send SMS" Auth Hook signature (Standard Webhooks format).
@@ -1452,23 +1476,22 @@ module.exports = async (req, res) => {
   // This stops anyone from POSTing a fake "whatsapp_business_account" event to
   // inject messages into the inbox or trigger auto-replies.
   if (body && (body.object === "whatsapp_business_account" || Array.isArray(body.entry))) {
-    if (!verifyMetaSignature(rawBody, req.headers["x-hub-signature-256"])) {
-      // Diagnostic (no secrets leaked): tells us WHY the signature failed —
-      // preParsed=true means Vercel's body parser ran and we never see Meta's raw
-      // bytes (config bug); match=false with preParsed=false + hasSecret=true means
-      // the configured META_APP_SECRET value is wrong. Signature tags are public.
+    const sigCandidates = metaSigCandidates(req, rawBody);
+    if (!verifyMetaSignature(sigCandidates, req.headers["x-hub-signature-256"])) {
+      // Diagnostic (no secrets leaked): if this still fires, hasSecret=false means
+      // META_APP_SECRET is unset; hasSecret=true with no candidate match means the
+      // configured secret value is wrong (Meta's bytes are now reconstructed). The
+      // signature tags below are public (Meta sends them in the clear).
       try {
         const secret = env("META_APP_SECRET") || env("WHATSAPP_APP_SECRET");
         const hdr = String(req.headers["x-hub-signature-256"] || "");
-        const exp = secret ? "sha256=" + crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex") : "(no-secret)";
+        const expSigs = secret ? sigCandidates.map(b => "sha256=" + crypto.createHmac("sha256", secret).update(b, "utf8").digest("hex").slice(0, 12)) : [];
         console.warn("[wa-sig] reject " + JSON.stringify({
           preParsed: !!(req.body && typeof req.body === "object"),
-          bodyType: typeof req.body,
           hasSecret: !!secret,
-          rawLen: rawBody.length,
-          gotSig: hdr.slice(0, 23),
-          expSig: exp.slice(0, 23),
-          match: hdr === exp
+          candidates: sigCandidates.length,
+          gotSig: hdr.slice(0, 19),
+          expSigs
         }));
       } catch (e) { /* diagnostic must never break the response */ }
       return res.status(401).json({ error: "invalid signature" });
