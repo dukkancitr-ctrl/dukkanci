@@ -579,6 +579,45 @@ function merchantOk(req, storeId) {
   return Array.isArray(ids) && ids.includes(Number(storeId));
 }
 
+// Resolve the Supabase user behind an access token (x-sb-token). Returns the
+// GoTrue user object or null. Uses the anon/publishable key as apikey; the user's
+// JWT in the bearer is what identifies them.
+async function goTrueUser(userToken) {
+  if (!userToken) return null;
+  const { url } = sb();
+  const apikey = env("SUPABASE_ANON_KEY") || PUB_KEY;
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey, Authorization: `Bearer ${userToken}` } });
+    if (!r.ok) return null;
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
+
+// Verify a Supabase-session merchant (Google/email/OTP login — no merchant
+// password token) actually owns `storeId`. Mirrors the client's
+// resolveMerchantStores: ownership via the store_users table, with a fallback to
+// the user's VERIFIED auth phone matching the store's number.
+async function verifySupabaseStoreOwner(req, storeId) {
+  const token = String(req.headers["x-sb-token"] || "").trim();
+  if (!token || !storeId) return false;
+  const user = await goTrueUser(token);
+  if (!user || !user.id) return false;
+  const linked = await sbGet(`store_users?user_id=eq.${encodeURIComponent(user.id)}&store_id=eq.${encodeURIComponent(storeId)}&select=store_id&limit=1`);
+  if (Array.isArray(linked) && linked.length) return true;
+  const phone = String(user.phone || "").replace(/\D/g, "");
+  if (phone) {
+    const rows = await sbGet(`stores?id=eq.${encodeURIComponent(storeId)}&select=phone,whatsapp&limit=1`);
+    const s = rows && rows[0];
+    if (s) {
+      const norm = v => String(v || "").replace(/\D/g, "");
+      const bare = phone.replace(/^90/, "");
+      const variants = new Set([phone, bare, "90" + bare]);
+      if (variants.has(norm(s.phone)) || variants.has(norm(s.whatsapp))) return true;
+    }
+  }
+  return false;
+}
+
 // Shared-secret gate for system/internal callers (Supabase DB webhook, cron).
 // Returns true only when NOTIFY_SECRET is configured AND the caller presents it.
 function secretOk(req, q, c) {
@@ -1309,7 +1348,13 @@ module.exports = async (req, res) => {
     };
     if (role === "store") {
       const storeId = Number(body.storeId);
-      if (!storeId || !merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      // Merchant password token (default login) OR a Supabase session that owns
+      // the store (Google/email/OTP login) — both are accepted so notifications
+      // can auto-enable regardless of how the merchant signed in.
+      let ok = merchantOk(req, storeId);
+      if (!ok) ok = await verifySupabaseStoreOwner(req, storeId);
+      if (!ok) return res.status(403).json({ error: "unauthorized" });
       row.store_id = storeId;
     } else if (role === "admin") {
       if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });

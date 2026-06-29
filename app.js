@@ -3215,6 +3215,9 @@ async function submitMerchantPwLogin(form) {
     localStorage.setItem("dukkanci-merchant-session", JSON.stringify(state.merchantPwAuth));
     state._merchantResolved = false; state._merchantOrdersFetched = false;
     state.merchantStoreId = ids[0]; state.merchantTab = "overview";
+    // Auto-enable new-order push notifications now (login is a user gesture, so the
+    // permission prompt is allowed). Quiet on failure.
+    if (data.token) autoEnablePush({ role: "store", storeId: ids[0], token: data.token });
     // Login no longer blocks on subscription — warn (don't block) when the store
     // (or every matched branch) is not subscription-active. Order intake stays
     // gated by the subscription logic elsewhere; this just lets the owner in.
@@ -3319,6 +3322,11 @@ function renderMerchant(id) {
         if (list[0]) {
           state.merchantAuth = { storeId: list[0].id, phone: (state.user.phone || "").replace(/\D/g, ""), userId: state.user.id };
           state.merchantStoreId = list[0].id;
+          // Auto-enable new-order push for Supabase-session merchants (Google/email/
+          // OTP) — the server verifies store ownership via the access token. Runs once
+          // per session (guarded by _merchantResolved). Silent re-subscribe if already
+          // granted; prompts where the browser allows it.
+          autoEnablePush({ role: "store", storeId: list[0].id, supabase: true });
         }
         render();
       });
@@ -6748,9 +6756,13 @@ document.addEventListener("click", event => {
   }
   if (action === "merchant-enable-push") {
     const token = state.merchantPwAuth && state.merchantPwAuth.token;
-    if (!token) { showToast("سجّل الدخول بحساب المتجر (هاتف + كلمة مرور) لتفعيل الإشعارات"); return; }
+    const storeId = state.merchantStoreId;
+    if (!storeId) { showToast("سجّل الدخول بحساب المتجر لتفعيل الإشعارات"); return; }
     showToast("جارٍ تفعيل الإشعارات…");
-    enablePush({ role: "store", storeId: state.merchantStoreId, token })
+    // Password-token merchants verify via the merchant token; Supabase-session
+    // merchants (Google/email/OTP) verify store ownership via their access token.
+    const meta = token ? { role: "store", storeId, token } : { role: "store", storeId, supabase: true };
+    (token ? enablePush(meta) : autoEnablePush(meta))
       .then(ok => showToast(ok ? "تم تفعيل إشعارات الطلبات الجديدة 🔔" : "تعذّر تفعيل الإشعارات", ok ? "success" : undefined));
   }
   if (action === "admin-enable-push") {
@@ -7067,6 +7079,7 @@ document.addEventListener("submit", async event => {
         if (!data || !data.token) return Promise.reject(new Error("no token"));
         state.adminKey = data.token;
         sessionStorage.setItem("dukkanci-admin-token", data.token);
+        autoEnablePush({ role: "admin", adminToken: data.token });
         render();
       })
       .catch(() => {
@@ -7629,12 +7642,13 @@ async function getVapidKey() {
 //        | { role:'store', storeId, token }      (merchant token)
 //        | { role:'admin', adminToken }
 async function enablePush(meta) {
-  if (!pushSupported()) { showToast("متصفحك لا يدعم الإشعارات"); return false; }
+  const quiet = !!meta.quiet;
+  if (!pushSupported()) { if (!quiet) showToast("متصفحك لا يدعم الإشعارات"); return false; }
   let perm = Notification.permission;
   if (perm === "default") perm = await Notification.requestPermission();
-  if (perm !== "granted") { showToast("لم يتم تفعيل الإشعارات (الإذن مرفوض)"); return false; }
+  if (perm !== "granted") { if (!quiet) showToast("لم يتم تفعيل الإشعارات (الإذن مرفوض)"); return false; }
   const key = await getVapidKey();
-  if (!key) { showToast("الإشعارات غير مُهيّأة على الخادم بعد"); return false; }
+  if (!key) { if (!quiet) showToast("الإشعارات غير مُهيّأة على الخادم بعد"); return false; }
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
@@ -7643,6 +7657,7 @@ async function enablePush(meta) {
     const headers = { "Content-Type": "application/json" };
     if (meta.token) headers["x-merchant-token"] = meta.token;
     if (meta.adminToken) headers["x-admin-token"] = meta.adminToken;
+    if (meta.sbToken) headers["x-sb-token"] = meta.sbToken;
     const r = await fetch("/api/notify-order?action=push-subscribe", {
       method: "POST", headers,
       body: JSON.stringify({
@@ -7655,6 +7670,24 @@ async function enablePush(meta) {
     });
     return r.ok;
   } catch (e) { console.warn("push subscribe failed:", e.message); return false; }
+}
+// Auto-subscribe to push at login time, for ANY login method. Quiet (no nagging
+// toasts) and never re-prompts once the user has explicitly denied permission.
+// For the Supabase-session path (meta.supabase) we attach the live access token so
+// the server can verify store ownership without a merchant password token.
+async function autoEnablePush(meta) {
+  if (!pushSupported()) return false;
+  if (Notification.permission === "denied") return false; // respect a prior "no"
+  const m = Object.assign({ quiet: true }, meta);
+  if (m.supabase) {
+    try {
+      const { data } = await window.supabaseClient.auth.getSession();
+      const tok = data && data.session && data.session.access_token;
+      if (!tok) return false;
+      m.sbToken = tok;
+    } catch (e) { return false; }
+  }
+  return enablePush(m);
 }
 // Unsubscribe this browser and remove the row.
 async function disablePush() {
