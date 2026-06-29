@@ -4991,6 +4991,46 @@ p.success-note.order-closed-note {
   grid-template-columns: 1fr 1fr;
 }
 
+.choice-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.bank-transfer-panel {
+  margin-top: 12px;
+}
+
+.bank-transfer-panel[hidden] {
+  display: none;
+}
+
+.bank-details-box {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--surface-2, #f8fafc);
+}
+
+.bank-details-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bank-details-text {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  background: var(--surface, #fff);
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 .choice-card {
   min-height: 80px;
   padding: 13px;
@@ -8386,6 +8426,7 @@ tbody tr:hover {
   }
 
   .choice-grid.two,
+  .choice-grid.three,
   .radio-list {
     grid-template-columns: 1fr;
   }

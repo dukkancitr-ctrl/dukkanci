@@ -482,6 +482,7 @@ function mapDbStore(r) {
     location: (r.lat != null && r.lng != null) ? { lat: r.lat, lng: r.lng } : undefined, mapUrl: r.map_url,
     open: r.open, featured: r.featured, hasOffer: r.has_offer, offer: r.offer, priceOnRequest: r.price_on_request,
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
+    bankDetails: r.bank_details,
     website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
     branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status,
@@ -639,7 +640,7 @@ function toDbStore(s) {
     lat: s.location?.lat ?? null, lng: s.location?.lng ?? null, map_url: s.mapUrl, open: s.open !== false,
     featured: !!s.featured, has_offer: !!s.hasOffer, offer: s.offer ?? null, price_on_request: !!s.priceOnRequest,
     description: s.description ?? null, address: s.address ?? null, phone: s.phone ?? null, whatsapp: s.whatsapp ?? null,
-    email: s.email ?? null, website: s.website ?? null, source_url: s.sourceUrl ?? null, hours: s.hours ?? null,
+    email: s.email ?? null, bank_details: s.bankDetails ?? null, website: s.website ?? null, source_url: s.sourceUrl ?? null, hours: s.hours ?? null,
     areas: s.areas ?? [], fulfillment: s.fulfillment ?? null, subscription: s.subscription ?? null,
     order_count: s.orderCount ?? 0, official_store: !!s.officialStore, branch_group: s.branchGroup ?? null, brand_theme: s.brandTheme ?? null
   };
@@ -2932,6 +2933,7 @@ function merchantStore() {
         <label><span>أوقات العمل</span><input name="hours" value="${escAttr(store.hours || "")}"></label>
         <label><span>رسوم التوصيل الثابتة</span><input name="fixedFee" type="number" min="0" value="${deliverySettings.fixedFee}"></label>
         <label><span>الحد الأدنى للطلب (ل.ت)</span><input name="minOrder" type="number" min="0" value="${Number(store.minOrder) || 0}"></label>
+        <label class="wide"><span>بيانات الحساب البنكي (للتحويل البنكي)</span><textarea name="bankDetails" placeholder="اسم صاحب الحساب&#10;اسم البنك&#10;IBAN: TR.. .. ..">${escAttr(store.bankDetails || "")}</textarea><small class="field-hint">تظهر هذه البيانات للعميل في صفحة الدفع عند اختياره «تحويل بنكي» لينسخها ويرسل الحوالة. اتركها فارغة إن كنت سترسل رقم الحساب يدوياً.</small></label>
       </div>
       <section class="merchant-delivery-settings">
         <div class="merchant-delivery-settings__heading">
@@ -4780,10 +4782,16 @@ function renderCheckout() {
             </div>
           </section>
           <section class="checkout-card">
-            <div class="checkout-card__title"><span>٤</span><div><h2>طريقة الدفع</h2><p>لن تُخصم البطاقة إلا بعد تأكيد المتجر.</p></div></div>
-            <div class="choice-grid two">
-              <label class="choice-card active"><input type="radio" name="payment" value="card" checked><span>${icon("wallet")}</span><div><strong>الدفع بالبطاقة</strong><small>بعد تأكيد الطلب النهائي</small></div></label>
-              <label class="choice-card"><input type="radio" name="payment" value="cash"><span>${icon("receipt")}</span><div><strong>الدفع عند الاستلام</strong><small>نقداً للمتجر</small></div></label>
+            <div class="checkout-card__title"><span>٤</span><div><h2>طريقة الدفع</h2><p>اختر طريقة الدفع المناسبة — سيراها المتجر ويجهّزها مع طلبك.</p></div></div>
+            <div class="choice-grid three">
+              <label class="choice-card active"><input type="radio" name="payment" value="cash" checked><span>${icon("receipt")}</span><div><strong>نقداً عند التسليم</strong><small>ادفع نقداً عند استلام الطلب</small></div></label>
+              <label class="choice-card"><input type="radio" name="payment" value="card"><span>${icon("wallet")}</span><div><strong>بالبطاقة عند التسليم</strong><small>جهاز نقاط بيع (POS) مع المندوب</small></div></label>
+              <label class="choice-card"><input type="radio" name="payment" value="bank"><span>${icon("shield")}</span><div><strong>تحويل بنكي</strong><small>حوّل المبلغ إلى حساب المتجر</small></div></label>
+            </div>
+            <div id="bank-transfer-panel" class="bank-transfer-panel" hidden>
+              ${store.bankDetails && store.bankDetails.trim()
+                ? `<div class="bank-details-box"><div class="bank-details-box__head"><strong>${icon("shield")} بيانات حساب المتجر للتحويل</strong><button type="button" class="secondary-button compact" data-action="copy-bank" data-details="${escAttr(store.bankDetails)}">${icon("check")} نسخ</button></div><pre class="bank-details-text" dir="auto">${escAttr(store.bankDetails)}</pre><small class="field-hint">حوّل قيمة الطلب إلى الحساب أعلاه، ثم أرسل صورة إشعار التحويل للمتجر عبر واتساب لتأكيد الطلب.</small></div>`
+                : `<div class="review-note">${icon("info")} <span><strong>سيرسل لك المتجر رقم الحساب للتحويل.</strong><small>أكمل الطلب وسيتواصل معك المتجر عبر واتساب بتفاصيل الحساب البنكي لإتمام التحويل.</small></span></div>`}
             </div>
           </section>
           <label class="terms-check"><input type="checkbox" name="terms" required><span></span><p>أوافق أن دكانجي منصة لتسهيل الطلبات بين العملاء والمتاجر، وأن المتجر هو البائع المباشر والمسؤول عن توفر المنتجات وجودتها وأسعارها وتجهيزها وتوصيلها، مع بقاء دكانجي جهة متابعة وتنظيم للطلب.</p></label>
@@ -5109,6 +5117,9 @@ function openCustomerOrderDetails(orderId) {
       <div class="order-contact__row">${icon(isDelivery ? "bike" : "store")}<span>${isDelivery ? `توصيل إلى ${escAttr(order.address || "عنوانك")}${order.addressDetails ? ` — ${escAttr(order.addressDetails)}` : ""}` : "استلام من المتجر"}</span></div>
       ${order.scheduleDay ? `<div class="order-contact__row">${icon("clock")}<span>${escAttr(order.scheduleDay)} · ${escAttr(order.scheduleTime || "في أقرب وقت")}</span></div>` : ""}
       ${order.payment ? `<div class="order-contact__row">${icon("wallet")}<span>${escAttr(order.payment)}</span></div>` : ""}
+      ${/تحويل بنكي/.test(order.payment || "") ? (store && store.bankDetails && store.bankDetails.trim()
+        ? `<div class="bank-details-box" style="margin:6px 0"><div class="bank-details-box__head"><strong>${icon("shield")} حساب المتجر للتحويل</strong><button type="button" class="secondary-button compact" data-action="copy-bank" data-details="${escAttr(store.bankDetails)}">${icon("check")} نسخ</button></div><pre class="bank-details-text" dir="auto">${escAttr(store.bankDetails)}</pre></div>`
+        : `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>سيرسل لك المتجر رقم الحساب للتحويل عبر واتساب.</span></div>`) : ""}
       ${store && (store.whatsapp || store.phone) ? `<div class="order-contact__row">${icon("whatsapp")}<a class="order-wa-btn" href="https://wa.me/${(store.whatsapp || store.phone).replace(/\D/g, "")}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة المتجر</a></div>` : ""}
     </div>
     <div class="customer-order-modal__items">${items.map(item => {
@@ -5833,6 +5844,7 @@ function openOrderManager(orderId) {
     <span class="section-kicker">الطلب ${order.id}</span><h2>إدارة الطلب</h2>
     <div class="order-manager-summary"><span><small>العميل</small><strong>${escAttr(order.customer)}</strong></span><span><small>الإجمالي</small><strong>${money(order.total)}</strong></span><span><small>النوع</small><strong>${isDelivery ? "توصيل" : "استلام"}</strong></span></div>
     <div class="order-contact">
+      ${order.payment ? `<div class="order-contact__row order-contact__row--payment">${icon("wallet")}<span><strong>طريقة الدفع:</strong> ${escAttr(order.payment)}</span></div>${/تحويل بنكي/.test(order.payment) ? `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>أرسل رقم الحساب للعميل وأكّد استلام الحوالة قبل تجهيز الطلب.</span></div>` : ""}${/بطاقة/.test(order.payment) ? `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>جهّز جهاز نقاط البيع (POS) مع المندوب لتحصيل المبلغ عند التسليم.</span></div>` : ""}` : ""}
       ${order.customerPhone ? `<div class="order-contact__row">${icon("phone")}<span dir="ltr">${escAttr(order.customerPhone)}</span>${waNum ? `<a class="order-wa-btn" href="https://wa.me/${waNum}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة العميل</a>` : ""}</div>` : `<div class="order-contact__row order-contact__row--muted">${icon("phone")}<span>لا يوجد رقم تواصل للعميل</span></div>`}
       ${isDelivery ? `<div class="order-contact__row">${icon("pin")}<span>${order.address ? escAttr(order.address) : "لم يُحدَّد عنوان"}${order.addressDetails ? ` — ${escAttr(order.addressDetails)}` : ""}</span></div>${order.deliveryDetails?.roundTripKm != null ? `<div class="order-contact__row">${icon("bike")}<span>المسافة ذهاباً وإياباً ${formatDistance(order.deliveryDetails.roundTripKm)} · رسوم ${money(order.deliveryDetails.fee || 0)}</span></div>` : ""}` : `<div class="order-contact__row">${icon("store")}<span>استلام من المتجر</span></div>`}
     </div>
@@ -6118,6 +6130,10 @@ document.addEventListener("click", event => {
   if (action === "copy-referral") {
     const code = target.dataset.code || "";
     if (navigator.clipboard && code) navigator.clipboard.writeText(code).then(() => showToast("تم نسخ الكود", "success")).catch(() => {});
+  }
+  if (action === "copy-bank") {
+    const details = target.dataset.details || "";
+    if (navigator.clipboard && details) navigator.clipboard.writeText(details).then(() => showToast("تم نسخ بيانات الحساب", "success")).catch(() => showToast("تعذّر النسخ"));
   }
   if (action === "toggle-credit") { state.useCredit = !state.useCredit; render(); }
   if (action === "create-group") openCreateGroupModal(Number(target.dataset.id));
@@ -6906,6 +6922,10 @@ document.addEventListener("change", event => {
     event.target.closest(".choice-grid").querySelectorAll(".choice-card").forEach(card => card.classList.remove("active"));
     event.target.closest(".choice-card").classList.add("active");
     if (event.target.name === "fulfillment") updateCheckoutFulfillment();
+    if (event.target.name === "payment") {
+      const panel = document.getElementById("bank-transfer-panel");
+      if (panel) panel.hidden = event.target.value !== "bank";
+    }
   }
   if (event.target.dataset.action === "toggle-product") {
     const product = getProduct(event.target.dataset.id);
@@ -7402,7 +7422,7 @@ document.addEventListener("submit", async event => {
       lineItems,
       notes: "",
       substitution: els.substitution?.value || "",
-      payment: els.payment?.value === "cash" ? "الدفع عند الاستلام" : "الدفع بالبطاقة",
+      payment: ({ cash: "نقداً عند التسليم", card: "بطاقة عند التسليم (POS مع المندوب)", bank: "تحويل بنكي" })[els.payment?.value] || "نقداً عند التسليم",
       scheduleDay: els.day?.value || "",
       scheduleTime: els.time?.value || "",
       closedWhenOrdered: storeClosedNow,
@@ -7570,6 +7590,7 @@ document.addEventListener("submit", async event => {
       store.phone = (form.get("phone") || "").toString().trim();
       store.whatsapp = store.phone;
       store.hours = (form.get("hours") || "").toString().trim();
+      store.bankDetails = (form.get("bankDetails") || "").toString().trim();
       store.minOrder = Math.max(0, Number(form.get("minOrder")) || 0);
       store.open = form.get("storeOpen") === "on";
       const cover = (form.get("coverImage") || "").toString().trim();
