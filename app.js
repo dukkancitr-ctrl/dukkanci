@@ -176,14 +176,23 @@ function runDeliveryMigrations() {
   try {
     const KEY = "dukkanci-delivery-migrations";
     const done = JSON.parse(localStorage.getItem(KEY) || "{}");
-    if (done.khawali40) return;
     const saved = JSON.parse(localStorage.getItem("dukkanci-delivery-settings") || "{}");
-    if (saved["31"] && saved["31"].ratePerKm !== 40) {
-      saved["31"].ratePerKm = 40;
-      localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
+    let changed = false;
+    if (!done.khawali40) {
+      if (saved["31"] && saved["31"].ratePerKm !== 40) { saved["31"].ratePerKm = 40; changed = true; }
+      done.khawali40 = true; changed = true;
     }
-    done.khawali40 = true;
-    localStorage.setItem(KEY, JSON.stringify(done));
+    // صفا الشام (store 50) named-zone fees were raised to 100 ل.ت (برستيج بارك + تيراس ميكس),
+    // but saveState had frozen the old 50 ل.ت namedZones into each browser. Drop the stale
+    // saved copy once so the bundled value reaches returning users; later edits still stick.
+    if (!done.safaZones100) {
+      if (saved["50"] && saved["50"].namedZones) { delete saved["50"].namedZones; changed = true; }
+      done.safaZones100 = true; changed = true;
+    }
+    if (changed) {
+      localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
+      localStorage.setItem(KEY, JSON.stringify(done));
+    }
   } catch (e) { /* localStorage unavailable — bundled value applies */ }
 }
 
