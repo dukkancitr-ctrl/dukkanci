@@ -925,8 +925,8 @@ async function initAuth() {
 // path is kept intact behind these flags — flip a flag to `true` to re-enable
 // it instantly with no other change.
 const AUTH_FLAGS = {
-  phoneOtpLogin: false, // Supabase phone OTP login (customer + merchant)
-  checkoutOtp: false    // WhatsApp OTP gate before placing an order
+  phoneOtpLogin: true, // Supabase phone OTP login (customer + merchant)
+  checkoutOtp: true    // WhatsApp OTP gate before placing an order
 };
 
 // Friendly Arabic message for a Supabase auth error.
