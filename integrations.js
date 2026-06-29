@@ -70,7 +70,22 @@
     this.inject();
   };
 
+  // Run one injection block in isolation: a throw in one pixel (e.g. a bad id)
+  // must NOT abort the rest — otherwise a single broken provider silently kills
+  // all the others, including GA4.
+  function safe(label, fn) {
+    try { fn(); } catch (e) { try { console.warn("[integrations] " + label + " failed:", e); } catch (_) {} }
+  }
+
   I.inject = function () {
+    const self = this;
+    safe("meta", () => self._injectMeta());
+    safe("tiktok", () => self._injectTiktok());
+    safe("gtm", () => self._injectGtm());
+    safe("ga4", () => self._injectGa4());
+  };
+
+  I._injectMeta = function () {
     // Meta Pixel
     if (this.enabled("meta_pixel_id") && !injected.meta) {
       injected.meta = true;
@@ -78,17 +93,37 @@
       window.fbq("init", this.val("meta_pixel_id"));
       window.fbq("track", "PageView");
     }
+  };
+
+  I._injectTiktok = function () {
     // TikTok Pixel
     if (this.enabled("tiktok_pixel_id") && !injected.tiktok) {
       injected.tiktok = true;
-      !function (w, d, t) { w.TiktokAnalyticsObject = t; var ttq = w[t] = w[t] || []; ttq.methods = ["page", "track", "identify", "instances", "debug", "on", "off", "once", "ready", "alias", "group", "enableCookie", "disableCookie"]; ttq.setAndDefer = function (t, e) { t[e] = function () { t.push([e].concat([].slice.call(arguments, 0))) } }; for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]); ttq.load = function (e) { var r = "https://analytics.tiktok.com/i18n/pixel/events.js"; ttq._i = ttq._i || {}; ttq._i[e] = []; ttq._i[e]._u = r; ttq._t = ttq._t || {}; ttq._t[e] = +new Date; var o = d.createElement("script"); o.async = !0; o.src = r + "?sdkid=" + e; var a = d.getElementsByTagName("script")[0]; a.parentNode.insertBefore(o, a) }; ttq.load(this.val("tiktok_pixel_id")); ttq.page(); }(window, document, "ttq");
+      // NOTE: read the id HERE (where `this` === I); inside the IIFE below `this`
+      // is `window`, so `this.val(...)` there throws and aborts the whole inject().
+      const ttId = this.val("tiktok_pixel_id");
+      !function (w, d, t) { w.TiktokAnalyticsObject = t; var ttq = w[t] = w[t] || []; ttq.methods = ["page", "track", "identify", "instances", "debug", "on", "off", "once", "ready", "alias", "group", "enableCookie", "disableCookie"]; ttq.setAndDefer = function (t, e) { t[e] = function () { t.push([e].concat([].slice.call(arguments, 0))) } }; for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]); ttq.load = function (e) { var r = "https://analytics.tiktok.com/i18n/pixel/events.js"; ttq._i = ttq._i || {}; ttq._i[e] = []; ttq._i[e]._u = r; ttq._t = ttq._t || {}; ttq._t[e] = +new Date; var o = d.createElement("script"); o.async = !0; o.src = r + "?sdkid=" + e; var a = d.getElementsByTagName("script")[0]; a.parentNode.insertBefore(o, a) }; ttq.load(ttId); ttq.page(); }(window, document, "ttq");
     }
-    // Google Tag Manager
+  };
+
+  I._injectGtm = function () {
+    // Google Tag Manager — skip if this container is already on the page
+    // (index.html hardcodes the GTM snippet; injecting it again double-loads
+    // the container and double-fires every tag inside it).
     if (this.enabled("google_tag_manager_id") && !injected.gtm) {
       injected.gtm = true;
-      (function (w, d, s, l, i) { w[l] = w[l] || []; w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" }); var f = d.getElementsByTagName(s)[0], j = d.createElement(s), dl = l != "dataLayer" ? "&l=" + l : ""; j.async = true; j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl; f.parentNode.insertBefore(j, f); })(window, document, "script", "dataLayer", this.val("google_tag_manager_id"));
+      const gid = this.val("google_tag_manager_id");
+      const already = (window.google_tag_manager && window.google_tag_manager[gid]) ||
+        document.querySelector('script[src*="googletagmanager.com/gtm.js?id=' + gid + '"]');
+      if (!already) {
+        (function (w, d, s, l, i) { w[l] = w[l] || []; w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" }); var f = d.getElementsByTagName(s)[0], j = d.createElement(s), dl = l != "dataLayer" ? "&l=" + l : ""; j.async = true; j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl; f.parentNode.insertBefore(j, f); })(window, document, "script", "dataLayer", gid);
+      }
     }
-    // GA4 (only if not already handled via GTM)
+  };
+
+  I._injectGa4 = function () {
+    // GA4 — load gtag.js directly. (The GTM container does NOT carry a GA4 tag,
+    // so this is the only thing that sends hits to the GA4 property.)
     if (this.enabled("ga4_measurement_id") && !injected.ga4) {
       injected.ga4 = true;
       const id = this.val("ga4_measurement_id");
