@@ -650,6 +650,37 @@ async function sendAutoReply(to, text) {
   }, "return=minimal");
 }
 
+// ───────────────────────── Human escalation (spec §2) ──────────────────────
+// When a customer asks for a human — or a human agent takes over — the AI steps
+// aside. Per-conversation state lives in whatsapp_threads (service-role only).
+const HUMAN_REQUEST_RE = /(موظّ?ف|[إا]نسان|بشر(?:ي)?|خدمة\s*(?:العملاء|الزبائن)|الدعم|ممثّ?ل|مندوب|(?:شخص|حدا?)\s*حقيقي|human|agent|representative|operator|real\s*person|customer\s*service|live\s*chat|talk\s*to\s*(?:someone|a\s*person|human))/i;
+function wantsHuman(text) {
+  const t = String(text || "");
+  return !!t.trim() && HUMAN_REQUEST_RE.test(t);
+}
+async function getThreadFlags(wa_id) {
+  try {
+    const rows = await sbGet(`whatsapp_threads?wa_id=eq.${encodeURIComponent(wa_id)}&select=ai_paused,needs_human`);
+    return (rows && rows[0]) || { ai_paused: false, needs_human: false };
+  } catch (e) { return { ai_paused: false, needs_human: false }; }
+}
+async function setThreadFlags(wa_id, patch) {
+  try {
+    await sbWrite("POST", "whatsapp_threads?on_conflict=wa_id",
+      { wa_id: String(wa_id), ...patch, updated_at: new Date().toISOString() },
+      "resolution=merge-duplicates,return=minimal");
+  } catch (e) { /* escalation state is best-effort */ }
+}
+async function notifyAdminsEscalation(wa_id, name) {
+  try {
+    await pushToSubscriptions("role=eq.admin", {
+      title: "💬 عميل يطلب موظفاً",
+      body: `${name || wa_id} بحاجة لرد بشري على واتساب`,
+      url: "/", tag: "wa-escalate-" + wa_id
+    });
+  } catch (e) { /* push is best-effort */ }
+}
+
 // Dukkanci WhatsApp support hours (Istanbul = UTC+3, no DST): open 09:00–23:00.
 function isOutsideHours() {
   const h = (new Date().getUTCHours() + 3) % 24;
@@ -763,6 +794,18 @@ async function ingestWebhook(body) {
         // never reply twice; if storage is unavailable we still reply.
         const dup = ins && ins.ok && Array.isArray(ins.rows) && ins.rows.length === 0;
         if (!dup && d.type === "text" && m.from) {
+          const flags = await getThreadFlags(m.from);
+          // Human escalation: customer explicitly asks for a person.
+          if (wantsHuman(d.body)) {
+            if (!flags.needs_human) {
+              await setThreadFlags(m.from, { ai_paused: true, needs_human: true, last_escalated_at: new Date().toISOString() });
+              await notifyAdminsEscalation(m.from, nameByWa[m.from]);
+              try { await sendAutoReply(m.from, "تمام 🙌 بحوّلك لموظف من فريق دكانجي يتابع معك. ابقَ معنا وسيردّ عليك قريباً."); } catch (e) {}
+            }
+            continue; // already-escalated repeats → stay silent (human will reply)
+          }
+          // A human is handling this thread → the AI stays quiet.
+          if (flags.ai_paused) continue;
           const reply = autoReplyFor(d.body);
           if (reply) {
             try { await sendAutoReply(m.from, reply); } catch (e) {}     // command / ice breaker → static
@@ -888,6 +931,12 @@ module.exports = async (req, res) => {
           }
         }
         const threads = [...byWa.values()].sort((a, b) => (a.last_at < b.last_at ? 1 : -1));
+        // Merge escalation state (needs_human / ai_paused) onto each thread.
+        const flagRows = await sbGet("whatsapp_threads?select=wa_id,ai_paused,needs_human&or=(needs_human.eq.true,ai_paused.eq.true)");
+        if (Array.isArray(flagRows) && flagRows.length) {
+          const byId = new Map(flagRows.map(f => [String(f.wa_id), f]));
+          for (const t of threads) { const f = byId.get(String(t.wa_id)); if (f) { t.needs_human = !!f.needs_human; t.ai_paused = !!f.ai_paused; } }
+        }
         return res.status(200).json({ threads });
       }
 
@@ -899,7 +948,8 @@ module.exports = async (req, res) => {
       const canFreeform = !!lastIn && (Date.now() - new Date(lastIn.created_at).getTime() < 24 * 60 * 60 * 1000);
       await sbWrite("PATCH", `whatsapp_messages?wa_id=eq.${encodeURIComponent(wa)}&direction=eq.in&read_at=is.null`,
         { read_at: new Date().toISOString() }, "return=minimal");
-      return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform });
+      const flags = await getThreadFlags(wa);
+      return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform, ai_paused: !!flags.ai_paused, needs_human: !!flags.needs_human });
     }
 
     // Admin: inbox diagnostics — tells the panel whether the inbox is fully configured.
@@ -1425,10 +1475,18 @@ module.exports = async (req, res) => {
   }
 
   // Admin inbox writes (password-gated).
-  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read") {
+  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
 
     if (pq.action === "login") return res.status(200).json({ ok: true, token: signAdminToken() });
+
+    // Resume AI auto-reply for a thread (clears the escalation flags).
+    if (pq.action === "resume-ai") {
+      const wa = String(body.wa || pq.wa || "").replace(/\D/g, "");
+      if (!wa) return res.status(400).json({ error: "wa required" });
+      await setThreadFlags(wa, { ai_paused: false, needs_human: false });
+      return res.status(200).json({ ok: true });
+    }
 
     if (pq.action === "mark-read") {
       const wa = String(body.wa || pq.wa || "").replace(/\D/g, "");
@@ -1450,6 +1508,9 @@ module.exports = async (req, res) => {
       error: sent.ok ? null : JSON.stringify(sent.error || "").slice(0, 500)
     }, "return=minimal");
     if (!sent.ok) return res.status(502).json({ error: "send failed", detail: sent.error });
+    // A human just replied → pause the AI for this thread (clear the needs-human
+    // flag) so the bot doesn't talk over the agent. Resume via ?action=resume-ai.
+    try { await setThreadFlags(to, { ai_paused: true, needs_human: false }); } catch (e) {}
     return res.status(200).json({ ok: true, id: sent.id });
   }
 

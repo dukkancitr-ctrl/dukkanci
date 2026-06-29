@@ -4216,7 +4216,7 @@ function adminThreadListHTML() {
       <span class="wa-thread__avatar">${icon("whatsapp")}</span>
       <span class="wa-thread__body">
         <span class="wa-thread__top"><strong>${escAttr(adminThreadName(t))}</strong><time>${chatTime(t.last_at)}</time></span>
-        <span class="wa-thread__preview">${t.last_dir === "out" ? "↩ " : ""}${escAttr((t.last_body || "").slice(0, 48))}</span>
+        <span class="wa-thread__preview">${t.needs_human ? `<b style="color:#e67e22">🙋 بحاجة لموظف · </b>` : ""}${t.last_dir === "out" ? "↩ " : ""}${escAttr((t.last_body || "").slice(0, 48))}</span>
       </span>
       ${t.unread ? `<b class="wa-unread">${t.unread}</b>` : ""}
     </button>`).join("");
@@ -4240,8 +4240,15 @@ function adminChatPaneHTML() {
   const composer = data.canFreeform
     ? `<form id="wa-reply-form" class="wa-composer"><input id="wa-reply-input" autocomplete="off" placeholder="اكتب ردّك…"><button type="submit" class="wa-send" aria-label="إرسال">${icon("arrowLeft")}</button></form>`
     : `<div class="wa-window-closed">${icon("bell")} مرّت أكثر من 24 ساعة على آخر رسالة من العميل، فلا يمكن إرسال نص حر الآن. يحتاج العميل أن يراسلك أولاً، أو يلزم إرسال قالب معتمد.</div>`;
+  const aiBanner = data.ai_paused
+    ? `<div class="wa-window-closed" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff5e6">
+        <span>${data.needs_human ? "🙋 طلب العميل موظفاً — " : ""}الرد الآلي متوقّف لهذه المحادثة (تدخّل بشري).</span>
+        <button class="secondary-button compact" data-action="wa-resume-ai" data-wa="${escAttr(state.adminActiveWa)}">${icon("stars")} استئناف الرد الآلي</button>
+      </div>`
+    : "";
   return `
     <header class="wa-chat-head"><span class="wa-thread__avatar">${icon("whatsapp")}</span><div><strong>${escAttr(title)}</strong><small dir="ltr">+${escAttr(state.adminActiveWa)}</small></div></header>
+    ${aiBanner}
     <div id="wa-chat-scroll" class="wa-chat-scroll">${bubbles || `<div class="wa-empty"><p>لا رسائل.</p></div>`}</div>
     ${composer}`;
 }
@@ -6616,6 +6623,12 @@ document.addEventListener("click", event => {
   }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
+  if (action === "wa-resume-ai") {
+    const wa = target.dataset.wa;
+    adminApi("resume-ai", { method: "POST", body: { wa } })
+      .then(() => { if (state.adminThread) { state.adminThread.ai_paused = false; state.adminThread.needs_human = false; } showToast("تم استئناف الرد الآلي", "success"); loadAdminThreads(true); render(); })
+      .catch(() => showToast("تعذّر الاستئناف", ""));
+  }
   if (action === "route-home") navigate("home");
   if (action === "manage-order") openOrderManager(target.dataset.id);
   if (action === "view-order") openOrderManager(target.dataset.id);
