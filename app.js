@@ -2216,10 +2216,13 @@ function renderHome() {
         <div class="hero__visual">
           <div class="hero-blob"></div>
           <img src="/assets/photos/hero-market.jpg" alt="متجر حي مليء بالخضار والمنتجات الطازجة">
-          <div class="floating-card floating-card--rating">
-            <span class="floating-icon">${icon("star")}</span>
-            <span><strong>4.9</strong><small>تقييم المتاجر</small></span>
-          </div>
+          ${(() => {
+            const rated = stores.filter(s => (Number(s.reviews) || 0) > 0);
+            if (!rated.length) return "";
+            const totalReviews = rated.reduce((a, s) => a + Number(s.reviews), 0);
+            const avg = (rated.reduce((a, s) => a + (Number(s.rating) || 0) * Number(s.reviews), 0) / totalReviews).toFixed(1);
+            return `<div class="floating-card floating-card--rating"><span class="floating-icon">${icon("star")}</span><span><strong>${avg}</strong><small>تقييم المتاجر</small></span></div>`;
+          })()}
           <div class="floating-card floating-card--delivery">
             <span class="floating-icon">${icon("bike")}</span>
             <span><strong>وصل طلبك!</strong><small>بكل سرعة وأمان</small></span>
@@ -2556,13 +2559,10 @@ function renderStorePage(id) {
           </section>
           ` : `<section class="reviews-block">
             <div class="section-heading small"><div><span class="section-kicker">تجارب العملاء</span><h2>التقييمات والتعليقات</h2></div></div>
+            ${Number(store.reviews) > 0 ? `
             <div class="rating-summary">
               <div class="rating-big"><strong>${store.rating}</strong><span>${icon("star")}${icon("star")}${icon("star")}${icon("star")}${icon("star")}</span><small>من ${store.reviews} تقييم</small></div>
-              <div class="rating-bars">
-                ${[5, 4, 3, 2, 1].map((n, index) => `<div><span>${n}</span><span class="bar"><i style="width:${[82, 13, 4, 1, 0][index]}%"></i></span><small>${[82, 13, 4, 1, 0][index]}%</small></div>`).join("")}
-              </div>
-            </div>
-            <div class="review-list"><p class="muted-note">لا توجد تقييمات بعد — كن أول من يقيّم هذا المتجر بعد طلبك.</p></div>
+            </div>` : `<div class="review-list"><p class="muted-note">لا توجد تقييمات بعد — كن أول من يقيّم هذا المتجر بعد طلبك.</p></div>`}
           </section>`}
         </div>
         <aside class="store-info-card">
