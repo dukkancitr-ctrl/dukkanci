@@ -5405,7 +5405,7 @@ function detectLocationSilently() {
   );
 }
 
-// Welcome + location-consent modal. Greets the visitor as "دكانجي ماركت بليس"
+// Welcome + location-consent modal. Greets the visitor as "دكانجي"
 // and asks for an explicit tap before triggering the browser's location prompt,
 // so the native dialog arrives with context (instead of cold on page load).
 function showWelcomeLocationModal() {
@@ -5414,7 +5414,7 @@ function showWelcomeLocationModal() {
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="welcome-modal">
       <div class="welcome-modal__icon">${icon("pin")}</div>
-      <h2 class="welcome-modal__title">مرحباً بك في دكانجي ماركت بليس</h2>
+      <h2 class="welcome-modal__title">مرحباً بك في دكانجي</h2>
       <p class="welcome-modal__sub">منصّتك للطلب من متاجر ومطاعم حيّك بسهولة. اسمح لنا بتحديد موقعك لنعرض لك المتاجر الأقرب إليك ونحسب التوصيل تلقائياً.</p>
       <div class="welcome-modal__actions">
         <button class="primary-button full large" data-action="welcome-allow-location">${icon("pin")} اسمح بتحديد موقعي</button>
