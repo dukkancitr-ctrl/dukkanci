@@ -77,6 +77,14 @@
     try { fn(); } catch (e) { try { console.warn("[integrations] " + label + " failed:", e); } catch (_) {} }
   }
 
+  // Consent gate: no analytics/marketing script may run before the visitor opts in.
+  // Before tracking.js is ready (or if it's absent), default to DENY everything.
+  function consentOK(cat) {
+    const t = window.DUKKANCI_TRACKING;
+    if (!t) return false;
+    return t.hasConsent(cat);
+  }
+
   I.inject = function () {
     const self = this;
     safe("meta", () => self._injectMeta());
@@ -85,9 +93,12 @@
     safe("ga4", () => self._injectGa4());
   };
 
+  // Re-run injection after the visitor changes consent (idempotent via `injected`).
+  I.applyConsent = function () { this.inject(); };
+
   I._injectMeta = function () {
-    // Meta Pixel
-    if (this.enabled("meta_pixel_id") && !injected.meta) {
+    // Meta Pixel — marketing consent required
+    if (this.enabled("meta_pixel_id") && !injected.meta && consentOK("marketing")) {
       injected.meta = true;
       !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments) }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s) }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
       window.fbq("init", this.val("meta_pixel_id"));
@@ -96,9 +107,11 @@
   };
 
   I._injectTiktok = function () {
-    // TikTok Pixel
-    if (this.enabled("tiktok_pixel_id") && !injected.tiktok) {
+    // TikTok Pixel — marketing consent required
+    if (this.enabled("tiktok_pixel_id") && !injected.tiktok && consentOK("marketing")) {
       injected.tiktok = true;
+      // The GTM container already fires a TikTok pixel; don't double-load it.
+      if (window.ttq && window.ttq._i && Object.keys(window.ttq._i).length) return;
       // NOTE: read the id HERE (where `this` === I); inside the IIFE below `this`
       // is `window`, so `this.val(...)` there throws and aborts the whole inject().
       const ttId = this.val("tiktok_pixel_id");
@@ -124,7 +137,8 @@
   I._injectGa4 = function () {
     // GA4 — load gtag.js directly. (The GTM container does NOT carry a GA4 tag,
     // so this is the only thing that sends hits to the GA4 property.)
-    if (this.enabled("ga4_measurement_id") && !injected.ga4) {
+    // Analytics consent required.
+    if (this.enabled("ga4_measurement_id") && !injected.ga4 && consentOK("analytics")) {
       injected.ga4 = true;
       const id = this.val("ga4_measurement_id");
       const s = document.createElement("script"); s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + id; document.head.appendChild(s);
@@ -136,27 +150,28 @@
   // SPA-aware PageView on every route change (History API)
   I.pageView = function () {
     const path = location.pathname + location.search;
-    if (window.fbq) window.fbq("track", "PageView");
-    if (window.ttq) window.ttq.page();
-    if (window.gtag) window.gtag("event", "page_view", { page_location: location.href, page_path: path });
+    if (consentOK("marketing") && window.fbq) window.fbq("track", "PageView");
+    if (consentOK("marketing") && window.ttq) window.ttq.page();
+    if (consentOK("analytics") && window.gtag) window.gtag("event", "page_view", { page_location: location.href, page_path: path });
     if (window.dataLayer) window.dataLayer.push({ event: "spa_pageview", page_path: path });
   };
 
-  // Commerce events, called from app.js at the right moments
+  // Commerce events, called from tracking.js with a shared eventId (for browser↔server dedup).
   I.track = function (name, d) {
     d = d || {};
-    if (window.fbq) {
+    const eventId = d.eventId || (name === "Purchase" ? "order_" + d.orderId : undefined);
+    if (consentOK("marketing") && window.fbq) {
       const fb = { content_ids: d.ids, content_type: "product", value: d.value, currency: CURRENCY, num_items: d.count };
-      if (name === "Purchase") window.fbq("track", "Purchase", fb, { eventID: "order_" + d.orderId });
+      if (eventId) window.fbq("track", name, fb, { eventID: eventId });
       else window.fbq("track", name, fb);
     }
-    if (window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY });
-    if (window.gtag) {
+    if (consentOK("marketing") && window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY });
+    if (consentOK("analytics") && window.gtag) {
       const map = { ViewContent: "view_item", AddToCart: "add_to_cart", InitiateCheckout: "begin_checkout", Purchase: "purchase" };
       window.gtag("event", map[name] || name, { value: d.value, currency: CURRENCY, transaction_id: d.orderId });
     }
-    // Google Ads conversion on purchase
-    if (name === "Purchase" && window.gtag && this.enabled("google_ads_conversion_id") && this.val("google_ads_conversion_label")) {
+    // Google Ads conversion on purchase — marketing consent required
+    if (name === "Purchase" && consentOK("marketing") && window.gtag && this.enabled("google_ads_conversion_id") && this.val("google_ads_conversion_label")) {
       window.gtag("event", "conversion", { send_to: this.val("google_ads_conversion_id") + "/" + this.val("google_ads_conversion_label"), value: d.value, currency: CURRENCY, transaction_id: d.orderId });
     }
   };

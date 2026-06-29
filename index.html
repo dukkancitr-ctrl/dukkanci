@@ -48,6 +48,58 @@
       }
     }
     </script>
+    <!-- Google Consent Mode — default DENIED until the visitor chooses (KVKK/GDPR).
+         Must run BEFORE GTM so no tag fires storage before consent. tracking.js
+         flips these to 'granted' via gtag('consent','update',...) on acceptance. -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('consent','default',{
+        ad_storage:'denied', analytics_storage:'denied',
+        ad_user_data:'denied', ad_personalization:'denied',
+        wait_for_update:500
+      });
+    </script>
+    <!-- TikTok consent gate — the TikTok pixel is fired by a tag INSIDE the GTM
+         container, so Consent Mode does not gate it and it would set cookies on page
+         load. We (1) hold its events via the TikTok consent API and (2) block its
+         network script (analytics.tiktok.com) from loading until the visitor grants
+         marketing consent; tracking.js then calls window.__dkReleaseTikTok().
+         The proper long-term fix is a consent trigger on that tag in the GTM UI. -->
+    <script>
+      (function () {
+        // (1) ttq stub + hold events
+        !function (w, d, t) { w.TiktokAnalyticsObject = t; var ttq = w[t] = w[t] || [];
+          ttq.methods = ["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"];
+          ttq.setAndDefer = function (a, e) { a[e] = function () { a.push([e].concat(Array.prototype.slice.call(arguments, 0))); }; };
+          for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]);
+          try { ttq.holdConsent(); } catch (e) {}
+        }(window, document, 'ttq');
+
+        // (2) defer the TikTok script itself until consent (surgical: only its URL)
+        window.__dkTikTokQueue = []; window.__dkAllowTikTok = false;
+        try {
+          var desc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+          if (desc && desc.set) {
+            Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+              configurable: true, enumerable: desc.enumerable,
+              get: function () { return desc.get.call(this); },
+              set: function (v) {
+                if (!window.__dkAllowTikTok && typeof v === 'string' && /analytics\.tiktok\.com/.test(v)) {
+                  this.setAttribute('data-dk-tiktok-src', v); window.__dkTikTokQueue.push(this); return;
+                }
+                desc.set.call(this, v);
+              }
+            });
+            window.__dkReleaseTikTok = function () {
+              window.__dkAllowTikTok = true;
+              (window.__dkTikTokQueue || []).forEach(function (s) { var v = s.getAttribute('data-dk-tiktok-src'); if (v) desc.set.call(s, v); });
+              window.__dkTikTokQueue = [];
+            };
+          } else { window.__dkReleaseTikTok = function () {}; }
+        } catch (e) { window.__dkReleaseTikTok = function () {}; }
+      })();
+    </script>
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -55,9 +107,10 @@
     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-NKWVJ49J');</script>
     <!-- End Google Tag Manager -->
-    <!-- TikTok Pixel -->
-    <script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script");n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};ttq.load('D8VDK4JC77U45FANPJTG');ttq.page();}(window,document,'ttq');</script>
-    <!-- End TikTok Pixel -->
+    <!-- TikTok Pixel is injected by integrations.js ONLY after marketing consent
+         (see tracking.js / integrations.js). It was removed from here so it no
+         longer loads unconditionally on every page view. -->
+    <link rel="dns-prefetch" href="https://analytics.tiktok.com">
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
@@ -131,6 +184,7 @@
             <a href="/faq">الأسئلة الشائعة</a>
             <a href="/terms">الشروط والأحكام</a>
             <a href="/privacy.html">سياسة الخصوصية</a>
+            <a href="#" data-cookie-settings>إعدادات الكوكيز</a>
           </div>
           <div>
             <h3>حمّل دكانجي</h3>
@@ -197,8 +251,9 @@
     <script src="/mandishebam-data.js?v=126"></script>
     <script src="/saruja-data.js?v=126"></script>
     <script src="/pasapizzeria-data.js?v=128"></script>
-    <script src="/app.js?v=184"></script>
-    <script src="/integrations.js?v=85"></script>
+    <script src="/app.js?v=185"></script>
+    <script src="/tracking.js?v=3"></script>
+    <script src="/integrations.js?v=87"></script>
     <script>
       // منع التقريب (pinch / double-tap) على iOS Safari الذي يتجاهل user-scalable=no
       (function () {

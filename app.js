@@ -728,6 +728,8 @@ function pushOrderCloud(order) {
     payload.customer_id = state.user.id;
     payload.customer_phone = order.customerPhone || "";
   }
+  // Campaign attribution (first/last source + UTM + landing) — for "which ad drove this order".
+  if (order.attribution) payload.attribution = order.attribution;
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
 }
 // Fire-and-forget WhatsApp notification through the platform number: alerts the
@@ -1352,6 +1354,8 @@ async function verifyOrderOtp(form) {
   if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "تأكيد وإرسال الطلب"; }
   if (r && r.ok) {
     state.verifiedPhone = phone; saveState();
+    // submit_phone (Meta Lead) — phone confirmed via WhatsApp OTP at checkout.
+    window.DUKKANCI_TRACKING?.track("submit_phone", {});
     closeModal();
     const cb = pendingOtpCommit; pendingOtpCommit = null;
     if (cb) cb();
@@ -2490,6 +2494,8 @@ function hasBannerCover(store) {
 function renderStorePage(id) {
   const store = getStore(id);
   if (!store) return renderNotFound();
+  // view_store — deduped per store so re-renders don't double-count.
+  window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
   const siblingBranches = store.branchGroup
     ? stores.filter(branch => branch.branchGroup === store.branchGroup)
         .sort((a, b) => (branchDistanceKm(a) ?? Infinity) - (branchDistanceKm(b) ?? Infinity))
@@ -5277,7 +5283,7 @@ function openComplaintDetails(complaintId) {
 function openProductModal(id) {
   const product = getProduct(id);
   const store = getStore(product.storeId);
-  window.DUKKANCI_INTEGRATIONS?.track("ViewContent", { ids: [product.id], value: product.price });
+  window.DUKKANCI_TRACKING?.track("ViewContent", { ids: [product.id], value: product.price, product_id: product.id, store_id: product.storeId, store_name: store?.name });
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="product-modal-grid">
@@ -5678,7 +5684,7 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), optionSelections: [...optionSelections], notes });
   saveState();
   updateCartBadges();
-  window.DUKKANCI_INTEGRATIONS?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity });
+  window.DUKKANCI_TRACKING?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity, product_id: product.id, store_id: product.storeId });
   showToast(`تمت إضافة ${product.name} إلى السلة`, "success");
 }
 
@@ -6187,9 +6193,14 @@ document.addEventListener("click", event => {
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
     state.storeFilter = "الكل";
+    if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
     navigate("stores");
   }
-  if (action === "run-store-search") { state.search = document.getElementById("stores-search").value.trim(); render(); }
+  if (action === "run-store-search") {
+    state.search = document.getElementById("stores-search").value.trim();
+    if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
+    render();
+  }
   if (action === "voice-search") startVoiceSearch(target);
   if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
   if (action === "remove-coupon") removeCoupon();
@@ -6223,7 +6234,7 @@ document.addEventListener("click", event => {
   if (action === "checkout") {
     closeDrawers();
     const t = cartTotals();
-    window.DUKKANCI_INTEGRATIONS?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
+    window.DUKKANCI_TRACKING?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
     navigate("checkout");
   }
   if (action === "modal-quantity-plus" || action === "modal-quantity-minus") {
@@ -7504,6 +7515,8 @@ document.addEventListener("submit", async event => {
     // The actual order placement — run now if the phone is already verified, else
     // only after the WhatsApp OTP is confirmed (anti-fraud gate below).
     const commitOrder = () => {
+      // Campaign attribution: which source/campaign brought this real order.
+      try { newOrder.attribution = window.DUKKANCI_TRACKING?.getAttribution() || null; } catch (e) {}
       state.myOrders.unshift(newOrder);
       state.orders.unshift(newOrder);
       pushOrderCloud(newOrder);
@@ -7516,7 +7529,7 @@ document.addEventListener("submit", async event => {
       if (isFeatureOn("feature_community_retention") && state.user) {
         settleReferralAndCredit(newOrder.id, orderCredit);
       }
-      window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
+      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId });
       state.cart = [];
       state.coupon = null;
       state.useCredit = false;
