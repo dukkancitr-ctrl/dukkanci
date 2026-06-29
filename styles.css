@@ -663,6 +663,37 @@ img {
 .credit-toggle strong { display: block; font-size: 14px; }
 .credit-toggle small { color: var(--muted); font-size: 12px; }
 
+/* Group / building orders (Feature 4-c) */
+.group-order-card {
+  max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;
+  padding: 22px; background: #fff; border: 1px solid #ece7e5; border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.group-order-head { display: flex; align-items: center; gap: 12px; }
+.group-order-head strong { display: block; font-size: 18px; }
+.group-order-head small { color: var(--muted); font-size: 12px; }
+.group-area { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.group-area .icon { width: 14px; height: 14px; }
+.group-status {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px;
+  font-weight: 600; font-size: 14px;
+}
+.group-status .icon { width: 17px; height: 17px; }
+.group-status.open { background: rgba(227, 6, 19, 0.06); color: #c70511; }
+.group-status.reached { background: rgba(31, 157, 87, 0.12); color: #137a43; }
+.group-status.closed { background: #f3f0ef; color: var(--muted); }
+.group-progress { display: flex; flex-direction: column; gap: 8px; }
+.group-progress__bar { height: 12px; border-radius: 999px; background: #eee7e4; overflow: hidden; }
+.group-progress__bar span { display: block; height: 100%; background: linear-gradient(90deg, #1f9d57, #137a43); border-radius: 999px; transition: width .3s; }
+.group-progress__labels { display: flex; justify-content: space-between; font-size: 14px; }
+.group-progress__labels b { color: var(--ink); }
+.group-progress__labels span { color: var(--muted); }
+.group-participants small { color: var(--muted); font-size: 13px; }
+.group-participants ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.group-participants li { display: flex; justify-content: space-between; padding: 8px 12px; background: #faf8f7; border-radius: 10px; font-size: 14px; }
+.group-empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.group-join { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #eee; padding-top: 14px; }
+
 .hero-trust {
   margin-top: 24px;
   display: flex;

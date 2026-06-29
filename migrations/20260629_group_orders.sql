@@ -1,0 +1,23 @@
+-- =====================================================================
+-- Dukkanci — Feature 4-c: group / building orders (MVP). Additive only.
+-- Already applied to prod (project tzcqnqzltrjemdnkzpzn) on 2026-06-29 via the
+-- Supabase MCP; kept here for the record. Same flag (feature_community_retention,
+-- OFF) — a coordination tool, NOT a combined cart: neighbors join a shared group
+-- to reach a store's minimum + share delivery; each still places their own order.
+--
+-- Tables: group_orders (share_token uuid link), group_order_participants.
+-- RLS: owner reads own groups, participant reads own rows; the shared-link view +
+-- all writes go through security-definer RPCs:
+--   create_group_order(store_id, area_label, window_hours, min_target) -> {token}
+--   get_group_order(token)            -> public read by token (no login needed)
+--   join_group_order(token, name, subtotal)
+-- create requires auth.uid(); get/join work for guests via the token.
+-- Verified: get_group_order returns correct aggregated total/count/participants.
+--
+-- Client: /group/<token> route (SPA catch-all serves it), "طلب جماعي" button on the
+-- store page, create modal, join form, share link. All gated by the flag.
+--
+-- Full bodies: see apply_migration "community_group_orders".
+-- =====================================================================
+-- (tables + RLS + RPCs are in the applied migration above; no flag insert here —
+--  reuses feature_community_retention from 20260629_referrals_credits.sql)

@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore);
 
 const products = [];
 
@@ -65,6 +65,9 @@ products.push(...alfursanProducts);
 products.push(...hallabProducts);
 products.push(...safaProducts);
 products.push(...rodyProducts);
+products.push(...krepchefProducts);
+products.push(...beytProducts);
+products.push(...mandishebamProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -149,7 +152,10 @@ const initialDeliverySettings = {
   ...alfursanDeliverySettings,
   ...hallabDeliverySettings,
   ...safaDeliverySettings,
-  ...rodyDeliverySettings
+  ...rodyDeliverySettings,
+  ...krepchefDeliverySettings,
+  ...beytDeliverySettings,
+  ...mandishebamDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -1760,6 +1766,110 @@ function renderReferral() {
       <p class="referral-note">${icon("shield")} تحصل أنت وصديقك على رصيد عند أول طلب له.</p>
     </div>`;
 }
+
+// ─────────── Feature 4-c: group / building orders (feature_community_retention) ───────────
+async function loadGroupOrder(token) {
+  const sb = window.supabaseClient;
+  if (!sb || state._groupLoading === token) return;
+  state._groupLoading = token;
+  try {
+    const { data } = await sb.rpc("get_group_order", { p_token: token });
+    state._groupCache = { token, data: data || { found: false } };
+  } catch (e) { state._groupCache = { token, data: { found: false } }; }
+  finally { state._groupLoading = null; if (state.route === "group") render(); }
+}
+function openCreateGroupModal(storeId) {
+  if (!state.user) { showToast("سجّل الدخول لإنشاء طلب جماعي", ""); openLoginModal(); return; }
+  const store = getStore(storeId);
+  if (!store) return;
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="auth-logo"><span class="brand-mark">${icon("megaphone")}</span></div>
+    <h2>اطلب جماعياً مع جيرانك</h2>
+    <p>أنشئ طلباً جماعياً من <strong>${escAttr(store.name)}</strong> وشارك الرابط مع جيرانك لتبلغوا الحد الأدنى وتتقاسموا التوصيل.</p>
+    <form id="group-create-form" data-store="${storeId}">
+      <label class="input-label"><span>المبنى / المنطقة</span><input name="area" required placeholder="مثال: مبنى A — شارع الزهور"></label>
+      <label class="input-label"><span>مدة التجميع (ساعات)</span><input name="hours" type="number" min="1" max="72" value="6"></label>
+      <p class="auth-error" id="group-create-error" hidden></p>
+      <button class="primary-button full large" type="submit">${icon("megaphone")} إنشاء ومشاركة</button>
+    </form>
+  `, "auth-modal");
+}
+async function submitCreateGroup(form) {
+  const sb = window.supabaseClient;
+  const storeId = Number(form.dataset.store);
+  const f = new FormData(form);
+  const area = (f.get("area") || "").toString().trim();
+  const hours = Number(f.get("hours")) || 6;
+  const showErr = m => { const el = document.getElementById("group-create-error"); if (el) { el.textContent = m; el.hidden = false; } };
+  if (!area) { showErr("أدخل اسم المبنى أو المنطقة."); return; }
+  if (!sb) { showErr("الخدمة غير متاحة حالياً."); return; }
+  const btn = form.querySelector('button[type="submit"]');
+  const restore = setBtnBusy(btn, "جارٍ الإنشاء…");
+  try {
+    const { data, error } = await sb.rpc("create_group_order", { p_store_id: storeId, p_area_label: area, p_window_hours: hours });
+    restore();
+    if (error || !data || !data.ok) { showErr(data && data.reason === "not_signed_in" ? "سجّل الدخول أولاً." : "تعذّر إنشاء الطلب الجماعي."); return; }
+    closeModal();
+    state._groupCache = null;
+    navigate("group/" + data.token);
+  } catch (e) { restore(); showErr("تعذّر إنشاء الطلب الجماعي."); }
+}
+async function submitJoinGroup(form) {
+  const sb = window.supabaseClient;
+  const token = form.dataset.token;
+  const f = new FormData(form);
+  const name = (f.get("name") || state.customerProfile.name || "").toString().trim();
+  const subtotal = Number(f.get("subtotal")) || 0;
+  if (!sb) return;
+  const btn = form.querySelector('button[type="submit"]');
+  const restore = setBtnBusy(btn, "جارٍ الانضمام…");
+  try {
+    const { data, error } = await sb.rpc("join_group_order", { p_token: token, p_name: name, p_subtotal: subtotal });
+    restore();
+    if (error || !data || !data.ok) { showToast(data && data.reason === "closed" ? "انتهى وقت هذا الطلب الجماعي" : "تعذّر الانضمام", ""); return; }
+    showToast("انضممت إلى الطلب الجماعي 🎉", "success");
+    state._groupCache = null;
+    loadGroupOrder(token);
+  } catch (e) { restore(); showToast("تعذّر الانضمام", ""); }
+}
+function renderGroupOrder(token) {
+  if (!isFeatureOn("feature_community_retention")) return renderHome();
+  const wrap = inner => `<section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>طلب جماعي</strong></div></div></section><section class="section"><div class="container">${inner}</div></section>`;
+  if (!token) return wrap(renderEmpty("طلب جماعي", "افتح رابط طلب جماعي للانضمام إليه.", "تصفّح المتاجر", "stores"));
+  const cache = state._groupCache;
+  if (!cache || cache.token !== token) { loadGroupOrder(token); return wrap(`<div class="account-empty">${icon("megaphone")}<p>جارٍ التحميل…</p></div>`); }
+  const g = cache.data;
+  if (!g || !g.found) return wrap(renderEmpty("الطلب الجماعي غير موجود", "قد يكون الرابط منتهياً أو غير صحيح.", "العودة للرئيسية", "home"));
+  const store = getStore(g.store_id);
+  const target = Number(g.min_target) || (store ? store.minOrder : 0) || 0;
+  const total = Number(g.total) || 0;
+  const pct = target > 0 ? Math.min(100, Math.round(total / target * 100)) : 0;
+  const closed = g.status !== "open";
+  const reached = target > 0 && total >= target;
+  const link = location.origin + "/group/" + token;
+  const parts = Array.isArray(g.participants) ? g.participants : [];
+  return wrap(`
+    <div class="group-order-card">
+      <div class="group-order-head">
+        ${store ? storeAvatar(store) : ""}
+        <div><small>طلب جماعي من</small><strong>${store ? esc(store.name) : "متجر"}</strong><span class="group-area">${icon("pin")} ${esc(g.area_label)}</span></div>
+      </div>
+      <div class="group-status ${closed ? "closed" : (reached ? "reached" : "open")}">
+        ${closed ? `${icon("clock")} انتهى وقت التجميع` : (reached ? `${icon("check")} تم بلوغ الحد الأدنى!` : `${icon("clock")} ينتهي ${formatOrderDate(g.window_end)}`)}
+      </div>
+      ${target > 0 ? `<div class="group-progress"><div class="group-progress__bar"><span style="width:${pct}%"></span></div><div class="group-progress__labels"><b>${money(total)}</b><span>من ${money(target)} (${pct}%)</span></div></div>` : `<div class="group-progress__labels"><b>${money(total)}</b><span>مجموع المشاركين</span></div>`}
+      <div class="group-participants"><small>المشاركون (${g.count || 0})</small>${parts.length ? `<ul>${parts.map(p => `<li><span>${esc(p.name || "مشارك")}</span><b>${money(Number(p.subtotal) || 0)}</b></li>`).join("")}</ul>` : `<p class="group-empty">كن أول المنضمّين!</p>`}</div>
+      ${closed ? "" : `
+      <form id="group-join-form" data-token="${escAttr(token)}" class="group-join">
+        <label class="input-label"><span>اسمك</span><input name="name" value="${escAttr(state.customerProfile.name || "")}" placeholder="اسمك أو رقم شقتك"></label>
+        <label class="input-label"><span>قيمة طلبك التقريبية (ل.ت)</span><input name="subtotal" type="number" min="0" placeholder="0"></label>
+        <button class="primary-button full large" type="submit">${icon("check")} انضمّ إلى الطلب الجماعي</button>
+      </form>`}
+      <button class="secondary-button full" data-action="share-group" data-link="${escAttr(link)}">${icon("share")} انسخ رابط الدعوة</button>
+      ${store ? `<a class="text-button" href="/store/${escAttr(storeParam(store))}" data-action="open-store" data-id="${store.id}">تصفّح منتجات ${esc(store.name)}</a>` : ""}
+    </div>`);
+}
 function couponReasonAr(reason, data) {
   const map = {
     not_found: "كود الخصم غير صحيح.",
@@ -2343,6 +2453,7 @@ function renderStorePage(id) {
           <div class="store-profile__actions">
             <button class="secondary-button" data-action="share-store" data-id="${store.id}">${icon("share")} مشاركة</button>
             <button class="secondary-button" data-action="favorite" data-key="store-${store.id}">${icon("heart")} حفظ</button>
+            ${isFeatureOn("feature_community_retention") ? `<button class="secondary-button" data-action="create-group" data-id="${store.id}">${icon("megaphone")} طلب جماعي</button>` : ""}
           </div>
         </div>
       </div>
@@ -4736,6 +4847,7 @@ function render() {
     product: () => renderProductPage(id),
     category: () => renderCategoryPage(id),
     orders: renderOrders,
+    group: () => renderGroupOrder(id),
     merchant: () => renderMerchant(id),
     admin: renderAdmin,
     checkout: renderCheckout,
@@ -5848,6 +5960,12 @@ document.addEventListener("click", event => {
     if (navigator.clipboard && code) navigator.clipboard.writeText(code).then(() => showToast("تم نسخ الكود", "success")).catch(() => {});
   }
   if (action === "toggle-credit") { state.useCredit = !state.useCredit; render(); }
+  if (action === "create-group") openCreateGroupModal(Number(target.dataset.id));
+  if (action === "share-group") {
+    const link = target.dataset.link || "";
+    if (navigator.share) { navigator.share({ title: "طلب جماعي على دكانجي", url: link }).catch(() => {}); }
+    else if (navigator.clipboard && link) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط الدعوة", "success")).catch(() => {});
+  }
   if (action === "focus-search") {
     if (state.route !== "home") navigate("home");
     setTimeout(() => document.getElementById("hero-search")?.focus(), 100);
@@ -6756,6 +6874,8 @@ document.addEventListener("input", event => {
 
 document.addEventListener("submit", async event => {
   event.preventDefault();
+  if (event.target.id === "group-create-form") { submitCreateGroup(event.target); return; }
+  if (event.target.id === "group-join-form") { submitJoinGroup(event.target); return; }
   if (event.target.id === "admin-login-form") {
     const input = document.getElementById("admin-login-input");
     const pwd = (input?.value || "").trim();
