@@ -258,7 +258,7 @@ const state = {
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   // Admin-issued phone+password merchant session (server-verified, subscription-gated).
   merchantPwAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-session") || "null"),
-  merchantLoginMode: "email",
+  merchantLoginMode: "admin",
   merchantEmailMode: "signin",
   adminTab: "overview",
   adminAnalyticsRange: 30, // days for the overview analytics (0 = all time)
@@ -3143,13 +3143,14 @@ function merchantLogin() {
       <form class="merchant-auth__card" id="merchant-pw-form">
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
         <h2>دخول إدارة دكانجي</h2>
-        <p>للمتاجر المُفعّلة باشتراك: سجّل الدخول باسم المستخدم (رقم موبايل متجرك) وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
-        <label class="input-label"><span>اسم المستخدم (رقم الموبايل)</span><input name="username" type="tel" inputmode="tel" autocomplete="username" required placeholder="05XX XXX XX XX" dir="ltr"></label>
+        <p>سجّل الدخول باسم المستخدم (رقم موبايل متجرك أو بريدك الإلكتروني) وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
+        <label class="input-label"><span>اسم المستخدم (رقم الموبايل أو البريد)</span><input name="username" type="text" inputmode="email" autocomplete="username" required placeholder="05XX XXX XX XX أو you@example.com" dir="ltr"></label>
         <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
         <p class="auth-error" id="merchant-pw-error" role="alert" hidden></p>
         <button class="primary-button full large" type="submit">${icon("shield")} دخول</button>
         <div class="merchant-auth__divider"><span>طرق دخول أخرى</span></div>
-        <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بالبريد وكلمة المرور</button>
+        <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بحساب بريد إلكتروني (Google)</button>
+        <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} ليس لديك متجر؟ أنشئ متجرك الآن</button>
         <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
       </form>
     </div>
@@ -3214,7 +3215,17 @@ async function submitMerchantPwLogin(form) {
     localStorage.setItem("dukkanci-merchant-session", JSON.stringify(state.merchantPwAuth));
     state._merchantResolved = false; state._merchantOrdersFetched = false;
     state.merchantStoreId = ids[0]; state.merchantTab = "overview";
-    showToast("مرحباً بك في لوحة متجرك", "success");
+    // Login no longer blocks on subscription — warn (don't block) when the store
+    // (or every matched branch) is not subscription-active. Order intake stays
+    // gated by the subscription logic elsewhere; this just lets the owner in.
+    const inactive = data.multi
+      ? data.stores.every(s => s.subscription_active === false)
+      : data.subscription_active === false;
+    if (inactive) {
+      showToast("تم الدخول. تنبيه: اشتراك متجرك غير مفعّل — لن تستقبل طلبات جديدة حتى تجديد الاشتراك.", "warning");
+    } else {
+      showToast("مرحباً بك في لوحة متجرك", "success");
+    }
     navigate("merchant");
   } catch (e) {
     showErr("تعذّر الاتصال بالخادم. تحقّق من اتصالك ثم حاول مجدداً.");
@@ -4962,8 +4973,17 @@ function renderCategoryPage(slug) {
 }
 
 function render() {
-  const { route, id } = parseRoute();
+  const { route } = parseRoute();
+  let { id } = parseRoute();
   state.route = route;
+  // Canonicalize a numeric /store/<id> deep-link to its clean slug URL (address bar
+  // only, no reload) so a shared/bookmarked /store/50 shows /store/safa-alsham-market.
+  // Realigning `id` to the slug keeps the nav key stable so the post-load data-refresh
+  // render doesn't see a changed key and jump-scroll to the top.
+  if (route === "store" && id != null && /^\d+$/.test(String(id)) && SLUG_MAP[Number(id)]) {
+    id = SLUG_MAP[Number(id)];
+    history.replaceState({}, "", "/store/" + id);
+  }
   updateHead(route, id);
   const routes = {
     home: renderHome,
@@ -6718,7 +6738,7 @@ document.addEventListener("click", event => {
     localStorage.removeItem("dukkanci-merchant-session");
     if (wasPwSession) {
       // No Supabase session to end — just reset to the login screen.
-      state.merchantLoginMode = "email";
+      state.merchantLoginMode = "admin";
       showToast("تم تسجيل الخروج", "success");
       render();
     } else {
