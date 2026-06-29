@@ -3926,6 +3926,16 @@ p.success-note.order-closed-note {
   color: #66716c;
 }
 
+.status-pill.yellow {
+  background: #fef6e0;
+  color: #a16207;
+}
+
+.status-pill.teal {
+  background: #e3f5f3;
+  color: #0f766e;
+}
+
 .tracking-steps {
   margin: 25px 10px;
   display: grid;
@@ -8784,10 +8794,50 @@ tbody tr:hover {
 .contacts-preview { display: flex; flex-wrap: wrap; gap: 6px; }
 .contacts-preview code { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 12px; direction: ltr; }
 
-/* ─── Contacts groups list ─── */
-.contacts-groups-list { margin-bottom: 4px; }
-.groups-heading { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+/* ─── Campaign KPI strip ─── */
+.campaign-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.kpi-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.kpi-card .kpi-icon { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: #f0f2f1; color: #66716c; }
+.kpi-card .kpi-icon svg { width: 20px; height: 20px; }
+.kpi-card.blue .kpi-icon { background: #ebf4fa; color: var(--blue); }
+.kpi-card.green .kpi-icon { background: #eaf8ef; color: #278151; }
+.kpi-body { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.kpi-body b { font-size: 22px; font-weight: 800; color: var(--text); }
+.kpi-body small { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ─── Campaign toolbar ─── */
+.campaign-toolbar { margin-bottom: 18px; }
+.campaign-toolbar .secondary-button.is-active { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Card heading polish (scoped to campaigns view) ─── */
+.dashboard-content .card-heading h3:has(svg) { display: flex; align-items: center; gap: 8px; }
+.dashboard-content .card-heading h3 svg { width: 18px; height: 18px; color: var(--accent); }
+.count-chip { font-size: 13px; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 4px 12px; border-radius: 16px; white-space: nowrap; }
+.muted-hint { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+/* ─── Contacts groups as cards ─── */
+.contacts-groups-list { margin-bottom: 22px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.groups-heading { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 12px; }
 .groups-heading svg { width: 15px; height: 15px; }
+.groups-heading .groups-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 800; }
+.groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.group-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); transition: border-color .15s ease, box-shadow .15s ease; }
+.group-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.group-card__top { display: flex; align-items: center; justify-content: space-between; }
+.group-card__icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #ebf4fa; color: var(--blue); }
+.group-card__icon svg { width: 18px; height: 18px; }
+.group-card__del { width: 30px; height: 30px; flex: none; display: flex; align-items: center; justify-content: center; border: none; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.group-card__del svg { width: 16px; height: 16px; }
+.group-card__del:hover { background: #fdeeee; color: #dc2626; }
+.group-card__name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-card__count { font-size: 13px; color: var(--muted); }
+.group-card__count b { font-size: 16px; font-weight: 800; color: var(--text); }
+
+/* ─── Upload area heading + campaigns table scroll ─── */
+.upload-heading { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.upload-heading svg { width: 16px; height: 16px; color: var(--accent); }
+.campaigns-table-wrap { overflow-x: auto; }
+@media (max-width: 600px) { .kpi-body b { font-size: 19px; } .group-card__name { font-size: 13px; } }
 
 /* ─── Campaign error display ─── */
 .campaign-errors-box { margin-top: 8px; padding: 10px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 5px; }

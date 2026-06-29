@@ -788,19 +788,47 @@ function mapDbOrder(r) {
 // so "طلباتي" shows real orders and tracks them across devices.
 async function loadCustomerOrdersFromSupabase(phoneKey) {
   const sb = window.supabaseClient;
-  if (!sb || !phoneKey) return false;
+  if (!sb) return false;
+  const ids = (state.myOrders || []).map(o => o.id).filter(Boolean);
+  if (!phoneKey && !ids.length) return false;
   try {
     const cb = Date.now();
-    const { data, error } = await sb.from("orders").select("*")
-      .eq("delivery_details->>phoneKey", phoneKey)
-      .order("created_at", { ascending: false }).neq("id", "__cb" + cb);
-    if (error || !data) return false;
-    const mapped = data.map(mapDbOrder);
-    // Merge cloud orders with any local guest orders not yet synced.
-    const localOnly = state.myOrders.filter(o => !mapped.some(m => m.id === o.id));
-    state.myOrders = [...mapped, ...localOnly];
+    const rows = [];
+    // Cross-device history: every order this phone has placed.
+    if (phoneKey) {
+      const { data } = await sb.from("orders").select("*")
+        .eq("delivery_details->>phoneKey", phoneKey)
+        .order("created_at", { ascending: false }).neq("id", "__cb" + cb);
+      if (Array.isArray(data)) rows.push(...data);
+    }
+    // Also refresh orders saved on THIS device by id — covers the case where the
+    // profile phone format differs from the order's stored phoneKey, so status
+    // changes the store made still propagate to the customer.
+    const missing = ids.filter(id => !rows.some(r => r.id === id));
+    if (missing.length) {
+      const { data } = await sb.from("orders").select("*")
+        .in("id", missing).neq("id", "__cb" + cb);
+      if (Array.isArray(data)) rows.push(...data);
+    }
+    if (!rows.length) return false;
+    const mapped = rows.map(mapDbOrder);
+    // Merge cloud orders (fresh status) over local ones; keep any local guest
+    // orders not yet in the cloud, then re-sort newest-first.
+    const localOnly = (state.myOrders || []).filter(o => !mapped.some(m => m.id === o.id));
+    state.myOrders = [...mapped, ...localOnly]
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     return true;
   } catch (e) { console.warn("customer orders load failed:", e.message); return false; }
+}
+
+// Called when the customer opens "طلباتي": pull fresh order rows from the cloud so
+// status updates the store made (already pushed to WhatsApp) actually show on the
+// site. Without this the page only ever showed the status frozen in localStorage at
+// checkout ("طلب جديد"). Fire-and-forget; re-renders only if still on the page.
+async function refreshMyOrdersFromCloud() {
+  const phoneKey = ((state.customerProfile && state.customerProfile.phone) || "").replace(/\D/g, "");
+  const ok = await loadCustomerOrdersFromSupabase(phoneKey);
+  if (ok) { saveState(); if (state.route === "orders") render(); }
 }
 
 // ─────────── Feature 1: customer account cloud-sync (feature_customer_accounts) ───────────
@@ -4481,6 +4509,12 @@ function adminCampaigns() {
     loadAdminCampaigns();
     return `<div class="dashboard-card"><div class="empty-managed">${icon("megaphone")}<p>جارٍ تحميل الحملات...</p></div></div>`;
   }
+  // Eager-load the uploaded-contacts summary once so the KPI strip + group count
+  // are accurate even before the user opens the contacts panel.
+  if (state.adminContacts == null && !state._campaignContactsRequested) {
+    state._campaignContactsRequested = true;
+    loadContacts();
+  }
 
   const showForm     = state.adminCampaignForm === "open";
   const showContacts = state.adminCampaignForm === "contacts";
@@ -4493,36 +4527,52 @@ function adminCampaigns() {
     return { all_customers: "كل عملاء المنصة", no_order_30d: "غير نشطين 30 يوماً" }[t] || t;
   };
 
+  const sendingCount = camps.filter(c => c.status === "sending").length;
+  const totalSent    = camps.reduce((s, c) => s + (c.sent_count || 0), 0);
+  const kpi = (val, label, ic, tone = "") => `
+    <div class="kpi-card ${tone}">
+      <span class="kpi-icon">${icon(ic)}</span>
+      <div class="kpi-body"><b>${val}</b><small>${label}</small></div>
+    </div>`;
+
   return `
-    <div class="dashboard-toolbar">
+    <div class="campaign-kpis">
+      ${kpi(contacts ? contacts.total.toLocaleString("ar") : "—", "رقم مرفوع", "users", "blue")}
+      ${kpi(contacts ? groups.length.toLocaleString("ar") : "—", "مجموعة", "users")}
+      ${kpi(camps.length.toLocaleString("ar"), "حملة", "megaphone")}
+      ${kpi(sendingCount.toLocaleString("ar"), "قيد الإرسال الآن", "whatsapp", sendingCount ? "green" : "")}
+      ${kpi(totalSent.toLocaleString("ar"), "رسالة مُرسَلة", "whatsapp")}
+    </div>
+
+    <div class="dashboard-toolbar campaign-toolbar">
       <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
-      <button class="secondary-button compact" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
+      <button class="secondary-button compact ${showContacts ? "is-active" : ""}" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
     </div>
 
     ${showContacts ? `
     <section class="dashboard-card campaign-form-card">
       <div class="card-heading">
-        <div><h3>قائمة الأرقام المرفوعة</h3><p>عملاء سابقون أو جمهور خارجي — يمكن استهدافهم في أي حملة</p></div>
-        ${contacts ? `<span style="font-size:13px;color:var(--muted)">${contacts.total.toLocaleString("ar")} رقم إجمالاً</span>` : ""}
+        <div><h3>${icon("users")} قائمة الأرقام المرفوعة</h3><p>عملاء سابقون أو جمهور خارجي — يمكن استهدافهم في أي حملة</p></div>
+        ${contacts ? `<span class="count-chip">${contacts.total.toLocaleString("ar")} رقم</span>` : ""}
       </div>
 
       ${groups.length ? `
       <div class="contacts-groups-list">
-        <p class="groups-heading">${icon("users")} المجموعات المحفوظة</p>
-        <table class="admin-table" style="margin-bottom:20px">
-          <thead><tr><th>اسم المجموعة</th><th>عدد الأرقام</th><th></th></tr></thead>
-          <tbody>
-            ${groups.map(g => `<tr>
-              <td><strong>${esc(g.group_name)}</strong></td>
-              <td>${g.count.toLocaleString("ar")} رقم</td>
-              <td><button class="danger-button compact" data-action="contacts-delete-group" data-group="${escAttr(g.group_name)}">حذف المجموعة</button></td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>` : contacts ? `<p style="font-size:13px;color:var(--muted);margin-bottom:16px">لا مجموعات بعد — ارفع أرقامك الأولى أدناه.</p>` : ""}
+        <p class="groups-heading">${icon("users")} المجموعات المحفوظة <span class="groups-count">${groups.length}</span></p>
+        <div class="groups-grid">
+          ${groups.map(g => `<article class="group-card">
+            <div class="group-card__top">
+              <span class="group-card__icon">${icon("users")}</span>
+              <button class="group-card__del" data-action="contacts-delete-group" data-group="${escAttr(g.group_name)}" title="حذف المجموعة" aria-label="حذف المجموعة">${icon("trash")}</button>
+            </div>
+            <strong class="group-card__name" title="${escAttr(g.group_name)}">${esc(g.group_name)}</strong>
+            <span class="group-card__count"><b>${g.count.toLocaleString("ar")}</b> رقم</span>
+          </article>`).join("")}
+        </div>
+      </div>` : contacts ? `<p class="muted-hint">لا مجموعات بعد — ارفع أرقامك الأولى أدناه.</p>` : ""}
 
       <div class="contacts-upload-area">
-        <p style="font-weight:600;font-size:14px;margin-bottom:4px">${icon("users")} رفع مجموعة جديدة</p>
+        <p class="upload-heading">${icon("users")} رفع مجموعة جديدة</p>
         <label>
           اسم المجموعة <small>(مثال: عملاء 2024، قاعدة صفا، متابعو انستغرام)</small>
           <input id="contacts-group-name" placeholder="اسم المجموعة" maxlength="60">
@@ -4596,8 +4646,9 @@ function adminCampaigns() {
     ` : ""}
 
     <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${icon("megaphone")} الحملات</h3><p>كل حملاتك الترويجية وحالتها الحالية</p></div></div>
       ${camps.length === 0 ? `<div class="empty-managed">${icon("megaphone")}<p>لا حملات بعد. أنشئ أولى حملاتك الترويجية!</p></div>` : `
-      <table class="admin-table campaigns-table">
+      <div class="campaigns-table-wrap"><table class="admin-table campaigns-table">
         <thead><tr><th>الاسم</th><th>القالب</th><th>الجمهور</th><th>الحالة</th><th>التقدم</th><th>الإجراءات</th></tr></thead>
         <tbody>
           ${camps.map(c => {
@@ -4649,7 +4700,7 @@ function adminCampaigns() {
             </tr>`;
           }).join("")}
         </tbody>
-      </table>
+      </table></div>
       `}
     </section>
 
@@ -5050,6 +5101,9 @@ function render() {
   if (navKey !== state._lastNavKey) {
     window.scrollTo({ top: 0, behavior: "instant" });
     state._lastNavKey = navKey;
+    // Entering "طلباتي" → refresh order statuses from the cloud (once per visit, so
+    // the re-render below doesn't loop since navKey stays the same).
+    if (route === "orders") setTimeout(refreshMyOrdersFromCloud, 0);
   }
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
   if (route === "join") setTimeout(openJoinModal, 0);

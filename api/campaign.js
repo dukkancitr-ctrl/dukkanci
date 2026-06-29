@@ -192,11 +192,31 @@ async function upsertContacts(phones, groupName) {
   return inserted;
 }
 
-// Return each group_name with its contact count
+// Return each group_name with its contact count.
+// PostgREST caps a single response at db-max-rows (1000 by default), so a plain
+// select drops groups whose rows fall past the first page once the contact list
+// grows beyond ~1000 — making later groups silently vanish from the UI. Page
+// through the table with Range headers so every group is counted regardless of size.
 async function getContactGroups() {
-  const rows = await sbGet("wa_contacts?select=group_name&limit=10000") || [];
+  const { url, key } = sb();
+  const PAGE = 1000;
   const counts = {};
-  for (const r of rows) { const g = r.group_name || "default"; counts[g] = (counts[g] || 0) + 1; }
+  for (let from = 0; ; from += PAGE) {
+    let rows;
+    try {
+      const r = await fetch(`${url}/rest/v1/wa_contacts?select=group_name`, {
+        headers: {
+          apikey: key, Authorization: `Bearer ${key}`,
+          "Range-Unit": "items", Range: `${from}-${from + PAGE - 1}`
+        }
+      });
+      if (!r.ok) break;
+      rows = await r.json().catch(() => null);
+    } catch (e) { break; }
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    for (const row of rows) { const g = row.group_name || "default"; counts[g] = (counts[g] || 0) + 1; }
+    if (rows.length < PAGE) break;
+  }
   return Object.entries(counts).map(([group_name, count]) => ({ group_name, count }))
     .sort((a, b) => b.count - a.count);
 }
