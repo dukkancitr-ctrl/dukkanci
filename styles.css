@@ -5958,6 +5958,60 @@ tr:last-child td {
   overflow-x: auto;
 }
 
+/* New-order ring / pending-status nudge banner on the merchant dashboard */
+.order-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  box-shadow: 0 6px 18px rgba(234, 88, 12, 0.12);
+}
+.order-alert-banner.ringing {
+  background: #fef2f2;
+  border-color: #f87171;
+  animation: orderAlertPulse 1.1s ease-in-out infinite;
+}
+.order-alert-banner.pending {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  box-shadow: none;
+}
+.order-alert-ico {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+.order-alert-banner.pending .order-alert-ico {
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+.order-alert-banner.ringing .order-alert-ico { animation: orderAlertShake 0.9s ease-in-out infinite; }
+.order-alert-ico svg { width: 20px; height: 20px; }
+.order-alert-text { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.order-alert-text strong { display: block; color: #991b1b; font-size: 0.98rem; }
+.order-alert-banner.pending .order-alert-text strong { color: #92400e; }
+.order-alert-text small { color: #6b7280; font-size: 0.78rem; }
+.order-alert-banner .icon-button.order-alert-x { flex: 0 0 auto; }
+@keyframes orderAlertPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+}
+@keyframes orderAlertShake {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+
 .order-status-tabs button {
   border-radius: 9px;
   white-space: nowrap;

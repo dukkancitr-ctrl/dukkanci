@@ -3354,6 +3354,8 @@ function renderMerchant(id) {
   }[state.merchantTab]();
   const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
   const [title, subtitle] = titles[state.merchantTab];
+  // Ring + nudge for new/pending orders while the dashboard stays open.
+  startMerchantOrderWatch();
   return `
     <div class="dashboard-shell">
       ${dashboardSidebar("merchant", state.merchantTab)}
@@ -3379,6 +3381,7 @@ function renderMerchant(id) {
             <button class="icon-button" data-action="merchant-logout" aria-label="تسجيل الخروج" title="تسجيل الخروج">${icon("logout")}</button>
           </div>
         </header>
+        ${merchantAlertBanner()}
         <div class="dashboard-content">${content}</div>
       </main>
     </div>
@@ -4818,6 +4821,8 @@ function parseRoute() {
 function navigate(to) {
   const path = (!to || to === "home") ? "/" : (to.startsWith("/") ? to : "/" + to);
   if (location.pathname !== path) history.pushState({}, "", path);
+  // Leaving the merchant dashboard → stop the order ring/watch immediately.
+  if (!/^\/merchant\b/.test(path)) stopMerchantOrderWatch();
   closeDrawers();
   render();
   window.dispatchEvent(new CustomEvent("dukkanci:navigate"));
@@ -6667,6 +6672,18 @@ document.addEventListener("click", event => {
       .catch(() => showToast("تعذّر الاستئناف", ""));
   }
   if (action === "route-home") navigate("home");
+  if (action === "ack-new-order") {
+    stopNewOrderRing();
+    state.merchantNewOrderAlert = null;
+    state.merchantTab = "orders";
+    render();
+    openOrderManager(target.dataset.id);
+  }
+  if (action === "silence-ring") {
+    stopNewOrderRing();
+    state.merchantNewOrderAlert = null;
+    render();
+  }
   if (action === "manage-order") openOrderManager(target.dataset.id);
   if (action === "view-order") openOrderManager(target.dataset.id);
   if (action === "save-order-status") {
@@ -6734,6 +6751,7 @@ document.addEventListener("click", event => {
   if (action === "delete-product") openDeleteProductConfirm(target.dataset.id);
   if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
   if (action === "merchant-logout") {
+    stopMerchantOrderWatch();
     const wasPwSession = !!state.merchantPwAuth;
     state.merchantAuth = null;
     state.merchantStores = null;
@@ -7703,6 +7721,153 @@ async function disablePush() {
       body: JSON.stringify({ endpoint })
     }).catch(() => {});
   } catch (e) {}
+}
+
+// ─────────────────── Merchant order alert: ring + status nudge ───────────────
+// The order webhook can't push into an already-open browser tab, so the open
+// dashboard polls. On a NEW order we play a distinctive looping chime + show a
+// banner until the merchant acknowledges it. When there's no new order we nudge
+// the merchant about orders still awaiting a status update so customers keep
+// seeing progress (قيد التجهيز / خرج للتوصيل / مكتمل…). Sounds are synthesized
+// with the Web Audio API — no audio asset to bundle, works offline.
+let _audioCtx = null;
+function merchantAudioCtx() {
+  if (_audioCtx) return _audioCtx;
+  try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { _audioCtx = null; }
+  return _audioCtx;
+}
+// Browsers block autoplay until a user gesture — resume the context on any click.
+function unlockMerchantAudio() {
+  const ctx = merchantAudioCtx();
+  if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+}
+["click", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, unlockMerchantAudio, { passive: true }));
+
+// Play a sequence of notes. notes = [{ f:Hz, t:startSec, d:durSec }].
+function playChime(notes, peak = 0.2) {
+  const ctx = merchantAudioCtx();
+  if (!ctx) return;
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  const now = ctx.currentTime;
+  notes.forEach(n => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = n.f;
+    g.gain.setValueAtTime(0.0001, now + n.t);
+    g.gain.exponentialRampToValueAtTime(peak, now + n.t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + n.t + n.d);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(now + n.t); osc.stop(now + n.t + n.d + 0.03);
+  });
+}
+// Distinctive new-order ring: an ascending "ding-ding-dong" the merchant learns.
+function newOrderChime() {
+  playChime([{ f: 880, t: 0, d: 0.18 }, { f: 1175, t: 0.20, d: 0.18 }, { f: 1568, t: 0.40, d: 0.5 }], 0.24);
+}
+// Softer two-note nudge for orders awaiting a status update.
+function reminderChime() {
+  playChime([{ f: 660, t: 0, d: 0.14 }, { f: 880, t: 0.16, d: 0.22 }], 0.12);
+}
+let _ringTimer = null;
+function startNewOrderRing() {
+  if (_ringTimer) return;
+  newOrderChime();
+  _ringTimer = setInterval(newOrderChime, 2600); // loop until acknowledged
+}
+function stopNewOrderRing() {
+  if (_ringTimer) { clearInterval(_ringTimer); _ringTimer = null; }
+}
+
+// Statuses that need no further merchant action (no reminder for these).
+const TERMINAL_ORDER_STATUSES = ["مكتمل", "مرفوضة", "تم التوصيل", "ملغي", "بانتظار الدفع"];
+let _merchantOrderWatch = null;
+let _pendingReminderAt = 0;
+const _baselinedStores = new Set(); // stores whose backlog we've already absorbed
+
+function seenOrdersKey(storeId) { return "dukkanci-merchant-seen-" + storeId; }
+function loadSeenOrders(storeId) {
+  try { return new Set(JSON.parse(localStorage.getItem(seenOrdersKey(storeId)) || "[]")); }
+  catch (e) { return new Set(); }
+}
+function saveSeenOrders(storeId, set) {
+  try { localStorage.setItem(seenOrdersKey(storeId), JSON.stringify([...set].slice(-500))); } catch (e) {}
+}
+function pendingCountFor(storeId) {
+  return state.orders.filter(o => o.storeId === storeId && !TERMINAL_ORDER_STATUSES.includes(o.status)).length;
+}
+
+// Begin watching the active merchant store for new orders. Idempotent. The first
+// tick per store only establishes a baseline (absorbs the existing backlog) so we
+// never ring for old orders — only orders that arrive afterwards trigger the ring.
+function startMerchantOrderWatch() {
+  if (_merchantOrderWatch) return;
+  _merchantOrderWatch = setInterval(merchantOrderTick, 15000);
+  merchantOrderTick(); // immediate baseline
+}
+function stopMerchantOrderWatch() {
+  if (_merchantOrderWatch) { clearInterval(_merchantOrderWatch); _merchantOrderWatch = null; }
+  stopNewOrderRing();
+  state.merchantNewOrderAlert = null;
+}
+
+async function merchantOrderTick() {
+  const storeId = state.merchantStoreId;
+  if (!storeId || state.route !== "merchant") { stopMerchantOrderWatch(); return; }
+  const ok = await loadOrdersFromSupabase(storeId);
+  if (!ok) return;
+  const mine = state.orders.filter(o => o.storeId === storeId);
+  const seen = loadSeenOrders(storeId);
+  // First time we watch this store this session → absorb the backlog, never ring.
+  if (!_baselinedStores.has(storeId)) {
+    _baselinedStores.add(storeId);
+    mine.forEach(o => seen.add(o.id));
+    saveSeenOrders(storeId, seen);
+    state.merchantPendingCount = pendingCountFor(storeId);
+    render();
+    return;
+  }
+  const fresh = mine.filter(o => !seen.has(o.id));
+  if (fresh.length) {
+    fresh.forEach(o => seen.add(o.id));
+    saveSeenOrders(storeId, seen);
+    state.merchantNewOrderAlert = { count: fresh.length, latest: fresh[0].id };
+    startNewOrderRing();
+    render();
+    return;
+  }
+  // No new orders → remind about orders still awaiting a status update.
+  const prev = state.merchantPendingCount || 0;
+  state.merchantPendingCount = pendingCountFor(storeId);
+  if (state.merchantPendingCount && Date.now() - _pendingReminderAt > 240000) { // every ~4 min
+    _pendingReminderAt = Date.now();
+    reminderChime();
+    render();
+  } else if (state.merchantPendingCount !== prev) {
+    render(); // keep the pending badge accurate
+  }
+}
+
+// The banner shown atop the merchant dashboard for new orders / pending updates.
+function merchantAlertBanner() {
+  const a = state.merchantNewOrderAlert;
+  if (a && a.count) {
+    return `<div class="order-alert-banner ringing" role="alert">
+      <span class="order-alert-ico">${icon("bell")}</span>
+      <div class="order-alert-text"><strong>${a.count > 1 ? `${a.count.toLocaleString("ar")} طلبات جديدة وصلت!` : "طلب جديد وصل!"}</strong><small>اضغط للعرض وتحديث الحالة</small></div>
+      <button class="primary-button compact" data-action="ack-new-order" data-id="${escAttr(a.latest)}">${icon("eye")} عرض الطلب</button>
+      <button class="icon-button order-alert-x" data-action="silence-ring" title="إيقاف الرنين">${icon("close")}</button>
+    </div>`;
+  }
+  const p = state.merchantPendingCount || 0;
+  if (p) {
+    return `<div class="order-alert-banner pending">
+      <span class="order-alert-ico">${icon("clock")}</span>
+      <div class="order-alert-text"><strong>لديك ${p.toLocaleString("ar")} ${p === 1 ? "طلب" : "طلبات"} بانتظار تحديث الحالة</strong><small>حدّث الحالة (قيد التجهيز · خرج للتوصيل · مكتمل) ليتابعها العميل</small></div>
+      <button class="secondary-button compact" data-action="merchant-tab" data-tab="orders">${icon("receipt")} عرض الطلبات</button>
+    </div>`;
+  }
+  return "";
 }
 
 // Backward-compat: convert old shared #routes (e.g. /#store/5) to real paths.
