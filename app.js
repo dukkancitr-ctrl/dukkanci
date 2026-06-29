@@ -691,6 +691,13 @@ function pushOrderCloud(order) {
       createdAt: order.createdAt || ""
     }
   };
+  // Feature 1: link the order to the signed-in customer (per-customer features +
+  // cross-device history). Only added when the flag is on AND the user is signed
+  // in, so guest orders and the flag-off path keep the exact same payload.
+  if (isFeatureOn("feature_customer_accounts") && state.user) {
+    payload.customer_id = state.user.id;
+    payload.customer_phone = order.customerPhone || "";
+  }
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
 }
 // Fire-and-forget WhatsApp notification through the platform number: alerts the
@@ -764,6 +771,57 @@ async function loadCustomerOrdersFromSupabase(phoneKey) {
     state.myOrders = [...mapped, ...localOnly];
     return true;
   } catch (e) { console.warn("customer orders load failed:", e.message); return false; }
+}
+
+// ─────────── Feature 1: customer account cloud-sync (feature_customer_accounts) ───────────
+// Mirrors the customer's profile + saved addresses to Supabase so they follow a
+// signed-in user across devices. Guests are completely unaffected (localStorage
+// only). Everything is gated behind the flag; when it's off, nothing here runs.
+
+// Replace this user's cloud address set with the current local set. Addresses are
+// few and change rarely, so a delete+insert keeps add/edit/delete/default in sync
+// without per-row id mapping; the full client object is stored verbatim in `data`.
+async function syncAddressesToCloud() {
+  if (!isFeatureOn("feature_customer_accounts")) return;
+  const sb = window.supabaseClient;
+  const uid = state.user && state.user.id;
+  if (!sb || !uid) return;
+  try {
+    await sb.from("customer_addresses").delete().eq("customer_id", uid);
+    const rows = (state.customerAddresses || []).map(a => ({
+      customer_id: uid, client_id: Number(a.id) || null,
+      label: a.label || null, is_default: !!a.isDefault, data: a
+    }));
+    if (rows.length) await sb.from("customer_addresses").insert(rows);
+  } catch (e) { console.warn("address cloud sync:", e.message); }
+}
+
+// On sign-in: ensure a profiles row exists, then pull cloud addresses. Cloud is the
+// source of truth for a signed-in user; if the cloud has none yet but this device
+// does (added while a guest), push those up so the first login migrates them
+// instead of losing them.
+async function loadCustomerCloud() {
+  if (!isFeatureOn("feature_customer_accounts")) return;
+  const sb = window.supabaseClient;
+  const uid = state.user && state.user.id;
+  if (!sb || !uid) return;
+  try {
+    await sb.from("profiles").upsert({
+      id: uid,
+      full_name: state.customerProfile.name || null,
+      phone: state.customerProfile.phone || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "id" });
+    const { data: addrs } = await sb.from("customer_addresses")
+      .select("data").eq("customer_id", uid).order("id", { ascending: true });
+    if (Array.isArray(addrs) && addrs.length) {
+      state.customerAddresses = addrs.map(r => r.data).filter(Boolean);
+      saveState();
+      if (state.route === "account" || state.route === "checkout") render();
+    } else if ((state.customerAddresses || []).length) {
+      await syncAddressesToCloud();   // first login on a device that already had addresses
+    }
+  } catch (e) { console.warn("customer cloud load:", e.message); }
 }
 // Map an order status to the 5-step tracking progress shown to the customer.
 function orderProgress(status) {
@@ -906,6 +964,7 @@ async function initAuth() {
     const { data } = await sb.auth.getSession();
     if (data && data.session) {
       state.user = data.session.user; applyUserToProfile(state.user);
+      loadCustomerCloud();
       // Returning from an email-confirmation / Google redirect mid-signup → finish the store.
       if (hasPendingJoin()) setTimeout(finalizePendingJoin, 0);
     }
@@ -918,6 +977,7 @@ async function initAuth() {
     updateAccountButton();
     if (event === "SIGNED_IN") {
       state._merchantResolved = false; state._merchantResolving = false; closeModal();
+      loadCustomerCloud();
       // If the user authenticated mid-way through creating a store, finish it now.
       if (hasPendingJoin()) { finalizePendingJoin(); }
       else showToast(`مرحباً ${(state.customerProfile.name || "").split(" ")[0] || "بك"} 👋`, "success");
@@ -5598,7 +5658,7 @@ document.addEventListener("click", event => {
   }
   if (action === "default-address") {
     state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: address.id === Number(target.dataset.id) }));
-    saveState(); render(); showToast("تم تحديث العنوان الافتراضي", "success");
+    saveState(); syncAddressesToCloud(); render(); showToast("تم تحديث العنوان الافتراضي", "success");
   }
   if (action === "delete-address") {
     const address = state.customerAddresses.find(item => item.id === Number(target.dataset.id));
@@ -5614,7 +5674,7 @@ document.addEventListener("click", event => {
     const removedWasDefault = state.customerAddresses.find(address => address.id === removedId)?.isDefault;
     state.customerAddresses = state.customerAddresses.filter(address => address.id !== removedId);
     if (removedWasDefault && state.customerAddresses.length) state.customerAddresses[0].isDefault = true;
-    saveState(); closeModal(); render(); showToast("تم حذف العنوان", "success");
+    saveState(); syncAddressesToCloud(); closeModal(); render(); showToast("تم حذف العنوان", "success");
   }
   if (action === "remove-account-favorite") {
     state.favorites = state.favorites.filter(item => item !== target.dataset.key);
@@ -6624,6 +6684,7 @@ document.addEventListener("submit", async event => {
     state.customerAddresses = state.customerAddresses.map(a => ({ ...a, isDefault: false }));
     state.customerAddresses.unshift(addressData);
     saveState();
+    syncAddressesToCloud();
     closeModal();
     // now actually add the pending product to cart
     const pid = Number(event.target.dataset.pid);
@@ -6660,7 +6721,7 @@ document.addEventListener("submit", async event => {
     if (makeDefault) state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: false }));
     if (addressId) state.customerAddresses = state.customerAddresses.map(address => address.id === addressId ? addressData : address);
     else state.customerAddresses.push(addressData);
-    saveState(); closeModal(); render(); showToast(addressId ? "تم تحديث العنوان" : "تمت إضافة العنوان", "success");
+    saveState(); syncAddressesToCloud(); closeModal(); render(); showToast(addressId ? "تم تحديث العنوان" : "تمت إضافة العنوان", "success");
   }
   // (The old insecure phone-only merchant login was removed — merchants now
   //  authenticate via Supabase Auth: see merchantLogin()/resolveMerchantStores().)
