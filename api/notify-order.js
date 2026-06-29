@@ -991,17 +991,19 @@ module.exports = async (req, res) => {
     // admin-gated endpoint — never to the public anon client.
     if (q.action === "store-creds") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
-      const storeRows = await sbGet("stores?select=id,name,phone,subscription_active&order=id") || [];
+      const storeRows = await sbGet("stores?select=id,name,phone,email,subscription_active&order=id") || [];
       const credRows = await sbGet("store_credentials?select=store_id,username,password") || [];
       const byId = new Map(credRows.map(c => [Number(c.store_id), c]));
       const toCreate = [];
       for (const s of storeRows) {
-        const key = phoneKey(s.phone);
-        if (key && !byId.has(Number(s.id))) {
-          const row = { store_id: s.id, username: key, password: genPassword() };
-          byId.set(Number(s.id), row);
-          toCreate.push(row);
-        }
+        if (byId.has(Number(s.id))) continue;
+        // Every store gets a credential so admin keys are effective store-wide.
+        // username = phone (primary login) when present, else email, else a
+        // store-id placeholder. Phone-less stores still log in via the email path.
+        const key = phoneKey(s.phone) || String(s.email || "").toLowerCase().trim() || `store-${s.id}`;
+        const row = { store_id: s.id, username: key, password: genPassword() };
+        byId.set(Number(s.id), row);
+        toCreate.push(row);
       }
       let writeOk = true;
       if (toCreate.length) {
@@ -1055,27 +1057,47 @@ module.exports = async (req, res) => {
     return res.status(200).json({});
   }
 
-  // ── Store owner login (phone = username + admin-issued password) ────────────
-  // Public. Succeeds ONLY when the password matches AND the store's subscription
-  // is active. Verified server-side with the service-role key; passwords never
-  // reach the client. If the phone maps to >1 store (branches), returns the list.
+  // ── Store owner login (username = store mobile OR email + admin-issued password)
+  // Public. Succeeds when the password matches — verified server-side with the
+  // service-role key; passwords never reach the client. Subscription status no
+  // longer BLOCKS login (it is returned so the client can warn); order intake
+  // stays gated by the subscription logic elsewhere. If the username maps to >1
+  // store (branches), returns the list.
   if (pq.action === "store-login") {
-    const key = phoneKey(body && body.username);
+    const rawUser = String((body && body.username) || "").trim();
     const password = String((body && body.password) || "");
-    if (!key || !password) return res.status(400).json({ ok: false, error: "missing-credentials" });
-    const creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
+    if (!rawUser || !password) return res.status(400).json({ ok: false, error: "missing-credentials" });
+
+    // Resolve candidate credential rows. Primary key is the store phone (the
+    // username column). When the username is an email, look up the store(s) that
+    // carry that email and verify the password against their credential rows.
+    let creds;
+    if (rawUser.includes("@")) {
+      const enc = encodeURIComponent(rawUser.toLowerCase());
+      let srows = await sbGet(`stores?email=eq.${enc}&select=id`) || [];
+      if (!srows.length) srows = await sbGet(`stores?subscription_email=eq.${enc}&select=id`) || [];
+      const ids = srows.map(s => Number(s.id)).filter(Boolean);
+      if (!ids.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+      creds = await sbGet(`store_credentials?store_id=in.(${ids.join(",")})&select=store_id,password`) || [];
+    } else {
+      const key = phoneKey(rawUser);
+      if (!key) return res.status(400).json({ ok: false, error: "missing-credentials" });
+      creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
+    }
+
     const matched = creds.filter(cr => {
       const a = Buffer.from(String(cr.password)), b = Buffer.from(password);
       return a.length === b.length && crypto.timingSafeEqual(a, b);
     }).map(cr => Number(cr.store_id));
     if (!matched.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
     const sList = await sbGet(`stores?id=in.(${matched.join(",")})&select=id,name,subscription_active`) || [];
-    const active = sList.filter(s => s.subscription_active !== false);
-    if (!active.length) return res.status(403).json({ ok: false, error: "subscription-inactive" });
-    const activeIds = active.map(s => Number(s.id));
-    const token = signMerchantToken(activeIds);
-    if (active.length === 1) return res.status(200).json({ ok: true, store_id: active[0].id, name: active[0].name, token });
-    return res.status(200).json({ ok: true, multi: true, stores: active.map(s => ({ id: s.id, name: s.name })), token });
+    if (!sList.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+    const token = signMerchantToken(sList.map(s => Number(s.id)));
+    const withStatus = sList.map(s => ({ id: s.id, name: s.name, subscription_active: s.subscription_active !== false }));
+    if (sList.length === 1) {
+      return res.status(200).json({ ok: true, store_id: sList[0].id, name: sList[0].name, subscription_active: withStatus[0].subscription_active, token });
+    }
+    return res.status(200).json({ ok: true, multi: true, stores: withStatus, token });
   }
 
   // Admin: regenerate one store's login password.
