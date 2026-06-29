@@ -1490,11 +1490,9 @@ module.exports = async (req, res) => {
           preParsed: !!(req.body && typeof req.body === "object"),
           hasSecret: !!secret,
           candidates: sigCandidates.length,
-          gotSig: hdr,
+          gotSig: hdr.slice(0, 19),
           expSigs
         }));
-        // TEMP: dump the reconstructed body so we can match Meta's exact bytes.
-        try { console.warn("[wa-sig] body " + JSON.stringify(req.body)); } catch (_) {}
       } catch (e) { /* diagnostic must never break the response */ }
       return res.status(401).json({ error: "invalid signature" });
     }
