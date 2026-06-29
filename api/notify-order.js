@@ -17,6 +17,7 @@
 // recipient has messaged the number in the last 24h — useful for testing).
 
 const crypto = require("crypto");
+const aiGateway = require("../lib/ai-gateway"); // unified AI provider layer
 
 const GRAPH = "https://graph.facebook.com";
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
@@ -638,12 +639,12 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 - للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
 أجب مباشرةً بالرسالة النهائية فقط دون شرح طريقة تفكيرك.`;
 async function aiReply(text, wa_id, timestamp) {
-  const key = env("OPENAI_API_KEY");
-  if (!key) return null;
-  const model = env("OPENAI_MODEL") || "gpt-4o-mini";
-  // OpenAI takes the system prompt as the first message. Add light conversation
-  // context (prior messages, oldest→newest) when the DB is available.
-  const messages = [{ role: "system", content: AI_SYSTEM }];
+  // Routed through the AI Gateway: the active provider/model for the
+  // whatsapp_autoreply feature is read from ai_feature_config. If no provider is
+  // configured yet, the gateway falls back to OPENAI_API_KEY so behaviour is
+  // unchanged. Build conversation context (prior messages, oldest→newest) here;
+  // the system prompt is passed separately so every adapter places it correctly.
+  const messages = [];
   try {
     const ts = timestamp ? new Date(Number(timestamp) * 1000).toISOString() : new Date().toISOString();
     const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&created_at=lt.${encodeURIComponent(ts)}&select=direction,body&order=created_at.desc&limit=8`);
@@ -655,24 +656,12 @@ async function aiReply(text, wa_id, timestamp) {
     }
   } catch (e) { /* no history → stateless reply */ }
   messages.push({ role: "user", content: String(text == null ? "" : text).slice(0, 2000) });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000); // keep the webhook within serverless limits
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 500, temperature: 0.4, messages }),
-      signal: ctrl.signal
+    return await aiGateway.complete("whatsapp_autoreply", {
+      system: AI_SYSTEM, messages, maxTokens: 500, temperature: 0.4, timeoutMs: 8000
     });
-    const data = await r.json().catch(() => null);
-    if (!r.ok || !data) return null;
-    const msg = data.choices && data.choices[0] && data.choices[0].message;
-    const out = msg && msg.content ? String(msg.content).trim() : "";
-    return out || null;
   } catch (e) {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
