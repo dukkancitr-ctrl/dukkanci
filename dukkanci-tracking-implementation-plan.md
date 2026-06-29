@@ -232,7 +232,11 @@ alter table public.marketing_event_logs enable row level security;
 
 ---
 
-## 4. المرحلة الثانية (مهمة جداً) — مخطط
+## 4. المرحلة الثانية (مهمة جداً) — ✅ معظمها مبني ومختبَر حياً (commit 49811ba)
+
+> ✅ تم: Meta CAPI من السيرفر (Purchase/Lead/Contact/InitiateCheckout/AddToCart/ViewContent) بنفس `event_id` للـDeduplication · fbp/fbc · Advanced Matching مُهشَّر (هاتف 90XXXXXXXXXX + external_id) · مفاتيح env مع fallback لـintegration_settings · تسجيل في marketing_event_logs · **اختُبِر حياً مقابل Graph API: events_received=1 (TEST32260)**.
+> ⏳ متبقٍّ: ضبط متغيّرات META_* على Vercel (لإخراج التوكن من الجدول المقروء من المتصفح) · **تبويب لوحة الإدارة "التتبع والبيانات التسويقية" (2ب) لم يُبنَ بعد** · Consent Trigger على وسم تيك توك داخل GTM.
+
 
 1. **Meta Conversions API (سيرفر)**: تمديد `/api/track` (أو `/api/capi.js`) لإرسال `Purchase/Lead/Contact/InitiateCheckout/AddToCart/ViewContent` من السيرفر باستخدام **نفس `event_id`** (Deduplication).
 2. **نقل التوكنات إلى env** (D10): `META_CONVERSIONS_API_TOKEN`, `META_PIXEL_ID`, `META_TEST_EVENT_CODE`, `META_API_VERSION`, `TIKTOK_EVENTS_API_TOKEN`, … وفصلها تماماً عن مفاتيح WhatsApp (§3 المواصفة — ممنوع الخلط).
