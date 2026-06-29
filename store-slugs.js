@@ -59,7 +59,11 @@ const STORE_SLUGS = {
   48: "alfursan-restaurant",
   49: "hallab-1881-restaurant",
   50: "safa-alsham-market",
-  51: "rody-restaurant"
+  51: "rody-restaurant",
+  52: "krep-chef-restaurant",
+  53: "beyt-alsham-restaurant",
+  54: "mandi-shebam-restaurant",
+  55: "saruja-restaurant"
 };
 
 // Reverse: slug -> id.
