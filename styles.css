@@ -604,6 +604,33 @@ img {
   .voice-search-btn.listening { animation: none; }
 }
 
+/* ── Feature 2: coupons + free-delivery ── */
+.coupon-box { margin: 4px 0 12px; }
+.coupon-row { display: flex; gap: 8px; align-items: center; }
+.coupon-row input {
+  flex: 1; min-width: 0; height: 42px; padding: 0 14px;
+  border: 1.5px solid #d4ccc9; border-radius: 10px; background: #fff;
+  color: var(--ink); outline: 0;
+}
+.coupon-row input:focus { border-color: var(--green-600, #1f9d57); }
+.coupon-row .secondary-button.compact { height: 42px; padding: 0 18px; white-space: nowrap; }
+.coupon-applied {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 4px 0 12px; padding: 10px 14px;
+  background: rgba(31, 157, 87, 0.10); border: 1px solid rgba(31, 157, 87, 0.30);
+  border-radius: 10px; color: #137a43; font-size: 14px;
+}
+.coupon-applied .icon { width: 16px; height: 16px; }
+.coupon-applied .text-button { color: #c70511; }
+.summary-discount strong, .cart-discount strong { color: #137a43; }
+.free-delivery-hint {
+  margin: 8px 0 0; padding: 9px 12px; border-radius: 10px;
+  background: rgba(227, 6, 19, 0.06); color: #c70511;
+  font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px;
+}
+.free-delivery-hint .icon { width: 16px; height: 16px; }
+.free-delivery-hint.reached { background: rgba(31, 157, 87, 0.12); color: #137a43; }
+
 .hero-trust {
   margin-top: 24px;
   display: flex;

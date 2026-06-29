@@ -219,6 +219,7 @@ const state = {
   storeFilter: "الكل",
   storeSort: "recommended",
   search: "",
+  coupon: null,            // Feature 2: applied coupon (validated via RPC), session-only
   accountTab: "orders",
   customerProfile: JSON.parse(localStorage.getItem("dukkanci-profile") || "null") || initialCustomerProfile,
   // A WhatsApp number the customer already verified (E.164 "+90…"); skips re-OTP on
@@ -458,6 +459,7 @@ function mapDbStore(r) {
     id: r.id, name: r.name, category: r.category, image: r.image, coverImage: r.cover_image, branchName,
     logoImage: r.logo_image, logo: r.logo, rating: r.rating, reviews: r.reviews, newStore: r.new_store,
     delivery: r.delivery, minOrder: r.min_order, time: r.time, distance: r.distance,
+    freeDeliveryThreshold: r.free_delivery_threshold,
     location: (r.lat != null && r.lng != null) ? { lat: r.lat, lng: r.lng } : undefined, mapUrl: r.map_url,
     open: r.open, featured: r.featured, hasOffer: r.has_offer, offer: r.offer, priceOnRequest: r.price_on_request,
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
@@ -1563,14 +1565,136 @@ function applyVoiceSearch(mode, transcript) {
   if (state.route !== "stores") navigate("stores"); else render();
 }
 
+// Feature 2: the free-delivery threshold for a store — per-store override if set,
+// else the global default from site_settings.delivery_config. null = no threshold.
+function freeDeliveryThreshold(store) {
+  const perStore = store && store.freeDeliveryThreshold;
+  if (perStore != null && Number(perStore) > 0) return Number(perStore);
+  const cfg = (state.siteSettings && state.siteSettings.delivery_config) || {};
+  const g = cfg.free_delivery_threshold;
+  return (g != null && Number(g) > 0) ? Number(g) : null;
+}
+// Conversion nudge for the cart: progress toward / celebration of free delivery.
+function freeDeliveryNudge(store, totals) {
+  if (!isFeatureOn("feature_conversion_drivers")) return "";
+  const th = freeDeliveryThreshold(store);
+  if (th == null) return "";
+  if (totals.freeDelivery) return `<p class="free-delivery-hint reached">${icon("bike")} حصلت على توصيل مجاني!</p>`;
+  const left = th - totals.subtotal;
+  if (left > 0 && totals.subtotal >= store.minOrder) return `<p class="free-delivery-hint">${icon("bike")} أضف ${money(left)} لتحصل على توصيل مجاني.</p>`;
+  return "";
+}
+// Feature 2: discount a validated coupon yields for the current subtotal. The
+// coupon's rules were already checked server-side (validate_coupon); we recompute
+// the amount client-side from the validated params so it tracks live cart edits.
+function couponDiscountFor(coupon, subtotal) {
+  if (!coupon) return { discount: 0, freeDelivery: false, belowMin: false };
+  if (subtotal < (Number(coupon.min_subtotal) || 0)) return { discount: 0, freeDelivery: false, belowMin: true };
+  if (coupon.discount_type === "free_delivery") return { discount: 0, freeDelivery: true, belowMin: false };
+  let d = coupon.discount_type === "percent" ? subtotal * (Number(coupon.value) || 0) / 100 : (Number(coupon.value) || 0);
+  if (coupon.max_discount != null) d = Math.min(d, Number(coupon.max_discount));
+  d = Math.min(d, subtotal);
+  return { discount: Math.round(d), freeDelivery: false, belowMin: false };
+}
+
 function cartTotals(addressId = null) {
   const subtotal = state.cart.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0);
   const store = state.cart.length ? getStore(state.cart[0].storeId) : null;
-  if (!store) return { subtotal, delivery: 0, total: subtotal, quote: null };
+  if (!store) return { subtotal, delivery: 0, total: subtotal, quote: null, discount: 0, freeDelivery: false };
   const address = getCheckoutAddress(addressId) || getDefaultAddress();
   const quote = activeDeliveryQuote(store, address);
-  const delivery = quote && !quote.exceedsMaxDistance ? quote.fee : 0;
-  return { subtotal, delivery, total: subtotal + delivery, quote };
+  let delivery = quote && !quote.exceedsMaxDistance ? quote.fee : 0;
+  let freeDelivery = false;
+  let discount = 0;
+  if (isFeatureOn("feature_conversion_drivers")) {
+    // Free-delivery threshold.
+    const threshold = freeDeliveryThreshold(store);
+    if (threshold != null && subtotal >= threshold) { delivery = 0; freeDelivery = true; }
+    // Applied coupon.
+    if (state.coupon) {
+      const c = couponDiscountFor(state.coupon, subtotal);
+      if (c.freeDelivery) { delivery = 0; freeDelivery = true; }
+      discount = c.discount;
+    }
+  }
+  const total = Math.max(0, subtotal + delivery - discount);
+  return { subtotal, delivery, total, quote, discount, freeDelivery };
+}
+
+// Apply a coupon code: validates server-side (validate_coupon RPC), then stores the
+// validated params so the discount tracks live cart edits. On failure shows an
+// inline reason and does NOT re-render (so the message stays visible).
+async function applyCouponCode(rawCode, btn) {
+  const code = (rawCode || "").trim();
+  const showErr = msg => { const el = document.getElementById("coupon-error"); if (el) { el.textContent = msg; el.hidden = false; } };
+  if (!code) { showErr("أدخل كود الخصم."); return; }
+  const sb = window.supabaseClient;
+  const store = state.cart.length ? getStore(state.cart[0].storeId) : null;
+  if (!sb || !store) { showErr("الخدمة غير متاحة حالياً."); return; }
+  const subtotal = state.cart.reduce((s, i) => s + i.finalPrice * i.quantity, 0);
+  const restore = setBtnBusy(btn, "جارٍ التحقق…");
+  try {
+    const { data, error } = await sb.rpc("validate_coupon", {
+      p_code: code, p_store_id: store.id, p_subtotal: subtotal, p_phone: state.customerProfile.phone || ""
+    });
+    restore();
+    if (error) { showErr("تعذّر التحقق من الكود، حاول مجدداً."); return; }
+    if (!data || !data.valid) { state.coupon = null; showErr(couponReasonAr(data && data.reason, data)); return; }
+    state.coupon = data;     // {code, discount_type, value, max_discount, min_subtotal, discount}
+    showToast("تم تطبيق كود الخصم 🎉", "success");
+    render(); renderCart();
+  } catch (e) { restore(); showErr("تعذّر التحقق من الكود."); }
+}
+function removeCoupon() {
+  state.coupon = null;
+  render(); renderCart();
+}
+// Record a coupon redemption after the order is placed. redeem_coupon re-validates
+// + enforces usage limits server-side and is idempotent per order; it requires the
+// order row to exist, so we let pushOrderCloud's insert land first and retry briefly.
+function recordCouponRedemption(orderId, storeId, subtotal, phone) {
+  const sb = window.supabaseClient;
+  const code = state.coupon && state.coupon.code;
+  if (!sb || !code) return;
+  const customerId = (isFeatureOn("feature_customer_accounts") && state.user) ? state.user.id : null;
+  let tries = 0;
+  const go = () => {
+    tries++;
+    sb.rpc("redeem_coupon", {
+      p_code: code, p_order_id: orderId, p_store_id: storeId,
+      p_subtotal: subtotal, p_phone: phone || "", p_customer_id: customerId
+    }).then(({ data, error }) => {
+      if (!error && data && data.reason === "no_order" && tries < 4) setTimeout(go, 1500);
+    }).catch(() => {});
+  };
+  setTimeout(go, 900);
+}
+function couponReasonAr(reason, data) {
+  const map = {
+    not_found: "كود الخصم غير صحيح.",
+    not_started: "كود الخصم لم يبدأ بعد.",
+    expired: "انتهت صلاحية كود الخصم.",
+    wrong_store: "هذا الكود لا ينطبق على هذا المتجر.",
+    below_min: `الحد الأدنى لاستخدام هذا الكود ${money((data && data.min_subtotal) || 0)}.`,
+    usage_limit: "انتهت مرات استخدام هذا الكود.",
+    per_customer_limit: "لقد استخدمت هذا الكود من قبل."
+  };
+  return map[reason] || "تعذّر تطبيق كود الخصم.";
+}
+// Coupon UI for the checkout summary: input row, or the applied-state chip.
+// Enter is blocked so it can't accidentally submit the order form.
+function couponCheckoutBlock() {
+  if (state.coupon) {
+    const label = state.coupon.discount_type === "free_delivery" ? "توصيل مجاني" : "خصم مطبّق";
+    return `<div class="coupon-applied"><span>${icon("check")} <strong dir="ltr">${escAttr(state.coupon.code)}</strong> · ${label}</span><button type="button" class="text-button" data-action="remove-coupon">إزالة</button></div>`;
+  }
+  return `<div class="coupon-box">
+      <div class="coupon-row">
+        <input id="coupon-input" type="text" placeholder="لديك كود خصم؟" autocomplete="off" dir="ltr" onkeydown="if(event.key==='Enter')event.preventDefault()">
+        <button type="button" class="secondary-button compact" data-action="apply-coupon">تطبيق</button>
+      </div>
+      <p class="auth-error" id="coupon-error" hidden></p>
+    </div>`;
 }
 
 function updateCartBadges() {
@@ -2366,7 +2490,8 @@ function dashboardSidebar(type, active) {
     ["delivery", "bike", "التوصيل"],
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"],
-    ["integrations", "megaphone", "التكاملات"]
+    ["integrations", "megaphone", "التكاملات"],
+    ["ai", "stars", "الذكاء الاصطناعي"]
   ];
   const items = type === "merchant" ? merchantItems : adminItems;
   return `
@@ -3299,6 +3424,147 @@ function adminIntegrations() {
   return merchantIntegrations();
 }
 
+// ─────────────────────────── AI Management tab ───────────────────────────
+// Central admin section for the AI department (spec: "قسم الذكاء الصناعي").
+// Talks to /api/ai which uses the service-role key + lib/ai-gateway. API keys
+// are only ever shown masked (last 4). Everything is admin-token gated.
+async function aiApi(action, { method = "GET", body = null } = {}) {
+  const qs = new URLSearchParams({ action }).toString();
+  const opts = { method, headers: { "x-admin-token": state.adminKey || "" } };
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(`/api/ai?${qs}`, opts);
+  if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
+  if (!res.ok) throw new Error(`request failed (${res.status})`);
+  return res.json().catch(() => ({}));
+}
+
+async function loadAdminAI() {
+  try { state.adminAI = await aiApi("overview"); state._adminAIError = null; }
+  catch (e) { state._adminAIError = true; state.adminAI = state.adminAI || { providers: [], features: [], usage: {} }; }
+  render();
+}
+
+const AI_FEATURE_LABELS = {
+  whatsapp_autoreply: ["الرد الآلي على واتساب", "يردّ على رسائل العملاء عبر رقم المنصة"],
+  image_enhancement: ["تحسين صور المنتجات", "يحسّن صور المنتجات عند رفعها"],
+  synonym_generation: ["توليد المترادفات", "مرادفات أسماء المنتجات حسب اللهجات"],
+  embeddings: ["المتجهات (قاعدة المعرفة)", "تحويل النصوص لمتجهات للبحث الدلالي / RAG"]
+};
+const AI_PROVIDER_NAMES = ["openai", "anthropic", "google", "replicate"];
+
+function adminAI() {
+  if (!state.adminAI) {
+    if (!state._adminAILoading) { state._adminAILoading = true; loadAdminAI().finally(() => { state._adminAILoading = false; }); }
+    return `<section class="dashboard-card"><p class="creds-summary">جارٍ تحميل إعدادات الذكاء الاصطناعي…</p></section>`;
+  }
+  const d = state.adminAI;
+  const providers = d.providers || [];
+  const features = d.features || [];
+  const usage = d.usage || {};
+  const editing = state._adminAIEdit ? providers.find(p => p.id === state._adminAIEdit) : null;
+  const provById = id => providers.find(p => p.id === id);
+  const providerOptions = (selected) => `<option value="">— بدون (يستخدم المفتاح الافتراضي) —</option>` +
+    providers.map(p => `<option value="${escAttr(p.id)}" ${p.id === selected ? "selected" : ""}>${esc(p.label || p.provider_name)} (${esc(p.provider_name)})</option>`).join("");
+
+  const warn = !d.hasEncryptionSecret
+    ? `<div class="delivery-calculator warning">${icon("shield")}<div><strong>التشفير غير مهيّأ</strong><p>أضِف متغيّر البيئة <code>KEY_ENCRYPTION_SECRET</code> في Vercel قبل حفظ المفاتيح (وإلا لن تُخزَّن بأمان).</p></div></div>`
+    : "";
+  const errBox = state._adminAIError ? `<div class="delivery-calculator warning">${icon("close")}<div><strong>تعذّر تحميل البيانات</strong><p>تحقّق من تسجيل دخول المشرف ثم <button class="text-button" data-action="ai-refresh">أعد المحاولة</button>.</p></div></div>` : "";
+
+  // Providers table + add/edit form
+  const providersTable = providers.length ? `
+    <div class="table-wrap"><table class="admin-table">
+      <thead><tr><th>المزوّد</th><th>النوع</th><th>النموذج الافتراضي</th><th>المفتاح</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${providers.map(p => `<tr>
+        <td><strong>${esc(p.label || p.provider_name)}</strong><br><small>${esc(p.provider_name)}</small></td>
+        <td>${esc(p.service_type)}</td>
+        <td>${esc(p.default_model || "—")}</td>
+        <td><code>••••${esc(p.key_hint || "")}</code></td>
+        <td>${p.is_active ? `<span class="status-pill paid">مفعّل</span>` : `<span class="status-pill">معطّل</span>`}</td>
+        <td style="white-space:nowrap">
+          <button class="icon-button" data-action="ai-edit-provider" data-id="${escAttr(p.id)}" title="تعديل">${icon("edit")}</button>
+          <button class="icon-button" data-action="ai-delete-provider" data-id="${escAttr(p.id)}" data-name="${escAttr(p.label || p.provider_name)}" title="حذف">${icon("trash")}</button>
+        </td></tr>`).join("")}</tbody>
+    </table></div>` : `<p class="creds-summary">لا يوجد مزوّدون بعد. أضِف أول مزوّد بالأسفل.</p>`;
+
+  const ev = (k, d2 = "") => escAttr(editing && editing[k] != null ? String(editing[k]) : d2);
+  const providerForm = `
+    <form id="ai-provider-form" class="form-grid" data-id="${editing ? escAttr(editing.id) : ""}">
+      <label class="input-label"><span>المزوّد</span>
+        <select name="provider_name">${AI_PROVIDER_NAMES.map(n => `<option value="${n}" ${editing && editing.provider_name === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label class="input-label"><span>اسم وصفي (اختياري)</span><input name="label" value="${ev("label")}" placeholder="مثال: OpenAI الإنتاج"></label>
+      <label class="input-label"><span>نوع الخدمة</span>
+        <select name="service_type">${["text", "image", "embedding", "both"].map(t => `<option value="${t}" ${editing && editing.service_type === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label class="input-label"><span>النموذج الافتراضي (اختياري)</span><input name="default_model" value="${ev("default_model")}" placeholder="gpt-4o-mini / claude-haiku-4-5-20251001 / gemini-1.5-flash"></label>
+      <label class="input-label" style="grid-column:1/-1"><span>مفتاح API ${editing ? "(اتركه فارغاً للإبقاء على الحالي)" : ""}</span><input name="api_key" type="password" autocomplete="off" placeholder="${editing ? "••••" + escAttr(editing.key_hint || "") : "sk-..."}"></label>
+      <label class="input-label" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="is_active" ${!editing || editing.is_active ? "checked" : ""} style="width:auto"><span>مفعّل</span></label>
+      <div style="grid-column:1/-1;display:flex;gap:8px">
+        <button type="submit" class="primary-button">${icon("check")} ${editing ? "حفظ التعديلات" : "إضافة المزوّد"}</button>
+        ${editing ? `<button type="button" class="secondary-button" data-action="ai-cancel-edit">إلغاء</button>` : ""}
+      </div>
+    </form>`;
+
+  // Per-feature binding
+  const featuresBlock = Object.keys(AI_FEATURE_LABELS).map(fn => {
+    const cfg = features.find(f => f.feature_name === fn) || {};
+    const [label, sub] = AI_FEATURE_LABELS[fn];
+    const bound = provById(cfg.provider_id);
+    const statusPill = cfg.is_enabled === false
+      ? `<span class="status-pill">معطّلة</span>`
+      : (bound ? `<span class="status-pill paid">${esc(bound.provider_name)}</span>` : `<span class="status-pill">المفتاح الافتراضي</span>`);
+    return `<form id="ai-feature-form" data-feature="${escAttr(fn)}" class="dashboard-card form-card" style="margin-bottom:12px">
+      <div class="card-heading"><div><h3>${esc(label)} ${statusPill}</h3><p>${esc(sub)}</p></div></div>
+      <div class="form-grid">
+        <label class="input-label"><span>المزوّد النشط</span><select name="provider_id">${providerOptions(cfg.provider_id)}</select></label>
+        <label class="input-label"><span>تجاوز النموذج (اختياري)</span><input name="model_override" value="${escAttr(cfg.model_override || "")}" placeholder="اتركه فارغاً للافتراضي"></label>
+        <label class="input-label" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="is_enabled" ${cfg.is_enabled !== false ? "checked" : ""} style="width:auto"><span>الميزة مفعّلة</span></label>
+        <button type="submit" class="secondary-button" style="grid-column:1/-1">${icon("check")} حفظ</button>
+      </div>
+    </form>`;
+  }).join("");
+
+  // Usage (last 30d)
+  const usageKeys = Object.keys(usage);
+  const usageBlock = usageKeys.length ? `
+    <div class="table-wrap"><table class="admin-table">
+      <thead><tr><th>الميزة</th><th>الاستدعاءات</th><th>الوحدات (tokens)</th><th>التكلفة التقديرية</th><th>الأخطاء</th></tr></thead>
+      <tbody>${usageKeys.map(k => { const u = usage[k]; const lbl = (AI_FEATURE_LABELS[k] && AI_FEATURE_LABELS[k][0]) || k; return `<tr><td>${esc(lbl)}</td><td>${u.calls}</td><td>${(u.tokens || 0).toLocaleString("ar")}</td><td>$${(u.cost || 0).toFixed(4)}</td><td>${u.errors || 0}</td></tr>`; }).join("")}</tbody>
+    </table></div>` : `<p class="creds-summary">لا يوجد استهلاك مسجّل بعد (آخر 30 يوماً).</p>`;
+
+  // Test box
+  const testReply = state._adminAITestReply;
+  const testBlock = `
+    <form id="ai-test-form" class="form-grid">
+      <label class="input-label"><span>الميزة</span><select name="feature">${Object.keys(AI_FEATURE_LABELS).filter(f => f !== "embeddings" && f !== "image_enhancement").map(f => `<option value="${f}">${esc(AI_FEATURE_LABELS[f][0])}</option>`).join("")}</select></label>
+      <label class="input-label" style="grid-column:1/-1"><span>رسالة تجريبية</span><input name="text" value="مرحبا، كيف أطلب من دكانجي؟"></label>
+      <button type="submit" class="secondary-button" style="grid-column:1/-1">${icon("stars")} اختبار عبر البوابة</button>
+    </form>
+    ${testReply != null ? `<div class="delivery-calculator ${testReply ? "" : "warning"}" style="margin-top:10px">${icon(testReply ? "check" : "close")}<div><strong>${testReply ? "الرد" : "لا يوجد رد"}</strong><p>${testReply ? esc(testReply) : "المزوّد غير مهيّأ أو فشل الاتصال."}</p></div></div>` : ""}`;
+
+  return `
+    ${warn}${errBox}
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>المزوّدون ومفاتيح API</h3><p>تُخزَّن المفاتيح مشفّرة ولا تظهر كاملة. أضِف عدة مزوّدين واختر النشط لكل ميزة بالأسفل.</p></div><button class="icon-button" data-action="ai-refresh" title="تحديث">${icon("download")}</button></div>
+      ${providersTable}
+    </section>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>${editing ? "تعديل مزوّد" : "إضافة مزوّد"}</h3><p>OpenAI / Anthropic / Google / Replicate.</p></div></div>
+      ${providerForm}
+    </section>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>المزوّد النشط لكل ميزة</h3><p>كل ميزة تنادي البوابة الموحّدة؛ غيّر المزوّد بضغطة دون لمس الكود.</p></div></div>
+      ${featuresBlock}
+    </section>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>اختبار سريع</h3><p>جرّب الرد عبر المزوّد النشط للميزة المختارة.</p></div></div>
+      ${testBlock}
+    </section>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>الاستهلاك (آخر 30 يوماً)</h3><p>عدد الاستدعاءات والوحدات والتكلفة التقديرية لكل ميزة.</p></div></div>
+      ${usageBlock}
+    </section>`;
+}
+
 function adminContent() {
   if (state.adminContentSection === "featured") return adminContentFeatured();
   if (state.adminContentSection === "plans") return adminContentPlans();
@@ -4071,8 +4337,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -4163,7 +4429,8 @@ function renderCheckout() {
         <aside class="order-summary checkout-summary">
           <div class="summary-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${store.name}</strong></div></div>
           <div class="summary-items">${state.cart.map(item => { const product = getProduct(item.productId); return `<div><img src="${product.image}" alt=""><span><strong>${product.name}</strong><small>${item.quantity} × ${money(item.finalPrice)}</small></span><b>${money(item.quantity * item.finalPrice)}</b></div>`; }).join("")}</div>
-          <div class="summary-prices"><span><small>المجموع الفرعي</small><strong>${money(totals.subtotal)}</strong></span><span><small>رسوم التوصيل</small><strong id="checkout-delivery-fee">${totals.quote?.exceedsMaxDistance ? "خارج النطاق" : money(totals.delivery)}</strong></span><span class="summary-total"><small>الإجمالي</small><strong id="checkout-final-total">${money(totals.total)}</strong></span></div>
+          ${isFeatureOn("feature_conversion_drivers") ? couponCheckoutBlock() : ""}
+          <div class="summary-prices"><span><small>المجموع الفرعي</small><strong>${money(totals.subtotal)}</strong></span>${totals.discount > 0 ? `<span class="summary-discount"><small>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</small><strong id="checkout-discount">−${money(totals.discount)}</strong></span>` : ""}<span><small>رسوم التوصيل</small><strong id="checkout-delivery-fee">${totals.quote?.exceedsMaxDistance ? "خارج النطاق" : (totals.freeDelivery ? "مجاني 🎉" : money(totals.delivery))}</strong></span><span class="summary-total"><small>الإجمالي</small><strong id="checkout-final-total">${money(totals.total)}</strong></span></div>
           <button class="primary-button full large" type="submit">${icon("shield")} إرسال الطلب للمتجر</button>
           <p class="secure-note">${icon("shield")} بياناتك وطلبك محفوظان بأمان</p>
         </aside>
@@ -4416,10 +4683,12 @@ function renderCart() {
     <div class="cart-note"><label for="cart-note">ملاحظات للمتجر</label><textarea id="cart-note" placeholder="مثال: يرجى اختيار حبات ناضجة..."></textarea></div>
     <div class="cart-footer">
       <div class="cart-price-line"><span>المجموع الفرعي</span><strong>${money(totals.subtotal)}</strong></div>
-      <div class="cart-price-line"><span>التوصيل</span><strong>${getDeliverySettings(store.id).mode === "distance" ? `${money(totals.delivery)} تقديرياً` : money(totals.delivery)}</strong></div>
+      ${totals.discount > 0 ? `<div class="cart-price-line cart-discount"><span>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</span><strong>−${money(totals.discount)}</strong></div>` : ""}
+      <div class="cart-price-line"><span>التوصيل</span><strong>${totals.freeDelivery ? "مجاني 🎉" : (getDeliverySettings(store.id).mode === "distance" ? `${money(totals.delivery)} تقديرياً` : money(totals.delivery))}</strong></div>
       ${getDeliverySettings(store.id).mode === "distance" ? `<p class="distance-cart-note">${icon("map")} يُثبت السعر حسب عنوانك ومسار الطريق عند إتمام الطلب.</p>` : ""}
       <div class="cart-total"><span>الإجمالي التقريبي</span><strong>${money(totals.total)}</strong></div>
       ${totals.subtotal < store.minOrder ? `<p class="minimum-alert">أضف ${money(store.minOrder - totals.subtotal)} للوصول إلى الحد الأدنى للطلب.</p>` : ""}
+      ${freeDeliveryNudge(store, totals)}
       <button class="primary-button full large" data-action="checkout" ${totals.subtotal < store.minOrder ? "disabled" : ""}>متابعة إتمام الطلب ${icon("arrowLeft")}</button>
     </div>`;
 }
@@ -4607,8 +4876,8 @@ function updateCheckoutPricing(status = "") {
   const store = getStore(state.cart[0]?.storeId);
   const totals = cartTotals(address.value);
   const delivery = pickup ? 0 : totals.delivery;
-  document.getElementById("checkout-delivery-fee").textContent = pickup ? "مجاناً" : money(delivery);
-  document.getElementById("checkout-final-total").textContent = money(totals.subtotal + delivery);
+  document.getElementById("checkout-delivery-fee").textContent = pickup ? "مجاناً" : (totals.freeDelivery ? "مجاني 🎉" : money(delivery));
+  document.getElementById("checkout-final-total").textContent = money(Math.max(0, totals.subtotal + delivery - (totals.discount || 0)));
   const calculator = document.getElementById("delivery-calculator");
   if (calculator) {
     calculator.hidden = pickup;
@@ -5468,6 +5737,8 @@ document.addEventListener("click", event => {
   }
   if (action === "run-store-search") { state.search = document.getElementById("stores-search").value.trim(); render(); }
   if (action === "voice-search") startVoiceSearch(target);
+  if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
+  if (action === "remove-coupon") removeCoupon();
   if (action === "focus-search") {
     if (state.route !== "home") navigate("home");
     setTimeout(() => document.getElementById("hero-search")?.focus(), 100);
@@ -5691,6 +5962,7 @@ document.addEventListener("click", event => {
     state.adminContentSection = null;
     if (target.dataset.tab !== "campaigns") stopCampaignPoll();
     if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
+    if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
     render();
   }
   if (action === "admin-range") { state.adminAnalyticsRange = Number(target.dataset.range) || 0; render(); }
@@ -5944,6 +6216,26 @@ document.addEventListener("click", event => {
   }
   if (action === "content-section") { state.adminContentSection = target.dataset.section; render(); }
   if (action === "content-back") { state.adminContentSection = null; render(); }
+  // ── AI Management ──
+  if (action === "ai-refresh") { state.adminAI = null; state._adminAITestReply = undefined; loadAdminAI(); }
+  if (action === "ai-edit-provider") { state._adminAIEdit = target.dataset.id; render(); }
+  if (action === "ai-cancel-edit") { state._adminAIEdit = null; render(); }
+  if (action === "ai-delete-provider") {
+    const id = target.dataset.id, name = target.dataset.name || "";
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <div class="conflict-modal-icon">${icon("trash")}</div><h2>حذف المزوّد ${esc(name)}؟</h2>
+      <p>سيُحذف المفتاح المشفّر. أي ميزة مربوطة به ستعود للمفتاح الافتراضي.</p>
+      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="danger-button" data-action="ai-confirm-delete" data-id="${escAttr(id)}">حذف</button></div>
+    `, "confirm-modal");
+  }
+  if (action === "ai-confirm-delete") {
+    const id = target.dataset.id;
+    closeModal();
+    aiApi("delete-provider", { method: "POST", body: { id } })
+      .then(() => { if (state._adminAIEdit === id) state._adminAIEdit = null; state.adminAI = null; showToast("تم حذف المزوّد", "success"); loadAdminAI(); })
+      .catch(() => showToast("تعذّر الحذف", ""));
+  }
   if (action === "cat-move") {
     const i = Number(target.dataset.index), dir = target.dataset.dir;
     const items = categoriesList().map(c => ({ ...c }));
@@ -6412,6 +6704,50 @@ document.addEventListener("submit", async event => {
       .catch(() => { showToast("تعذّر حفظ الخطة", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ الخطة`; } });
     return;
   }
+  if (event.target.id === "ai-provider-form") {
+    const f = event.target;
+    const val = n => (f.querySelector(`[name="${n}"]`)?.value || "").trim();
+    const body = {
+      id: f.dataset.id || undefined,
+      provider_name: val("provider_name"),
+      label: val("label"),
+      service_type: val("service_type"),
+      default_model: val("default_model"),
+      api_key: val("api_key"),
+      is_active: !!f.querySelector('[name="is_active"]')?.checked
+    };
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    aiApi("save-provider", { method: "POST", body })
+      .then(() => { state._adminAIEdit = null; state.adminAI = null; showToast("تم حفظ المزوّد", "success"); loadAdminAI(); })
+      .catch(e => { showToast("تعذّر الحفظ — تحقّق من المفتاح", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
+    return;
+  }
+  if (event.target.id === "ai-feature-form") {
+    const f = event.target;
+    const body = {
+      feature_name: f.dataset.feature,
+      provider_id: (f.querySelector('[name="provider_id"]')?.value || "") || null,
+      model_override: (f.querySelector('[name="model_override"]')?.value || "").trim(),
+      is_enabled: !!f.querySelector('[name="is_enabled"]')?.checked
+    };
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    aiApi("set-feature", { method: "POST", body })
+      .then(() => { state.adminAI = null; showToast("تم حفظ إعداد الميزة", "success"); loadAdminAI(); })
+      .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
+    return;
+  }
+  if (event.target.id === "ai-test-form") {
+    const f = event.target;
+    const body = { feature: f.querySelector('[name="feature"]')?.value, text: (f.querySelector('[name="text"]')?.value || "").trim() };
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الاختبار…"; }
+    aiApi("test", { method: "POST", body })
+      .then(r => { state._adminAITestReply = r && r.ok ? r.reply : ""; render(); })
+      .catch(() => { state._adminAITestReply = ""; showToast("تعذّر الاختبار", ""); render(); });
+    return;
+  }
   if (event.target.id === "content-edit-form") {
     const f = event.target;
     const cfg = CONTENT_SECTIONS[f.dataset.section];
@@ -6558,7 +6894,10 @@ document.addEventListener("submit", async event => {
     }
     // Persist contact to the profile so it prefills next time and ties orders together.
     state.customerProfile = { ...state.customerProfile, name: contactName, phone: contactPhone };
-    const finalTotal = totals.subtotal + (isPickup ? 0 : totals.delivery);
+    // Feature 2: apply the coupon discount to the charged total (free-delivery is
+    // already reflected in totals.delivery). Floor at 0 so it can never go negative.
+    const orderDiscount = totals.discount || 0;
+    const finalTotal = Math.max(0, totals.subtotal + (isPickup ? 0 : totals.delivery) - orderDiscount);
     const storeId = state.cart[0].storeId;
     // If the store is outside its working hours, the order is still accepted but
     // will only be fulfilled the next working day — flag it and tell the customer.
@@ -6589,6 +6928,8 @@ document.addEventListener("submit", async event => {
       scheduleTime: els.time?.value || "",
       closedWhenOrdered: storeClosedNow,
       deliveryDetails: isPickup ? null : totals.quote,
+      discount: orderDiscount,
+      couponCode: state.coupon ? state.coupon.code : "",
       createdAt: new Date().toISOString()
     };
     const itemCount = newOrder.lineItems.reduce((s, i) => s + (i.qty || 1), 0);
@@ -6600,8 +6941,13 @@ document.addEventListener("submit", async event => {
       state.orders.unshift(newOrder);
       pushOrderCloud(newOrder);
       notifyOrderWhatsapp(newOrder);
+      // Feature 2: record the coupon redemption server-side (enforces usage limits).
+      if (isFeatureOn("feature_conversion_drivers") && state.coupon) {
+        recordCouponRedemption(newOrder.id, storeId, totals.subtotal, contactPhone);
+      }
       window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
       state.cart = [];
+      state.coupon = null;
       state.deliveryQuote = null;
       state.checkoutLocation = null;
       saveState(); updateCartBadges();
