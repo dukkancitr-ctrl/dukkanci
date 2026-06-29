@@ -243,6 +243,8 @@ const state = {
   adminTab: "overview",
   adminAnalyticsRange: 30, // days for the overview analytics (0 = all time)
   adminAnalyticsMetric: "revenue", // "revenue" | "orders" — trend chart metric
+  adminOrderStatus: "all", // orders tab status filter ("all" or a status label)
+  adminOrderStore: "all",  // orders tab store filter ("all" or a storeId string)
   adminContentSection: null,
   siteSettings: {},
   adminKey: sessionStorage.getItem("dukkanci-admin-token") || null,
@@ -3118,7 +3120,26 @@ function adminCustomers() {
 }
 
 function adminOrders() {
-  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-order-search" placeholder="ابحث في كل الطلبات"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div></div><section class="dashboard-card orders-table-card">${renderOrdersTable(state.orders, "admin")}</section>`;
+  const all = state.orders;
+  const statusFilter = state.adminOrderStatus || "all";
+  const storeFilter = state.adminOrderStore || "all";
+  const statuses = [...new Set(all.map(o => o.status || "—"))];
+
+  let filtered = all;
+  if (statusFilter !== "all") filtered = filtered.filter(o => (o.status || "—") === statusFilter);
+  if (storeFilter !== "all") filtered = filtered.filter(o => String(o.storeId) === storeFilter);
+  filtered = [...filtered].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
+
+  const chip = (v, label, count) => `<button class="range-chip ${statusFilter === v ? "active" : ""}" data-action="admin-order-status" data-status="${escAttr(v)}">${label} (${count.toLocaleString("ar")})</button>`;
+  const statusChips = [chip("all", "الكل", all.length), ...statuses.map(s => chip(s, s, all.filter(o => (o.status || "—") === s).length))].join("");
+
+  const storeIds = [...new Set(all.map(o => o.storeId))];
+  const storeOptions = `<option value="all">كل المتاجر</option>` + storeIds
+    .map(id => `<option value="${id}" ${storeFilter === String(id) ? "selected" : ""}>${escAttr((getStore(Number(id)) || {}).name || ("متجر " + id))}</option>`).join("");
+
+  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-order-search" placeholder="ابحث في الطلبات"></div><div class="toolbar-actions"><select class="filter-select" id="admin-order-store">${storeOptions}</select><button class="secondary-button compact" data-action="export-csv" data-kind="orders">${icon("download")} تصدير</button></div></div>
+    <div class="range-chips order-status-chips">${statusChips}</div>
+    <section class="dashboard-card orders-table-card">${filtered.length ? renderOrdersTable(filtered, "admin") : `<div class="empty-managed">${icon("receipt")}<p>لا توجد طلبات مطابقة للفلاتر.</p></div>`}</section>`;
 }
 
 function adminComplaints() {
@@ -5614,6 +5635,7 @@ document.addEventListener("click", event => {
   }
   if (action === "admin-range") { state.adminAnalyticsRange = Number(target.dataset.range) || 0; render(); }
   if (action === "admin-metric") { state.adminAnalyticsMetric = target.dataset.metric === "orders" ? "orders" : "revenue"; render(); }
+  if (action === "admin-order-status") { state.adminOrderStatus = target.dataset.status || "all"; render(); }
   // ── Campaign actions ──
   if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); }
   if (action === "campaign-form-close") { state.adminCampaignForm = null; render(); }
@@ -6055,6 +6077,7 @@ document.addEventListener("change", event => {
     if (groupLabel) groupLabel.style.display = isContacts ? "" : "none";
   }
   if (event.target.id === "store-sort") { state.storeSort = event.target.value; render(); }
+  if (event.target.id === "admin-order-store") { state.adminOrderStore = event.target.value; render(); }
   if (event.target.id === "merchant-store-switch") {
     state.merchantStoreId = Number(event.target.value);
     state.merchantProductSearch = "";

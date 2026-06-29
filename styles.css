@@ -559,8 +559,12 @@ img {
   box-shadow: 0 8px 18px rgba(227, 6, 19, 0.2);
 }
 
-/* Voice search (Feature 5): round mic button inside any search container. */
-.voice-search-btn {
+/* Voice search (Feature 5): round mic button inside any search container.
+   Selectors are container-scoped (two classes) so they beat the existing
+   `.hero-search button` / `.listing-search button` gradient-pill rule. */
+.hero-search .voice-search-btn,
+.listing-search .voice-search-btn,
+.store-product-search .voice-search-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -573,15 +577,20 @@ img {
   background: rgba(227, 6, 19, 0.08);
   color: var(--green-800, #1f7a4d);
   cursor: pointer;
+  box-shadow: none;
   transition: background 0.18s, color 0.18s, transform 0.12s;
 }
-.voice-search-btn:hover { background: rgba(227, 6, 19, 0.14); }
+.hero-search .voice-search-btn:hover,
+.listing-search .voice-search-btn:hover,
+.store-product-search .voice-search-btn:hover { background: rgba(227, 6, 19, 0.16); }
 .voice-search-btn:active { transform: scale(0.94); }
 .voice-search-btn .icon { width: 20px; height: 20px; }
 .store-product-search .voice-search-btn { width: 34px; height: 34px; }
 .store-product-search .voice-search-btn .icon { width: 18px; height: 18px; }
 /* Listening state: red, pulsing. */
-.voice-search-btn.listening {
+.hero-search .voice-search-btn.listening,
+.listing-search .voice-search-btn.listening,
+.store-product-search .voice-search-btn.listening {
   background: #e30613;
   color: #fff;
   animation: voicePulse 1.2s ease-in-out infinite;
@@ -7240,6 +7249,21 @@ textarea:focus-visible {
 @media (max-width: 720px) {
   .dashboard-grid.two-col { grid-template-columns: 1fr; }
 }
+
+/* Admin orders filters */
+.order-status-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.filter-select {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink, #1c1c1c);
+  cursor: pointer;
+  max-width: 200px;
+}
+.filter-select:focus { outline: none; border-color: var(--brand, #e30613); }
 
 .subscription-card {
   position: relative;
