@@ -241,6 +241,8 @@ const state = {
   merchantLoginMode: "email",
   merchantEmailMode: "signin",
   adminTab: "overview",
+  adminAnalyticsRange: 30, // days for the overview analytics (0 = all time)
+  adminAnalyticsMetric: "revenue", // "revenue" | "orders" — trend chart metric
   adminContentSection: null,
   siteSettings: {},
   adminKey: sessionStorage.getItem("dukkanci-admin-token") || null,
@@ -310,7 +312,8 @@ const iconPaths = {
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
   dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
-  stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>'
+  stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'
 };
 
 function icon(name, className = "") {
@@ -828,6 +831,9 @@ async function loadOrdersFromSupabase(storeId) {
 async function initCatalog() {
   await window.__supabaseReady;
   loadSiteSettings();
+  // Reflect feature flags (integration_settings) on first paint once they finish
+  // loading — integrations.js fetches them async, so re-render when they're ready.
+  Promise.resolve(window.DUKKANCI_INTEGRATIONS && window.DUKKANCI_INTEGRATIONS.load()).then(() => render()).catch(() => {});
   // Defer the heavy full-catalog load (~7600 products) so /store, /product and
   // /offers deep-links hydrate just their own rows first (hydratePageData) and
   // render fast, instead of competing with the full load for bandwidth. Stores
@@ -1400,6 +1406,101 @@ function formatDistance(value) {
   return `${Number(value || 0).toLocaleString("ar-EG", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} كم`;
 }
 
+// ───────────────────────── Feature flags ─────────────────────────
+// Flags live in the `integration_settings` table and are preloaded app-wide by
+// integrations.js into DUKKANCI_INTEGRATIONS.settings. Default OFF when the row
+// is absent or settings haven't loaded yet, so a half-ready feature never flashes.
+// Flip is_enabled (admin "التكامل" panel / SQL) to toggle a feature instantly — no redeploy.
+function isFeatureOn(key) {
+  const s = window.DUKKANCI_INTEGRATIONS && window.DUKKANCI_INTEGRATIONS.settings[key];
+  return !!(s && s.is_enabled);
+}
+
+// ───────────────── Feature 3: tighter delivery ETA (feature_eta_tightening) ─────────────────
+// Tunable via site_settings.eta_config; falls back to these defaults when absent.
+const ETA_DEFAULTS = { default_prep_min: 15, avg_speed_kmh: 18, buffer_min: 8 };
+function etaConfig() {
+  const c = (state.siteSettings && state.siteSettings.eta_config) || {};
+  return {
+    default_prep_min: Number(c.default_prep_min) || ETA_DEFAULTS.default_prep_min,
+    avg_speed_kmh: Number(c.avg_speed_kmh) || ETA_DEFAULTS.avg_speed_kmh,
+    buffer_min: Number(c.buffer_min) || ETA_DEFAULTS.buffer_min
+  };
+}
+// Tight {low, high} minute window, or null when we can't measure store→customer
+// distance (visitor hasn't shared location / store has no coords). Prep time reuses
+// the per-store deliverySettings.prepMinutes already configured by each merchant.
+function estimateEta(store) {
+  const km = branchDistanceKm(store);
+  if (km == null) return null;
+  const cfg = etaConfig();
+  const prep = Number(getDeliverySettings(store.id) && getDeliverySettings(store.id).prepMinutes) || cfg.default_prep_min;
+  const travel = (km / cfg.avg_speed_kmh) * 60;
+  const mid = prep + travel + cfg.buffer_min;
+  return { low: Math.max(10, Math.round(mid - 5)), high: Math.round(mid + 5) };
+}
+// The clock/time chip. Shows the tight estimate only when the flag is ON and a
+// distance is measurable; otherwise the existing static store.time. With
+// withDistanceFallback, when the flag is off it shows distance-or-time exactly as
+// the store card did before — so behaviour is byte-identical with the flag off.
+function etaChip(store, { withDistanceFallback = false } = {}) {
+  if (isFeatureOn("feature_eta_tightening")) {
+    const eta = estimateEta(store);
+    if (eta) return `<span>${icon("clock")} ${eta.low}–${eta.high} دقيقة</span>`;
+  }
+  if (withDistanceFallback) {
+    const km = branchDistanceKm(store);
+    if (km != null) return `<span>${icon("pin")} ${formatDistance(km)}</span>`;
+  }
+  return `<span>${icon("clock")} ${store.time}</span>`;
+}
+
+// ───────────────── Feature 5: voice search (feature_voice_search) ─────────────────
+// Web Speech API, processed in the browser — no audio is stored or sent anywhere.
+function voiceSearchSupported() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+// Mic button markup; renders ONLY when the feature is on AND the browser supports
+// SpeechRecognition (progressive enhancement — no button, no breakage otherwise).
+function voiceSearchButton(mode) {
+  if (!isFeatureOn("feature_voice_search") || !voiceSearchSupported()) return "";
+  return `<button type="button" class="voice-search-btn" data-action="voice-search" data-mode="${mode}" aria-label="ابحث بصوتك" title="ابحث بصوتك">${icon("mic")}</button>`;
+}
+let _voiceRecognition = null;
+function startVoiceSearch(btn) {
+  if (!voiceSearchSupported()) return;
+  // Second tap while listening → stop.
+  if (_voiceRecognition) { try { _voiceRecognition.stop(); } catch (e) {} _voiceRecognition = null; return; }
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new Rec();
+  rec.lang = "ar";              // التعرّف على الكلام بالعربية
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  _voiceRecognition = rec;
+  if (btn) btn.classList.add("listening");
+  const cleanup = () => { if (btn) btn.classList.remove("listening"); _voiceRecognition = null; };
+  rec.onresult = e => {
+    const transcript = ((e.results && e.results[0] && e.results[0][0] && e.results[0][0].transcript) || "").trim();
+    cleanup();
+    if (transcript) applyVoiceSearch((btn && btn.dataset.mode) || "hero", transcript);
+  };
+  rec.onerror = e => {
+    cleanup();
+    if (e && (e.error === "not-allowed" || e.error === "service-not-allowed"))
+      showToast("للبحث الصوتي اسمح باستخدام الميكروفون من إعدادات المتصفّح", "");
+  };
+  rec.onend = cleanup;
+  try { rec.start(); } catch (e) { cleanup(); }
+}
+// Route the spoken text into the SAME search path used by typing — no new search logic.
+function applyVoiceSearch(mode, transcript) {
+  if (mode === "store") { state.storeProductSearch = transcript; render(); return; }
+  state.search = transcript;
+  if (mode === "stores") { render(); return; }
+  state.storeFilter = "الكل";
+  if (state.route !== "stores") navigate("stores"); else render();
+}
+
 function cartTotals(addressId = null) {
   const subtotal = state.cart.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0);
   const store = state.cart.length ? getStore(state.cart[0].storeId) : null;
@@ -1532,7 +1633,7 @@ function storeCard(store) {
           ${store.newStore ? `${icon("store")} <strong>متجر جديد</strong><span>موثق البيانات</span>` : `${icon("star")} <strong>${store.rating}</strong><span>(${store.reviews} تقييم)</span>`}
         </div>
         <div class="store-meta">
-          ${branchDistanceKm(store) != null ? `<span>${icon("pin")} ${formatDistance(branchDistanceKm(store))}</span>` : `<span>${icon("clock")} ${store.time}</span>`}
+          ${etaChip(store, { withDistanceFallback: true })}
           <span>${icon("bike")} ${deliveryPriceLabel(store)}</span>
         </div>
       </div>
@@ -1667,6 +1768,7 @@ function renderHome() {
           <div class="hero-search">
             ${icon("search")}
             <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${state.search}">
+            ${voiceSearchButton("hero")}
             <button data-action="run-search">ابحث</button>
           </div>
           <div class="hero-trust">
@@ -1838,6 +1940,7 @@ function renderStores() {
         <div class="listing-search">
           ${icon("search")}
           <input id="stores-search" type="search" placeholder="ابحث باسم متجر أو تصنيف..." value="${state.search}">
+          ${voiceSearchButton("stores")}
           <button data-action="run-store-search">بحث</button>
         </div>
       </div>
@@ -1947,7 +2050,7 @@ function renderStorePage(id) {
               <p>${esc(store.description)}</p>
               <div class="store-profile__meta">
                 <span>${store.newStore ? `${icon("check")} <b>متجر جديد موثق</b>` : `${icon("star")} <b>${store.rating}</b> (${store.reviews} تقييم)`}</span>
-                <span>${icon("clock")} ${store.time}</span>
+                ${etaChip(store)}
                 <span>${icon("bike")} توصيل ${deliveryPriceLabel(store)}</span>
                 <span>${icon("pin")} ${store.distance} كم</span>
               </div>
@@ -1965,6 +2068,7 @@ function renderStorePage(id) {
         <div class="store-product-search">
           ${icon("search")}
           <input id="store-product-search" type="search" placeholder="ابحث في منتجات ${escAttr(store.name)}..." value="${escAttr(searchQuery)}" autocomplete="off" inputmode="search">
+          ${voiceSearchButton("store")}
           ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
         </div>
         ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
@@ -2820,26 +2924,148 @@ function renderMerchant(id) {
   `;
 }
 
+// ---- Admin overview analytics (dependency-free, dataset = state.orders) ----
+// state.orders is the full platform order set (loaded once per admin session in
+// renderAdmin). Charts are plain divs styled by styles.css — no chart library.
+
+function analyticsRangeLabel() {
+  const d = state.adminAnalyticsRange || 0;
+  return d ? `آخر ${d.toLocaleString("ar")} يوماً` : "كل الفترات";
+}
+
+// Orders inside the selected window, each tagged with a parsed timestamp (_t).
+function analyticsOrders() {
+  const days = state.adminAnalyticsRange || 0;
+  const cutoff = days ? Date.now() - days * 86400000 : 0;
+  return state.orders
+    .map(o => ({ ...o, _t: Date.parse(o.createdAt || "") || 0 }))
+    .filter(o => !cutoff || (o._t && o._t >= cutoff));
+}
+
+// Split the window into ~12 equal time buckets → [{from,label,orders,revenue}].
+function analyticsBuckets(orders) {
+  const days = state.adminAnalyticsRange || 0;
+  const now = Date.now();
+  let start, span;
+  if (days) { span = days * 86400000; start = now - span; }
+  else {
+    const earliest = orders.reduce((m, o) => (o._t && o._t < m ? o._t : m), now);
+    start = earliest; span = Math.max(now - earliest, 86400000);
+  }
+  const bucketMs = Math.max(1, Math.ceil((span / 86400000) / 12)) * 86400000;
+  const count = Math.max(1, Math.ceil(span / bucketMs));
+  const buckets = Array.from({ length: count }, (_, i) => ({ from: start + i * bucketMs, orders: 0, revenue: 0 }));
+  orders.forEach(o => {
+    if (!o._t) return;
+    let i = Math.floor((o._t - start) / bucketMs);
+    if (i < 0) i = 0; if (i >= count) i = count - 1;
+    buckets[i].orders += 1; buckets[i].revenue += o.total || 0;
+  });
+  const fmt = new Intl.DateTimeFormat("ar-EG", bucketMs >= 28 * 86400000 ? { month: "short" } : { day: "numeric", month: "short" });
+  return buckets.map(b => ({ ...b, label: fmt.format(new Date(b.from)) }));
+}
+
+function niceCeil(n) {
+  if (n <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(n)));
+  const f = n / mag;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+}
+
+function shortNum(n) {
+  n = Math.round(n);
+  if (n >= 1000000) return (n / 1000000).toLocaleString("ar", { maximumFractionDigits: 1 }) + "م";
+  if (n >= 1000) return (n / 1000).toLocaleString("ar", { maximumFractionDigits: 1 }) + "ألف";
+  return n.toLocaleString("ar");
+}
+
+// Vertical bar chart reusing the existing .chart-wrap / .chart-y / .bar-chart CSS.
+function analyticsBarChart(buckets, metric) {
+  const max = Math.max(1, ...buckets.map(b => (metric === "revenue" ? b.revenue : b.orders)));
+  const top = niceCeil(max);
+  const yTicks = [1, 0.75, 0.5, 0.25, 0].map(r => metric === "revenue" ? shortNum(top * r) : Math.round(top * r).toLocaleString("ar"));
+  const bars = buckets.map(b => {
+    const v = metric === "revenue" ? b.revenue : b.orders;
+    const h = Math.round((v / top) * 150);
+    const title = `${b.label}: ${b.orders.toLocaleString("ar")} طلب · ${b.revenue.toLocaleString("ar")} ل.ت`;
+    return `<div title="${escAttr(title)}"><span style="height:${h}px"></span><small>${escAttr(b.label)}</small></div>`;
+  }).join("");
+  return `<div class="chart-wrap"><div class="chart-y">${yTicks.map(t => `<span>${t}</span>`).join("")}</div><div class="bar-chart">${bars}</div></div>`;
+}
+
+// Horizontal bar list (top stores / products). items = [{label, value}].
+function analyticsHBars(items, fmt) {
+  if (!items.length) return `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات بعد.</p></div>`;
+  const max = Math.max(1, ...items.map(i => i.value));
+  return `<ul class="hbar-list">${items.map(i => `<li><div class="hbar-row"><span class="hbar-label">${escAttr(i.label)}</span><b>${fmt(i.value)}</b></div><div class="hbar-track"><span style="width:${Math.max(3, Math.round((i.value / max) * 100))}%"></span></div></li>`).join("")}</ul>`;
+}
+
 function adminOverview() {
-  const orderCount = state.orders.length;
-  const revenue = state.orders.reduce((sum, o) => sum + (o.total || 0), 0);
-  const catCount = new Set(stores.map(s => s.category)).size;
-  const openComplaints = state.customerComplaints.filter(c => c.status !== "تم الحل").length;
+  const orders = analyticsOrders();
+  const revenue = orders.reduce((s, o) => s + (o.total || 0), 0);
+  const aov = orders.length ? Math.round(revenue / orders.length) : 0;
+  const activeStores = new Set(orders.map(o => o.storeId)).size;
+  const metric = state.adminAnalyticsMetric === "orders" ? "orders" : "revenue";
+  const buckets = analyticsBuckets(orders);
+
+  // Top stores by revenue.
+  const byStore = {};
+  orders.forEach(o => { const v = byStore[o.storeId] || (byStore[o.storeId] = { revenue: 0 }); v.revenue += o.total || 0; });
+  const topStores = Object.entries(byStore)
+    .map(([id, v]) => ({ label: (getStore(Number(id)) || {}).name || `متجر ${id}`, value: v.revenue }))
+    .sort((a, b) => b.value - a.value).slice(0, 6);
+
+  // Top products by quantity sold.
+  const byProduct = {};
+  orders.forEach(o => (o.lineItems || []).forEach(li => { const k = li.name || "—"; byProduct[k] = (byProduct[k] || 0) + (li.qty || 1); }));
+  const topProducts = Object.entries(byProduct).map(([name, qty]) => ({ label: name, value: qty }))
+    .sort((a, b) => b.value - a.value).slice(0, 6);
+
+  // Order status distribution + fulfillment split.
+  const byStatus = {};
+  orders.forEach(o => { const k = o.status || "—"; byStatus[k] = (byStatus[k] || 0) + 1; });
+  const statusRows = Object.entries(byStatus).sort((a, b) => b[1] - a[1]).map(([s, c]) => ({ label: s, value: c }));
+  const deliveryCount = orders.filter(o => o.fulfillment === "delivery").length;
+  const pickupCount = orders.length - deliveryCount;
+
+  // Pending join requests (real data — this panel used to be hardcoded empty).
+  const pending = stores.filter(s => (s.approvalStatus || "approved") === "pending");
+
+  const recent = [...state.orders].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0)).slice(0, 5);
+  const rangeChips = [[7, "٧ أيام"], [30, "٣٠ يوماً"], [90, "٩٠ يوماً"], [0, "الكل"]]
+    .map(([d, l]) => `<button class="range-chip ${state.adminAnalyticsRange === d ? "active" : ""}" data-action="admin-range" data-range="${d}">${l}</button>`).join("");
+
   return `
+    <div class="analytics-toolbar"><span class="analytics-toolbar__label">${icon("calendar")} الفترة</span><div class="range-chips">${rangeChips}</div></div>
     <div class="stats-grid admin-stats">
-      ${statCard("store", "إجمالي المتاجر", stores.length.toLocaleString("ar"), `${catCount.toLocaleString("ar")} تصنيفاً`, "green")}
-      ${statCard("box", "إجمالي المنتجات", products.length.toLocaleString("ar"), "منشورة على المنصة", "blue")}
-      ${statCard("receipt", "الطلبات", orderCount.toLocaleString("ar"), orderCount ? `${revenue.toLocaleString("ar")} ل.ت` : "لا طلبات بعد", "orange")}
-      ${statCard("megaphone", "الشكاوى المفتوحة", openComplaints.toLocaleString("ar"), openComplaints ? "تحتاج متابعة" : "لا شكاوى", "yellow")}
+      ${statCard("receipt", "الطلبات", orders.length.toLocaleString("ar"), analyticsRangeLabel(), "green")}
+      ${statCard("wallet", "الإيرادات", `${revenue.toLocaleString("ar")} ل.ت`, orders.length ? "ضمن الفترة المحددة" : "لا طلبات", "orange")}
+      ${statCard("chart", "متوسط قيمة الطلب", `${aov.toLocaleString("ar")} ل.ت`, orders.length ? `من ${orders.length.toLocaleString("ar")} طلب` : "—", "blue")}
+      ${statCard("store", "متاجر نشطة", activeStores.toLocaleString("ar"), `من ${stores.length.toLocaleString("ar")} متجراً`, "yellow")}
+    </div>
+    <div class="dashboard-grid">
+      <section class="dashboard-card chart-card">
+        <div class="card-heading"><div><h3>اتجاه ${metric === "revenue" ? "الإيرادات" : "الطلبات"}</h3><p>${analyticsRangeLabel()}</p></div>
+          <div class="metric-toggle"><button class="${metric === "revenue" ? "active" : ""}" data-action="admin-metric" data-metric="revenue">الإيرادات</button><button class="${metric === "orders" ? "active" : ""}" data-action="admin-metric" data-metric="orders">الطلبات</button></div></div>
+        ${orders.length ? analyticsBarChart(buckets, metric) : `<div class="empty-managed">${icon("chart")}<p>لا توجد طلبات في هذه الفترة بعد.</p></div>`}
+      </section>
+      <section class="dashboard-card">
+        <div class="card-heading"><div><h3>توزيع الحالات</h3><p>حالة الطلبات ونوع التسليم</p></div></div>
+        ${orders.length ? `${analyticsHBars(statusRows, v => v.toLocaleString("ar"))}<div class="split-row"><span><small>توصيل</small><strong>${deliveryCount.toLocaleString("ar")}</strong></span><span><small>استلام</small><strong>${pickupCount.toLocaleString("ar")}</strong></span></div>` : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات في هذه الفترة.</p></div>`}
+      </section>
+    </div>
+    <div class="dashboard-grid two-col">
+      <section class="dashboard-card"><div class="card-heading"><div><h3>أفضل المتاجر</h3><p>حسب الإيرادات · ${analyticsRangeLabel()}</p></div></div>${analyticsHBars(topStores, v => `${v.toLocaleString("ar")} ل.ت`)}</section>
+      <section class="dashboard-card"><div class="card-heading"><div><h3>أفضل المنتجات</h3><p>حسب الكمية المباعة</p></div></div>${analyticsHBars(topProducts, v => `${v.toLocaleString("ar")}×`)}</section>
     </div>
     <div class="admin-panels">
       <section class="dashboard-card">
-        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>تحتاج إلى المراجعة</p></div></div>
-        <div class="empty-managed">${icon("store")}<p>لا توجد طلبات انضمام جديدة حالياً.</p></div>
+        <div class="card-heading"><div><h3>طلبات انضمام جديدة</h3><p>تحتاج إلى المراجعة</p></div>${pending.length ? `<button class="text-button" data-action="admin-tab" data-tab="stores">عرض الكل ${icon("arrowLeft")}</button>` : ""}</div>
+        ${pending.length ? `<div class="admin-store-list join-list">${pending.slice(0, 5).map(s => `<article>${storeAvatar(s)}<div><strong>${escAttr(s.name)}</strong><small>${escAttr(s.category)}</small></div><button class="table-action approve" data-action="store-approve" data-id="${s.id}" data-status="approved" title="قبول">${icon("check")}</button><button class="table-action danger" data-action="store-approve" data-id="${s.id}" data-status="rejected" title="رفض">${icon("close")}</button></article>`).join("")}</div>` : `<div class="empty-managed">${icon("store")}<p>لا توجد طلبات انضمام جديدة حالياً.</p></div>`}
       </section>
       <section class="dashboard-card">
         <div class="card-heading"><div><h3>أحدث الطلبات</h3><p>على مستوى المنصة</p></div><button class="text-button" data-action="admin-tab" data-tab="orders">عرض الكل ${icon("arrowLeft")}</button></div>
-        ${orderCount ? renderOrdersTable(state.orders.slice(0, 5), "admin") : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات بعد.</p></div>`}
+        ${recent.length ? renderOrdersTable(recent, "admin") : `<div class="empty-managed">${icon("receipt")}<p>لا طلبات بعد.</p></div>`}
       </section>
     </div>
   `;
@@ -5160,6 +5386,7 @@ document.addEventListener("click", event => {
     navigate("stores");
   }
   if (action === "run-store-search") { state.search = document.getElementById("stores-search").value.trim(); render(); }
+  if (action === "voice-search") startVoiceSearch(target);
   if (action === "focus-search") {
     if (state.route !== "home") navigate("home");
     setTimeout(() => document.getElementById("hero-search")?.focus(), 100);
@@ -5385,6 +5612,8 @@ document.addEventListener("click", event => {
     if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
     render();
   }
+  if (action === "admin-range") { state.adminAnalyticsRange = Number(target.dataset.range) || 0; render(); }
+  if (action === "admin-metric") { state.adminAnalyticsMetric = target.dataset.metric === "orders" ? "orders" : "revenue"; render(); }
   // ── Campaign actions ──
   if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); }
   if (action === "campaign-form-close") { state.adminCampaignForm = null; render(); }

@@ -559,6 +559,42 @@ img {
   box-shadow: 0 8px 18px rgba(227, 6, 19, 0.2);
 }
 
+/* Voice search (Feature 5): round mic button inside any search container. */
+.voice-search-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(227, 6, 19, 0.08);
+  color: var(--green-800, #1f7a4d);
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, transform 0.12s;
+}
+.voice-search-btn:hover { background: rgba(227, 6, 19, 0.14); }
+.voice-search-btn:active { transform: scale(0.94); }
+.voice-search-btn .icon { width: 20px; height: 20px; }
+.store-product-search .voice-search-btn { width: 34px; height: 34px; }
+.store-product-search .voice-search-btn .icon { width: 18px; height: 18px; }
+/* Listening state: red, pulsing. */
+.voice-search-btn.listening {
+  background: #e30613;
+  color: #fff;
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+@keyframes voicePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(227, 6, 19, 0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(227, 6, 19, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(227, 6, 19, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-search-btn.listening { animation: none; }
+}
+
 .hero-trust {
   margin-top: 24px;
   display: flex;
@@ -7140,6 +7176,69 @@ textarea:focus-visible {
 .bar-chart > div:hover > span {
   transform: translateY(-3px);
   filter: saturate(1.12);
+}
+
+/* ── Admin overview analytics ── */
+.analytics-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.analytics-toolbar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.analytics-toolbar__label svg { width: 16px; height: 16px; }
+.range-chips, .metric-toggle { display: inline-flex; gap: 6px; }
+.range-chip, .metric-toggle button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.range-chip:hover, .metric-toggle button:hover { border-color: var(--brand, #e30613); color: var(--brand, #e30613); }
+.range-chip.active, .metric-toggle button.active {
+  background: var(--brand, #e30613);
+  border-color: var(--brand, #e30613);
+  color: #fff;
+}
+.metric-toggle { gap: 0; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.metric-toggle button { border: 0; border-radius: 0; }
+
+.dashboard-grid.two-col { grid-template-columns: 1fr 1fr; }
+
+.hbar-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.hbar-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+.hbar-label { font-size: 13px; font-weight: 600; color: var(--ink, #1c1c1c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-row b { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hbar-track { height: 8px; border-radius: 999px; background: #eef0ed; overflow: hidden; }
+.hbar-track > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ef1723, #c60712); }
+
+.split-row { display: flex; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.split-row span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.split-row small { color: var(--muted); font-size: 12px; }
+.split-row strong { font-size: 18px; }
+
+.join-list article { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.join-list article:last-child { border-bottom: 0; }
+.join-list article > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.join-list article strong { font-size: 13px; }
+.join-list article small { color: var(--muted); font-size: 11px; }
+
+@media (max-width: 720px) {
+  .dashboard-grid.two-col { grid-template-columns: 1fr; }
 }
 
 .subscription-card {
