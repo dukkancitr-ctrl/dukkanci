@@ -125,14 +125,16 @@
 
     /* ---------- Audience strip ---------- */
     .audience { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #fff; }
-    .audience-inner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0; }
-    .audience-inner > span { color: var(--muted); font-weight: 600; font-size: 14px; }
-    .chip { padding: 7px 15px; border-radius: 999px; background: var(--cream); border: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+    .audience-inner { display: flex; align-items: center; justify-content: center; gap: 9px; flex-wrap: wrap; padding: 20px 0; }
+    .audience-inner > span:not(.chip) { color: var(--muted); font-weight: 700; font-size: 14px; margin-inline-end: 4px; }
+    .chip { padding: 8px 16px; border-radius: 999px; background: var(--cream); border: 1px solid var(--border); font-weight: 600; font-size: 14px; color: #5d5650; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+    .chip:hover { background: var(--red-soft); border-color: var(--red-100); color: var(--red); }
 
     /* ---------- Stats ---------- */
-    .stats { margin-top: -34px; position: relative; z-index: 5; }
+    .stats { padding: 48px 0 4px; position: relative; z-index: 1; }
     .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .stat-card { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 22px 18px; text-align: center; box-shadow: var(--shadow-sm); }
+    .stat-card { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 24px 18px; text-align: center; box-shadow: var(--shadow-sm); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: rgba(227,6,19,.18); }
     .stat-card .ic { width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 12px; background: var(--red-soft); color: var(--red); display: grid; place-items: center; }
     .stat-card .ic svg { width: 22px; height: 22px; }
     .stat-card strong { display: block; color: var(--red); font-size: 26px; line-height: 1; margin-bottom: 6px; }
