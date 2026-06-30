@@ -5,7 +5,8 @@ Allow: /
 Disallow: /account
 Disallow: /cart
 Disallow: /orders
-Disallow: /merchant
+Disallow: /merchant$
+Disallow: /merchant/
 Disallow: /admin
 
 Sitemap: https://www.dukkanci.com.tr/sitemap.xml
