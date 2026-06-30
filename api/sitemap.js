@@ -48,7 +48,7 @@ async function sitemapIndex(res) {
 
   const pages = Math.max(1, Math.ceil(productCount / PAGE_SIZE));
   const today = new Date().toISOString().slice(0, 10);
-  const entries = [`${SITE}/sitemap-stores.xml`, `${SITE}/sitemap-categories.xml`];
+  const entries = [`${SITE}/sitemap-pages.xml`, `${SITE}/sitemap-stores.xml`, `${SITE}/sitemap-categories.xml`];
   for (let p = 0; p < pages; p++) entries.push(`${SITE}/sitemap-products.xml?page=${p}`);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -116,10 +116,29 @@ function sitemapCategories(res) {
   sendXml(res, urlset(urls));
 }
 
+// Static content/landing pages (home + indexable info pages).
+function sitemapPages(res) {
+  const today = new Date().toISOString().slice(0, 10);
+  const pages = [
+    ["/", "1.0", "daily"],
+    ["/why-dukkanci", "0.9", "monthly"],
+    ["/stores", "0.9", "daily"],
+    ["/offers", "0.8", "daily"],
+    ["/about", "0.5", "monthly"],
+    ["/faq", "0.5", "monthly"],
+    ["/terms", "0.3", "yearly"]
+  ];
+  const urls = pages.map(([path, priority, freq]) =>
+    `  <url><loc>${esc(SITE)}${path}</loc><lastmod>${today}</lastmod><changefreq>${freq}</changefreq><priority>${priority}</priority></url>`
+  );
+  sendXml(res, urlset(urls));
+}
+
 module.exports = async (req, res) => {
   const type = (req.query && req.query.type) || "";
   if (type === "stores") return sitemapStores(res);
   if (type === "products") return sitemapProducts(req, res);
   if (type === "categories") return sitemapCategories(res);
+  if (type === "pages") return sitemapPages(res);
   return sitemapIndex(res);
 };
