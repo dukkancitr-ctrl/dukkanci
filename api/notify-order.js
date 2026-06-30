@@ -988,7 +988,7 @@ module.exports = async (req, res) => {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
 
       if (q.action === "threads") {
-        const rows = await sbGet("whatsapp_messages?select=wa_id,contact_name,direction,body,msg_type,read_at,created_at&order=created_at.desc&limit=600") || [];
+        const rows = await sbGet("whatsapp_messages?select=wa_id,contact_name,direction,body,msg_type,read_at,created_at&order=created_at.desc&limit=2000") || [];
         const byWa = new Map();
         for (const m of rows) {
           let t = byWa.get(m.wa_id);
@@ -1018,10 +1018,14 @@ module.exports = async (req, res) => {
         return res.status(200).json({ threads });
       }
 
-      // Single conversation: history ascending, then mark its inbound messages read.
+      // Single conversation: load the most-recent messages (newest 1000), returned
+      // ascending for display. Fetching DESC-then-reverse (instead of ASC+limit)
+      // guarantees a very long thread never drops its LATEST messages — an asc+limit
+      // would have shown the oldest 500 and hidden anything sent after them.
       const wa = String(q.wa || "").replace(/\D/g, "");
       if (!wa) return res.status(400).json({ error: "wa required" });
-      const msgs = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa)}&select=id,direction,body,msg_type,status,created_at&order=created_at.asc&limit=500`) || [];
+      const recent = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa)}&select=id,direction,body,msg_type,status,created_at&order=created_at.desc&limit=1000`) || [];
+      const msgs = recent.reverse();
       const lastIn = [...msgs].reverse().find(m => m.direction === "in");
       const canFreeform = !!lastIn && (Date.now() - new Date(lastIn.created_at).getTime() < 24 * 60 * 60 * 1000);
       await sbWrite("PATCH", `whatsapp_messages?wa_id=eq.${encodeURIComponent(wa)}&direction=eq.in&read_at=is.null`,
