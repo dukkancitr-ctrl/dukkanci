@@ -25,6 +25,10 @@ function sha256(v) { return crypto.createHash("sha256").update(v).digest("hex");
 function ipHash(ip) { return ip ? sha256(ip + (process.env.IP_HASH_SALT || "dukkanci-tracking")) : null; }
 function s(v, max) { return v == null ? null : String(v).slice(0, max || 300); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// event_id stores in a uuid column; coerce anything non-uuid to a fresh one so a
+// malformed id can never silently drop the row.
+function safeEventId(v) { return (typeof v === "string" && UUID_RE.test(v)) ? v : crypto.randomUUID(); }
 
 // Hash for Meta advanced matching: normalize (trim+lowercase), then SHA-256.
 function hashNorm(v) { if (!v) return null; return sha256(String(v).trim().toLowerCase()); }
@@ -274,8 +278,8 @@ module.exports = async (req, res) => {
         language: s(body.language, 8), device_type: s(body.device_type, 20), updated_at: now
       }, serviceKey, supabaseUrl);
 
-      await sb("POST", "tracking_events", [{
-        event_id: s(body.event_id, 60) || crypto.randomUUID(),
+      const evRes = await sb("POST", "tracking_events", [{
+        event_id: safeEventId(body.event_id),
         dukkanci_uid: uid, customer_id: body.customer_id || null,
         event_name: s(body.event_name, 60), event_source: "web",
         store_id: num(body.store_id), product_id: num(body.product_id),
@@ -287,6 +291,10 @@ module.exports = async (req, res) => {
         user_agent: ua, ip_hash: iph,
         consent_marketing: !!consent.marketing, consent_analytics: !!consent.analytics
       }], serviceKey, supabaseUrl);
+      if (!evRes.ok) {
+        const txt = await evRes.text().catch(() => "");
+        try { console.warn("[track] event insert failed:", evRes.status, txt.slice(0, 300)); } catch (e) {}
+      }
     }
 
     // ---- Ad-platform server-side events (marketing consent only) ----
