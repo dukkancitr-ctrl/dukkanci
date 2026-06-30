@@ -3708,11 +3708,116 @@ function adminStores() {
   `;
 }
 
+// There's no separate customer-login table, so platform orders ARE the customer
+// directory. Group every order under one customer key: the phone (canonicalized
+// the same way checkout stores it, so "+90…"/"0090…"/"0…" variants of the same
+// number merge) when present, otherwise the normalized name — so the same
+// person's repeat orders collapse into a single row. Used by the tab, the detail
+// modal, and CSV.
+function customerPhoneDigits(o) {
+  const digits = (o.customerPhone || "").replace(/\D/g, "");
+  return digits ? normalizePhone(digits).replace(/\D/g, "") : ""; // → "90XXXXXXXXXX"
+}
+function customerKey(o) {
+  const phone = customerPhoneDigits(o);
+  if (phone) return phone;
+  const name = (o.customer || "").trim();
+  return name ? "n:" + normalizeAr(name) : "";
+}
+
+function aggregateCustomers() {
+  const map = new Map();
+  (state.orders || []).forEach(o => {
+    const key = customerKey(o);
+    if (!key) return; // order with neither name nor phone — can't attribute it
+    const phone = customerPhoneDigits(o);
+    const name = (o.customer || "").trim();
+    let c = map.get(key);
+    if (!c) { c = { key, name: name || "عميل بدون اسم", phone, total: 0, count: 0, stores: new Set(), lastAt: 0, lastTime: "", address: "" }; map.set(key, c); }
+    c.count += 1;
+    c.total += o.total || 0;
+    if (o.storeId != null) c.stores.add(o.storeId);
+    const t = Date.parse(o.createdAt || "") || 0;
+    // Keep the most recent order's details (name/phone/address can change over time).
+    if (t >= c.lastAt) {
+      c.lastAt = t; c.lastTime = o.time || "";
+      if (name) c.name = name;
+      if (!c.phone && phone) c.phone = phone;
+      if (o.address) c.address = o.address;
+    }
+  });
+  return [...map.values()].sort((a, b) => b.lastAt - a.lastAt);
+}
+
 function adminCustomers() {
+  const customers = aggregateCustomers();
+  if (!customers.length) {
+    return `
+      <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
+      <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد. ستظهر بيانات كل عميل (الاسم، الهاتف، طلباته وإنفاقه) تلقائياً بمجرد ورود أول طلب.</p></div></section>`;
+  }
+  const totalOrders = customers.reduce((s, c) => s + c.count, 0);
+  const totalRevenue = customers.reduce((s, c) => s + c.total, 0);
+  const repeat = customers.filter(c => c.count > 1).length;
+  const fmtDate = ms => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(ms)); } catch (e) { return ""; } };
   return `
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
-    <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء مسجّلون بعد. ستظهر بيانات العملاء هنا بعد ربط نظام تسجيل الدخول.</p></div></section>
-  `;
+    <div class="stats-grid admin-stats">
+      ${statCard("users", "إجمالي العملاء", customers.length.toLocaleString("ar"), repeat ? `${repeat.toLocaleString("ar")} عميل متكرّر` : "من واقع الطلبات", "blue")}
+      ${statCard("receipt", "إجمالي الطلبات", totalOrders.toLocaleString("ar"), `بمعدل ${(totalOrders / customers.length).toLocaleString("ar", { maximumFractionDigits: 1 })} لكل عميل`, "green")}
+      ${statCard("wallet", "إجمالي الإنفاق", money(totalRevenue), "على مستوى المنصة", "orange")}
+    </div>
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير</button></div></div>
+    <section class="dashboard-card customers-table-card">
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>العميل</th><th>الهاتف</th><th>الطلبات</th><th>إجمالي الإنفاق</th><th>المتاجر</th><th>آخر طلب</th><th></th></tr></thead>
+          <tbody>
+            ${customers.map(c => `
+              <tr>
+                <td><strong>${esc(c.name)}</strong>${c.address ? `<small class="cust-addr">${esc(c.address)}</small>` : ""}</td>
+                <td>${c.phone ? `<code dir="ltr">${esc(c.phone)}</code>` : `<span class="creds-muted">—</span>`}</td>
+                <td>${c.count.toLocaleString("ar")}</td>
+                <td><strong>${money(c.total)}</strong></td>
+                <td>${c.stores.size.toLocaleString("ar")}</td>
+                <td>${c.lastAt ? fmtDate(c.lastAt) : esc(c.lastTime)}</td>
+                <td class="creds-actions">
+                  ${c.phone ? `<a class="table-action" href="https://wa.me/${c.phone}" target="_blank" rel="noopener" title="مراسلة عبر واتساب">${icon("whatsapp")}</a>` : ""}
+                  <button class="table-action" data-action="view-customer" data-key="${escAttr(c.key)}" title="عرض ملف العميل وطلباته">${icon("eye")}</button>
+                </td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+// Customer profile modal: contact + their full order history (reuses the admin
+// orders table so each row opens the order manager).
+function openCustomerDetail(key) {
+  const c = aggregateCustomers().find(x => x.key === key);
+  if (!c) return;
+  const orders = state.orders
+    .filter(o => customerKey(o) === key)
+    .sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
+  const storeNames = [...c.stores].map(id => (getStore(Number(id)) || {}).name || ("متجر " + id));
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">ملف العميل</span><h2>${esc(c.name)}</h2>
+    <div class="order-manager-summary">
+      <span><small>الطلبات</small><strong>${c.count.toLocaleString("ar")}</strong></span>
+      <span><small>إجمالي الإنفاق</small><strong>${money(c.total)}</strong></span>
+      <span><small>متوسط الطلب</small><strong>${money(c.count ? Math.round(c.total / c.count) : 0)}</strong></span>
+    </div>
+    <div class="order-contact">
+      ${c.phone ? `<div class="order-contact__row">${icon("phone")}<span dir="ltr">${esc(c.phone)}</span><a class="order-wa-btn" href="https://wa.me/${c.phone}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة العميل</a></div>` : `<div class="order-contact__row order-contact__row--muted">${icon("phone")}<span>لا يوجد رقم تواصل</span></div>`}
+      ${c.address ? `<div class="order-contact__row">${icon("pin")}<span>${esc(c.address)}</span></div>` : ""}
+      ${storeNames.length ? `<div class="order-contact__row">${icon("store")}<span>طلب من: ${storeNames.map(esc).join("، ")}</span></div>` : ""}
+    </div>
+    <div class="order-items-block">
+      <strong class="order-items-title">${icon("receipt")} سجل الطلبات (${orders.length.toLocaleString("ar")})</strong>
+      ${orders.length ? renderOrdersTable(orders, "admin") : `<p class="order-items-empty">لا توجد طلبات.</p>`}
+    </div>
+  `, "order-modal");
 }
 
 function adminOrders() {
@@ -6691,7 +6796,8 @@ function openComplaintDetail(data) {
 function exportCsv(kind) {
   let rows = [];
   if (kind === "stores") rows = [["المتجر", "التصنيف", "التقييم", "رسوم التوصيل"], ...stores.map(store => [store.name, store.category, store.rating, deliveryPriceLabel(store)])];
-  else if (kind === "customers") rows = [["العميل", "الهاتف", "الطلبات"]];
+  else if (kind === "customers") rows = [["العميل", "الهاتف", "عدد الطلبات", "إجمالي الإنفاق", "عدد المتاجر", "العنوان"],
+    ...aggregateCustomers().map(c => [c.name, c.phone, c.count, c.total, c.stores.size, c.address])];
   else if (kind === "complaints") rows = [["الرقم", "العنوان", "الحالة"], ...(state.customerComplaints || []).map(c => [c.id, c.subject, c.status])];
   else if (kind === "whatsapp") rows = [["المتجر", "معرّف المتجر", "نقرات واتساب", "زوّار فريدون", "مشاهدات المتجر", "معدل النقر %"],
     ...(((state.adminMarketing || {}).report || {}).whatsapp_by_store || []).map(s =>
@@ -7426,6 +7532,7 @@ document.addEventListener("click", event => {
   }
   if (action === "manage-order") openOrderManager(target.dataset.id);
   if (action === "view-order") openOrderManager(target.dataset.id);
+  if (action === "view-customer") openCustomerDetail(target.dataset.key);
   if (action === "save-order-status") {
     const order = state.orders.find(item => item.id === target.dataset.id);
     const prevStatus = order.status;
@@ -7737,6 +7844,12 @@ document.addEventListener("input", event => {
     const q = normalizeAr(event.target.value.trim());
     document.querySelectorAll(".admin-store-list article").forEach(card => {
       card.style.display = !q || normalizeAr(card.textContent).includes(q) ? "" : "none";
+    });
+  }
+  if (event.target.id === "admin-customer-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".customers-table-card tbody tr").forEach(row => {
+      row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
     });
   }
   if (event.target.name === "image" && event.target.closest("#merchant-product-form")) {
