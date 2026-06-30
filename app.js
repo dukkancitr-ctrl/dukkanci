@@ -2154,7 +2154,7 @@ function productCard(product) {
         ${product.priceOnRequest ? `
         <div class="price-row price-row--request">
           <span class="price-request">السعر عند الطلب</span>
-          <a class="quick-add quick-add--wa" href="${waOrderLink(product)}" target="_blank" rel="noopener" aria-label="اطلب عبر واتساب">${icon("whatsapp")}</a>
+          <a class="quick-add quick-add--wa" href="${waOrderLink(product)}" target="_blank" rel="noopener" data-id="${product.storeId}" aria-label="اطلب عبر واتساب">${icon("whatsapp")}</a>
         </div>` : `
         <div class="price-row">
           <div><strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}</div>
@@ -4931,6 +4931,21 @@ function adminMarketing() {
   const campaigns = (r.top_campaigns || []).map(c =>
     `<tr><td dir="ltr">${esc(c.campaign)}</td><td>${ar(c.visitors)}</td><td>${ar(c.purchases)}</td><td>${money(c.revenue)}</td></tr>`).join("");
 
+  // نقرات واتساب لكل متجر — كل المتاجر التي لها نقرات، مرتّبة تنازلياً + تصدير CSV
+  const waByStore = r.whatsapp_by_store || [];
+  const waRows = waByStore.map((s, i) =>
+    `<tr><td>${ar(i + 1)}</td><td>${esc(s.name)}</td><td><strong>${ar(s.whatsapp_clicks)}</strong></td><td>${ar(s.unique_visitors)}</td><td>${ar(s.store_views)}</td><td>${s.store_views > 0 ? ((s.whatsapp_clicks / s.store_views) * 100).toFixed(1) + "%" : "—"}</td></tr>`).join("");
+  const waCard = `
+    <section class="dashboard-card">
+      <div class="card-heading">
+        <div><h3>${icon("whatsapp")} نقرات واتساب لكل متجر</h3><p>كل المتاجر التي نُقر زر واتساب لديها · آخر ${f.range || 30} يوم</p></div>
+        ${waByStore.length ? `<button class="secondary-button compact" data-action="export-csv" data-kind="whatsapp">${icon("download")} تصدير CSV</button>` : ""}
+      </div>
+      ${waByStore.length
+        ? `<div class="table-wrap"><table class="admin-table"><thead><tr><th>#</th><th>المتجر</th><th>نقرات واتساب</th><th>زوّار فريدون</th><th>مشاهدات</th><th>معدل النقر</th></tr></thead><tbody>${waRows}</tbody></table></div>`
+        : `<div class="empty-managed">${icon("whatsapp")}<p>لا توجد نقرات واتساب في هذه الفترة بعد.</p></div>`}
+    </section>`;
+
   return `
     ${toolbar}
     <div class="stats-grid admin-stats">
@@ -4949,6 +4964,7 @@ function adminMarketing() {
     </div>
     ${tableCard("أكثر المتاجر مشاهدةً وتحويلاً", "مشاهدات وإضافات وطلبات لكل متجر",
       `<th>المتجر</th><th>مشاهدات</th><th>سلة</th><th>طلبات</th><th>واتساب</th><th>تحويل</th>`, topStores)}
+    ${waCard}
     ${tableCard("أكثر المنتجات مشاهدةً", "أعلى المنتجات اهتماماً", `<th>المنتج</th><th>مشاهدات</th><th>إضافات للسلة</th>`, topProducts)}
     <div class="admin-two-col">
       ${tableCard("مصادر الزيارات", "من أين جاء الزوار", `<th>المصدر</th><th>زوّار</th>`, sources)}
@@ -5458,7 +5474,7 @@ function openCustomerOrderDetails(orderId) {
       ${/تحويل بنكي/.test(order.payment || "") ? (store && store.bankDetails && store.bankDetails.trim()
         ? `<div class="bank-details-box" style="margin:6px 0"><div class="bank-details-box__head"><strong>${icon("shield")} حساب المتجر للتحويل</strong><button type="button" class="secondary-button compact" data-action="copy-bank" data-details="${escAttr(store.bankDetails)}">${icon("check")} نسخ</button></div><pre class="bank-details-text" dir="auto">${escAttr(store.bankDetails)}</pre></div>`
         : `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>سيرسل لك المتجر رقم الحساب للتحويل عبر واتساب.</span></div>`) : ""}
-      ${store && (store.whatsapp || store.phone) ? `<div class="order-contact__row">${icon("whatsapp")}<a class="order-wa-btn" href="https://wa.me/${(store.whatsapp || store.phone).replace(/\D/g, "")}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة المتجر</a></div>` : ""}
+      ${store && (store.whatsapp || store.phone) ? `<div class="order-contact__row">${icon("whatsapp")}<a class="order-wa-btn" href="https://wa.me/${(store.whatsapp || store.phone).replace(/\D/g, "")}" target="_blank" rel="noopener" data-id="${store.id}">${icon("whatsapp")} مراسلة المتجر</a></div>` : ""}
     </div>
     <div class="customer-order-modal__items">${items.map(item => {
       const product = item.productId ? getProduct(item.productId) : null;
@@ -5565,7 +5581,7 @@ function openProductModal(id) {
         <label class="product-notes"><span>ملاحظات خاصة</span><textarea name="notes" placeholder="اكتب أي تفاصيل تهم المتجر..."></textarea></label>
         <div class="product-add-row">
           ${product.priceOnRequest ? `
-          <a class="primary-button large wa-order-btn" href="${waOrderLink(product)}" target="_blank" rel="noopener">${icon("whatsapp")} اطلب عبر واتساب</a>` : `
+          <a class="primary-button large wa-order-btn" href="${waOrderLink(product)}" target="_blank" rel="noopener" data-id="${product.storeId}">${icon("whatsapp")} اطلب عبر واتساب</a>` : `
           <div class="quantity-control large"><button type="button" data-action="modal-quantity-minus">${icon("minus")}</button><span id="modal-quantity">1</span><button type="button" data-action="modal-quantity-plus">${icon("plus")}</button></div>
           <button class="primary-button large" type="submit" ${!product.available ? "disabled" : ""}>${icon("bag")} أضف للسلة · <span id="modal-total">${money(product.price)}</span></button>`}
         </div>
@@ -6356,6 +6372,9 @@ function exportCsv(kind) {
   if (kind === "stores") rows = [["المتجر", "التصنيف", "التقييم", "رسوم التوصيل"], ...stores.map(store => [store.name, store.category, store.rating, deliveryPriceLabel(store)])];
   else if (kind === "customers") rows = [["العميل", "الهاتف", "الطلبات"]];
   else if (kind === "complaints") rows = [["الرقم", "العنوان", "الحالة"], ...(state.customerComplaints || []).map(c => [c.id, c.subject, c.status])];
+  else if (kind === "whatsapp") rows = [["المتجر", "معرّف المتجر", "نقرات واتساب", "زوّار فريدون", "مشاهدات المتجر", "معدل النقر %"],
+    ...(((state.adminMarketing || {}).report || {}).whatsapp_by_store || []).map(s =>
+      [s.name, s.store_id, s.whatsapp_clicks, s.unique_visitors, s.store_views, s.store_views > 0 ? ((s.whatsapp_clicks / s.store_views) * 100).toFixed(1) : "0"])];
   else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId)?.name || "-", order.total, order.status])];
   const csv = "\uFEFF" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   const link = document.createElement("a");

@@ -1,6 +1,9 @@
 -- ============================================================
 --  Dukkanci — Admin tracking report function (Phase 2b)
 --  Applied to Supabase as migration `tracking_report_function` (2026-06-30).
+--  Updated 2026-06-30 (migration `tracking_report_add_whatsapp_by_store`):
+--   + whatsapp_by_store — every store with WhatsApp-button clicks, ranked desc
+--     (powers the admin "نقرات واتساب لكل متجر" table + CSV export).
 --  Aggregates tracking_events for the admin "التتبع والبيانات التسويقية" tab.
 --  SECURITY INVOKER + execute revoked from anon/authenticated: only the
 --  service-role API (api/track-report.js) can read the underlying data.
@@ -43,6 +46,20 @@ as $$
       where e.store_id is not null
       group by e.store_id, s.name
       order by store_views desc limit 15
+    ) x
+  ),
+  wa_by_store as (
+    select coalesce(jsonb_agg(row_to_json(x)::jsonb order by x.whatsapp_clicks desc),'[]'::jsonb) d from (
+      select e.store_id,
+        coalesce(s.name,'#'||e.store_id::text) as name,
+        count(*) filter (where e.event_name='whatsapp_click') as whatsapp_clicks,
+        count(distinct e.dukkanci_uid) filter (where e.event_name='whatsapp_click') as unique_visitors,
+        count(*) filter (where e.event_name='view_store')  as store_views
+      from ev e left join public.stores s on s.id=e.store_id
+      where e.store_id is not null
+      group by e.store_id, s.name
+      having count(*) filter (where e.event_name='whatsapp_click') > 0
+      order by whatsapp_clicks desc limit 200
     ) x
   ),
   products_rep as (
@@ -90,6 +107,7 @@ as $$
     'cart_conversion', case when tot.add_to_cart>0 then round((tot.purchases::numeric/tot.add_to_cart)*100,2) else 0 end,
     'abandoned_carts', (select c from abandoned),
     'top_stores', (select d from stores_rep),
+    'whatsapp_by_store', (select d from wa_by_store),
     'top_products', (select d from products_rep),
     'traffic_sources', (select d from sources_rep),
     'top_campaigns', (select d from campaigns_rep)
