@@ -286,6 +286,8 @@ const state = {
   adminActiveWa: null,
   adminThread: null,
   adminThreadLoading: false,
+  adminThreadFilter: null,   // null=all | "pinned" | a WA_LABELS key
+  _waListSig: null,          // thread-list fingerprint (skip needless poll rebuilds)
   adminCampaigns: null,
   adminCampaignForm: null,   // null | "open" | "contacts"
   adminCampaignActive: null,
@@ -4191,17 +4193,28 @@ async function loadAdminThreads(silent) {
 }
 
 async function loadAdminThread(wa, silent) {
-  if (!silent) { state.adminThreadLoading = true; render(); }
+  if (!silent) {
+    // Select IMMEDIATELY so the click sticks and any background poll targets this
+    // thread (not the previously-open one). Clear the old conversation so we show a
+    // loading state for the new one instead of flashing the previous chat — this is
+    // what made clicks feel like they "snapped back" to the last-opened conversation.
+    state.adminActiveWa = wa;
+    state.adminThread = null;
+    state.adminThreadLoading = true;
+    const t0 = (state.adminThreads || []).find(x => x.wa_id === wa);
+    if (t0) t0.unread = 0;
+    render();
+  }
   try {
     const data = await adminApi("thread", { params: { wa } });
-    state.adminActiveWa = wa;
+    if (state.adminActiveWa !== wa) return;   // user opened another thread meanwhile — drop the stale response
     state.adminThread = data;
-    // The open conversation's unread is now cleared server-side; reflect locally.
-    const t = state.adminThreads.find(x => x.wa_id === wa);
+    const t = (state.adminThreads || []).find(x => x.wa_id === wa);
     if (t) t.unread = 0;
-  } catch (e) { state.adminThread = null; }
-  state.adminThreadLoading = false;
-  render();
+  } catch (e) {
+    if (state.adminActiveWa === wa) state.adminThread = null;
+  }
+  if (state.adminActiveWa === wa) { state.adminThreadLoading = false; render(); }
 }
 
 async function sendAdminReply(text) {
@@ -4231,11 +4244,34 @@ function chatTime(iso) {
   } catch (e) { return ""; }
 }
 
-// Re-render just the thread list (used during silent polling so the reply box
-// keeps focus and the typed draft isn't wiped).
+// Cheap fingerprint of everything the thread list renders, so background polling
+// only rebuilds the DOM when something actually changed — otherwise a click can be
+// swallowed mid-rebuild and the list scroll jumps back to the top every 7 seconds.
+function threadsSignature() {
+  return (state.adminThreads || [])
+    .map(t => `${t.wa_id}:${t.last_at}:${t.unread || 0}:${t.pinned ? 1 : 0}:${t.label || ""}:${t.needs_human ? 1 : 0}:${t.wa_id === state.adminActiveWa ? 1 : 0}`)
+    .join("|") + "#" + (state.adminThreadFilter || "");
+}
+// Pinned conversations first, then most-recent — mirrors the server order so an
+// optimistic pin/unpin reorders the list instantly without waiting for a refetch.
+function resortAdminThreads() {
+  (state.adminThreads || []).sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return a.last_at < b.last_at ? 1 : -1;
+  });
+}
+// Re-render just the thread list (used during silent polling so the reply box keeps
+// focus and the typed draft isn't wiped). Skips the rebuild when nothing changed and
+// preserves scroll position when it does — so clicking a conversation stays reliable.
 function updateThreadListDOM() {
   const el = document.getElementById("wa-thread-list");
-  if (el) el.innerHTML = adminThreadListHTML();
+  if (!el) return;
+  const sig = threadsSignature();
+  if (sig === state._waListSig) return;
+  state._waListSig = sig;
+  const top = el.scrollTop;
+  el.innerHTML = adminThreadListHTML();
+  el.scrollTop = top;
 }
 function renderAdminThreadOnly() {
   const el = document.getElementById("wa-chat-pane");
@@ -4280,9 +4316,34 @@ function startInboxPolling() {
   }, 7000);
 }
 
-function adminThreadListHTML() {
+// Fixed set of conversation labels (one per thread). Keys are stored in
+// whatsapp_threads.label and validated server-side; names/colors live here only.
+const WA_LABELS = {
+  store_lead: { name: "مهتم بإضافة متجر", color: "#15803d", bg: "#dcfce7" },
+  follow_up:  { name: "متابعة لاحقاً",    color: "#b45309", bg: "#fef3c7" },
+  important:  { name: "مهم",              color: "#dc2626", bg: "#fee2e2" },
+  customer:   { name: "عميل",             color: "#2563eb", bg: "#dbeafe" }
+};
+
+// Filter chips above the thread list (الكل / المثبّتة / per-label). Sits OUTSIDE the
+// scrolling list so polling never rebuilds or scrolls it away.
+function adminThreadFilterBarHTML() {
   const threads = state.adminThreads || [];
-  if (!threads.length) {
+  if (!threads.length) return "";
+  const active = state.adminThreadFilter || "";
+  const pinnedCount = threads.filter(t => t.pinned).length;
+  let html = `<button class="wa-filter-chip ${active === "" ? "active" : ""}" data-action="wa-filter" data-filter="">الكل <b>${threads.length}</b></button>`;
+  if (pinnedCount) html += `<button class="wa-filter-chip ${active === "pinned" ? "active" : ""}" data-action="wa-filter" data-filter="pinned">📌 المثبّتة <b>${pinnedCount}</b></button>`;
+  for (const [k, v] of Object.entries(WA_LABELS)) {
+    const c = threads.filter(t => t.label === k).length;
+    if (c) html += `<button class="wa-filter-chip ${active === k ? "active" : ""}" data-action="wa-filter" data-filter="${k}" style="--c:${v.color};--bg:${v.bg}">${v.name} <b>${c}</b></button>`;
+  }
+  return `<div class="wa-filter-bar">${html}</div>`;
+}
+
+function adminThreadListHTML() {
+  const all = state.adminThreads || [];
+  if (!all.length) {
     if (state._adminThreadsError) {
       return `<div class="wa-empty wa-empty--error">${icon("shield")}<p>تعذّر تحميل المحادثات.<br><small>تحقق من إعدادات ADMIN_PASSWORD في Vercel وأعد تسجيل الدخول.</small></p><button class="secondary-button compact" data-action="wa-refresh">إعادة المحاولة</button></div>`;
     }
@@ -4298,15 +4359,24 @@ function adminThreadListHTML() {
     }
     return `<div class="wa-empty">${icon("whatsapp")}<p>لا توجد محادثات بعد.<br>ستظهر هنا فور أن يراسلك عميل على رقم واتساب.</p></div>`;
   }
-  return threads.map(t => `
-    <button class="wa-thread ${t.wa_id === state.adminActiveWa ? "active" : ""}" data-action="wa-open" data-wa="${escAttr(t.wa_id)}">
-      <span class="wa-thread__avatar">${icon("whatsapp")}</span>
+  const filter = state.adminThreadFilter || null;
+  let threads = all;
+  if (filter === "pinned") threads = all.filter(t => t.pinned);
+  else if (filter) threads = all.filter(t => t.label === filter);
+  if (!threads.length) return `<div class="wa-empty">${icon("whatsapp")}<p>لا محادثات ضمن هذا التصنيف.</p></div>`;
+  return threads.map(t => {
+    const lbl = t.label && WA_LABELS[t.label];
+    return `
+    <button class="wa-thread ${t.wa_id === state.adminActiveWa ? "active" : ""} ${t.pinned ? "pinned" : ""}" data-action="wa-open" data-wa="${escAttr(t.wa_id)}">
+      <span class="wa-thread__avatar">${icon("whatsapp")}${t.pinned ? `<span class="wa-pin-dot" title="مثبّتة">📌</span>` : ""}</span>
       <span class="wa-thread__body">
         <span class="wa-thread__top"><strong>${escAttr(adminThreadName(t))}</strong><time>${chatTime(t.last_at)}</time></span>
         <span class="wa-thread__preview">${t.needs_human ? `<b style="color:#e67e22">🙋 بحاجة لموظف · </b>` : ""}${t.last_dir === "out" ? "↩ " : ""}${escAttr((t.last_body || "").slice(0, 48))}</span>
+        ${lbl ? `<span class="wa-label-chip" style="--c:${lbl.color};--bg:${lbl.bg}">${lbl.name}</span>` : ""}
       </span>
       ${t.unread ? `<b class="wa-unread">${t.unread}</b>` : ""}
-    </button>`).join("");
+    </button>`;
+  }).join("");
 }
 
 function chatBubblesHTML(messages) {
@@ -4320,10 +4390,18 @@ function chatBubblesHTML(messages) {
 function adminChatPaneHTML() {
   if (!state.adminActiveWa) return `<div class="wa-empty wa-chat-empty">${icon("whatsapp")}<p>اختر محادثة لعرض الرسائل والرد عليها.</p></div>`;
   if (state.adminThreadLoading && !state.adminThread) return `<div class="wa-empty wa-chat-empty"><p>جارٍ التحميل…</p></div>`;
-  const data = state.adminThread || { messages: [], canFreeform: false };
+  const data = state.adminThread || { messages: [], canFreeform: false, pinned: false, label: null };
   const t = (state.adminThreads || []).find(x => x.wa_id === state.adminActiveWa);
   const title = t ? adminThreadName(t) : `+${state.adminActiveWa}`;
   const bubbles = chatBubblesHTML(data.messages);
+  const waEsc = escAttr(state.adminActiveWa);
+  // Pin + label controls for the open conversation. Pin sorts it to the top; the
+  // label tags it (e.g. "مهتم بإضافة متجر") so it can be filtered into its own list.
+  const tools = `<div class="wa-chat-tools">
+    <button class="wa-tool ${data.pinned ? "active" : ""}" data-action="wa-pin" data-wa="${waEsc}" data-pinned="${data.pinned ? 1 : 0}" title="${data.pinned ? "إلغاء التثبيت" : "تثبيت في الأعلى"}">📌 ${data.pinned ? "مثبّتة" : "تثبيت"}</button>
+    <span class="wa-tool-sep">التصنيف:</span>
+    ${Object.entries(WA_LABELS).map(([k, v]) => `<button class="wa-label-pick ${data.label === k ? "active" : ""}" data-action="wa-label" data-wa="${waEsc}" data-label="${k}" style="--c:${v.color};--bg:${v.bg}">${v.name}</button>`).join("")}
+  </div>`;
   // The composer is ALWAYS shown so the team can always reply. Outside WhatsApp's
   // 24h customer-care window a free-text message may be rejected by Meta, so we show
   // a slim advisory above the box (instead of hiding the box) and still let the agent
@@ -4340,6 +4418,7 @@ function adminChatPaneHTML() {
     : "";
   return `
     <header class="wa-chat-head"><span class="wa-thread__avatar">${icon("whatsapp")}</span><div><strong>${escAttr(title)}</strong><small dir="ltr">+${escAttr(state.adminActiveWa)}</small></div></header>
+    ${tools}
     ${aiBanner}
     <div id="wa-chat-scroll" class="wa-chat-scroll">${bubbles || `<div class="wa-empty"><p>لا رسائل.</p></div>`}</div>
     ${windowNote}
@@ -4352,7 +4431,7 @@ function adminMessages() {
     loadAdminThreads(false);
   }
   return `<div class="wa-inbox">
-    <aside class="wa-list"><div class="wa-list-head"><strong>المحادثات</strong><button class="text-button compact" data-action="wa-refresh" aria-label="تحديث">⟳ تحديث</button></div><div id="wa-thread-list" class="wa-thread-list">${adminThreadListHTML()}</div></aside>
+    <aside class="wa-list"><div class="wa-list-head"><strong>المحادثات</strong><button class="text-button compact" data-action="wa-refresh" aria-label="تحديث">⟳ تحديث</button></div>${adminThreadFilterBarHTML()}<div id="wa-thread-list" class="wa-thread-list">${adminThreadListHTML()}</div></aside>
     <section id="wa-chat-pane" class="wa-chat">${adminChatPaneHTML()}</section>
   </div>`;
 }
@@ -6958,6 +7037,34 @@ document.addEventListener("click", event => {
   }
   if (action === "wa-open") loadAdminThread(target.dataset.wa, false);
   if (action === "wa-refresh") loadAdminThreads(false);
+  if (action === "wa-filter") { state.adminThreadFilter = target.dataset.filter || null; state._waListSig = null; render(); }
+  if (action === "wa-pin") {
+    const wa = target.dataset.wa;
+    const pinned = target.dataset.pinned !== "1";   // toggle current state
+    if (state.adminThread && state.adminActiveWa === wa) state.adminThread.pinned = pinned;
+    const t = (state.adminThreads || []).find(x => x.wa_id === wa);
+    if (t) t.pinned = pinned;
+    resortAdminThreads();
+    state._waListSig = null;
+    render();
+    adminApi("set-pin", { method: "POST", body: { wa, pinned } })
+      .then(() => loadAdminThreads(true))
+      .catch(() => showToast("تعذّر تثبيت المحادثة", ""));
+  }
+  if (action === "wa-label") {
+    const wa = target.dataset.wa;
+    const key = target.dataset.label || null;
+    const tt = (state.adminThreads || []).find(x => x.wa_id === wa);
+    const cur = (state.adminThread && state.adminActiveWa === wa) ? state.adminThread.label : (tt ? tt.label : null);
+    const next = (key && cur === key) ? null : key;   // click the active label again → clear it
+    if (state.adminThread && state.adminActiveWa === wa) state.adminThread.label = next;
+    if (tt) tt.label = next;
+    state._waListSig = null;
+    render();
+    adminApi("set-label", { method: "POST", body: { wa, label: next } })
+      .then(() => loadAdminThreads(true))
+      .catch(() => showToast("تعذّر تصنيف المحادثة", ""));
+  }
   if (action === "wa-resume-ai") {
     const wa = target.dataset.wa;
     adminApi("resume-ai", { method: "POST", body: { wa } })

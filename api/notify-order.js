@@ -729,9 +729,9 @@ function wantsHuman(text) {
 }
 async function getThreadFlags(wa_id) {
   try {
-    const rows = await sbGet(`whatsapp_threads?wa_id=eq.${encodeURIComponent(wa_id)}&select=ai_paused,needs_human`);
-    return (rows && rows[0]) || { ai_paused: false, needs_human: false };
-  } catch (e) { return { ai_paused: false, needs_human: false }; }
+    const rows = await sbGet(`whatsapp_threads?wa_id=eq.${encodeURIComponent(wa_id)}&select=ai_paused,needs_human,pinned,label`);
+    return (rows && rows[0]) || { ai_paused: false, needs_human: false, pinned: false, label: null };
+  } catch (e) { return { ai_paused: false, needs_human: false, pinned: false, label: null }; }
 }
 async function setThreadFlags(wa_id, patch) {
   try {
@@ -1000,12 +1000,21 @@ module.exports = async (req, res) => {
           }
         }
         const threads = [...byWa.values()].sort((a, b) => (a.last_at < b.last_at ? 1 : -1));
-        // Merge escalation state (needs_human / ai_paused) onto each thread.
-        const flagRows = await sbGet("whatsapp_threads?select=wa_id,ai_paused,needs_human&or=(needs_human.eq.true,ai_paused.eq.true)");
+        // Merge per-conversation state (escalation flags + pin + label) onto each
+        // thread. whatsapp_threads only holds rows that have had a flag/pin/label set,
+        // so it stays small — fetch them all, then sort pinned conversations to the top.
+        const flagRows = await sbGet("whatsapp_threads?select=wa_id,ai_paused,needs_human,pinned,label");
         if (Array.isArray(flagRows) && flagRows.length) {
           const byId = new Map(flagRows.map(f => [String(f.wa_id), f]));
-          for (const t of threads) { const f = byId.get(String(t.wa_id)); if (f) { t.needs_human = !!f.needs_human; t.ai_paused = !!f.ai_paused; } }
+          for (const t of threads) {
+            const f = byId.get(String(t.wa_id));
+            if (f) { t.needs_human = !!f.needs_human; t.ai_paused = !!f.ai_paused; t.pinned = !!f.pinned; t.label = f.label || null; }
+          }
         }
+        threads.sort((a, b) => {
+          if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;   // pinned first
+          return a.last_at < b.last_at ? 1 : -1;                     // then most-recent
+        });
         return res.status(200).json({ threads });
       }
 
@@ -1018,7 +1027,7 @@ module.exports = async (req, res) => {
       await sbWrite("PATCH", `whatsapp_messages?wa_id=eq.${encodeURIComponent(wa)}&direction=eq.in&read_at=is.null`,
         { read_at: new Date().toISOString() }, "return=minimal");
       const flags = await getThreadFlags(wa);
-      return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform, ai_paused: !!flags.ai_paused, needs_human: !!flags.needs_human });
+      return res.status(200).json({ wa_id: wa, messages: msgs, canFreeform, ai_paused: !!flags.ai_paused, needs_human: !!flags.needs_human, pinned: !!flags.pinned, label: flags.label || null });
     }
 
     // Admin: inbox diagnostics — tells the panel whether the inbox is fully configured.
@@ -1589,10 +1598,29 @@ module.exports = async (req, res) => {
   }
 
   // Admin inbox writes (password-gated).
-  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai") {
+  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai" || pq.action === "set-pin" || pq.action === "set-label") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
 
     if (pq.action === "login") return res.status(200).json({ ok: true, token: signAdminToken() });
+
+    // Pin / unpin a conversation (pinned threads sort to the top of the inbox).
+    if (pq.action === "set-pin") {
+      const wa = String(body.wa || pq.wa || "").replace(/\D/g, "");
+      if (!wa) return res.status(400).json({ error: "wa required" });
+      await setThreadFlags(wa, { pinned: !!body.pinned });
+      return res.status(200).json({ ok: true, pinned: !!body.pinned });
+    }
+
+    // Tag a conversation with one of a fixed set of labels (or clear it with null).
+    if (pq.action === "set-label") {
+      const wa = String(body.wa || pq.wa || "").replace(/\D/g, "");
+      if (!wa) return res.status(400).json({ error: "wa required" });
+      const ALLOWED = ["store_lead", "follow_up", "important", "customer"];
+      let label = body.label == null || body.label === "" ? null : String(body.label);
+      if (label !== null && !ALLOWED.includes(label)) return res.status(400).json({ error: "invalid label" });
+      await setThreadFlags(wa, { label });
+      return res.status(200).json({ ok: true, label });
+    }
 
     // Resume AI auto-reply for a thread (clears the escalation flags).
     if (pq.action === "resume-ai") {

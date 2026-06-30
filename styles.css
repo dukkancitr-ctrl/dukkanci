@@ -8795,6 +8795,42 @@ tbody tr:hover {
 .wa-empty svg { width: 46px; height: 46px; opacity: .5; }
 .wa-empty p { font-size: 14px; line-height: 1.8; }
 
+/* ---- Inbox filter bar + pin + labels ---- */
+.wa-filter-bar { display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto; flex: none;
+  border-bottom: 1px solid var(--line); background: var(--white); scrollbar-width: none; }
+.wa-filter-bar::-webkit-scrollbar { height: 0; }
+.wa-filter-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--cream); color: var(--muted); font: inherit; font-size: 12.5px;
+  cursor: pointer; white-space: nowrap; transition: background .15s, color .15s, border-color .15s; }
+.wa-filter-chip b { font-size: 11px; opacity: .85; font-weight: 700; }
+.wa-filter-chip:hover { border-color: var(--green-800); color: var(--text); }
+.wa-filter-chip.active { background: var(--green-800); color: #fff; border-color: var(--green-800); }
+.wa-filter-chip.active b { color: #fff; }
+/* a per-label filter chip (has inline --c/--bg) uses its label colour when active */
+.wa-filter-chip[style].active { background: var(--bg); color: var(--c); border-color: var(--c); }
+.wa-filter-chip[style].active b { color: var(--c); }
+
+.wa-thread__avatar { position: relative; }
+.wa-pin-dot { position: absolute; bottom: -3px; inset-inline-start: -3px; font-size: 11px; line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.wa-thread.pinned { background: linear-gradient(0deg, rgba(255,243,224,.45), rgba(255,243,224,.45)); }
+.wa-thread.pinned.active { background: var(--green-50); }
+.wa-label-chip { display: inline-flex; align-self: flex-start; margin-top: 3px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; color: var(--c); background: var(--bg); }
+
+.wa-chat-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 14px; flex: none;
+  background: var(--white); border-bottom: 1px solid var(--line); }
+.wa-tool { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--cream); color: var(--text); font: inherit; font-size: 12.5px;
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.wa-tool:hover { border-color: var(--orange-dark); }
+.wa-tool.active { background: #fff3e0; border-color: var(--orange-dark); color: var(--orange-dark); }
+.wa-tool-sep { font-size: 12px; color: var(--muted); margin-inline-start: 4px; }
+.wa-label-pick { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--white);
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.wa-label-pick:hover { border-color: var(--c); color: var(--c); }
+.wa-label-pick.active { background: var(--bg); color: var(--c); border-color: var(--c); font-weight: 600; }
+
 @media (max-width: 760px) {
   .wa-inbox { grid-template-columns: 1fr; height: auto; }
   .wa-list { border-inline-end: none; border-bottom: 1px solid var(--line); max-height: 38vh; }
