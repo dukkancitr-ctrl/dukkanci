@@ -235,7 +235,8 @@ alter table public.marketing_event_logs enable row level security;
 ## 4. المرحلة الثانية (مهمة جداً) — ✅ معظمها مبني ومختبَر حياً (commit 49811ba)
 
 > ✅ تم: Meta CAPI من السيرفر (Purchase/Lead/Contact/InitiateCheckout/AddToCart/ViewContent) بنفس `event_id` للـDeduplication · fbp/fbc · Advanced Matching مُهشَّر (هاتف 90XXXXXXXXXX + external_id) · مفاتيح env مع fallback لـintegration_settings · تسجيل في marketing_event_logs · **اختُبِر حياً مقابل Graph API: events_received=1 (TEST32260)**.
-> ⏳ متبقٍّ: ضبط متغيّرات META_* على Vercel (لإخراج التوكن من الجدول المقروء من المتصفح) · **تبويب لوحة الإدارة "التتبع والبيانات التسويقية" (2ب) لم يُبنَ بعد** · Consent Trigger على وسم تيك توك داخل GTM.
+> ✅ المرحلة 2ب: تبويب لوحة الإدارة "التتبع والبيانات التسويقية" (commit b18561a) — دالة `tracking_report` + `/api/track-report` + 12 مؤشّر و4 جداول وفلاتر تاريخ/متجر؛ اختُبِر بتجميع بيانات حقيقية.
+> ⏳ متبقٍّ (إجراءات المستخدم): دمج add-rody-clean→main للنشر · ضبط متغيّرات META_* على Vercel (لإخراج التوكن من الجدول المقروء من المتصفح) · Consent Trigger على وسم تيك توك داخل GTM · التحقق من Events Manager + GA4 DebugView بعد النشر.
 
 
 1. **Meta Conversions API (سيرفر)**: تمديد `/api/track` (أو `/api/capi.js`) لإرسال `Purchase/Lead/Contact/InitiateCheckout/AddToCart/ViewContent` من السيرفر باستخدام **نفس `event_id`** (Deduplication).
