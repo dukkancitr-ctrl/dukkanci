@@ -37,7 +37,10 @@
 
   // أحداث تشغيل المنصة: تُخزَّن دائماً (ضرورية) حتى دون موافقة تحليلات.
   // باقي الأحداث تحليلية → تُخزَّن فقط عند موافقة التحليلات (تُطبَّق في السيرفر).
-  var NECESSARY_EVENTS = { purchase: 1, begin_checkout: 1, add_to_cart: 1, submit_phone: 1 };
+  // whatsapp_click مُدرَج هنا كإشارة تواصل/تحويل أساسية للأعمال: عدّ كامل لنقرات
+  // زر واتساب لكل متجر دون الاعتماد على موافقة التحليلات (لا يحمل أي PII). تبقى
+  // البكسلات الخارجية (Meta/TikTok) مشروطة بموافقة التسويق في integrations.js.
+  var NECESSARY_EVENTS = { purchase: 1, begin_checkout: 1, add_to_cart: 1, submit_phone: 1, whatsapp_click: 1 };
 
   // اسم الحدث الداخلي/GA4 لكل اسم وارد (يقبل أسماء Meta القديمة من app.js).
   var GA4_NAME = {
