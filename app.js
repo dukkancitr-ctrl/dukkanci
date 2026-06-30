@@ -5409,7 +5409,7 @@ function openAddressModal(addressId = null) {
     <h2>${address ? address.label : "إضافة عنوان توصيل"}</h2>
     <form id="customer-address-form" class="modal-form" data-id="${address?.id || ""}">
       <label class="input-label"><span>اسم العنوان</span><select name="label"><option ${address?.label === "المنزل" ? "selected" : ""}>المنزل</option><option ${address?.label === "العمل" ? "selected" : ""}>العمل</option><option ${address?.label === "عنوان آخر" ? "selected" : ""}>عنوان آخر</option></select></label>
-      ${(()=>{ const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت 50 ل.ت</small></p><div class="zone-picker-options">${safaZones.map(z=>`<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone===z.match[0]?"checked":""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone?"checked":""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone||"")}">` })()}
+      ${(()=>{ const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z=>`<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone===z.match[0]?"checked":""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone?"checked":""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone||"")}">` })()}
       <p class="address-section-title">${icon("map")} العنوان بالتنسيق التركي</p>
       <div class="form-grid">
         <label><span>المدينة (İl)</span><input name="sf_il" value="${escAttr(address?.structured?.il||"إسطنبول")}" placeholder="إسطنبول" required></label>
@@ -5767,7 +5767,7 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
 
   const zoneBlock = safaZones.length ? `
     <div class="named-zone-picker">
-      <p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت 50 ل.ت</small></p>
+      <p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p>
       <div class="zone-picker-options">
         ${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}
         <label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>عنوان آخر</span></label>

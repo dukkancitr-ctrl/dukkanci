@@ -4591,43 +4591,84 @@ p.success-note.order-closed-note {
 
 /* ── Named Zone Picker (Safa special zones) ─────────────────────── */
 .named-zone-picker {
-  background: var(--surface-alt);
-  border: 1.5px solid var(--primary);
-  border-radius: 12px;
+  background: linear-gradient(180deg, var(--green-50) 0%, var(--cream) 100%);
+  border: 1.5px solid var(--green-100);
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
 }
 .zone-picker-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0 0 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.4;
 }
-.zone-picker-label small { color: var(--muted); font-weight: 400; }
+.zone-picker-label svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--green-800);
+}
+.zone-picker-label small {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--green-800);
+  font-weight: 700;
+  font-size: 11px;
+  background: var(--white);
+  border: 1px solid var(--green-100);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
 .zone-picker-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 .zone-option {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 14px;
+  gap: 8px;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 14px;
   cursor: pointer;
   font-size: 13px;
-  transition: border-color .15s, background .15s;
+  font-weight: 600;
+  color: var(--ink);
+  transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
+}
+.zone-option::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.zone-option:hover {
+  border-color: var(--green-100);
 }
 .zone-option:has(input:checked) {
-  border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
-  font-weight: 600;
+  border-color: var(--green-800);
+  background: var(--green-50);
+  color: var(--green-800);
+  box-shadow: 0 4px 12px rgba(227, 6, 19, 0.10);
+}
+.zone-option:has(input:checked)::before {
+  border-color: var(--green-800);
+  background: var(--green-800);
+  box-shadow: inset 0 0 0 3px var(--white);
 }
 .zone-option input { display: none; }
 
