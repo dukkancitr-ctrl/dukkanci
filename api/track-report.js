@@ -30,9 +30,29 @@ function adminPasswordOk(req) {
 }
 function adminOk(req) { return verifyAdminToken(req.headers["x-admin-token"]) || adminPasswordOk(req); }
 
+// Merchant session token → list of store ids it grants (or null). Same scheme as
+// notify-order.js, so a merchant can only pull THEIR own store's report.
+function verifyMerchantToken(token) {
+  const secret = adminSecret();
+  if (!secret) return null;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  let payload;
+  try { payload = Buffer.from(parts[0], "base64url").toString("utf8"); } catch (e) { return null; }
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const a = Buffer.from(parts[1]), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const pm = /storeIds=([^&]+)&exp=(\d+)/.exec(payload);
+  if (!pm || Date.now() >= Number(pm[2])) return null;
+  return pm[1].split(",").map(Number).filter(Boolean);
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  if (!adminOk(req)) return res.status(403).json({ error: "unauthorized" });
+
+  const isAdmin = adminOk(req);
+  const merchantStores = isAdmin ? null : verifyMerchantToken(req.headers["x-merchant-token"]);
+  if (!isAdmin && !merchantStores) return res.status(403).json({ error: "unauthorized" });
 
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   const supabaseUrl = (process.env.SUPABASE_URL || PUB_URL).trim();
@@ -48,7 +68,17 @@ module.exports = async (req, res) => {
   const now = Date.now();
   const p_from = from ? new Date(from).toISOString() : new Date(now - 30 * 864e5).toISOString();
   const p_to = to ? new Date(to).toISOString() : new Date(now + 864e5).toISOString();
-  const p_store = (store === undefined || store === null || store === "" || store === "all") ? null : Number(store);
+
+  // Admins can query any store (or all). Merchants are restricted to a store their
+  // token owns — they MUST pass a specific store, and it must be in their list.
+  let p_store;
+  if (isAdmin) {
+    p_store = (store === undefined || store === null || store === "" || store === "all") ? null : Number(store);
+  } else {
+    const want = Number(store);
+    if (!Number.isFinite(want) || !merchantStores.includes(want)) return res.status(403).json({ error: "forbidden store" });
+    p_store = want;
+  }
 
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/tracking_report`, {

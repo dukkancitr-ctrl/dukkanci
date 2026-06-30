@@ -262,6 +262,8 @@ const state = {
   deliveryQuote: null,
   checkoutLocation: null,
   merchantTab: "overview",
+  merchantAnalytics: null, // per-store tracking report (null=unloaded, {loading}|{report}|{error})
+  merchantAnalyticsFilter: { range: 30 },
   merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   // Admin-issued phone+password merchant session (server-verified, subscription-gated).
@@ -2779,6 +2781,7 @@ function dashboardSidebar(type, active) {
     ["products", "box", "المنتجات"],
     ["offers", "megaphone", "العروض"],
     ["store", "store", "بيانات المتجر"],
+    ["analytics", "chart", "تحليلات المتجر"],
     ["integrations", "settings", "التكاملات"],
     ["subscription", "wallet", "الاشتراك"]
   ];
@@ -3401,10 +3404,11 @@ function renderMerchant(id) {
     products: merchantProducts,
     offers: merchantOffers,
     store: merchantStore,
+    analytics: merchantAnalytics,
     integrations: merchantIntegrations,
     subscription: merchantSubscription
   }[state.merchantTab]();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["تحليلات المتجر", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
   const [title, subtitle] = titles[state.merchantTab];
   // Ring + nudge for new/pending orders while the dashboard stays open.
   startMerchantOrderWatch();
@@ -4853,6 +4857,70 @@ function adminMarketing() {
     </div>`;
 }
 
+// ---- Merchant: تحليلات المتجر (Phase 3 per-store dashboard, aggregate-only) ----
+async function loadMerchantReport() {
+  const sid = state.merchantStoreId || (getMerchantStore() || {}).id;
+  if (sid == null) { state.merchantAnalytics = { error: "لا يوجد متجر محدّد" }; render(); return; }
+  const f = state.merchantAnalyticsFilter || (state.merchantAnalyticsFilter = { range: 30 });
+  state.merchantAnalytics = { loading: true };
+  render();
+  try {
+    const to = new Date(Date.now() + 864e5).toISOString();
+    const from = new Date(Date.now() - (f.range || 30) * 864e5).toISOString();
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    const res = await fetch("/api/track-report", { method: "POST", headers, body: JSON.stringify({ from, to, store: sid }) });
+    const data = await res.json();
+    state.merchantAnalytics = data && data.report ? { report: data.report } : { error: (data && data.error) || "تعذّر تحميل التقرير" };
+  } catch (e) {
+    state.merchantAnalytics = { error: e.message };
+  }
+  render();
+}
+
+function merchantAnalytics() {
+  const m = state.merchantAnalytics;
+  const f = state.merchantAnalyticsFilter || { range: 30 };
+  const ar = x => Number(x || 0).toLocaleString("ar");
+  const ranges = [[7, "7 أيام"], [30, "30 يوم"], [90, "90 يوم"]];
+  const toolbar = `
+    <div class="dashboard-toolbar">
+      <div class="toolbar-actions">${ranges.map(([d, l]) =>
+        `<button class="${(f.range || 30) === d ? "primary-button" : "secondary-button"} compact" data-action="merchant-range" data-days="${d}">${l}</button>`).join("")}</div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="merchant-report-refresh">${icon("filter")} تحديث</button></div>
+    </div>`;
+  if (!m || m.loading) return toolbar + `<section class="dashboard-card"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل تحليلات متجرك…</p></div></section>`;
+  if (m.error) return toolbar + `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>تعذّر تحميل التحليلات.<br><small dir="ltr">${esc(m.error)}</small></p></div></section>`;
+
+  const r = m.report || {}, t = r.totals || {};
+  const kpi = (val, label, ic, tone = "") => `<div class="kpi-card ${tone}"><span class="kpi-icon">${icon(ic)}</span><div class="kpi-body"><b>${val}</b><small>${label}</small></div></div>`;
+  const tableCard = (title, sub, head, rows) => `
+    <section class="dashboard-card"><div class="card-heading"><div><h3>${title}</h3><p>${sub}</p></div></div>
+      ${rows ? `<div class="table-wrap"><table class="admin-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
+             : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات في هذه الفترة بعد.</p></div>`}</section>`;
+  const products = (r.top_products || []).map(p => `<tr><td>${esc(p.name)}</td><td>${ar(p.views)}</td><td>${ar(p.add_to_cart)}</td></tr>`).join("");
+  const sources = (r.traffic_sources || []).map(s => `<tr><td dir="ltr">${esc(s.source)}</td><td>${ar(s.visitors)}</td></tr>`).join("");
+
+  return `
+    ${toolbar}
+    <div class="stats-grid admin-stats">
+      ${kpi(ar(t.visitors), "زائر فريد", "users")}
+      ${kpi(ar(t.store_views), "مشاهدات متجرك", "store")}
+      ${kpi(ar(t.product_views), "مشاهدات المنتجات", "eye")}
+      ${kpi(ar(t.add_to_cart), "إضافات للسلة", "bag")}
+      ${kpi(ar(t.begin_checkout), "بدء الطلب", "receipt")}
+      ${kpi(ar(t.purchases), "طلبات مكتملة", "check", "green")}
+      ${kpi(money(t.revenue), "إجمالي المبيعات", "wallet")}
+      ${kpi(ar(t.whatsapp_clicks), "نقرات واتساب", "whatsapp")}
+      ${kpi((r.conversion_rate || 0) + "%", "معدل التحويل (زائر→طلب)", "chart")}
+      ${kpi((r.cart_conversion || 0) + "%", "تحويل السلة→طلب", "chart")}
+      ${kpi(ar(r.abandoned_carts), "سلات متروكة", "bag", "orange")}
+    </div>
+    ${tableCard("أكثر منتجاتك مشاهدةً", "ما الذي يجذب اهتمام زوّارك", `<th>المنتج</th><th>مشاهدات</th><th>إضافات للسلة</th>`, products)}
+    ${tableCard("مصادر زوّارك", "من أين يأتي زوّار متجرك", `<th>المصدر</th><th>زوّار</th>`, sources)}`;
+}
+
 function renderAdmin() {
   // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
   if (!state.adminKey) return adminLoginScreen();
@@ -5214,6 +5282,9 @@ function render() {
   }
   if (route === "admin" && state.adminTab === "marketing" && state.adminKey && state.adminMarketing == null) {
     setTimeout(loadMarketingReport, 0);
+  }
+  if (route === "merchant" && state.merchantTab === "analytics" && ((state.merchantPwAuth && state.merchantPwAuth.token) || state.adminKey) && state.merchantAnalytics == null) {
+    setTimeout(loadMerchantReport, 0);
   }
 }
 
@@ -6550,6 +6621,12 @@ document.addEventListener("click", event => {
     state.adminMarketing = null; loadMarketingReport();
   }
   if (action === "marketing-refresh") { state.adminMarketing = null; loadMarketingReport(); }
+  if (action === "merchant-range") {
+    state.merchantAnalyticsFilter = state.merchantAnalyticsFilter || { range: 30 };
+    state.merchantAnalyticsFilter.range = Number(target.dataset.days) || 30;
+    state.merchantAnalytics = null; loadMerchantReport();
+  }
+  if (action === "merchant-report-refresh") { state.merchantAnalytics = null; loadMerchantReport(); }
   if (action === "admin-range") { state.adminAnalyticsRange = Number(target.dataset.range) || 0; render(); }
   if (action === "admin-metric") { state.adminAnalyticsMetric = target.dataset.metric === "orders" ? "orders" : "revenue"; render(); }
   if (action === "admin-order-status") { state.adminOrderStatus = target.dataset.status || "all"; render(); }
