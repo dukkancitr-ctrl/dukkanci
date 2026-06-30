@@ -262,6 +262,8 @@ const state = {
   deliveryQuote: null,
   checkoutLocation: null,
   merchantTab: "overview",
+  merchantAnalytics: null, // per-store tracking report (null=unloaded, {loading}|{report}|{error})
+  merchantAnalyticsFilter: { range: 30 },
   merchantStoreId: 5,
   merchantAuth: JSON.parse(localStorage.getItem("dukkanci-merchant-auth") || "null"),
   // Admin-issued phone+password merchant session (server-verified, subscription-gated).
@@ -274,6 +276,8 @@ const state = {
   adminOrderStatus: "all", // orders tab status filter ("all" or a status label)
   adminOrderStore: "all",  // orders tab store filter ("all" or a storeId string)
   adminContentSection: null,
+  adminMarketing: null, // tracking report (null=unloaded, {loading}|{report}|{error})
+  adminMarketingFilter: { range: 30, store: "all" }, // marketing tab date-range + store filter
   siteSettings: {},
   adminKey: sessionStorage.getItem("dukkanci-admin-token") || null,
   adminCreds: null, // loaded store-login credentials list (null=unloaded, "error", or array)
@@ -728,6 +732,8 @@ function pushOrderCloud(order) {
     payload.customer_id = state.user.id;
     payload.customer_phone = order.customerPhone || "";
   }
+  // Campaign attribution (first/last source + UTM + landing) — for "which ad drove this order".
+  if (order.attribution) payload.attribution = order.attribution;
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
 }
 // Fire-and-forget WhatsApp notification through the platform number: alerts the
@@ -1352,6 +1358,8 @@ async function verifyOrderOtp(form) {
   if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.label || "تأكيد وإرسال الطلب"; }
   if (r && r.ok) {
     state.verifiedPhone = phone; saveState();
+    // submit_phone (Meta Lead) — phone confirmed via WhatsApp OTP at checkout.
+    window.DUKKANCI_TRACKING?.track("submit_phone", { phone: phone });
     closeModal();
     const cb = pendingOtpCommit; pendingOtpCommit = null;
     if (cb) cb();
@@ -2490,6 +2498,8 @@ function hasBannerCover(store) {
 function renderStorePage(id) {
   const store = getStore(id);
   if (!store) return renderNotFound();
+  // view_store — deduped per store so re-renders don't double-count.
+  window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
   const siblingBranches = store.branchGroup
     ? stores.filter(branch => branch.branchGroup === store.branchGroup)
         .sort((a, b) => (branchDistanceKm(a) ?? Infinity) - (branchDistanceKm(b) ?? Infinity))
@@ -2771,6 +2781,7 @@ function dashboardSidebar(type, active) {
     ["products", "box", "المنتجات"],
     ["offers", "megaphone", "العروض"],
     ["store", "store", "بيانات المتجر"],
+    ["analytics", "chart", "تحليلات المتجر"],
     ["integrations", "settings", "التكاملات"],
     ["subscription", "wallet", "الاشتراك"]
   ];
@@ -2788,6 +2799,7 @@ function dashboardSidebar(type, active) {
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"],
     ["integrations", "megaphone", "التكاملات"],
+    ["marketing", "chart", "التتبع والتسويق"],
     ["ai", "stars", "الذكاء الاصطناعي"]
   ];
   const items = type === "merchant" ? merchantItems : adminItems;
@@ -3392,10 +3404,11 @@ function renderMerchant(id) {
     products: merchantProducts,
     offers: merchantOffers,
     store: merchantStore,
+    analytics: merchantAnalytics,
     integrations: merchantIntegrations,
     subscription: merchantSubscription
   }[state.merchantTab]();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["تحليلات المتجر", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
   const [title, subtitle] = titles[state.merchantTab];
   // Ring + nudge for new/pending orders while the dashboard stays open.
   startMerchantOrderWatch();
@@ -4755,6 +4768,159 @@ function stopCampaignPoll() {
 
 // ─── renderAdmin ──────────────────────────────────────────────────────────────
 
+// ---- Admin: التتبع والبيانات التسويقية (Phase 2b reports over tracking_events) ----
+async function loadMarketingReport() {
+  const f = state.adminMarketingFilter || (state.adminMarketingFilter = { range: 30 });
+  // pick up the store filter from the dropdown if it's on screen
+  const sel = document.getElementById("marketing-store");
+  if (sel) f.store = sel.value;
+  state.adminMarketing = { loading: true };
+  render();
+  try {
+    const to = new Date(Date.now() + 864e5).toISOString();
+    const from = new Date(Date.now() - (f.range || 30) * 864e5).toISOString();
+    const res = await fetch("/api/track-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-token": state.adminKey || "" },
+      body: JSON.stringify({ from, to, store: f.store || "all" })
+    });
+    if (res.status === 403) { lockAdmin(); return; }
+    const data = await res.json();
+    state.adminMarketing = data && data.report ? { report: data.report } : { error: (data && data.error) || "تعذّر تحميل التقرير" };
+  } catch (e) {
+    state.adminMarketing = { error: e.message };
+  }
+  render();
+}
+
+function adminMarketing() {
+  const m = state.adminMarketing;
+  const f = state.adminMarketingFilter || { range: 30 };
+  const ar = x => Number(x || 0).toLocaleString("ar");
+  const ranges = [[7, "7 أيام"], [30, "30 يوم"], [90, "90 يوم"]];
+  const storeOptions = `<option value="all">كل المتاجر</option>` +
+    [...stores].sort((a, b) => a.name.localeCompare(b.name, "ar")).map(s =>
+      `<option value="${s.id}" ${String(f.store) === String(s.id) ? "selected" : ""}>${escAttr(s.name)}</option>`).join("");
+  const toolbar = `
+    <div class="dashboard-toolbar">
+      <div class="toolbar-actions">${ranges.map(([d, l]) =>
+        `<button class="${(f.range || 30) === d ? "primary-button" : "secondary-button"} compact" data-action="marketing-range" data-days="${d}">${l}</button>`).join("")}</div>
+      <div class="toolbar-actions">
+        <select class="filter-select" id="marketing-store">${storeOptions}</select>
+        <button class="secondary-button compact" data-action="marketing-refresh">${icon("filter")} تحديث</button>
+      </div>
+    </div>`;
+
+  if (!m || m.loading) return toolbar + `<section class="dashboard-card"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل التقارير…</p></div></section>`;
+  if (m.error) return toolbar + `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>تعذّر تحميل التقرير.<br><small dir="ltr">${esc(m.error)}</small></p></div></section>`;
+
+  const r = m.report || {}, t = r.totals || {};
+  const kpi = (val, label, ic, tone = "") => `<div class="kpi-card ${tone}"><span class="kpi-icon">${icon(ic)}</span><div class="kpi-body"><b>${val}</b><small>${label}</small></div></div>`;
+  const tableCard = (title, sub, head, rows) => `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${title}</h3><p>${sub}</p></div></div>
+      ${rows ? `<div class="table-wrap"><table class="admin-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
+             : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات في هذه الفترة بعد.</p></div>`}
+    </section>`;
+
+  const topStores = (r.top_stores || []).map(s =>
+    `<tr><td>${esc(s.name)}</td><td>${ar(s.store_views)}</td><td>${ar(s.add_to_cart)}</td><td>${ar(s.purchases)}</td><td>${ar(s.whatsapp_clicks)}</td><td>${s.store_views > 0 ? ((s.purchases / s.store_views) * 100).toFixed(1) + "%" : "—"}</td></tr>`).join("");
+  const topProducts = (r.top_products || []).map(p =>
+    `<tr><td>${esc(p.name)}</td><td>${ar(p.views)}</td><td>${ar(p.add_to_cart)}</td></tr>`).join("");
+  const sources = (r.traffic_sources || []).map(s =>
+    `<tr><td dir="ltr">${esc(s.source)}</td><td>${ar(s.visitors)}</td></tr>`).join("");
+  const campaigns = (r.top_campaigns || []).map(c =>
+    `<tr><td dir="ltr">${esc(c.campaign)}</td><td>${ar(c.visitors)}</td><td>${ar(c.purchases)}</td><td>${money(c.revenue)}</td></tr>`).join("");
+
+  return `
+    ${toolbar}
+    <div class="stats-grid admin-stats">
+      ${kpi(ar(t.visitors), "زائر فريد", "users")}
+      ${kpi(ar(t.store_views), "مشاهدات المتاجر", "store")}
+      ${kpi(ar(t.product_views), "مشاهدات المنتجات", "eye")}
+      ${kpi(ar(t.add_to_cart), "إضافات للسلة", "bag")}
+      ${kpi(ar(t.begin_checkout), "بدء الطلب", "receipt")}
+      ${kpi(ar(t.purchases), "طلبات مكتملة", "check", "green")}
+      ${kpi(money(t.revenue), "إجمالي المبيعات", "wallet")}
+      ${kpi(ar(t.whatsapp_clicks), "نقرات واتساب", "whatsapp")}
+      ${kpi(ar(t.leads), "أرقام مؤكَّدة (Lead)", "phone")}
+      ${kpi((r.conversion_rate || 0) + "%", "معدل التحويل (زائر→طلب)", "chart")}
+      ${kpi((r.cart_conversion || 0) + "%", "تحويل السلة→طلب", "chart")}
+      ${kpi(ar(r.abandoned_carts), "سلات متروكة", "bag", "orange")}
+    </div>
+    ${tableCard("أكثر المتاجر مشاهدةً وتحويلاً", "مشاهدات وإضافات وطلبات لكل متجر",
+      `<th>المتجر</th><th>مشاهدات</th><th>سلة</th><th>طلبات</th><th>واتساب</th><th>تحويل</th>`, topStores)}
+    ${tableCard("أكثر المنتجات مشاهدةً", "أعلى المنتجات اهتماماً", `<th>المنتج</th><th>مشاهدات</th><th>إضافات للسلة</th>`, topProducts)}
+    <div class="admin-two-col">
+      ${tableCard("مصادر الزيارات", "من أين جاء الزوار", `<th>المصدر</th><th>زوّار</th>`, sources)}
+      ${tableCard("أكثر الحملات جلباً للطلبات", "حسب utm_campaign", `<th>الحملة</th><th>زوّار</th><th>طلبات</th><th>مبيعات</th>`, campaigns)}
+    </div>`;
+}
+
+// ---- Merchant: تحليلات المتجر (Phase 3 per-store dashboard, aggregate-only) ----
+async function loadMerchantReport() {
+  const sid = state.merchantStoreId || (getMerchantStore() || {}).id;
+  if (sid == null) { state.merchantAnalytics = { error: "لا يوجد متجر محدّد" }; render(); return; }
+  const f = state.merchantAnalyticsFilter || (state.merchantAnalyticsFilter = { range: 30 });
+  state.merchantAnalytics = { loading: true };
+  render();
+  try {
+    const to = new Date(Date.now() + 864e5).toISOString();
+    const from = new Date(Date.now() - (f.range || 30) * 864e5).toISOString();
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    const res = await fetch("/api/track-report", { method: "POST", headers, body: JSON.stringify({ from, to, store: sid }) });
+    const data = await res.json();
+    state.merchantAnalytics = data && data.report ? { report: data.report } : { error: (data && data.error) || "تعذّر تحميل التقرير" };
+  } catch (e) {
+    state.merchantAnalytics = { error: e.message };
+  }
+  render();
+}
+
+function merchantAnalytics() {
+  const m = state.merchantAnalytics;
+  const f = state.merchantAnalyticsFilter || { range: 30 };
+  const ar = x => Number(x || 0).toLocaleString("ar");
+  const ranges = [[7, "7 أيام"], [30, "30 يوم"], [90, "90 يوم"]];
+  const toolbar = `
+    <div class="dashboard-toolbar">
+      <div class="toolbar-actions">${ranges.map(([d, l]) =>
+        `<button class="${(f.range || 30) === d ? "primary-button" : "secondary-button"} compact" data-action="merchant-range" data-days="${d}">${l}</button>`).join("")}</div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="merchant-report-refresh">${icon("filter")} تحديث</button></div>
+    </div>`;
+  if (!m || m.loading) return toolbar + `<section class="dashboard-card"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل تحليلات متجرك…</p></div></section>`;
+  if (m.error) return toolbar + `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>تعذّر تحميل التحليلات.<br><small dir="ltr">${esc(m.error)}</small></p></div></section>`;
+
+  const r = m.report || {}, t = r.totals || {};
+  const kpi = (val, label, ic, tone = "") => `<div class="kpi-card ${tone}"><span class="kpi-icon">${icon(ic)}</span><div class="kpi-body"><b>${val}</b><small>${label}</small></div></div>`;
+  const tableCard = (title, sub, head, rows) => `
+    <section class="dashboard-card"><div class="card-heading"><div><h3>${title}</h3><p>${sub}</p></div></div>
+      ${rows ? `<div class="table-wrap"><table class="admin-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
+             : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات في هذه الفترة بعد.</p></div>`}</section>`;
+  const products = (r.top_products || []).map(p => `<tr><td>${esc(p.name)}</td><td>${ar(p.views)}</td><td>${ar(p.add_to_cart)}</td></tr>`).join("");
+  const sources = (r.traffic_sources || []).map(s => `<tr><td dir="ltr">${esc(s.source)}</td><td>${ar(s.visitors)}</td></tr>`).join("");
+
+  return `
+    ${toolbar}
+    <div class="stats-grid admin-stats">
+      ${kpi(ar(t.visitors), "زائر فريد", "users")}
+      ${kpi(ar(t.store_views), "مشاهدات متجرك", "store")}
+      ${kpi(ar(t.product_views), "مشاهدات المنتجات", "eye")}
+      ${kpi(ar(t.add_to_cart), "إضافات للسلة", "bag")}
+      ${kpi(ar(t.begin_checkout), "بدء الطلب", "receipt")}
+      ${kpi(ar(t.purchases), "طلبات مكتملة", "check", "green")}
+      ${kpi(money(t.revenue), "إجمالي المبيعات", "wallet")}
+      ${kpi(ar(t.whatsapp_clicks), "نقرات واتساب", "whatsapp")}
+      ${kpi((r.conversion_rate || 0) + "%", "معدل التحويل (زائر→طلب)", "chart")}
+      ${kpi((r.cart_conversion || 0) + "%", "تحويل السلة→طلب", "chart")}
+      ${kpi(ar(r.abandoned_carts), "سلات متروكة", "bag", "orange")}
+    </div>
+    ${tableCard("أكثر منتجاتك مشاهدةً", "ما الذي يجذب اهتمام زوّارك", `<th>المنتج</th><th>مشاهدات</th><th>إضافات للسلة</th>`, products)}
+    ${tableCard("مصادر زوّارك", "من أين يأتي زوّار متجرك", `<th>المصدر</th><th>زوّار</th>`, sources)}`;
+}
+
 function renderAdmin() {
   // Gate the whole admin panel behind the password (set ADMIN_PASSWORD in Vercel).
   if (!state.adminKey) return adminLoginScreen();
@@ -4765,8 +4931,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -5114,6 +5280,12 @@ function render() {
   if (route === "admin" && state.adminTab === "credentials" && state.adminKey && state.adminCreds === null) {
     setTimeout(loadAdminCreds, 0);
   }
+  if (route === "admin" && state.adminTab === "marketing" && state.adminKey && state.adminMarketing == null) {
+    setTimeout(loadMarketingReport, 0);
+  }
+  if (route === "merchant" && state.merchantTab === "analytics" && ((state.merchantPwAuth && state.merchantPwAuth.token) || state.adminKey) && state.merchantAnalytics == null) {
+    setTimeout(loadMerchantReport, 0);
+  }
 }
 
 function renderCart() {
@@ -5277,7 +5449,7 @@ function openComplaintDetails(complaintId) {
 function openProductModal(id) {
   const product = getProduct(id);
   const store = getStore(product.storeId);
-  window.DUKKANCI_INTEGRATIONS?.track("ViewContent", { ids: [product.id], value: product.price });
+  window.DUKKANCI_TRACKING?.track("ViewContent", { ids: [product.id], value: product.price, product_id: product.id, store_id: product.storeId, store_name: store?.name });
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="product-modal-grid">
@@ -5678,7 +5850,7 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
   else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), optionSelections: [...optionSelections], notes });
   saveState();
   updateCartBadges();
-  window.DUKKANCI_INTEGRATIONS?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity });
+  window.DUKKANCI_TRACKING?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity, product_id: product.id, store_id: product.storeId });
   showToast(`تمت إضافة ${product.name} إلى السلة`, "success");
 }
 
@@ -6187,9 +6359,14 @@ document.addEventListener("click", event => {
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
     state.storeFilter = "الكل";
+    if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
     navigate("stores");
   }
-  if (action === "run-store-search") { state.search = document.getElementById("stores-search").value.trim(); render(); }
+  if (action === "run-store-search") {
+    state.search = document.getElementById("stores-search").value.trim();
+    if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
+    render();
+  }
   if (action === "voice-search") startVoiceSearch(target);
   if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
   if (action === "remove-coupon") removeCoupon();
@@ -6223,7 +6400,7 @@ document.addEventListener("click", event => {
   if (action === "checkout") {
     closeDrawers();
     const t = cartTotals();
-    window.DUKKANCI_INTEGRATIONS?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
+    window.DUKKANCI_TRACKING?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
     navigate("checkout");
   }
   if (action === "modal-quantity-plus" || action === "modal-quantity-minus") {
@@ -6437,6 +6614,19 @@ document.addEventListener("click", event => {
     if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
     render();
   }
+  if (action === "marketing-range") {
+    state.adminMarketingFilter = state.adminMarketingFilter || { range: 30, store: "all" };
+    state.adminMarketingFilter.range = Number(target.dataset.days) || 30;
+    const sel = document.getElementById("marketing-store"); if (sel) state.adminMarketingFilter.store = sel.value;
+    state.adminMarketing = null; loadMarketingReport();
+  }
+  if (action === "marketing-refresh") { state.adminMarketing = null; loadMarketingReport(); }
+  if (action === "merchant-range") {
+    state.merchantAnalyticsFilter = state.merchantAnalyticsFilter || { range: 30 };
+    state.merchantAnalyticsFilter.range = Number(target.dataset.days) || 30;
+    state.merchantAnalytics = null; loadMerchantReport();
+  }
+  if (action === "merchant-report-refresh") { state.merchantAnalytics = null; loadMerchantReport(); }
   if (action === "admin-range") { state.adminAnalyticsRange = Number(target.dataset.range) || 0; render(); }
   if (action === "admin-metric") { state.adminAnalyticsMetric = target.dataset.metric === "orders" ? "orders" : "revenue"; render(); }
   if (action === "admin-order-status") { state.adminOrderStatus = target.dataset.status || "all"; render(); }
@@ -7504,6 +7694,8 @@ document.addEventListener("submit", async event => {
     // The actual order placement — run now if the phone is already verified, else
     // only after the WhatsApp OTP is confirmed (anti-fraud gate below).
     const commitOrder = () => {
+      // Campaign attribution: which source/campaign brought this real order.
+      try { newOrder.attribution = window.DUKKANCI_TRACKING?.getAttribution() || null; } catch (e) {}
       state.myOrders.unshift(newOrder);
       state.orders.unshift(newOrder);
       pushOrderCloud(newOrder);
@@ -7516,7 +7708,7 @@ document.addEventListener("submit", async event => {
       if (isFeatureOn("feature_community_retention") && state.user) {
         settleReferralAndCredit(newOrder.id, orderCredit);
       }
-      window.DUKKANCI_INTEGRATIONS?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length });
+      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
       state.cart = [];
       state.coupon = null;
       state.useCredit = false;
