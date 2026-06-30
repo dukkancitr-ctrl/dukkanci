@@ -2246,42 +2246,118 @@ function renderHome() {
   };
   const bHref = hb.link || "#offers";
   const bAttrs = `href="${escAttr(bHref)}"${/^(https?:|tel:|mailto:|wa\.me)/i.test(bHref) ? ' target="_blank" rel="noopener"' : ""}`;
+  // Real average store rating (truthful — never fabricated) for the hero rating float.
+  const ratedHeroStores = stores.filter(s => (Number(s.reviews) || 0) > 0);
+  let heroRatingFloat = "";
+  if (ratedHeroStores.length) {
+    const totalRev = ratedHeroStores.reduce((a, s) => a + Number(s.reviews), 0);
+    const avgRating = (ratedHeroStores.reduce((a, s) => a + (Number(s.rating) || 0) * Number(s.reviews), 0) / totalRev).toFixed(1);
+    heroRatingFloat = `<div class="h2-rate-num"><strong>${avgRating}</strong><small>متوسط تقييم المتاجر</small></div>`;
+  }
+  // HERO V2 — fully scoped under .hero2 (class names prefixed h2-* so nothing leaks in/out).
+  // Rotating headline (4 slides via setupHeroSlider) + real working search + phone mock + glass floats.
   return `
-    <section class="hero">
-      <div class="container hero__grid">
-        <div class="hero__content">
-          <span class="eyebrow"><span></span> ${escAttr(ht.eyebrow)}</span>
-          <h1>${escAttr(ht.titleTop)}<br><em>${escAttr(ht.titleEm)}</em></h1>
-          <p>${escAttr(ht.subtitle)}</p>
+    <section class="hero2">
+      <span class="h2-bgword" aria-hidden="true">DUKKANCI</span>
+      <div class="container h2-grid">
+        <div class="h2-copy">
+          <span class="h2-eyebrow"><span class="h2-pulse"></span> ${escAttr(HT.eyebrow || "سوق الحي بين يديك — تجربة أوضح من واتساب")}</span>
+          <div class="h2-slides" id="hero2-slides">
+            <article class="h2-slide active">
+              <h1>اطلب من <span class="h2-grad">متاجر حيك</span><br>بطلب واحد بسيط</h1>
+              <p class="h2-lead">مطاعم، سوبرماركت، ملاحم، حلويات وقهوة في مكان واحد. اختر المتجر القريب، راجع السعر، وأرسل طلبك بثقة.</p>
+            </article>
+            <article class="h2-slide">
+              <h1>أسعار واضحة<br><span class="h2-grad">بدون عمولة</span> على المنتجات</h1>
+              <p class="h2-lead">دكانجي لا يضيف عمولة على أسعار منتجات المتاجر. ترى سعر المنتج، رسوم التوصيل، والإجمالي قبل تأكيد الطلب.</p>
+            </article>
+            <article class="h2-slide">
+              <h1>متاجر مقيّمة<br>وتجربة <span class="h2-grad">قابلة للثقة</span></h1>
+              <p class="h2-lead">كل تجربة طلب تساعد في تقييم المتجر: جودة التنفيذ، سرعة التجهيز، التغليف، ودقة الطلب. المتجر الجيد يظهر أقوى.</p>
+            </article>
+            <article class="h2-slide">
+              <h1>بدل فوضى واتساب<br>اطلب بطريقة <span class="h2-grad">مرتبة</span></h1>
+              <p class="h2-lead">لا تسأل كل محل عن الأسعار والتوفر. المنتجات والمتاجر والتفاصيل أمامك في مكان واحد قبل أن تقرر.</p>
+            </article>
+          </div>
+
           <div class="hero-search">
             ${icon("search")}
-            <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${state.search}">
+            <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${escAttr(state.search)}">
             ${voiceSearchButton("hero")}
             <button data-action="run-search">ابحث</button>
           </div>
-          <div class="hero-trust">
-            <span>${icon("shield")} متاجر موثوقة</span>
-            <span>${icon("clock")} توصيل سريع</span>
-            <span>${icon("phone")} متابعة عبر واتساب</span>
+
+          <div class="h2-cta-row">
+            <a class="h2-cta-main" href="/stores" data-route="stores">ابدأ الطلب الآن ←</a>
+            <a class="h2-cta-second" href="/offers" data-route="offers">شاهد العروض</a>
+          </div>
+
+          <div class="h2-dots" id="hero2-dots" aria-label="تبديل الرسائل">
+            <button class="h2-dot active" data-index="0" aria-label="الرسالة 1"></button>
+            <button class="h2-dot" data-index="1" aria-label="الرسالة 2"></button>
+            <button class="h2-dot" data-index="2" aria-label="الرسالة 3"></button>
+            <button class="h2-dot" data-index="3" aria-label="الرسالة 4"></button>
+          </div>
+
+          <div class="h2-trust">
+            <div class="h2-trust-card"><span class="h2-trust-icon">٪</span><div><strong>0% عمولة منتجات</strong><span>المنصة لا تضيف عمولة على سعر المنتج.</span></div></div>
+            <div class="h2-trust-card"><span class="h2-trust-icon">★</span><div><strong>متاجر يتم تقييمها</strong><span>التجربة تساعد في رفع جودة المتاجر.</span></div></div>
+            <div class="h2-trust-card"><span class="h2-trust-icon">✓</span><div><strong>التكلفة قبل التأكيد</strong><span>السعر والتوصيل يظهران قبل إرسال الطلب.</span></div></div>
           </div>
         </div>
-        <div class="hero__visual">
-          <div class="hero-blob"></div>
-          <img src="/assets/photos/hero-market.jpg" alt="متجر حي مليء بالخضار والمنتجات الطازجة">
-          ${(() => {
-            const rated = stores.filter(s => (Number(s.reviews) || 0) > 0);
-            if (!rated.length) return "";
-            const totalReviews = rated.reduce((a, s) => a + Number(s.reviews), 0);
-            const avg = (rated.reduce((a, s) => a + (Number(s.rating) || 0) * Number(s.reviews), 0) / totalReviews).toFixed(1);
-            return `<div class="floating-card floating-card--rating"><span class="floating-icon">${icon("star")}</span><span><strong>${avg}</strong><small>تقييم المتاجر</small></span></div>`;
-          })()}
-          <div class="floating-card floating-card--delivery">
-            <span class="floating-icon">${icon("bike")}</span>
-            <span><strong>وصل طلبك!</strong><small>بكل سرعة وأمان</small></span>
+
+        <div class="h2-stage" aria-hidden="true">
+          <span class="h2-orb one"></span><span class="h2-orb two"></span>
+
+          <div class="h2-float delivery">
+            <div class="h2-float-title"><i>📍</i> متاجر قريبة</div>
+            <p>يبدأ الطلب من منطقتك، وليس من قائمة عامة عشوائية.</p>
+          </div>
+
+          <div class="h2-float price">
+            <div class="h2-float-title"><i>₺</i> وضوح السعر</div>
+            <p>عمولة دكانجي على المنتجات صفر، والتوصيل واضح قبل التأكيد.</p>
+            <div class="h2-price-line"><span>عمولة دكانجي</span><strong class="h2-zero">0</strong></div>
+          </div>
+
+          <div class="h2-phone">
+            <div class="h2-screen">
+              <div class="h2-screen-top">
+                <div class="h2-loc">📍 إسطنبول — المتاجر الأقرب لك</div>
+                <div class="h2-screen-title">ماذا تريد أن تطلب اليوم؟</div>
+                <div class="h2-pseudo-search">🔎 ابحث عن متجر أو منتج</div>
+              </div>
+              <div class="h2-cat-row">
+                <div class="h2-cat"><b>🍽️</b>مطاعم</div>
+                <div class="h2-cat"><b>🛒</b>ماركت</div>
+                <div class="h2-cat"><b>🥩</b>ملاحم</div>
+                <div class="h2-cat"><b>☕</b>قهوة</div>
+              </div>
+              <div class="h2-store-list">
+                <div class="h2-store-card"><div class="h2-store-logo">🍗</div><div><h3>مطعم الخوالي</h3><p>وجبات ومشاوي — متاح للطلب</p><span class="h2-chip">★ تجربة قابلة للتقييم</span></div></div>
+                <div class="h2-store-card"><div class="h2-store-logo">🧀</div><div><h3>صفا الشام ماركت</h3><p>مواد غذائية ومنتجات يومية</p><span class="h2-chip">₺ سعر واضح</span></div></div>
+                <div class="h2-store-card"><div class="h2-store-logo">🍰</div><div><h3>حلويات الحي</h3><p>حلويات وقهوة وضيافة</p><span class="h2-chip">✓ قريب منك</span></div></div>
+              </div>
+              <div class="h2-checkout">
+                <div class="h2-checkout-row"><span>سلة مختصرة</span><strong>الإجمالي يظهر قبل التأكيد</strong></div>
+                <div class="h2-checkout-btn">راجع الطلب</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="h2-float rating">
+            <div class="h2-float-title"><i>⭐</i> تقييم المتاجر</div>
+            <p>الترتيب يتبع الجودة والتجربة، لا الظهور العشوائي.</p>
+            ${heroRatingFloat}
+            <div class="h2-bars">
+              <div class="h2-bar"><span style="width:82%"></span></div>
+              <div class="h2-bar"><span style="width:68%"></span></div>
+              <div class="h2-bar"><span style="width:76%"></span></div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="hero-pattern"></div>
     </section>
 
     <section class="section categories-section">
@@ -5549,10 +5625,41 @@ function renderCategoryPage(slug) {
   `;
 }
 
+// HERO V2 slider — auto-advances the 4 headline slides and wires the dot controls.
+// Idempotent per render: render() clears state._heroTimer first, so this never stacks
+// timers. state._heroSlide persists the active slide so a data-refresh re-render resumes
+// where it left off instead of snapping back to slide 1.
+function setupHeroSlider() {
+  const root = document.querySelector(".hero2");
+  if (!root) return;
+  const slides = [...root.querySelectorAll(".h2-slide")];
+  const dots = [...root.querySelectorAll(".h2-dot")];
+  if (slides.length < 2) return;
+  let current = Math.min(Number(state._heroSlide) || 0, slides.length - 1);
+  const apply = i => {
+    current = i;
+    state._heroSlide = i;
+    slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+    dots.forEach((d, idx) => d.classList.toggle("active", idx === i));
+  };
+  const arm = () => { state._heroTimer = setInterval(() => apply((current + 1) % slides.length), 5200); };
+  apply(current);
+  dots.forEach(dot => dot.addEventListener("click", () => {
+    if (state._heroTimer) clearInterval(state._heroTimer);
+    apply(Number(dot.dataset.index));
+    arm(); // restart the clock so a manual pick gets its full dwell time
+  }));
+  arm();
+}
+
 function render() {
   const { route } = parseRoute();
   let { id } = parseRoute();
   state.route = route;
+  // Stop any running hero slider before re-rendering (the DOM it drove is about to be
+  // replaced) — prevents stacked setInterval timers on every re-render. Re-armed below
+  // by setupHeroSlider() when the home hero is present.
+  if (state._heroTimer) { clearInterval(state._heroTimer); state._heroTimer = null; }
   // Canonicalize a numeric /store/<id> deep-link to its clean slug URL (address bar
   // only, no reload) so a shared/bookmarked /store/50 shows /store/safa-alsham-market.
   // Realigning `id` to the slug keeps the nav key stable so the post-load data-refresh
@@ -5586,6 +5693,8 @@ function render() {
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   hydrateIcons(app);
   updateCartBadges();
+  // Home/join render the V2 hero with its rotating headline — arm its auto-advance slider.
+  if (route === "home" || route === "join") setupHeroSlider();
   // Only reset scroll on actual navigation (route/id change). Data-refresh
   // re-renders (catalog load, site settings, polling) must preserve the user's
   // scroll position — otherwise the page snaps to top a few seconds after load
