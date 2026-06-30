@@ -4744,25 +4744,39 @@ async function loadContacts() {
   } catch (e) { state.adminContacts = { total: 0, preview: [], groups: [] }; render(); }
 }
 
-// Campaign action polling: auto-calls send-batch every 3s while a campaign is sending
+// Campaign send loop: fires send-batch, then schedules the NEXT batch ONLY AFTER
+// the current one fully returns. (Previously this used setInterval(…, 3000): a batch
+// of 8 sends takes ~5s — longer than the 3s tick — so two send-batch calls overlapped,
+// grabbed the same pending rows, and sent every message twice. That inflated Meta's
+// "messages sent" to ~2× and corrupted sent_count via lost updates.) A self-scheduling
+// timeout guarantees strictly one batch in flight at a time. A generation counter makes
+// any tick that was awaiting when the loop is stopped/restarted bail out harmlessly.
 let _campaignPollTimer = null;
+let _campaignPollGen = 0;
 function startCampaignPoll(id) {
   stopCampaignPoll();
+  const gen = ++_campaignPollGen;
   state.adminCampaignActive = id;
-  _campaignPollTimer = setInterval(async () => {
+  const tick = async () => {
+    if (gen !== _campaignPollGen) return; // superseded by a newer start, or stopped
     if (state.adminTab !== "campaigns" || !state.adminKey) { stopCampaignPoll(); return; }
+    let result;
     try {
-      const result = await campaignApi("send-batch", { method: "POST", id });
+      result = await campaignApi("send-batch", { method: "POST", id });
       // Refresh campaign list to show updated progress
       const listData = await campaignApi("list");
       state.adminCampaigns = listData.campaigns || [];
       render();
-      if (result.done || result.paused || !result.ok) stopCampaignPoll();
-    } catch (e) { stopCampaignPoll(); }
-  }, 3000);
+    } catch (e) { stopCampaignPoll(); return; }
+    if (gen !== _campaignPollGen) return; // stopped while we were awaiting
+    if (result.done || result.paused || !result.ok) { stopCampaignPoll(); return; }
+    _campaignPollTimer = setTimeout(tick, 3000); // only now queue the next batch
+  };
+  tick();
 }
 function stopCampaignPoll() {
-  if (_campaignPollTimer) { clearInterval(_campaignPollTimer); _campaignPollTimer = null; }
+  _campaignPollGen++; // invalidate any in-flight tick from the current loop
+  if (_campaignPollTimer) { clearTimeout(_campaignPollTimer); _campaignPollTimer = null; }
   state.adminCampaignActive = null;
 }
 

@@ -285,6 +285,27 @@ async function buildRecipients(campaignId, audienceType, campaign) {
 
 // ─── Send batch ──────────────────────────────────────────────────────────────
 
+// Atomically claim up to `limit` pending recipients by flipping them pending→sending,
+// and return only the rows THIS call actually claimed. The PATCH carries
+// `status=eq.pending` in its WHERE clause, so a row a concurrent send-batch already
+// grabbed (now 'sending') won't match and won't be returned here — guaranteeing the
+// same phone is never handed to two batches, i.e. never sent twice. This is the
+// server-side backstop; the client also serializes batches so they don't overlap.
+async function claimPendingBatch(campaignId, limit) {
+  const candidates = await sbGet(
+    `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(campaignId)}&status=eq.pending&select=id&order=id.asc&limit=${limit}`
+  );
+  if (!Array.isArray(candidates) || candidates.length === 0) return [];
+  const ids = candidates.map(r => r.id).join(",");
+  const r = await sbWrite(
+    "PATCH",
+    `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(campaignId)}&status=eq.pending&id=in.(${ids})&select=id,phone`,
+    { status: "sending" },
+    "return=representation"
+  );
+  return Array.isArray(r.rows) ? r.rows : [];
+}
+
 async function sendBatch(campaignId) {
   const campaign = (await sbGet(`wa_campaigns?id=eq.${encodeURIComponent(campaignId)}&select=*`))?.[0];
   if (!campaign) return { ok: false, error: "campaign not found" };
@@ -308,16 +329,22 @@ async function sendBatch(campaignId) {
 
   const allowed = Math.min(BATCH_SIZE, DAILY_CAP - sentToday);
 
-  // Fetch next pending recipients
-  const pending = await sbGet(
-    `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(campaignId)}&status=eq.pending&select=id,phone&limit=${allowed}&order=id.asc`
-  );
+  // Atomically claim this batch's recipients so a concurrent send-batch (manual
+  // button, second tab, retry, cron) can never grab — and re-send to — the same rows.
+  const pending = await claimPendingBatch(campaignId, allowed);
 
-  if (!pending || pending.length === 0) {
-    // No more pending → campaign is done
-    await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(campaignId)}`,
-      { status: "done", finished_at: new Date().toISOString() }, "return=minimal");
-    return { ok: true, done: true, sent: 0 };
+  if (pending.length === 0) {
+    // We claimed nothing. Finish ONLY if nothing is left pending/sending; if rows are
+    // still 'sending', another in-flight batch owns them — leave the campaign running.
+    const remaining = await sbGet(
+      `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.(pending,sending)&select=id&limit=1`
+    );
+    if (!remaining || remaining.length === 0) {
+      await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(campaignId)}`,
+        { status: "done", finished_at: new Date().toISOString() }, "return=minimal");
+      return { ok: true, done: true, sent: 0 };
+    }
+    return { ok: true, sent: 0, inflight: true };
   }
 
   const params = Array.isArray(campaign.template_params) ? campaign.template_params : [];
@@ -489,8 +516,9 @@ module.exports = async (req, res) => {
         if (button_url_param !== undefined) patch.button_url_param = button_url_param;
         if (header_image_url !== undefined) patch.header_image_url = header_image_url;
       }
-      // Reset failed → pending first, then count actual pending to fix total_recipients
-      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.failed`,
+      // Reset failed (and any 'sending' left stranded by a timed-out batch) → pending,
+      // then count actual pending to fix total_recipients
+      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=in.(failed,sending)`,
         { status: "pending", error: null, sent_at: null }, "return=minimal");
       const allPending = await sbGet(`wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.pending&select=id&limit=10000`);
       patch.total_recipients = (allPending || []).length;
@@ -583,6 +611,9 @@ module.exports = async (req, res) => {
     }
 
     if (action === "resume") {
+      // Recover any rows left 'sending' when the campaign was paused mid-batch
+      await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.sending`,
+        { status: "pending" }, "return=minimal");
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`,
         { status: "sending" }, "return=minimal");
       return res.json({ ok: true });
