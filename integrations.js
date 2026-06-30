@@ -165,7 +165,7 @@
       if (eventId) window.fbq("track", name, fb, { eventID: eventId });
       else window.fbq("track", name, fb);
     }
-    if (consentOK("marketing") && window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY });
+    if (consentOK("marketing") && window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY }, eventId ? { event_id: eventId } : undefined);
     if (consentOK("analytics") && window.gtag) {
       const map = { ViewContent: "view_item", AddToCart: "add_to_cart", InitiateCheckout: "begin_checkout", Purchase: "purchase" };
       window.gtag("event", map[name] || name, { value: d.value, currency: CURRENCY, transaction_id: d.orderId });

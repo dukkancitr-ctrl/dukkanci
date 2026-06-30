@@ -134,6 +134,93 @@ async function sendMetaCapi(body, ga4Name, rawIp, ua, serviceKey, supabaseUrl) {
   } catch (e) {}
 }
 
+// ga4 event_name → TikTok event name. Mirrors what the browser ttq.track sends
+// (integrations.js) so TikTok deduplicates browser+server by event_id.
+const TIKTOK_EVENT = {
+  purchase: "CompletePayment",
+  begin_checkout: "InitiateCheckout",
+  add_to_cart: "AddToCart",
+  view_item: "ViewContent",
+  view_store: "ViewContent",
+  submit_phone: "Lead",
+  whatsapp_click: "Contact"
+};
+
+let _ttCfgCache = null;
+async function tiktokConfig(serviceKey, supabaseUrl) {
+  let pixel = (process.env.TIKTOK_PIXEL_ID || "").trim();
+  let token = (process.env.TIKTOK_EVENTS_API_TOKEN || "").trim();
+  let test = (process.env.TIKTOK_TEST_EVENT_CODE || "").trim();
+  if ((!pixel || !token) && serviceKey) {
+    if (!_ttCfgCache) {
+      try {
+        const r = await sb("GET", "integration_settings?select=setting_key,setting_value,is_enabled&setting_key=in.(tiktok_pixel_id,tiktok_events_token,tiktok_test_event_code)", null, serviceKey, supabaseUrl);
+        if (r.ok) { const rows = await r.json(); const m = {}; rows.forEach(x => { m[x.setting_key] = x.is_enabled ? (x.setting_value || "") : ""; }); _ttCfgCache = m; }
+        else { _ttCfgCache = {}; }
+      } catch (e) { _ttCfgCache = {}; }
+    }
+    pixel = pixel || _ttCfgCache.tiktok_pixel_id || "";
+    token = token || _ttCfgCache.tiktok_events_token || "";
+    test = test || _ttCfgCache.tiktok_test_event_code || "";
+  }
+  return { pixel, token, test };
+}
+
+async function sendTiktokEvents(body, ga4Name, rawIp, ua, serviceKey, supabaseUrl) {
+  const ttName = TIKTOK_EVENT[ga4Name];
+  if (!ttName) return;
+  const cfg = await tiktokConfig(serviceKey, supabaseUrl);
+  if (!cfg.pixel || !cfg.token) return;
+
+  const user = {};
+  const ph = hashPhone(body.phone); if (ph) user.phone = [ph];
+  const ext = body.customer_id ? hashNorm(body.customer_id) : null; if (ext) user.external_id = [ext];
+  if (body.ttclid) user.ttclid = s(body.ttclid, 400);
+  if (rawIp) user.ip = rawIp;
+  if (ua) user.user_agent = ua;
+
+  const contents = Array.isArray(body.content_ids)
+    ? body.content_ids.map(x => ({ content_id: String(x), content_type: "product" })).slice(0, 100) : undefined;
+  const properties = { currency: s(body.currency, 8) || "TRY" };
+  if (body.value != null) properties.value = num(body.value);
+  if (contents) { properties.contents = contents; properties.content_type = "product"; }
+
+  const payload = {
+    event_source: "web",
+    event_source_id: cfg.pixel,
+    data: [{
+      event: ttName,
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: s(body.event_id, 100),              // ← same id as the TikTok pixel → dedup
+      user,
+      page: { url: s(body.page_url, 500) || undefined },
+      properties
+    }]
+  };
+  if (cfg.test) payload.test_event_code = cfg.test;
+
+  let status = "error", responseText = "";
+  try {
+    const r = await fetch("https://business-api.tiktok.com/open_api/v1.3/event/track/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Access-Token": cfg.token },
+      body: JSON.stringify(payload)
+    });
+    responseText = await r.text();
+    let parsed = null; try { parsed = JSON.parse(responseText); } catch (e) {}
+    status = (parsed && parsed.code === 0) ? "sent" : "failed";
+  } catch (e) { responseText = String(e && e.message || e); }
+
+  try {
+    let parsed = null; try { parsed = JSON.parse(responseText); } catch (e) {}
+    await sb("POST", "marketing_event_logs", [{
+      event_id: s(body.event_id, 100), event_name: ttName, destination: "tiktok_events_api",
+      payload_json: payload, response_json: parsed || { raw: responseText.slice(0, 800) },
+      status, error_message: status === "sent" ? null : responseText.slice(0, 500)
+    }], serviceKey, supabaseUrl);
+  } catch (e) {}
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
@@ -202,9 +289,13 @@ module.exports = async (req, res) => {
       }], serviceKey, supabaseUrl);
     }
 
-    // ---- Meta Conversions API (marketing consent only) ----
+    // ---- Ad-platform server-side events (marketing consent only) ----
     if (consent.marketing) {
-      await sendMetaCapi(body, s(body.event_name, 60), rawIp, ua, serviceKey, supabaseUrl);
+      const evName = s(body.event_name, 60);
+      await Promise.all([
+        sendMetaCapi(body, evName, rawIp, ua, serviceKey, supabaseUrl),
+        sendTiktokEvents(body, evName, rawIp, ua, serviceKey, supabaseUrl)
+      ]);
     }
 
     return res.status(200).json({ ok: true });
