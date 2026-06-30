@@ -4324,9 +4324,14 @@ function adminChatPaneHTML() {
   const t = (state.adminThreads || []).find(x => x.wa_id === state.adminActiveWa);
   const title = t ? adminThreadName(t) : `+${state.adminActiveWa}`;
   const bubbles = chatBubblesHTML(data.messages);
-  const composer = data.canFreeform
-    ? `<form id="wa-reply-form" class="wa-composer"><input id="wa-reply-input" autocomplete="off" placeholder="اكتب ردّك…"><button type="submit" class="wa-send" aria-label="إرسال">${icon("arrowLeft")}</button></form>`
-    : `<div class="wa-window-closed">${icon("bell")} مرّت أكثر من 24 ساعة على آخر رسالة من العميل، فلا يمكن إرسال نص حر الآن. يحتاج العميل أن يراسلك أولاً، أو يلزم إرسال قالب معتمد.</div>`;
+  // The composer is ALWAYS shown so the team can always reply. Outside WhatsApp's
+  // 24h customer-care window a free-text message may be rejected by Meta, so we show
+  // a slim advisory above the box (instead of hiding the box) and still let the agent
+  // try — Meta is the source of truth at send time and our cached window state can be
+  // stale; a rejected message simply comes back marked "✕ لم تُرسل".
+  const windowNote = data.canFreeform ? "" :
+    `<div class="wa-window-note">${icon("bell")} مرّت أكثر من 24 ساعة على آخر رسالة من العميل؛ قد لا يصل النص الحر. يفضّل أن يبدأ العميل المحادثة أو إرسال قالب معتمد.</div>`;
+  const composer = `<form id="wa-reply-form" class="wa-composer"><input id="wa-reply-input" autocomplete="off" placeholder="اكتب ردّك…"><button type="submit" class="wa-send" aria-label="إرسال">${icon("arrowLeft")}</button></form>`;
   const aiBanner = data.ai_paused
     ? `<div class="wa-window-closed" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff5e6">
         <span>${data.needs_human ? "🙋 طلب العميل موظفاً — " : ""}الرد الآلي متوقّف لهذه المحادثة (تدخّل بشري).</span>
@@ -4337,6 +4342,7 @@ function adminChatPaneHTML() {
     <header class="wa-chat-head"><span class="wa-thread__avatar">${icon("whatsapp")}</span><div><strong>${escAttr(title)}</strong><small dir="ltr">+${escAttr(state.adminActiveWa)}</small></div></header>
     ${aiBanner}
     <div id="wa-chat-scroll" class="wa-chat-scroll">${bubbles || `<div class="wa-empty"><p>لا رسائل.</p></div>`}</div>
+    ${windowNote}
     ${composer}`;
 }
 
