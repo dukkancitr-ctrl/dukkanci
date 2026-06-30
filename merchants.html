@@ -207,6 +207,30 @@
     .foot-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 14px; }
     .foot a { color: var(--red); text-decoration: none; font-weight: 600; }
 
+    /* ---------- Hero photo (Stitch visual upgrade) ---------- */
+    .hero-photo { position: relative; border-radius: 30px; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow); aspect-ratio: 5 / 6; background: #f3ece8; }
+    .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero-photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 56%, rgba(44,8,11,.32)); pointer-events: none; }
+    .hero-badge { position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 9px; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: 14px; padding: 11px 15px; box-shadow: 0 14px 30px rgba(31,20,17,.18); font-weight: 700; font-size: 14px; }
+    .hero-badge.is-status { top: 16px; inset-inline-start: 16px; color: #15803d; }
+    .hero-badge.is-status i { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.18); display: inline-block; }
+    .hero-badge.is-stat { bottom: 16px; inset-inline-end: 16px; gap: 8px; }
+    .hero-badge.is-stat b { color: var(--red); font-family: var(--font-display); font-size: 19px; line-height: 1; }
+    .hero-badge.is-stat span { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+
+    /* ---------- Photo tiles inside features grid ---------- */
+    .feature-photo { position: relative; border-radius: var(--radius); overflow: hidden; min-height: 220px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+    .feature-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .feature-photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 42%, rgba(20,8,8,.62)); }
+    .feature-photo span { position: absolute; inset-inline: 16px; bottom: 15px; z-index: 2; color: #fff; font-weight: 700; font-size: 15.5px; text-shadow: 0 2px 12px rgba(0,0,0,.5); }
+
+    /* ---------- Trust / channels band ---------- */
+    .trust-band { background: #fff; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .trust-inner { display: flex; align-items: center; justify-content: center; gap: 16px 34px; flex-wrap: wrap; padding: 26px 0; }
+    .trust-inner .lead { color: var(--muted); font-weight: 700; font-size: 14.5px; width: 100%; text-align: center; margin-bottom: 2px; }
+    .trust-logo { display: inline-flex; align-items: center; gap: 9px; color: #3b3733; font-weight: 700; font-size: 16.5px; opacity: .9; }
+    .trust-logo svg { width: 21px; height: 21px; color: var(--red); flex: none; }
+
     /* ---------- Responsive ---------- */
     @media (max-width: 960px) {
       .hero-grid, .highlight, .compare-grid { grid-template-columns: 1fr; }
@@ -262,23 +286,10 @@
           </div>
         </div>
 
-        <div class="hero-card">
-          <div class="dashboard-mock">
-            <div class="mock-top">
-              <div class="mock-logo"><img src="/assets/dukkanci-logo.png?v=71" alt=""><b>لوحة متجرك</b></div>
-              <span class="mock-status"><i></i> متجرك نشط</span>
-            </div>
-            <div class="mock-grid">
-              <div class="mock-item"><strong>0%</strong><span>عمولة على المبيعات</span></div>
-              <div class="mock-item"><strong>+50</strong><span>متجر شريك على دكانجي</span></div>
-              <div class="mock-item"><strong>24/7</strong><span>ظهور متجرك أونلاين</span></div>
-              <div class="mock-item"><strong>واتساب</strong><span>استلام مباشر للطلبات</span></div>
-            </div>
-            <div class="mock-order">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.2 11a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
-              طلب جديد وصل إلى لوحة المتجر وواتساب في نفس اللحظة.
-            </div>
-          </div>
+        <div class="hero-photo">
+          <img src="/assets/merchants/merchant-hero.jpg?v=90" width="1100" height="1320" loading="eager" decoding="async" alt="صاحب متجر عربي يدير محله داخل دكانجي في إسطنبول">
+          <span class="hero-badge is-status"><i></i> متجرك نشط</span>
+          <span class="hero-badge is-stat"><b>0%</b><span>عمولة على المبيعات</span></span>
         </div>
       </div>
     </section>
@@ -340,6 +351,10 @@
             <h3>ظهور أمام جمهور عربي مستهدف</h3>
             <p>تصل إلى عملاء عرب في إسطنبول يبحثون عن المتاجر العربية واحتياجاتهم اليومية.</p>
           </article>
+          <div class="feature-photo">
+            <img src="/assets/merchants/merchant-pro.jpg?v=90" width="1000" height="760" loading="lazy" decoding="async" alt="تاجر يدير متجره ويتابع طلباته من هاتفه">
+            <span>أدِر متجرك من أي مكان عبر هاتفك</span>
+          </div>
           <article class="feature-card">
             <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="18" x2="18" y2="6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/></svg></span>
             <h3>بدون عمولات على المبيعات</h3>
@@ -360,6 +375,10 @@
             <h3>متابعة المبيعات والطلبات</h3>
             <p>راقب الطلبات واعرف المنتجات الأكثر رواجًا، وركّز على الأصناف التي تبيع أكثر.</p>
           </article>
+          <div class="feature-photo">
+            <img src="/assets/merchants/merchant-shop.jpg?v=90" width="1000" height="760" loading="lazy" decoding="async" alt="صاحب متجر عربي داخل بقالته في إسطنبول">
+            <span>متاجر عربية حقيقية في كل أنحاء إسطنبول</span>
+          </div>
           <article class="feature-card">
             <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8" cy="11" r="2"/><path d="M5 16.5c.4-1.4 1.6-2.2 3-2.2s2.6.8 3 2.2"/><line x1="14" y1="10" x2="18" y2="10"/><line x1="14" y1="14" x2="18" y2="14"/></svg></span>
             <h3>تنظيم بيانات العملاء</h3>
@@ -396,6 +415,29 @@
             <p>إمكانية تمييز متجرك داخل المنصة ونشر بنرات خارجية للعروض أو الحملات الخاصة.</p>
           </article>
         </div>
+      </div>
+    </section>
+
+    <!-- TRUST / CHANNELS -->
+    <section class="trust-band">
+      <div class="container trust-inner">
+        <span class="lead">متجرك يظهر ويُسوَّق عبر أكبر المنصات</span>
+        <span class="trust-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          Google
+        </span>
+        <span class="trust-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8h-2.2a1.3 1.3 0 0 0-1.3 1.3V12H15"/><line x1="11.5" y1="12" x2="11.5" y2="20"/><line x1="9.5" y1="14" x2="13.5" y2="14"/></svg>
+          Facebook
+        </span>
+        <span class="trust-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.2"/><circle cx="17" cy="7" r="1" fill="currentColor"/></svg>
+          Instagram
+        </span>
+        <span class="trust-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9.5a4 4 0 1 0 4 4V4c.6 2.2 2.2 3.6 4.5 3.8"/></svg>
+          TikTok
+        </span>
       </div>
     </section>
 
