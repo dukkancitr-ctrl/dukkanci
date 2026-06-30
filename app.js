@@ -84,7 +84,7 @@ function isPlaceholderImage(img) {
 // items). For these stores, imageless products render as clean no-image cards instead of being
 // hidden. Every other store keeps the default "real photo only" storefront rule. Per-store opt-in
 // so this never affects stores (e.g. صفا الشام) whose owner wants photo-only storefronts.
-const ALLOW_NO_IMAGE_STORES = new Set([56]); // 56 = باشا بيتزريا (full menu shown at owner's request)
+const ALLOW_NO_IMAGE_STORES = new Set([]); // (none) — image-less products are hidden by default; owner adds a photo in store management to reveal each product + its category
 function storeAllowsNoImage(storeId) { return ALLOW_NO_IMAGE_STORES.has(Number(storeId)); }
 // Products the admin explicitly hid from the storefront (ids loaded from site_settings.hiddenProducts).
 // The storefront shows a product only if it has a real image, is in stock, and isn't force-hidden;
