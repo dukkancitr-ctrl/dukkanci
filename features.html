@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#e30613" />
+  <title>المميزات التقنية للمتاجر على دكانجي | لوحة تحكم، تحليلات وتسويق</title>
+  <meta name="description" content="تعرّف على المميزات التقنية لمتجرك في دكانجي: لوحة تحكم لإدارة الطلبات، تحليل المنتجات، منيو إلكتروني متجدد، تحسين صور بالذكاء الصناعي، مرادفات بحث عربية، كودات خصم وحملات واتساب وميتا — كل ذلك من مكان واحد." />
+
+  <link rel="canonical" href="https://www.dukkanci.com.tr/features" />
+  <meta name="robots" content="index,follow" />
+
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=90" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=90" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="المميزات التقنية للمتاجر على دكانجي" />
+  <meta property="og:description" content="لوحة تحكم، تحليل منتجات، منيو متجدد، تحسين صور، مرادفات بحث عربية، كودات خصم وحملات واتساب وميتا — أدوات عملية تدعم نمو متجرك." />
+  <meta property="og:image" content="/assets/dukkanci-app-icon-512.png" />
+  <meta property="og:url" content="https://www.dukkanci.com.tr/features" />
+  <meta property="og:locale" content="ar_AR" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet" />
+
+  <style>
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-SemiBold.ttf") format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: "IBM Plex Sans Arabic"; src: url("/assets/fonts/IBMPlexSansArabic-Bold.ttf") format("truetype"); font-weight: 700 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Tajawal Display"; src: url("/assets/fonts/Tajawal-Bold.ttf") format("truetype"); font-weight: 600 700; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Tajawal Display"; src: url("/assets/fonts/Tajawal-ExtraBold.ttf") format("truetype"); font-weight: 800 900; font-style: normal; font-display: swap; }
+
+    :root {
+      --brand: #e30613;
+      --brand-dark: #bf0813;
+      --brand-deep: #470b10;
+      --brand-soft: #fff3f3;
+      --text: #171717;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --bg: #ffffff;
+      --soft-bg: #f8fafc;
+      --green: #16a34a;
+      --orange: #f59e0b;
+      --blue: #2563eb;
+      --shadow: 0 14px 35px rgba(15, 23, 42, 0.08);
+      --radius: 22px;
+      --font-display: "Alyamama", "Tajawal Display", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+      --font-body: "Alyamama", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3,
+    .logo,
+    .dash-logo,
+    .mock-sidebar strong {
+      font-family: var(--font-display);
+    }
+
+    a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .page {
+      overflow: hidden;
+    }
+
+    .container {
+      width: min(1180px, calc(100% - 40px));
+      margin: auto;
+    }
+
+    /* Header */
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav {
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 30px;
+      font-weight: 900;
+      color: var(--brand);
+      letter-spacing: -1px;
+      white-space: nowrap;
+    }
+
+    .logo img {
+      height: 40px;
+      width: auto;
+      display: block;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 26px;
+      font-size: 15px;
+      color: #374151;
+    }
+
+    .nav-links a.active {
+      color: var(--brand);
+      font-weight: 800;
+      position: relative;
+    }
+
+    .nav-links a.active::after {
+      content: "";
+      position: absolute;
+      bottom: -24px;
+      right: 0;
+      width: 100%;
+      height: 3px;
+      border-radius: 10px;
+      background: var(--brand);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 22px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: 0.2s ease;
+    }
+
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, var(--brand), #c1121f);
+      box-shadow: 0 12px 25px rgba(227, 6, 19, 0.22);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 35px rgba(227, 6, 19, 0.28);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: #111827;
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+    }
+
+    /* Hero */
+
+    .hero {
+      padding: 70px 0 45px;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(227, 6, 19, 0.08), transparent 30%),
+        linear-gradient(180deg, #fff 0%, #fff 55%, #fafafa 100%);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 54px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--brand);
+      background: var(--brand-soft);
+      border: 1px solid #ffd7dc;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+
+    .hero h1 {
+      font-size: clamp(38px, 5vw, 64px);
+      line-height: 1.18;
+      margin: 0 0 22px;
+      letter-spacing: -1.5px;
+    }
+
+    .hero h1 span {
+      color: var(--brand);
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 580px;
+      margin: 0 0 28px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .trust-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .avatars {
+      display: flex;
+      align-items: center;
+    }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      margin-inline-start: -8px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      background: linear-gradient(135deg, #d1d5db, #64748b);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .check {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--green);
+      border: 2px solid #fff;
+      margin-inline-start: -8px;
+    }
+
+    /* Dashboard mockup */
+
+    .laptop {
+      position: relative;
+      border-radius: 28px;
+      padding: 18px;
+      background: linear-gradient(135deg, #1f2937, #030712);
+      box-shadow: 0 30px 60px rgba(15, 23, 42, 0.22);
+    }
+
+    .laptop::after {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      bottom: -18px;
+      height: 18px;
+      border-radius: 0 0 40px 40px;
+      background: linear-gradient(90deg, #9ca3af, #e5e7eb, #9ca3af);
+    }
+
+    .dash-screen {
+      background: #fff;
+      border-radius: 18px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      min-height: 440px;
+    }
+
+    .dash-sidebar {
+      background: linear-gradient(180deg, var(--brand-deep), #190005);
+      color: #fff;
+      padding: 20px 16px;
+    }
+
+    .dash-sidebar .dash-logo {
+      font-size: 26px;
+      font-weight: 900;
+      margin-bottom: 24px;
+    }
+
+    .dash-menu {
+      display: grid;
+      gap: 10px;
+    }
+
+    .dash-menu div {
+      padding: 9px 10px;
+      border-radius: 12px;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 13px;
+    }
+
+    .dash-menu div.active {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    .dash-content {
+      padding: 18px;
+      background: #f8fafc;
+    }
+
+    .dash-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .dash-title h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .dash-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .kpi {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      padding: 12px;
+    }
+
+    .kpi small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .kpi strong {
+      display: block;
+      font-size: 19px;
+      line-height: 1.4;
+    }
+
+    .kpi span {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .dash-panels {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 12px;
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .panel h4 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .bars {
+      display: flex;
+      align-items: end;
+      gap: 12px;
+      height: 120px;
+      padding-top: 10px;
+    }
+
+    .bar {
+      flex: 1;
+      border-radius: 10px 10px 3px 3px;
+      background: linear-gradient(180deg, #60a5fa, #2563eb);
+      min-height: 28px;
+    }
+
+    .donut {
+      width: 126px;
+      height: 126px;
+      border-radius: 50%;
+      margin: 12px auto;
+      background: conic-gradient(#2563eb 0 45%, #16a34a 45% 70%, #f59e0b 70% 85%, #a855f7 85% 95%, #e5e7eb 95% 100%);
+      position: relative;
+    }
+
+    .donut::after {
+      content: "";
+      position: absolute;
+      inset: 28px;
+      background: #fff;
+      border-radius: 50%;
+    }
+
+    /* Quick cards */
+
+    .quick {
+      margin-top: 46px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .quick-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 17px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      font-size: 25px;
+      background: var(--brand-soft);
+      color: var(--brand);
+    }
+
+    .quick-card h3 {
+      margin: 0 0 2px;
+      font-size: 17px;
+    }
+
+    .quick-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    /* Sections */
+
+    section {
+      padding: 64px 0;
+    }
+
+    .section-head {
+      text-align: center;
+      max-width: 720px;
+      margin: 0 auto 34px;
+    }
+
+    .section-head h2 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 3.2vw, 42px);
+      letter-spacing: -0.8px;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .features {
+      background: #fff;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+
+    .feature-card {
+      position: relative;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      min-height: 210px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045);
+      transition: 0.2s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      border-color: #fecdd3;
+      box-shadow: var(--shadow);
+    }
+
+    .num {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-weight: 900;
+      border-radius: 50%;
+      font-size: 13px;
+    }
+
+    .feature-card .icon {
+      margin-bottom: 18px;
+    }
+
+    .feature-card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .feature-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    /* Analytics section */
+
+    .analytics {
+      background: linear-gradient(180deg, #fff, #f8fafc);
+    }
+
+    .analytics-box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 190px 1fr;
+    }
+
+    .mock-sidebar {
+      background: linear-gradient(180deg, var(--brand-deep), #170005);
+      color: #fff;
+      padding: 24px 18px;
+    }
+
+    .mock-sidebar strong {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 22px;
+    }
+
+    .mock-sidebar span {
+      display: block;
+      padding: 11px 12px;
+      margin-bottom: 7px;
+      border-radius: 12px;
+      color: rgba(255, 255, 255, 0.74);
+      font-size: 14px;
+    }
+
+    .mock-sidebar span.active {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    .mock-main {
+      padding: 24px;
+      background: #f8fafc;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .kpi-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .kpi-card small {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .kpi-card strong {
+      display: block;
+      font-size: 27px;
+      line-height: 1.2;
+    }
+
+    .kpi-card span {
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 14px;
+    }
+
+    .chart-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      min-height: 260px;
+    }
+
+    .chart-card h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    svg {
+      max-width: 100%;
+    }
+
+    .mini-bars {
+      height: 170px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      padding: 14px 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mini-bars .item {
+      flex: 1;
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .mini-bars .col {
+      width: 100%;
+      border-radius: 10px 10px 4px 4px;
+      background: linear-gradient(180deg, #60a5fa, #2563eb);
+      margin-bottom: 8px;
+    }
+
+    /* Table */
+
+    .table-section {
+      background: #fff;
+    }
+
+    .table-wrap {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #374151;
+      padding: 16px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      color: #111827;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .product {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .product-img {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #fee2e2, #fde68a);
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .badge.high {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .badge.mid {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .badge.low {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    /* AI/Search */
+
+    .smart {
+      background: #f8fafc;
+    }
+
+    .smart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+
+    .smart-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 26px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.055);
+    }
+
+    .smart-card h3 {
+      margin: 0 0 14px;
+      font-size: 24px;
+    }
+
+    .smart-card p {
+      color: var(--muted);
+      margin: 0 0 18px;
+    }
+
+    .before-after {
+      display: grid;
+      grid-template-columns: 1fr 52px 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .photo-box {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 14px;
+      background: #f8fafc;
+      text-align: center;
+    }
+
+    .photo {
+      height: 170px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-size: 58px;
+      margin-bottom: 8px;
+    }
+
+    .photo.before {
+      background: linear-gradient(135deg, #d1d5db, #6b7280);
+      filter: saturate(0.5);
+      opacity: 0.8;
+    }
+
+    .photo.after {
+      background: linear-gradient(135deg, #fff7ed, #fed7aa);
+      box-shadow: inset 0 0 0 1px #fed7aa;
+    }
+
+    .arrow {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--brand);
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .search-box {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 14px;
+      background: #f8fafc;
+    }
+
+    .search-line {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 12px 16px;
+      color: #111827;
+      margin-bottom: 12px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #bbf7d0;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .chip.red {
+      background: var(--brand-soft);
+      color: var(--brand);
+      border-color: #fecdd3;
+    }
+
+    /* Marketing */
+
+    .marketing {
+      background: #fff;
+    }
+
+    .marketing-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .marketing-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+      min-height: 250px;
+    }
+
+    .marketing-card h3 {
+      margin: 14px 0 8px;
+      font-size: 19px;
+    }
+
+    .marketing-card p {
+      color: var(--muted);
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .phone-card,
+    .coupon,
+    .flow-box,
+    .catalog-box {
+      margin-top: 16px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .coupon {
+      text-align: center;
+      border-style: dashed;
+      border-color: #fecdd3;
+      background: var(--brand-soft);
+    }
+
+    .coupon strong {
+      display: block;
+      font-size: 26px;
+      color: var(--brand);
+      letter-spacing: 1px;
+    }
+
+    .catalog-items {
+      display: flex;
+      gap: 8px;
+    }
+
+    .catalog-item {
+      flex: 1;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .catalog-item div {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      text-align: center;
+    }
+
+    .flow span {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      background: #fff;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      margin: 0 auto 6px;
+    }
+
+    /* CTA */
+
+    .cta {
+      padding: 70px 0;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(227, 6, 19, 0.12), transparent 34%),
+        linear-gradient(135deg, #fff7f7, #ffffff);
+    }
+
+    .cta-box {
+      border: 1px solid #fecdd3;
+      border-radius: 34px;
+      padding: 42px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .cta h2 {
+      margin: 0 0 12px;
+      font-size: clamp(30px, 4vw, 48px);
+      line-height: 1.3;
+    }
+
+    .cta p {
+      color: var(--muted);
+      margin: 0 0 24px;
+      font-size: 17px;
+    }
+
+    .store-illustration {
+      min-height: 220px;
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, #fff, #fff1f2);
+      border: 1px solid #fecdd3;
+      display: grid;
+      place-items: center;
+      font-size: 90px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .store-illustration::after {
+      content: "↗";
+      position: absolute;
+      left: 34px;
+      bottom: 20px;
+      color: var(--brand);
+      font-size: 80px;
+      font-weight: 900;
+    }
+
+    /* Footer */
+
+    .foot {
+      border-top: 1px solid var(--border);
+      background: #fff;
+      padding: 30px 0;
+    }
+
+    .foot-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .foot a {
+      color: var(--brand);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .foot a:hover {
+      text-decoration: underline;
+    }
+
+    /* Responsive */
+
+    @media (max-width: 1024px) {
+      .hero-grid,
+      .smart-grid,
+      .cta-box {
+        grid-template-columns: 1fr;
+      }
+
+      .quick,
+      .kpi-grid,
+      .marketing-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .feature-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .analytics-box {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-sidebar {
+        display: none;
+      }
+
+      .nav-links {
+        display: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .nav-actions .btn-secondary {
+        display: none;
+      }
+
+      .hero {
+        padding-top: 42px;
+      }
+
+      .quick,
+      .kpi-grid,
+      .feature-grid,
+      .marketing-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dash-screen {
+        grid-template-columns: 1fr;
+      }
+
+      .dash-sidebar {
+        display: none;
+      }
+
+      .dash-kpis,
+      .dash-panels {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        min-width: 760px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .before-after {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+        margin: auto;
+      }
+
+      .cta-box {
+        padding: 26px;
+      }
+
+      .foot-inner {
+        justify-content: center;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="container nav">
+        <a class="logo" href="/" aria-label="دكانجي">
+          <img src="/assets/dukkanci-logo.png?v=90" alt="دكانجي" width="719" height="733" />
+          <span>دكانجي</span>
+        </a>
+
+        <nav class="nav-links">
+          <a href="/">الرئيسية</a>
+          <a href="/features" class="active">المميزات التقنية</a>
+          <a href="/why-dukkanci">لماذا دكانجي؟</a>
+          <a href="/merchants">انضم كتاجر</a>
+          <a href="/faq">الأسئلة الشائعة</a>
+        </nav>
+
+        <div class="nav-actions">
+          <a class="btn btn-primary" href="/join">اطلب تفعيل متجرك</a>
+          <a class="btn btn-secondary" href="/merchant">دخول التاجر</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <main class="hero">
+      <div class="container hero-grid">
+
+        <div>
+          <div class="eyebrow">منيو، بيانات، تسويق، وظهور رقمي في مكان واحد</div>
+
+          <h1>
+            المميزات التقنية<br />
+            للمتاجر على <span>دكانجي</span>
+          </h1>
+
+          <p>
+            دكانجي يساعدك على تنظيم منتجاتك، فهم حركة العملاء، تحسين ظهورك في البحث،
+            وإدارة متجرك الرقمي من لوحة واحدة واضحة واحترافية.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/join">اطلب تفعيل متجرك ←</a>
+            <a class="btn btn-secondary" href="#features">شاهد المميزات ▶</a>
+          </div>
+
+          <div class="trust-row">
+            <div class="avatars">
+              <div class="avatar">م</div>
+              <div class="avatar">س</div>
+              <div class="avatar">خ</div>
+              <div class="avatar">د</div>
+              <div class="check">✓</div>
+            </div>
+            <span>مصمم للمتاجر والمطاعم العربية في تركيا</span>
+          </div>
+        </div>
+
+        <!-- Hero Dashboard -->
+        <div class="laptop">
+          <div class="dash-screen">
+            <aside class="dash-sidebar">
+              <div class="dash-logo">دكانجي</div>
+              <div class="dash-menu">
+                <div class="active">الرئيسية</div>
+                <div>الطلبات</div>
+                <div>المنتجات</div>
+                <div>العملاء</div>
+                <div>التقارير</div>
+                <div>التسويق</div>
+                <div>الإعدادات</div>
+              </div>
+            </aside>
+
+            <div class="dash-content">
+              <div class="dash-title">
+                <h3>لوحة التحكم</h3>
+                <span>اليوم</span>
+              </div>
+
+              <div class="dash-kpis">
+                <div class="kpi">
+                  <small>طلبات اليوم</small>
+                  <strong>235</strong>
+                  <span>▲ 12%</span>
+                </div>
+                <div class="kpi">
+                  <small>هذا الشهر</small>
+                  <strong>4,820</strong>
+                  <span>▲ 18%</span>
+                </div>
+                <div class="kpi">
+                  <small>عملاء نشطون</small>
+                  <strong>1,245</strong>
+                  <span>▲ 9%</span>
+                </div>
+                <div class="kpi">
+                  <small>التحويل</small>
+                  <strong>3.6%</strong>
+                  <span>▲ 0.8%</span>
+                </div>
+              </div>
+
+              <div class="dash-panels">
+                <div class="panel">
+                  <h4>الطلبات خلال آخر 7 أيام</h4>
+                  <svg viewBox="0 0 420 180" role="img" aria-label="رسم بياني للطلبات">
+                    <polyline
+                      fill="none"
+                      stroke="#2563eb"
+                      stroke-width="6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      points="10,140 75,90 140,115 205,55 270,125 335,70 410,100" />
+                    <g fill="#2563eb">
+                      <circle cx="10" cy="140" r="6" />
+                      <circle cx="75" cy="90" r="6" />
+                      <circle cx="140" cy="115" r="6" />
+                      <circle cx="205" cy="55" r="6" />
+                      <circle cx="270" cy="125" r="6" />
+                      <circle cx="335" cy="70" r="6" />
+                      <circle cx="410" cy="100" r="6" />
+                    </g>
+                  </svg>
+                </div>
+
+                <div class="panel">
+                  <h4>مصادر الزيارات</h4>
+                  <div class="donut"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick highlights -->
+      <div class="container quick">
+        <div class="quick-card">
+          <div class="icon">▣</div>
+          <div>
+            <h3>لوحة تحكم ذكية</h3>
+            <p>كل ما تحتاجه لإدارة متجرك من مكان واحد.</p>
+          </div>
+        </div>
+
+        <div class="quick-card">
+          <div class="icon">↻</div>
+          <div>
+            <h3>منيو متجدد</h3>
+            <p>تحديث المنتجات والأسعار بسهولة.</p>
+          </div>
+        </div>
+
+        <div class="quick-card">
+          <div class="icon">✦</div>
+          <div>
+            <h3>تحسين الصور</h3>
+            <p>صور أوضح ومظهر موحد للمنتجات.</p>
+          </div>
+        </div>
+
+        <div class="quick-card">
+          <div class="icon">▥</div>
+          <div>
+            <h3>بيانات واضحة</h3>
+            <p>تقارير تساعدك على اتخاذ القرار.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Features -->
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-head">
+          <h2>مميزات تقنية متكاملة تدعم نمو متجرك</h2>
+          <p>
+            أدوات عملية تساعدك على تنظيم المنتجات، فهم الأداء، وتحسين الظهور الرقمي بدون تعقيد.
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="num">1</div>
+            <div class="icon">⚙</div>
+            <h3>لوحة إدارة المتجر</h3>
+            <p>متابعة الطلبات اليومية والأسبوعية والشهرية من مكان واحد.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">2</div>
+            <div class="icon">📊</div>
+            <h3>تحليل المنتجات</h3>
+            <p>معرفة المنتجات الأكثر طلبًا والأقل حركة لاتخاذ قرارات أفضل.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">3</div>
+            <div class="icon">📱</div>
+            <h3>منيو إلكتروني متجدد</h3>
+            <p>تحديث الأسعار والمنتجات بسهولة بدل إرسال صور قديمة للعملاء.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">4</div>
+            <div class="icon">☁</div>
+            <h3>رفع منتجات غير محدود</h3>
+            <p>تنظيم الأصناف ضمن تصنيفات واضحة حسب طبيعة نشاطك.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">5</div>
+            <div class="icon">🖼</div>
+            <h3>تحسين صور المنتجات</h3>
+            <p>رفع جودة الصور وتوحيد شكل المنتجات داخل المتجر.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">6</div>
+            <div class="icon">🔎</div>
+            <h3>مرادفات البحث العربية</h3>
+            <p>دعم اللهجات والكلمات المختلفة لنفس المنتج لزيادة الظهور.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">7</div>
+            <div class="icon">%</div>
+            <h3>كودات خصم للحملات</h3>
+            <p>قياس نتائج المؤثرين والإعلانات والكوبونات الخاصة.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">8</div>
+            <div class="icon">💬</div>
+            <h3>حملات واتساب وميتا</h3>
+            <p>الوصول إلى العملاء برسائل منظمة حسب العروض والمناطق.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">9</div>
+            <div class="icon">▦</div>
+            <h3>كتالوجات منظمة</h3>
+            <p>تجهيز المنتجات للعرض في القنوات الرقمية والحملات.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="num">10</div>
+            <div class="icon">🔗</div>
+            <h3>رابط واحد للمشاركة</h3>
+            <p>صفحة متجر جاهزة للمشاركة على واتساب والسوشيال والإعلانات.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Analytics -->
+    <section class="analytics">
+      <div class="container">
+        <div class="section-head">
+          <h2>تابع أداء متجرك من لوحة واحدة</h2>
+          <p>
+            لا تعمل بالتخمين. شاهد الطلبات، المنتجات، العملاء، ومصادر الزيارات بشكل واضح.
+          </p>
+        </div>
+
+        <div class="analytics-box">
+          <aside class="mock-sidebar">
+            <strong>دكانجي</strong>
+            <span class="active">الرئيسية</span>
+            <span>الطلبات</span>
+            <span>المنتجات</span>
+            <span>العملاء</span>
+            <span>التقارير</span>
+            <span>التسويق</span>
+            <span>الإعدادات</span>
+          </aside>
+
+          <div class="mock-main">
+            <div class="kpi-grid">
+              <div class="kpi-card">
+                <small>الطلبات اليوم</small>
+                <strong>235</strong>
+                <span>▲ 12% مقارنة بالأمس</span>
+              </div>
+
+              <div class="kpi-card">
+                <small>الطلبات هذا الشهر</small>
+                <strong>4,820</strong>
+                <span>▲ 18% مقارنة بالشهر الماضي</span>
+              </div>
+
+              <div class="kpi-card">
+                <small>العملاء النشطون</small>
+                <strong>1,245</strong>
+                <span>▲ 9% نمو</span>
+              </div>
+
+              <div class="kpi-card">
+                <small>معدل التحويل</small>
+                <strong>3.6%</strong>
+                <span>▲ 0.8% تحسن</span>
+              </div>
+            </div>
+
+            <div class="chart-grid">
+              <div class="chart-card">
+                <h3>الطلبات خلال آخر 7 أيام</h3>
+                <svg viewBox="0 0 520 230" role="img" aria-label="رسم خطي">
+                  <line x1="20" y1="200" x2="500" y2="200" stroke="#e5e7eb"/>
+                  <line x1="20" y1="150" x2="500" y2="150" stroke="#e5e7eb"/>
+                  <line x1="20" y1="100" x2="500" y2="100" stroke="#e5e7eb"/>
+                  <line x1="20" y1="50" x2="500" y2="50" stroke="#e5e7eb"/>
+                  <polyline
+                    fill="none"
+                    stroke="#2563eb"
+                    stroke-width="7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    points="25,172 100,112 175,138 250,82 325,118 400,42 495,108"/>
+                  <g fill="#2563eb">
+                    <circle cx="25" cy="172" r="7"/>
+                    <circle cx="100" cy="112" r="7"/>
+                    <circle cx="175" cy="138" r="7"/>
+                    <circle cx="250" cy="82" r="7"/>
+                    <circle cx="325" cy="118" r="7"/>
+                    <circle cx="400" cy="42" r="7"/>
+                    <circle cx="495" cy="108" r="7"/>
+                  </g>
+                </svg>
+              </div>
+
+              <div class="chart-card">
+                <h3>أكثر المنتجات طلبًا</h3>
+                <div class="mini-bars">
+                  <div class="item">
+                    <div class="col" style="height: 145px;"></div>
+                    شاورما
+                  </div>
+                  <div class="item">
+                    <div class="col" style="height: 118px;"></div>
+                    فروج
+                  </div>
+                  <div class="item">
+                    <div class="col" style="height: 90px;"></div>
+                    وجبة
+                  </div>
+                  <div class="item">
+                    <div class="col" style="height: 68px;"></div>
+                    لبنة
+                  </div>
+                  <div class="item">
+                    <div class="col" style="height: 58px;"></div>
+                    عصائر
+                  </div>
+                </div>
+              </div>
+
+              <div class="chart-card">
+                <h3>مصادر الزيارات</h3>
+                <div class="donut"></div>
+                <p style="color: var(--muted); font-size: 13px; margin: 0;">
+                  بحث عضوي 45% · واتساب 25% · مباشر 15% · سوشيال 10%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Table -->
+    <section class="table-section">
+      <div class="container">
+        <div class="section-head">
+          <h2>أمثلة على البيانات التي يراها صاحب المتجر</h2>
+          <p>
+            جدول مبسط يوضح كيف يمكن قراءة أداء المنتجات واتخاذ قرارات عملية.
+          </p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>المنتج</th>
+                <th>عدد الطلبات</th>
+                <th>المشاهدات</th>
+                <th>التحويل</th>
+                <th>الحالة</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+                <td>
+                  <div class="product">
+                    <div class="product-img">🌯</div>
+                    <strong>شاورما دجاج</strong>
+                  </div>
+                </td>
+                <td>890</td>
+                <td>5,120</td>
+                <td>17.4%</td>
+                <td><span class="badge high">مرتفع</span></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="product">
+                    <div class="product-img">🍗</div>
+                    <strong>فروج مشوي</strong>
+                  </div>
+                </td>
+                <td>670</td>
+                <td>4,010</td>
+                <td>16.7%</td>
+                <td><span class="badge high">مرتفع</span></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="product">
+                    <div class="product-img">🥣</div>
+                    <strong>لبنة</strong>
+                  </div>
+                </td>
+                <td>410</td>
+                <td>3,250</td>
+                <td>12.6%</td>
+                <td><span class="badge mid">متوسط</span></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="product">
+                    <div class="product-img">🥤</div>
+                    <strong>عصائر</strong>
+                  </div>
+                </td>
+                <td>360</td>
+                <td>2,840</td>
+                <td>11.3%</td>
+                <td><span class="badge mid">متوسط</span></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="product">
+                    <div class="product-img">🍽</div>
+                    <strong>وجبة عائلية</strong>
+                  </div>
+                </td>
+                <td>520</td>
+                <td>2,100</td>
+                <td>24.8%</td>
+                <td><span class="badge high">مرتفع</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Smart AI/Search -->
+    <section class="smart">
+      <div class="container">
+        <div class="section-head">
+          <h2>بحث أذكى وصور أفضل لظهور أعلى</h2>
+          <p>
+            لأن العميل لا يطلب المنتج فقط، بل يراه ويبحث عنه بطريقته الخاصة.
+          </p>
+        </div>
+
+        <div class="smart-grid">
+          <div class="smart-card">
+            <h3>تحسين صور المنتجات بالذكاء الصناعي</h3>
+            <p>
+              تحسين الإضاءة، توحيد الخلفية، وضبط المظهر العام للمنتجات داخل المتجر.
+            </p>
+
+            <div class="before-after">
+              <div class="photo-box">
+                <div class="photo before">🍔</div>
+                <strong>قبل</strong>
+              </div>
+
+              <div class="arrow">←</div>
+
+              <div class="photo-box">
+                <div class="photo after">🍔</div>
+                <strong>بعد</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="smart-card">
+            <h3>مرادفات البحث العربية</h3>
+            <p>
+              دعم أكثر من تسمية لنفس المنتج حسب اللهجات وطريقة بحث العملاء.
+            </p>
+
+            <div class="search-box">
+              <div class="search-line">بحث العميل: فروج مشوي</div>
+              <div class="chips">
+                <span class="chip red">فروج مشوي</span>
+                <span class="chip">دجاج مشوي</span>
+                <span class="chip">دجاج عالفحم</span>
+                <span class="chip">فروج عالفحم</span>
+              </div>
+            </div>
+
+            <div class="search-box">
+              <div class="search-line">بحث العميل: لبنه</div>
+              <div class="chips">
+                <span class="chip red">لبنه</span>
+                <span class="chip">لبنة</span>
+                <span class="chip">لبنة بلدية</span>
+                <span class="chip">لبنة سورية</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Marketing tools -->
+    <section class="marketing">
+      <div class="container">
+        <div class="section-head">
+          <h2>أدوات تسويق ذكية لزيادة الوصول والولاء</h2>
+          <p>
+            ميزات تساعد المتجر على تشغيل حملات منظمة وقياس النتائج بدل النشر العشوائي.
+          </p>
+        </div>
+
+        <div class="marketing-grid">
+          <article class="marketing-card">
+            <div class="icon">💬</div>
+            <h3>حملات واتساب منظمة</h3>
+            <p>إعلام العملاء بالعروض والمنتجات الجديدة عبر رسائل موجهة.</p>
+
+            <div class="phone-card">
+              <strong>عرض جديد اليوم</strong>
+              <p>خصم خاص على الوجبات المختارة لفترة محدودة.</p>
+            </div>
+          </article>
+
+          <article class="marketing-card">
+            <div class="icon">∞</div>
+            <h3>كتالوجات ميتا</h3>
+            <p>تجهيز المنتجات للعرض على فيسبوك وإنستغرام وواتساب.</p>
+
+            <div class="catalog-box">
+              <div class="catalog-items">
+                <div class="catalog-item"><div>🌯</div>شاورما</div>
+                <div class="catalog-item"><div>🥤</div>عصير</div>
+                <div class="catalog-item"><div>🍗</div>فروج</div>
+              </div>
+            </div>
+          </article>
+
+          <article class="marketing-card">
+            <div class="icon">%</div>
+            <h3>كودات خصم</h3>
+            <p>قياس نتائج الحملات والمؤثرين والإعلانات بشكل أوضح.</p>
+
+            <div class="coupon">
+              <span>كود الخصم</span>
+              <strong>DUK20</strong>
+              <small>خصم 20%</small>
+            </div>
+          </article>
+
+          <article class="marketing-card">
+            <div class="icon">🎯</div>
+            <h3>إعادة استهداف العملاء</h3>
+            <p>العملاء الجدد يمكن إعادة التواصل معهم بعروض ومنتجات لاحقة.</p>
+
+            <div class="flow-box">
+              <div class="flow">
+                <div><span>👤</span>عميل مهتم</div>
+                <div>←</div>
+                <div><span>📢</span>عرض مخصص</div>
+                <div>←</div>
+                <div><span>🛒</span>طلب جديد</div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta" id="contact">
+      <div class="container">
+        <div class="cta-box">
+          <div>
+            <h2>حوّل متجرك إلى تجربة رقمية أكثر تنظيمًا ووضوحًا</h2>
+            <p>
+              صفحة متجر احترافية، منيو قابل للتحديث، بيانات واضحة، وأدوات تسويق تساعدك على الوصول لعملاء أكثر.
+            </p>
+            <a class="btn btn-primary" href="/join">
+              ابدأ مع دكانجي ←
+            </a>
+          </div>
+
+          <div class="store-illustration">
+            🏪
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="foot">
+      <div class="container foot-inner">
+        <span>© 2026 دكانجي — السوق العربي الرقمي في إسطنبول</span>
+        <span>
+          <a href="/">العودة إلى الموقع</a> ·
+          <a href="/merchants">انضم كتاجر</a> ·
+          <a href="/why-dukkanci">لماذا دكانجي؟</a> ·
+          <a href="/privacy.html">سياسة الخصوصية</a>
+        </span>
+      </div>
+    </footer>
+
+  </div>
+</body>
+</html>

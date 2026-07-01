@@ -6724,7 +6724,7 @@ document.addEventListener("click", event => {
   }
   // Standalone static pages (served as their own HTML, not SPA routes) must do a
   // real navigation — don't let the client router swallow them into renderHome.
-  if (/^\/(merchants|privacy|gizlilik)(\/|\?|$)/i.test(href)) return;
+  if (/^\/(merchants|features|privacy|gizlilik)(\/|\?|$)/i.test(href)) return;
   if (href.startsWith("/") && !href.startsWith("//") && !/\.[a-z0-9]+(\?|$)/i.test(href)) { event.preventDefault(); navigate(href); }
 });
 

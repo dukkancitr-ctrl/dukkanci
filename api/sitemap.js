@@ -122,6 +122,7 @@ function sitemapPages(res) {
   const pages = [
     ["/", "1.0", "daily"],
     ["/why-dukkanci", "0.9", "monthly"],
+    ["/features", "0.8", "monthly"],
     ["/stores", "0.9", "daily"],
     ["/offers", "0.8", "daily"],
     ["/about", "0.5", "monthly"],
