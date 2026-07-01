@@ -6,8 +6,10 @@
 const crypto = require("crypto");
 const gw = require("../lib/ai-gateway");
 const kb = require("../lib/knowledge");
+const gi = require("../lib/google-indexing");
 
 const env = k => (process.env[k] || "").trim();
+const SITE = (env("NEXT_PUBLIC_SITE_URL") || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
 
 // ── Admin auth (mirrors api/notify-order.js so the same login token works) ──
 function adminSecret() { return env("ADMIN_SESSION_SECRET") || env("ADMIN_PASSWORD"); }
@@ -58,6 +60,59 @@ async function ingestDocument(documentId, text) {
   return rows.length;
 }
 
+// ───────────────────────── Product synonyms (Phase 4) ──────────────────────
+// Generates dialect alternate-names for product names via the AI gateway (feature
+// "synonym_generation"), stores them in product_synonyms, and pushes indexed
+// product URLs to Google. The heavy generation runs in small client-driven
+// batches so it stays under the function timeout for the whole ~6.5k-name catalog.
+const SYN_SYSTEM = [
+  "أنت خبير باللهجات العربية وبأسماء منتجات البقالة والمطاعم في المطبخين العربي والتركي.",
+  "لكل اسم منتج يصلك، استخرج الكلمات المرادفة والأسماء البديلة الشائعة التي قد يبحث بها زبون عربي عن المنتج نفسه باختلاف اللهجات.",
+  "- غطِّ اللهجات: شامي، مصري، خليجي، مغاربي، عراقي، والفصحى، وأضِف الاسم التركي/اللاتيني الشائع إن كان المنتج يُعرف به في تركيا.",
+  "- أعطِ مرادفات حقيقية يبحث بها الناس فقط (كلمات أو تسميات قصيرة، لا جُمَلاً ولا وصفاً)، ولا تُكرّر الاسم الأصلي حرفياً.",
+  "- إن كان الاسم ماركة تجارية فأبقِها وأضِف تهجئات/نطقاً شائعاً فقط.",
+  "- من 0 إلى 4 كلمات لكل لهجة، واترك القائمة فارغة إن لم يوجد مرادف مميّز لتلك اللهجة.",
+  'أعِد JSON فقط بلا أي شرح، بالشكل: {"results":[{"name":"<الاسم كما وصلك حرفياً>","dialects":{"شامي":[],"مصري":[],"خليجي":[],"مغاربي":[],"عراقي":[],"فصحى":[],"تركي":[]}}]}'
+].join("\n");
+
+const synNorm = s => String(s == null ? "" : s).toLowerCase().replace(/\s+/g, " ").trim();
+
+// Pull the first {...} JSON object out of a model reply (tolerates ``` fences / prose).
+function extractJson(raw) {
+  if (raw == null) return null;
+  let s = String(raw).trim().replace(/^```(?:json)?/i, "").replace(/```\s*$/i, "").trim();
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a === -1 || b === -1 || b < a) return null;
+  try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+}
+
+// Turn one model result into { synonyms:[flat, deduped], dialects:{key:[...]} }.
+function buildEntry(entry, originalName) {
+  const dialects = {}, flat = [], seen = new Set();
+  const orig = synNorm(originalName);
+  const d = (entry && entry.dialects && typeof entry.dialects === "object" && !Array.isArray(entry.dialects)) ? entry.dialects : {};
+  for (const key of Object.keys(d)) {
+    const arr = Array.isArray(d[key]) ? d[key] : [];
+    const clean = [];
+    for (let term of arr) {
+      term = String(term == null ? "" : term).replace(/\s+/g, " ").trim();
+      if (!term || term.length > 60) continue;
+      const n = synNorm(term);
+      if (n === orig || seen.has(n)) continue;
+      seen.add(n); clean.push(term); flat.push(term);
+    }
+    if (clean.length) dialects[key] = clean;
+  }
+  return { synonyms: flat.slice(0, 24), dialects };
+}
+
+async function synStats() {
+  const r = await gw.sbWrite("POST", "rpc/product_synonyms_stats", {}, "return=representation");
+  let s = r.ok ? r.rows : null;
+  if (Array.isArray(s)) s = s[0];
+  return (s && typeof s === "object") ? s : { total: 0, done: 0, pending: 0, failed: 0, indexed: 0, distinct_names: 0 };
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -92,6 +147,17 @@ module.exports = async (req, res) => {
       const docs = (await gw.sbGet("knowledge_documents?select=id,file_name,source_type,scope,store_id,status,error,chunk_count,created_at&order=created_at.desc&limit=500")) || [];
       const totalChunks = docs.reduce((s, d) => s + (d.chunk_count || 0), 0);
       return res.status(200).json({ documents: docs, totalDocuments: docs.length, totalChunks });
+    }
+    // Synonyms: stats + a preview/search page of rows.
+    if (action === "syn-overview") {
+      const stats = await synStats();
+      const qterm = String(q.q || "").trim();
+      const sel = "select=product_id,name,synonyms,dialects,status,indexed_at";
+      const path = qterm
+        ? `product_synonyms?${sel}&name=ilike.*${encodeURIComponent(qterm)}*&order=status.asc,updated_at.desc&limit=30`
+        : `product_synonyms?${sel}&order=updated_at.desc&limit=24`;
+      const rows = (await gw.sbGet(path)) || [];
+      return res.status(200).json({ stats, rows, indexingConfigured: gi.isConfigured() });
     }
     return res.status(400).json({ error: "unknown action" });
   }
@@ -256,6 +322,102 @@ module.exports = async (req, res) => {
       });
     }
     return res.status(200).json({ ok: true, chunks: chunks.map(c => ({ content: String(c.content).slice(0, 300), similarity: c.similarity })), answer });
+  }
+
+  // ── Synonyms: (re)sync the base name list from the live catalog ─────────────
+  if (action === "syn-sync") {
+    const r = await gw.sbWrite("POST", "rpc/sync_product_synonyms", {}, "return=representation");
+    if (!r.ok) return res.status(502).json({ error: "sync failed", detail: r.rows || r.error });
+    let stats = r.rows; if (Array.isArray(stats)) stats = stats[0];
+    return res.status(200).json({ ok: true, stats: stats || (await synStats()) });
+  }
+
+  // ── Synonyms: generate one batch of pending names via the AI gateway ───────
+  if (action === "syn-generate") {
+    const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 40);
+    // Pull a pool of pending rows and dedupe to distinct names (many products
+    // share a name → generate once, apply to all).
+    const pool = (await gw.sbGet(`product_synonyms?select=name&status=eq.pending&limit=${limit * 8}`)) || [];
+    const names = [], seen = new Set();
+    for (const row of pool) {
+      const nm = String(row.name || "").trim();
+      if (!nm) continue;
+      const n = synNorm(nm);
+      if (seen.has(n)) continue;
+      seen.add(n); names.push(nm);
+      if (names.length >= limit) break;
+    }
+    if (!names.length) return res.status(200).json({ ok: true, processed: 0, failed: 0, done: true, stats: await synStats() });
+
+    const raw = await gw.complete("synonym_generation", {
+      system: SYN_SYSTEM,
+      messages: [{ role: "user", content: JSON.stringify(names) }],
+      maxTokens: 6000, temperature: 0.3, timeoutMs: 50000
+    });
+    if (raw == null) {
+      return res.status(200).json({ ok: false, error: "provider", done: false, note: "تعذّر الاتصال بمزوّد الذكاء الاصطناعي — تأكّد أن ميزة «توليد المترادفات» مربوطة بمزوّد ومفتاحه صالح." });
+    }
+    const parsed = extractJson(raw);
+    const results = parsed && Array.isArray(parsed.results) ? parsed.results : (Array.isArray(parsed) ? parsed : []);
+    const byName = new Map();
+    for (const r of results) if (r && r.name != null) byName.set(synNorm(r.name), r);
+
+    let processed = 0, failed = 0;
+    for (const name of names) {
+      const nowIso = new Date().toISOString();
+      const entry = byName.get(synNorm(name));
+      const filter = `product_synonyms?name=eq.${encodeURIComponent(name)}&status=eq.pending`;
+      if (entry) {
+        const built = buildEntry(entry, name);
+        const pr = await gw.sbWrite("PATCH", filter, { synonyms: built.synonyms, dialects: built.dialects, status: "done", indexed_at: null, updated_at: nowIso }, "return=minimal");
+        if (pr.ok) processed++; else failed++;
+      } else {
+        await gw.sbWrite("PATCH", filter, { status: "failed", updated_at: nowIso }, "return=minimal");
+        failed++;
+      }
+    }
+    const stats = await synStats();
+    const remainingPending = Math.max(0, Number(stats.pending || 0) - Number(stats.failed || 0));
+    return res.status(200).json({ ok: true, processed, failed, done: remainingPending === 0, stats });
+  }
+
+  // ── Synonyms: reset failed rows back to pending (for a retry pass) ──────────
+  if (action === "syn-retry-failed") {
+    const r = await gw.sbWrite("PATCH", "product_synonyms?status=eq.failed", { status: "pending", updated_at: new Date().toISOString() }, "return=minimal");
+    return res.status(200).json({ ok: r.ok, stats: await synStats() });
+  }
+
+  // ── Synonyms: manual edit/override for one product name ────────────────────
+  if (action === "syn-save") {
+    const name = String(body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "name required" });
+    const synonyms = Array.isArray(body.synonyms) ? body.synonyms.map(s => String(s == null ? "" : s).trim()).filter(Boolean).slice(0, 40) : [];
+    const dialects = (body.dialects && typeof body.dialects === "object" && !Array.isArray(body.dialects)) ? body.dialects : {};
+    const patch = { synonyms, dialects, status: "done", indexed_at: null, updated_at: new Date().toISOString() };
+    const r = await gw.sbWrite("PATCH", `product_synonyms?name=eq.${encodeURIComponent(name)}`, patch, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── Synonyms: push a batch of indexed product URLs to Google's Indexing API ─
+  if (action === "syn-index") {
+    if (!gi.isConfigured()) {
+      return res.status(200).json({ ok: true, configured: false, pushed: 0, note: "لم تُضبط بيانات حساب خدمة Google (GOOGLE_INDEXING_CLIENT_EMAIL / GOOGLE_INDEXING_PRIVATE_KEY). المترادفات تظهر لجوجل تلقائياً داخل صفحات المنتجات وخريطة الموقع؛ هذا الزر يُسرّع إعادة الفهرسة فقط." });
+    }
+    const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 50);
+    const rows = (await gw.sbGet(`product_synonyms?select=product_id,products!inner(slug,available)&status=eq.done&indexed_at=is.null&products.available=eq.true&products.slug=not.is.null&order=updated_at.asc&limit=${limit}`)) || [];
+    if (!rows.length) return res.status(200).json({ ok: true, configured: true, pushed: 0, stats: await synStats() });
+    const okIds = [];
+    for (const row of rows) {
+      const slug = row.products && row.products.slug;
+      if (!slug) continue;
+      const r = await gi.publishUrl(`${SITE}/product/${slug}`, "URL_UPDATED");
+      if (r && r.ok) okIds.push(row.product_id);
+    }
+    if (okIds.length) {
+      await gw.sbWrite("PATCH", `product_synonyms?product_id=in.(${okIds.join(",")})`, { indexed_at: new Date().toISOString() }, "return=minimal");
+    }
+    return res.status(200).json({ ok: true, configured: true, pushed: okIds.length, stats: await synStats() });
   }
 
   return res.status(400).json({ error: "unknown action" });

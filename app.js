@@ -3843,8 +3843,10 @@ function adminIntegrations() {
 // Central admin section for the AI department (spec: "قسم الذكاء الصناعي").
 // Talks to /api/ai which uses the service-role key + lib/ai-gateway. API keys
 // are only ever shown masked (last 4). Everything is admin-token gated.
-async function aiApi(action, { method = "GET", body = null } = {}) {
-  const qs = new URLSearchParams({ action }).toString();
+async function aiApi(action, { method = "GET", body = null, params = null } = {}) {
+  const p = new URLSearchParams({ action });
+  if (params) for (const k in params) { if (params[k] != null && params[k] !== "") p.set(k, params[k]); }
+  const qs = p.toString();
   const opts = { method, headers: { "x-admin-token": state.adminKey || "" } };
   if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   const res = await fetch(`/api/ai?${qs}`, opts);
@@ -3863,6 +3865,62 @@ async function loadAdminKB() {
   try { state.adminKB = await aiApi("kb-list"); state._adminKBError = null; }
   catch (e) { state._adminKBError = true; state.adminKB = state.adminKB || { documents: [], totalDocuments: 0, totalChunks: 0 }; }
   render();
+}
+
+async function loadAdminSyn() {
+  try { state.adminSyn = await aiApi("syn-overview", { params: state._synQ ? { q: state._synQ } : null }); state._adminSynError = null; }
+  catch (e) { state._adminSynError = true; state.adminSyn = state.adminSyn || { stats: {}, rows: [], indexingConfigured: false }; }
+  render();
+}
+
+// Batch-drives the AI generation endpoint until the whole pending queue is done
+// (or the admin presses stop). Each request generates ~20 names server-side.
+async function runSynGenerate() {
+  if (state._synRunning) return;
+  state._synRunning = "generate"; state._synStop = false; state._synLog = "يبدأ التوليد…"; render();
+  let guard = 0;
+  try {
+    while (!state._synStop && guard < 2000) {
+      guard++;
+      let r;
+      try { r = await aiApi("syn-generate", { method: "POST", body: { limit: 20 } }); }
+      catch (e) { state._synLog = "تعذّر الاتصال بالخادم — تحقّق من تسجيل الدخول."; break; }
+      if (!r || r.ok === false) { state._synLog = (r && r.note) || "تعذّر التوليد — تحقّق من ربط ميزة «توليد المترادفات» بمزوّد."; break; }
+      if (r.stats) state.adminSyn = Object.assign({}, state.adminSyn, { stats: r.stats });
+      const st = (r.stats) || {};
+      state._synLog = `تم توليد ${st.done || 0} من ${st.total || 0}…`;
+      render();
+      if (r.done) { state._synLog = `اكتمل التوليد ✓ (${st.done || 0} منتج).`; break; }
+    }
+    if (state._synStop) state._synLog = "أُوقف التوليد.";
+  } catch (e) { state._synLog = "توقّف بسبب خطأ."; }
+  state._synRunning = null;
+  await loadAdminSyn();
+}
+
+// Batch-drives the Google Indexing push for products whose synonyms are ready.
+async function runSynIndex() {
+  if (state._synRunning) return;
+  state._synRunning = "index"; state._synStop = false; state._synLog = "يبدأ الدفع إلى Google…"; render();
+  let guard = 0, pushed = 0;
+  try {
+    while (!state._synStop && guard < 500) {
+      guard++;
+      let r;
+      try { r = await aiApi("syn-index", { method: "POST", body: { limit: 20 } }); }
+      catch (e) { state._synLog = "تعذّر الاتصال بالخادم."; break; }
+      if (!r || r.ok === false) { state._synLog = "تعذّر الدفع إلى Google."; break; }
+      if (r.configured === false) { state._synLog = r.note || "خدمة الفهرسة غير مهيّأة."; break; }
+      if (r.stats) state.adminSyn = Object.assign({}, state.adminSyn, { stats: r.stats });
+      pushed += r.pushed || 0;
+      state._synLog = `تم دفع ${pushed} رابطاً إلى Google…`;
+      render();
+      if (!r.pushed) { state._synLog = `اكتمل الدفع ✓ (${pushed} رابطاً).`; break; }
+    }
+    if (state._synStop) state._synLog = "أُوقف الدفع.";
+  } catch (e) { state._synLog = "توقّف بسبب خطأ."; }
+  state._synRunning = null;
+  await loadAdminSyn();
 }
 
 // Knowledge-base (RAG training) section of the AI tab.
@@ -3931,6 +3989,81 @@ function adminKBSection() {
     </section>`;
 }
 
+// Synonyms (dialect alternate-names) section of the AI tab.
+function adminSynonymsSection() {
+  if (!state.adminSyn) {
+    if (!state._adminSynLoading) { state._adminSynLoading = true; loadAdminSyn().finally(() => { state._adminSynLoading = false; }); }
+    return `<section class="dashboard-card"><p class="creds-summary">جارٍ تحميل المترادفات…</p></section>`;
+  }
+  const d = state.adminSyn;
+  const st = d.stats || {};
+  const total = Number(st.total || 0), done = Number(st.done || 0), failed = Number(st.failed || 0);
+  const pending = Math.max(0, Number(st.pending || 0) - failed);
+  const indexed = Number(st.indexed || 0), distinct = Number(st.distinct_names || 0);
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const running = state._synRunning;
+  const rows = d.rows || [];
+
+  const genBtn = running === "generate"
+    ? `<button class="danger-button compact" data-action="syn-stop">${icon("close")} إيقاف التوليد</button>`
+    : `<button class="primary-button compact" data-action="syn-generate" ${running ? "disabled" : ""}>${icon("stars")} توليد المترادفات</button>`;
+  const idxBtn = running === "index"
+    ? `<button class="danger-button compact" data-action="syn-stop">${icon("close")} إيقاف الدفع</button>`
+    : `<button class="secondary-button compact" data-action="syn-index" ${running ? "disabled" : ""}>${icon("upload")} دفع إلى Google</button>`;
+  const retryBtn = failed > 0 && !running ? `<button class="text-button" data-action="syn-retry">إعادة محاولة الفاشلة (${failed})</button>` : "";
+  const logLine = state._synLog ? `<p class="creds-summary" style="margin-top:8px">${esc(state._synLog)}</p>` : "";
+
+  const statusPill = s => s === "done" ? `<span class="status-pill paid">تم</span>` : s === "failed" ? `<span class="status-pill">فشل</span>` : `<span class="status-pill">بانتظار</span>`;
+  const dialCell = dl => {
+    const keys = (dl && typeof dl === "object" && !Array.isArray(dl)) ? Object.keys(dl).filter(k => (dl[k] || []).length) : [];
+    if (!keys.length) return `<span style="color:#94a3b8">—</span>`;
+    return keys.map(k => `<div style="margin:2px 0"><b style="color:#64748b">${esc(k)}:</b> ${esc((dl[k] || []).join("، "))}</div>`).join("");
+  };
+  const table = rows.length ? `
+    <div class="table-wrap"><table class="admin-table">
+      <thead><tr><th>الاسم</th><th>المرادفات حسب اللهجة</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td><strong>${esc(r.name)}</strong><br><small style="color:#94a3b8">#${esc(r.product_id)}${r.indexed_at ? " · بجوجل ✓" : ""}</small></td>
+        <td style="font-size:13px;line-height:1.6">${dialCell(r.dialects)}</td>
+        <td>${statusPill(r.status)}</td>
+        <td><button class="icon-button" data-action="syn-edit" data-name="${escAttr(r.name)}" title="تعديل">${icon("edit")}</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div>` : `<p class="creds-summary">لا توجد نتائج. ${state._synQ ? "جرّب بحثاً آخر." : "اضغط «تحديث قائمة الأسماء» ثم «توليد المترادفات»."}</p>`;
+
+  const notConfiguredWarn = !d.indexingConfigured ? `<div class="delivery-calculator warning">${icon("shield")}<div><strong>دفع Google غير مهيّأ (اختياري)</strong><p>المترادفات تظهر لجوجل تلقائياً داخل صفحات المنتجات وخريطة الموقع فور نشرها. زر «دفع إلى Google» يُسرّع إعادة الفهرسة فقط، ويحتاج ضبط <code>GOOGLE_INDEXING_CLIENT_EMAIL</code> و<code>GOOGLE_INDEXING_PRIVATE_KEY</code> في Vercel.</p></div></div>` : "";
+
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>مترادفات المنتجات</h3><p>كلمات بحث بديلة بكل اللهجات العربية لكل منتج — تُولَّد بالذكاء الاصطناعي وتظهر لجوجل داخل صفحات المنتجات.</p></div><button class="icon-button" data-action="syn-refresh" title="تحديث">${icon("download")}</button></div>
+      ${state._adminSynError ? `<p class="creds-summary" style="color:#c0392b">تعذّر التحميل — تحقّق من تسجيل دخول المشرف.</p>` : ""}
+      <div class="creds-summary" style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px">
+        <span>الإجمالي: <strong>${total}</strong></span>
+        <span>أسماء مميّزة: <strong>${distinct}</strong></span>
+        <span>مُولّدة: <strong style="color:#16a34a">${done}</strong></span>
+        <span>بانتظار: <strong>${pending}</strong></span>
+        ${failed ? `<span>فشل: <strong style="color:#c0392b">${failed}</strong></span>` : ""}
+        <span>مُرسَلة لجوجل: <strong>${indexed}</strong></span>
+      </div>
+      <div style="height:10px;border-radius:6px;background:#eef2f7;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#22c55e,#16a34a);transition:width .3s"></div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button class="secondary-button compact" data-action="syn-sync" ${running ? "disabled" : ""}>${icon("download")} تحديث قائمة الأسماء</button>
+        ${genBtn}
+        ${idxBtn}
+        ${retryBtn}
+      </div>
+      ${logLine}
+      ${notConfiguredWarn}
+    </section>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>معاينة وتحرير</h3><p>ابحث عن منتج لمراجعة مرادفاته أو تعديلها يدوياً.</p></div></div>
+      <form id="syn-search-form" class="form-grid" style="margin-bottom:10px">
+        <label class="input-label" style="grid-column:1/-1"><span>بحث بالاسم</span><input name="q" value="${escAttr(state._synQ || "")}" placeholder="مثال: بندورة"></label>
+        <button type="submit" class="secondary-button compact" style="grid-column:1/-1;justify-self:start">${icon("search")} بحث</button>
+      </form>
+      ${table}
+    </section>`;
+}
+
 const AI_FEATURE_LABELS = {
   whatsapp_autoreply: ["الرد الآلي على واتساب", "يردّ على رسائل العملاء عبر رقم المنصة"],
   image_enhancement: ["تحسين صور المنتجات", "يحسّن صور المنتجات عند رفعها"],
@@ -3948,8 +4081,10 @@ function adminAI() {
   const toggle = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
     <button class="${section === "providers" ? "primary-button" : "secondary-button"} compact" data-action="ai-section" data-section="providers">${icon("settings")} المزوّدون والميزات</button>
     <button class="${section === "knowledge" ? "primary-button" : "secondary-button"} compact" data-action="ai-section" data-section="knowledge">${icon("box")} قاعدة المعرفة (التدريب)</button>
+    <button class="${section === "synonyms" ? "primary-button" : "secondary-button"} compact" data-action="ai-section" data-section="synonyms">${icon("stars")} المترادفات</button>
   </div>`;
   if (section === "knowledge") return toggle + adminKBSection();
+  if (section === "synonyms") return toggle + adminSynonymsSection();
   const d = state.adminAI;
   const providers = d.providers || [];
   const features = d.features || [];
@@ -7416,6 +7551,35 @@ document.addEventListener("click", event => {
   }
   if (action === "ai-section") { state._adminAISection = target.dataset.section; render(); }
   if (action === "kb-refresh") { state.adminKB = null; state._adminKBTest = null; loadAdminKB(); }
+  if (action === "syn-refresh") { state.adminSyn = null; state._synLog = null; loadAdminSyn(); }
+  if (action === "syn-sync") {
+    if (state._synRunning) return;
+    showToast("جارٍ تحديث قائمة الأسماء من الكتالوج…", "");
+    aiApi("syn-sync", { method: "POST" })
+      .then(r => { state.adminSyn = state.adminSyn ? Object.assign({}, state.adminSyn, { stats: r.stats }) : null; showToast(`تم تحديث القائمة (${(r.stats && r.stats.total) || 0} منتج)`, "success"); loadAdminSyn(); })
+      .catch(() => showToast("تعذّر التحديث", ""));
+  }
+  if (action === "syn-generate") { runSynGenerate(); }
+  if (action === "syn-index") { runSynIndex(); }
+  if (action === "syn-stop") { state._synStop = true; showToast("جارٍ الإيقاف…", ""); }
+  if (action === "syn-retry") {
+    aiApi("syn-retry-failed", { method: "POST" })
+      .then(() => { showToast("أُعيدت الأسماء الفاشلة إلى الطابور", "success"); loadAdminSyn(); })
+      .catch(() => showToast("تعذّرت العملية", ""));
+  }
+  if (action === "syn-edit") {
+    const name = target.dataset.name || "";
+    const row = (state.adminSyn && state.adminSyn.rows || []).find(r => r.name === name);
+    const cur = row && Array.isArray(row.synonyms) ? row.synonyms.join("، ") : "";
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <h2>تعديل مرادفات «${esc(name)}»</h2>
+      <p class="creds-summary">افصل بين الكلمات بفاصلة أو سطر جديد. سيُحفظ ما تكتبه بديلاً عن التوليد الآلي.</p>
+      <form id="syn-edit-form" data-name="${escAttr(name)}" class="form-grid">
+        <label class="input-label" style="grid-column:1/-1"><span>المرادفات</span><textarea name="synonyms" rows="5">${esc(cur)}</textarea></label>
+        <div style="grid-column:1/-1;display:flex;gap:8px"><button type="submit" class="primary-button">${icon("check")} حفظ</button><button type="button" class="secondary-button" data-action="close-modal">إلغاء</button></div>
+      </form>`, "");
+  }
   if (action === "kb-delete") {
     const id = target.dataset.id, name = target.dataset.name || "";
     showModal(`
@@ -8045,6 +8209,24 @@ document.addEventListener("submit", async event => {
     aiApi("kb-test", { method: "POST", body: { query } })
       .then(r => { state._adminKBTest = r && r.ok ? r : { chunks: [], answer: null }; render(); })
       .catch(() => { state._adminKBTest = { chunks: [], answer: null }; showToast("تعذّر الاختبار", ""); render(); });
+    return;
+  }
+  if (event.target.id === "syn-search-form") {
+    state._synQ = (event.target.querySelector('[name="q"]')?.value || "").trim();
+    state.adminSyn = null;
+    loadAdminSyn();
+    return;
+  }
+  if (event.target.id === "syn-edit-form") {
+    const f = event.target;
+    const name = f.dataset.name || "";
+    const rawv = (f.querySelector('[name="synonyms"]')?.value || "");
+    const synonyms = rawv.split(/[،,\n]+/).map(s => s.trim()).filter(Boolean);
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    aiApi("syn-save", { method: "POST", body: { name, synonyms, dialects: synonyms.length ? { "مخصّص": synonyms } : {} } })
+      .then(() => { closeModal(); showToast("تم حفظ المرادفات", "success"); loadAdminSyn(); })
+      .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
     return;
   }
   if (event.target.id === "content-edit-form") {
