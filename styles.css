@@ -604,6 +604,39 @@ img {
   .voice-search-btn.listening { animation: none; }
 }
 
+/* Clear (×) button inside the hero / stores search boxes. Two-class selectors so
+   they beat the `.hero-search button` gradient-pill rule. Shown only while the
+   field has text — the pure-CSS :placeholder-shown trick hides it when empty. */
+.hero-search .search-clear,
+.listing-search .search-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.06);
+  color: #64748b;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.16s, color 0.16s, transform 0.12s;
+}
+.hero-search .search-clear:hover,
+.listing-search .search-clear:hover { background: rgba(227, 6, 19, 0.12); color: #e30613; }
+.hero-search .search-clear:active,
+.listing-search .search-clear:active { transform: scale(0.9); }
+.hero-search .search-clear .icon,
+.listing-search .search-clear .icon { width: 14px; height: 14px; }
+/* Hide while the input is empty (placeholder visible); the × sits right after the input. */
+.hero-search input:placeholder-shown ~ .search-clear,
+.listing-search input:placeholder-shown ~ .search-clear { display: none; }
+/* Suppress the browser's native search-cancel × so there's no double button. */
+.hero-search input::-webkit-search-cancel-button,
+.listing-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
 /* ── Feature 2: coupons + free-delivery ── */
 .coupon-box { margin: 4px 0 12px; }
 .coupon-row { display: flex; gap: 8px; align-items: center; }

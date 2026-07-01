@@ -2319,6 +2319,7 @@ function renderHome() {
           <div class="hero-search">
             ${icon("search")}
             <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${escAttr(state.search)}">
+            <button type="button" class="search-clear" data-action="clear-search" aria-label="مسح البحث" title="مسح">${icon("close")}</button>
             ${voiceSearchButton("hero")}
             <button data-action="run-search">ابحث</button>
           </div>
@@ -2543,6 +2544,7 @@ function renderStores() {
         <div class="listing-search">
           ${icon("search")}
           <input id="stores-search" type="search" placeholder="ابحث باسم متجر أو تصنيف..." value="${state.search}">
+          <button type="button" class="search-clear" data-action="clear-search" aria-label="مسح البحث" title="مسح">${icon("close")}</button>
           ${voiceSearchButton("stores")}
           <button data-action="run-store-search">بحث</button>
         </div>
@@ -7071,6 +7073,14 @@ document.addEventListener("click", event => {
     state.search = document.getElementById("stores-search").value.trim();
     if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
     render();
+  }
+  if (action === "clear-search") {
+    // × inside the hero/stores search box: wipe the current query and results.
+    state.search = "";
+    const input = target.closest(".hero-search, .listing-search")?.querySelector('input[type="search"]');
+    if (input) input.value = "";
+    render();
+    setTimeout(() => (document.getElementById("stores-search") || document.getElementById("hero-search"))?.focus(), 0);
   }
   if (action === "voice-search") startVoiceSearch(target);
   if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
