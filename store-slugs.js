@@ -67,7 +67,8 @@ const STORE_SLUGS = {
   56: "pasa-pizzeria-restaurant",
   57: "badeel-treats-sweets",
   58: "biryani-palace-restaurant",
-  59: "bhaleeb-sweets"
+  59: "bhaleeb-sweets",
+  60: "yumy-yumy-restaurant"
 };
 
 // Reverse: slug -> id.
