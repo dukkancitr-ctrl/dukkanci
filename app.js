@@ -3152,10 +3152,16 @@ function merchantProducts() {
         <article>
           <img src="${product.image}" alt="${escAttr(product.name)}" loading="lazy">
           <div class="managed-product-name"><strong>${product.name}</strong><small>${product.category} · ${product.unit}</small></div>
-          <strong>${money(product.price)}${product.oldPrice ? ` <s class="managed-old-price">${money(product.oldPrice)}</s>` : ""}</strong>
+          <div class="inline-price">
+            <input type="number" min="0" step="1" inputmode="numeric" id="price-inp-${product.id}" value="${Number(product.price) || 0}" data-action="inline-price" data-id="${product.id}" aria-label="سعر ${escAttr(product.name)}" title="عدّل السعر مباشرة ثم اضغط Enter">
+            <b>ل.ت</b>
+            ${product.oldPrice ? `<s class="managed-old-price">${money(product.oldPrice)}</s>` : ""}
+          </div>
           <label class="toggle"><input type="checkbox" ${product.available !== false ? "checked" : ""} data-action="toggle-product" data-id="${product.id}"><span></span><small>${product.available !== false ? "متوفر" : "غير متوفر"}</small></label>
           <span class="status-pill ${isShownOnStore(product) ? "green" : (isPlaceholderImage(product.image) ? "gray" : "red")}" title="${isPlaceholderImage(product.image) ? "أضف صورة ليظهر المنتج في المتجر" : ""}">${isShownOnStore(product) ? "معروض" : (isPlaceholderImage(product.image) ? "بانتظار صورة" : "مخفي")}</span>
           <div class="managed-product-actions">
+            <button class="table-action" data-action="preview-product" data-id="${product.id}" title="معاينة كما يظهر للعميل">${icon("eye")}</button>
+            <button class="table-action" data-action="price-history" data-id="${product.id}" title="سجل الأسعار">${icon("chart")}</button>
             <button class="table-action" data-action="edit-product" data-id="${product.id}" title="تعديل">${icon("edit")}</button>
             <button class="table-action danger" data-action="delete-product" data-id="${product.id}" title="حذف">${icon("trash")}</button>
           </div>
@@ -3164,12 +3170,18 @@ function merchantProducts() {
   return `
     <div class="dashboard-toolbar">
       <div class="dashboard-search">${icon("search")}<input id="merchant-product-search" placeholder="ابحث في منتجاتك" value="${escAttr(query)}"></div>
-      <div class="toolbar-actions"><span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span><button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button></div>
+      <div class="toolbar-actions">
+        <span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span>
+        <button class="secondary-button compact" data-action="export-merchant-products" title="تصدير كل منتجاتك كملف Excel/CSV">${icon("download")} تصدير</button>
+        <label class="secondary-button compact csv-import-btn" title="حدّث الأسعار والتوفر بالجملة من ملف CSV">${icon("upload")} تحديث بالجملة<input type="file" id="merchant-csv-input" accept=".csv,text/csv" hidden></label>
+        <button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button>
+      </div>
     </div>
     ${catBar}
     <section class="dashboard-card product-management">
       ${rows || `<div class="empty-managed">${icon("box")}<p>${query ? "لا منتجات مطابقة لبحثك" : "لا توجد منتجات بعد. ابدأ بإضافة أول منتج."}</p></div>`}
     </section>
+    ${allStoreProducts.length ? `<p class="managed-hint">${icon("edit")} عدّل السعر مباشرة من الحقل واضغط Enter، أو استخدم «تصدير» و«تحديث بالجملة» لتعديل أسعار كثيرة دفعة واحدة. يُسجَّل كل تغيير سعر في «سجل الأسعار».</p>` : ""}
   `;
 }
 
@@ -7086,6 +7098,165 @@ function exportCsv(kind) {
   showToast("تم تجهيز ملف التصدير", "success");
 }
 
+// ── Merchant products: CSV export/import + preview + price history (Increment 2) ──
+
+// Export this merchant's products to a CSV they can edit in Excel and re-import.
+// The «المعرّف» (id) column is the join key on import; header names are matched.
+function exportMerchantProductsCsv() {
+  const store = getMerchantStore();
+  const list = allProducts.filter(p => p.storeId === store.id);
+  if (!list.length) { showToast("لا توجد منتجات للتصدير"); return; }
+  const header = ["المعرّف", "الاسم", "التصنيف", "الوحدة", "السعر", "السعر قبل الخصم", "متوفر"];
+  const rows = [header, ...list.map(p => [
+    p.id, p.name, p.category || "", p.unit || "",
+    Number(p.price) || 0, p.oldPrice ? Number(p.oldPrice) : "",
+    p.available !== false ? "نعم" : "لا"
+  ])];
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `dukkanci-${storeParam(store)}-products.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast("تم تجهيز ملف المنتجات", "success");
+}
+
+// Minimal RFC-4180-ish CSV parser (quoted fields, escaped "", CRLF).
+function parseCsv(text) {
+  const rows = []; let row = [], field = "", inQ = false;
+  text = String(text || "").replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c === "\r") { /* ignore */ }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Parse an uploaded CSV, match rows to THIS store's products by id, and show a
+// confirmation of the price/availability/discount changes BEFORE applying any.
+async function handleMerchantCsvImport(file) {
+  if (!file) return;
+  const store = getMerchantStore();
+  let text = "";
+  try { text = await file.text(); } catch (e) { showToast("تعذّر قراءة الملف"); return; }
+  const rows = parseCsv(text).filter(r => r.some(c => (c || "").trim() !== ""));
+  if (rows.length < 2) { showToast("الملف فارغ أو غير صالح"); return; }
+  const header = rows[0].map(h => (h || "").trim());
+  const col = names => header.findIndex(h => names.includes(h));
+  const iId = col(["المعرّف", "id", "ID"]);
+  const iPrice = col(["السعر", "price"]);
+  const iOld = col(["السعر قبل الخصم", "old_price"]);
+  const iAvail = col(["متوفر", "available"]);
+  if (iId < 0 || iPrice < 0) { showToast("العمودان «المعرّف» و«السعر» مطلوبان في الملف"); return; }
+  const num = v => Math.round(Number(String(v == null ? "" : v).replace(/[^\d.]/g, "")) || 0);
+  const changes = [];
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const id = Number((cells[iId] || "").trim());
+    if (!id) continue;
+    const p = getProduct(id);
+    if (!p || p.storeId !== store.id) continue; // only this store's own products
+    const ch = {};
+    const newPrice = num(cells[iPrice]);
+    if (newPrice > 0 && newPrice !== Number(p.price)) ch.price = newPrice;
+    if (iOld >= 0) { const o = num(cells[iOld]); const cur = Number(p.oldPrice) || 0; if (o !== cur) ch.oldPrice = o > 0 ? o : null; }
+    if (iAvail >= 0) { const av = /^(1|نعم|true|yes|متوفر|y)$/i.test((cells[iAvail] || "").trim()); if (av !== (p.available !== false)) ch.available = av; }
+    if (Object.keys(ch).length) changes.push({ id, name: p.name, from: p, ch });
+  }
+  if (!changes.length) { showToast("لا توجد تغييرات في الملف — كل القيم مطابقة", ""); return; }
+  state._csvImport = changes;
+  const preview = changes.slice(0, 40).map(c => {
+    const parts = [];
+    if (c.ch.price != null) parts.push(`السعر: ${money(c.from.price)} ← ${money(c.ch.price)}`);
+    if (c.ch.oldPrice !== undefined) parts.push(c.ch.oldPrice ? `سعر قبل الخصم: ${money(c.ch.oldPrice)}` : "إزالة سعر الخصم");
+    if (c.ch.available != null) parts.push(c.ch.available ? "→ متوفر" : "→ غير متوفر");
+    return `<li><strong>${esc(c.name)}</strong><span>${esc(parts.join(" · "))}</span></li>`;
+  }).join("");
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <h2>${icon("upload")} مراجعة التحديث بالجملة</h2>
+    <p>سيتم تحديث <strong>${changes.length.toLocaleString("ar")}</strong> منتجاً. راجع التغييرات ثم اعتمدها.</p>
+    <ul class="csv-change-list">${preview}</ul>
+    ${changes.length > 40 ? `<p class="field-hint">…و${(changes.length - 40).toLocaleString("ar")} منتجاً آخر.</p>` : ""}
+    <div class="form-actions">
+      <button class="secondary-button" data-action="close-modal">إلغاء</button>
+      <button class="primary-button" data-action="apply-csv-import">${icon("check")} اعتماد التحديث</button>
+    </div>
+  `, "csv-import-modal");
+}
+
+// Apply the reviewed CSV changes sequentially through the SAME secure save path
+// used by manual edits (pushProductCloud → save-product), so each price change is
+// also server-logged to product_price_history.
+async function applyCsvImport() {
+  const changes = state._csvImport || [];
+  if (!changes.length) { closeModal(); return; }
+  const btn = document.querySelector('[data-action="apply-csv-import"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = "جارٍ التحديث..."; }
+  let ok = 0, fail = 0;
+  for (const c of changes) {
+    const p = getProduct(c.id);
+    if (!p) { fail++; continue; }
+    const result = await pushProductCloud({ ...p, ...c.ch });
+    if (result.ok) { Object.assign(p, c.ch); upsertCatalogProduct(p); saveProductOverride(p.id, c.ch); ok++; }
+    else fail++;
+    if (btn) btn.innerHTML = `جارٍ التحديث... (${(ok + fail).toLocaleString("ar")}/${changes.length.toLocaleString("ar")})`;
+  }
+  state._csvImport = null;
+  closeModal();
+  showToast(fail ? `تم تحديث ${ok.toLocaleString("ar")} منتجاً، وتعذّر ${fail.toLocaleString("ar")}` : `تم تحديث ${ok.toLocaleString("ar")} منتجاً بنجاح`, fail ? "" : "success");
+  render();
+}
+
+// Preview a product exactly as a customer sees its card on the storefront.
+function openProductPreview(id) {
+  const p = getProduct(id);
+  if (!p) { showToast("تعذّر العثور على المنتج"); return; }
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">معاينة كما يظهر للعميل</span>
+    <h2>${esc(p.name)}</h2>
+    <div class="product-preview-wrap">${productCard(p)}</div>
+    <p class="field-hint">${isShownOnStore(p) ? "هذا المنتج معروض حالياً في متجرك." : (isPlaceholderImage(p.image) ? "المنتج مخفي لأنه بلا صورة — أضف صورة ليظهر للعملاء." : "هذا المنتج مخفي حالياً.")}</p>
+  `, "product-preview-modal");
+}
+
+// Fetch + show a product's recent price changes (server: product-price-history).
+async function openPriceHistory(id) {
+  const p = getProduct(id);
+  if (!p) { showToast("تعذّر العثور على المنتج"); return; }
+  showModal(`<button class="modal-close" data-action="close-modal">${icon("close")}</button><span class="section-kicker">سجل الأسعار</span><h2>${esc(p.name)}</h2><div class="price-history-body"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ التحميل…</p></div></div>`, "price-history-modal");
+  const store = getMerchantStore();
+  const headers = {};
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  let history = [];
+  try {
+    const r = await fetch(`/api/notify-order?action=product-price-history&productId=${p.id}&storeId=${store.id}`, { headers });
+    const data = await r.json().catch(() => ({}));
+    history = Array.isArray(data.history) ? data.history : [];
+  } catch (e) { /* show empty state below */ }
+  const body = document.querySelector(".price-history-body");
+  if (!body) return;
+  if (!history.length) {
+    body.innerHTML = `<div class="empty-managed">${icon("chart")}<p>لا توجد تغييرات سعر مسجّلة بعد. سيظهر هنا كل تعديل للسعر من الآن فصاعداً.</p></div>`;
+    return;
+  }
+  const fmt = iso => { try { return new Date(iso).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" }); } catch (e) { return ""; } };
+  body.innerHTML = `<ul class="price-history-list">${history.map(h => {
+    const up = Number(h.new_price) > Number(h.old_price);
+    return `<li><span class="ph-date">${fmt(h.created_at)}</span><span class="ph-change ${up ? "up" : "down"}">${money(h.old_price)} ← ${money(h.new_price)}</span><span class="ph-src">${h.source === "admin" ? "الإدارة" : "المتجر"}</span></li>`;
+  }).join("")}</ul>`;
+}
+
 // Internal-link navigation via History API (handles data-route nav + plain #/... anchors)
 document.addEventListener("click", event => {
   const a = event.target.closest("a[href]");
@@ -7433,6 +7604,10 @@ document.addEventListener("click", event => {
     saveState(); render(); showToast("تم حذف الشكوى", "success");
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
+  if (action === "export-merchant-products") exportMerchantProductsCsv();
+  if (action === "preview-product") openProductPreview(target.dataset.id);
+  if (action === "price-history") openPriceHistory(target.dataset.id);
+  if (action === "apply-csv-import") applyCsvImport();
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
@@ -8101,6 +8276,27 @@ document.addEventListener("change", event => {
     });
     showToast(`أصبح المنتج ${product.available ? "متوفراً" : "غير متوفر"}`, "success");
     render();
+  }
+  if (event.target.dataset.action === "inline-price") {
+    const product = getProduct(event.target.dataset.id);
+    if (!product) { showToast("تعذّر العثور على المنتج"); return; }
+    const newPrice = Math.max(0, Math.round(Number(event.target.value) || 0));
+    // Empty/zero = likely a mistake (cleared field) → revert to the current price.
+    if (!newPrice || newPrice === Number(product.price)) { event.target.value = Number(product.price) || 0; return; }
+    const prevPrice = product.price;
+    product.price = newPrice;
+    upsertCatalogProduct(product);
+    saveProductOverride(product.id, { price: newPrice });
+    pushProductCloud(product).then(result => {
+      if (!result.ok) { product.price = prevPrice; upsertCatalogProduct(product); showToast(productSaveErrorMessage(result)); render(); }
+      else showToast(`تم تحديث سعر «${product.name}» إلى ${money(newPrice)}`, "success");
+    });
+    render();
+  }
+  if (event.target.id === "merchant-csv-input") {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (file) handleMerchantCsvImport(file);
   }
   if (event.target.dataset.action === "admin-toggle-hide") {
     const id = Number(event.target.dataset.id);

@@ -1066,6 +1066,17 @@ module.exports = async (req, res) => {
       return res.status(200).json({ orders: rows });
     }
 
+    // Merchant/Admin: a product's recent price-change history (spec §7).
+    if (q.action === "product-price-history") {
+      const productId = Number(q.productId);
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!productId) return res.status(400).json({ error: "productId required" });
+      const rows = await sbGet(`product_price_history?product_id=eq.${productId}&select=old_price,new_price,source,created_at&order=created_at.desc&limit=20`) || [];
+      return res.status(200).json({ history: rows });
+    }
+
     // Admin: list every store with its login credentials (phone=username +
     // generated password). Lazily generates+persists a password for any store
     // that has a phone but no credential row yet. Passwords live in
@@ -1441,11 +1452,28 @@ module.exports = async (req, res) => {
         }
       });
     }
+    // Read the current price BEFORE the upsert so we can log any change (spec §7).
+    let prevPrice = null;
+    try {
+      const existing = await sbGet(`products?id=eq.${Number(product.id)}&select=price&limit=1`);
+      if (existing && existing[0] && existing[0].price != null) prevPrice = Number(existing[0].price);
+    } catch (e) { /* best-effort */ }
     const r = await sbWrite("POST", "products?on_conflict=id", product, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) {
       console.warn("save-product failed", { status: r.status, detail: r.rows });
       return res.status(502).json({ error: "save failed", detail: r.rows });
     }
+    // Log price changes to product_price_history — best-effort, never blocks the save.
+    try {
+      const newPrice = Number(product.price);
+      if (prevPrice != null && !Number.isNaN(newPrice) && prevPrice !== newPrice) {
+        await sbWrite("POST", "product_price_history", {
+          product_id: Number(product.id), store_id: Number(product.store_id),
+          old_price: prevPrice, new_price: newPrice,
+          source: isAdmin ? "admin" : "merchant", changed_by: isAdmin ? "admin" : "merchant"
+        }, "return=minimal");
+      }
+    } catch (e) { /* logging is best-effort */ }
     return res.status(200).json({ ok: true });
   }
 
