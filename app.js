@@ -5904,7 +5904,29 @@ function render() {
     terms: renderTermsPage,
     "why-dukkanci": renderWhyDukkanciPage
   };
+  // Preserve an in-progress text field across this re-render. The async boot
+  // data-refreshes (site-settings, integrations, and the ~7600-product catalog
+  // load) each fire render() in the first seconds after load, rebuilding
+  // app.innerHTML from scratch. A user's unsubmitted search text lives in the DOM
+  // input, NOT in state (state.search updates only on Enter/submit) — so without
+  // this, typing in the hero/stores search during those seconds gets wiped along
+  // with the focus and caret. Restore is keyed by element id, so it's a natural
+  // no-op on real navigation (the next page has a different input id).
+  const _focused = document.activeElement;
+  const _preserve = (_focused && _focused.id && app.contains(_focused)
+      && (_focused.tagName === "INPUT" || _focused.tagName === "TEXTAREA"))
+    ? { id: _focused.id, value: _focused.value, start: _focused.selectionStart, end: _focused.selectionEnd }
+    : null;
   app.innerHTML = (routes[route] || renderHome)();
+  if (_preserve) {
+    const el = document.getElementById(_preserve.id);
+    if (el) {
+      if (el.value !== _preserve.value) el.value = _preserve.value;
+      el.focus();
+      // Some input types reject setSelectionRange — guard so it never throws.
+      try { el.setSelectionRange(_preserve.start, _preserve.end); } catch (e) {}
+    }
+  }
   document.body.classList.toggle("dashboard-view", route === "merchant" || route === "admin");
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   hydrateIcons(app);
