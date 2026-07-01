@@ -559,6 +559,29 @@ async function loadCatalogFromSupabase() {
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
 
+// Dialect synonyms for on-site search: product_id → normalized alt-name string.
+// Loaded once after the catalog; getMatchingProducts folds it into the search
+// haystack so a query in any dialect («رقي» / «karpuz» / «بطاطس») still finds the
+// product («بطيخ» / «بطاطا»). Only generated (status=done) rows carry synonyms, so
+// this stays tiny until the admin generates them.
+const productSynonymIndex = new Map();
+async function loadSynonymIndex() {
+  const sb = window.supabaseClient;
+  if (!sb) return;
+  try {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb.from("product_synonyms").select("product_id,synonyms").eq("status", "done").range(from, from + 999);
+      if (error || !data) break;
+      for (const r of data) {
+        if (Array.isArray(r.synonyms) && r.synonyms.length) productSynonymIndex.set(r.product_id, normalizeAr(r.synonyms.join(" ")));
+      }
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+  } catch (e) { /* on-site search still works without synonyms */ }
+}
+
 // On-demand catalog hydration. A /store/<id>, /product/<slug> or /offers deep-link
 // must NOT wait for the full ~7600-product catalog (loadCatalogFromSupabase loads
 // it all, paginated — several seconds). Instead fetch only the rows this route
@@ -976,6 +999,8 @@ async function initCatalog() {
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
   else { applyProductPersistence(); render(); }
+  // Fold dialect synonyms into on-site search once the catalog is in.
+  loadSynonymIndex().then(() => { if (productSynonymIndex.size) render(); });
 }
 
 // Load editable site content (subscription plan, etc.) from the public
@@ -2465,7 +2490,8 @@ function getMatchingProducts(query, limit = 60) {
   const out = [];
   for (const product of products) {
     if (product.available === false) continue;
-    const hay = normalizeAr(`${product.name} ${product.category} ${getStore(product.storeId)?.name || ""}`);
+    const syn = productSynonymIndex.get(product.id);   // already-normalized dialect alt-names
+    const hay = normalizeAr(`${product.name} ${product.category} ${getStore(product.storeId)?.name || ""}`) + (syn ? " " + syn : "");
     if (terms.every(t => hay.includes(t))) {
       out.push(product);
       if (out.length >= limit) break;
