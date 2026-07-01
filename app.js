@@ -5656,6 +5656,78 @@ function setupHeroSlider() {
   arm();
 }
 
+// HERO V2 search — "typing" placeholder that cycles through example product &
+// store names (the موشن in the search box). Same idempotent contract as
+// setupHeroSlider: render() clears state._heroPh first so timers never stack,
+// and state._heroPhIdx persists the rotation across data-refresh re-renders.
+// Pauses (shows the plain hint) whenever the user is focusing or has typed, so
+// it never fights real input. Uses recursive setTimeout for per-phase speeds.
+const HERO_SEARCH_HINTS = [
+  "شاورما",
+  "حليب نيدو",
+  "ماركت صفا الشام",
+  "ملحمة الهلال",
+  "بيتزا مارغريتا",
+  "برياني دجاج",
+  "كريب نوتيلا",
+  "مندي لحم",
+  "كنافة نابلسية",
+  "قهوة تركية",
+  "وافل بلجيكي",
+  "بديل تريتس"
+];
+function setupHeroSearchTyper() {
+  const input = document.getElementById("hero-search");
+  if (!input) return;
+  const DEFAULT_PH = "ابحث عن منتج أو متجر...";
+  const PREFIX = "ابحث عن ";
+  // Respect reduced-motion: keep the static hint, animate nothing.
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    input.placeholder = DEFAULT_PH;
+    return;
+  }
+  let hintIdx = Number(state._heroPhIdx) || 0;
+  let charIdx = 0;
+  let phase = "type"; // type → hold → erase → gap → (next hint)
+  let holdTicks = 0;
+  let caretOn = true;
+  // The user owns the box the moment they focus it or type anything.
+  const busy = () => document.activeElement === input || (input.value || "").length > 0;
+  // Trailing caret cell is always 1 char wide (| or space) so the blink can't
+  // nudge the Arabic text sideways. In the RTL input the caret sits at the far
+  // left, i.e. exactly where you'd be typing next.
+  const paint = txt => { input.placeholder = txt + (caretOn ? "|" : " "); };
+  const step = () => {
+    if (busy()) { input.placeholder = DEFAULT_PH; state._heroPh = setTimeout(step, 600); return; }
+    const word = HERO_SEARCH_HINTS[hintIdx % HERO_SEARCH_HINTS.length];
+    if (phase === "type") {
+      charIdx++;
+      caretOn = true;
+      paint(PREFIX + word.slice(0, charIdx));
+      if (charIdx >= word.length) { phase = "hold"; holdTicks = 0; state._heroPh = setTimeout(step, 520); return; }
+      state._heroPh = setTimeout(step, word[charIdx - 1] === " " ? 200 : 85);
+    } else if (phase === "hold") {
+      caretOn = !caretOn; // blink in place while the full word rests
+      paint(PREFIX + word);
+      if (++holdTicks >= 5) { phase = "erase"; caretOn = true; state._heroPh = setTimeout(step, 320); return; }
+      state._heroPh = setTimeout(step, 450);
+    } else if (phase === "erase") {
+      charIdx--;
+      caretOn = true;
+      paint(PREFIX + word.slice(0, Math.max(0, charIdx)));
+      if (charIdx <= 0) { phase = "gap"; state._heroPh = setTimeout(step, 240); return; }
+      state._heroPh = setTimeout(step, 42);
+    } else {
+      hintIdx = (hintIdx + 1) % HERO_SEARCH_HINTS.length;
+      state._heroPhIdx = hintIdx;
+      charIdx = 0;
+      phase = "type";
+      state._heroPh = setTimeout(step, 60);
+    }
+  };
+  step();
+}
+
 function render() {
   const { route } = parseRoute();
   let { id } = parseRoute();
@@ -5664,6 +5736,7 @@ function render() {
   // replaced) — prevents stacked setInterval timers on every re-render. Re-armed below
   // by setupHeroSlider() when the home hero is present.
   if (state._heroTimer) { clearInterval(state._heroTimer); state._heroTimer = null; }
+  if (state._heroPh) { clearTimeout(state._heroPh); state._heroPh = null; }
   // Canonicalize a numeric /store/<id> deep-link to its clean slug URL (address bar
   // only, no reload) so a shared/bookmarked /store/50 shows /store/safa-alsham-market.
   // Realigning `id` to the slug keeps the nav key stable so the post-load data-refresh
@@ -5698,7 +5771,7 @@ function render() {
   hydrateIcons(app);
   updateCartBadges();
   // Home/join render the V2 hero with its rotating headline — arm its auto-advance slider.
-  if (route === "home" || route === "join") setupHeroSlider();
+  if (route === "home" || route === "join") { setupHeroSlider(); setupHeroSearchTyper(); }
   // Only reset scroll on actual navigation (route/id change). Data-refresh
   // re-renders (catalog load, site settings, polling) must preserve the user's
   // scroll position — otherwise the page snaps to top a few seconds after load
