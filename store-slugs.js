@@ -73,7 +73,8 @@ const STORE_SLUGS = {
   61: "bludan-kayasehir-restaurant",
   64: "saj-falafel-restaurant",
   68: "albaraa-kunafesi-sweets",
-  72: "hadramout-yemen-restaurant"
+  72: "hadramout-yemen-restaurant",
+  71: "meat-moot-ortakoy-restaurant"
 };
 
 // Reverse: slug -> id.
