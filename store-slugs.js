@@ -78,7 +78,8 @@ const STORE_SLUGS = {
   69: "baraka-restaurant",
   73: "sham-grill-restaurant",
   77: "hawa-mahal-restaurant",
-  70: "mandi-alyemen-restaurant"
+  70: "mandi-alyemen-restaurant",
+  66: "filistin-kunefesi-kayasehir"
 };
 
 // Reverse: slug -> id.
