@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore);
 
 const products = [];
 
@@ -86,6 +86,7 @@ products.push(...hawamahallProducts);
 products.push(...mandialyemenProducts);
 products.push(...filistinkunefesiProducts);
 products.push(...wingiProducts);
+products.push(...albarakaProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -100,7 +101,7 @@ function isPlaceholderImage(img) {
 // items). For these stores, imageless products render as clean no-image cards instead of being
 // hidden. Every other store keeps the default "real photo only" storefront rule. Per-store opt-in
 // so this never affects stores (e.g. صفا الشام) whose owner wants photo-only storefronts.
-const ALLOW_NO_IMAGE_STORES = new Set([58, 70]); // برياني بالاس (58) + مطعم مندي اليمن (70): a few menu items reuse another dish's photo, so they show as clean no-image cards instead of duplicating a picture. Every other store stays photo-only.
+const ALLOW_NO_IMAGE_STORES = new Set([58, 70, 74]); // برياني بالاس (58) + مطعم مندي اليمن (70) + مطعم البركة - باغجلار (74): some menu items lack a real dish photo (the merchant uploaded a placeholder/reused image), so they show as clean no-image cards instead of being hidden or duplicating a picture. Every other store stays photo-only.
 function storeAllowsNoImage(storeId) { return ALLOW_NO_IMAGE_STORES.has(Number(storeId)); }
 // Products the admin explicitly hid from the storefront (ids loaded from site_settings.hiddenProducts).
 // The storefront shows a product only if it has a real image, is in stock, and isn't force-hidden;
@@ -197,7 +198,8 @@ const initialDeliverySettings = {
   ...hawamahallDeliverySettings,
   ...mandialyemenDeliverySettings,
   ...filistinkunefesiDeliverySettings,
-  ...wingiDeliverySettings
+  ...wingiDeliverySettings,
+  ...albarakaDeliverySettings
 };
 
 function loadCustomerAddresses() {
