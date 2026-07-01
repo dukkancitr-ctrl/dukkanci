@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore);
 
 const products = [];
 
@@ -71,6 +71,7 @@ products.push(...mandishebamProducts);
 products.push(...sarujaProducts);
 products.push(...pasapizzeriaProducts);
 products.push(...badeelProducts);
+products.push(...biryaniProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -85,7 +86,7 @@ function isPlaceholderImage(img) {
 // items). For these stores, imageless products render as clean no-image cards instead of being
 // hidden. Every other store keeps the default "real photo only" storefront rule. Per-store opt-in
 // so this never affects stores (e.g. صفا الشام) whose owner wants photo-only storefronts.
-const ALLOW_NO_IMAGE_STORES = new Set([]); // (none) — image-less products are hidden by default; owner adds a photo in store management to reveal each product + its category
+const ALLOW_NO_IMAGE_STORES = new Set([58]); // برياني بالاس (58): 10/74 menu items reuse another dish's photo, so they show as clean no-image cards instead of duplicating a picture. Every other store stays photo-only.
 function storeAllowsNoImage(storeId) { return ALLOW_NO_IMAGE_STORES.has(Number(storeId)); }
 // Products the admin explicitly hid from the storefront (ids loaded from site_settings.hiddenProducts).
 // The storefront shows a product only if it has a real image, is in stock, and isn't force-hidden;
@@ -167,7 +168,8 @@ const initialDeliverySettings = {
   ...mandishebamDeliverySettings,
   ...sarujaDeliverySettings,
   ...pasapizzeriaDeliverySettings,
-  ...badeelDeliverySettings
+  ...badeelDeliverySettings,
+  ...biryaniDeliverySettings
 };
 
 function loadCustomerAddresses() {
