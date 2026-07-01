@@ -2888,21 +2888,55 @@ function renderCustomerComplaints() {
   `;
 }
 
+// ---- Merchant dashboard sections + feature-status layer (spec §2 / §3) ------
+// Single source of truth for the merchant sidebar. Each entry is:
+//   [key, iconName, label, status, description]
+// status ∈ active | beta | planned | requires_setup | disabled. The sidebar shows
+// an honest badge for anything that is not "active" (spec §24 «لا تكذب على التاجر»),
+// and not-yet-built sections render merchantComingSoon() instead of a broken tab.
+// Client-only for now (same for every store); a per-store merchant_feature_flags
+// table can override merchantFeatureStatus() later without touching any caller.
+// NOTE: keys overview/orders/products/offers/store/analytics/integrations/
+// subscription are the EXISTING live tabs (kept verbatim so all current logic —
+// analytics loader, deep-links, order watch — keeps working); only labels changed.
+const MERCHANT_SECTIONS = [
+  ["overview", "chart", "نظرة عامة", "active", ""],
+  ["orders", "receipt", "الطلبات", "active", ""],
+  ["products", "box", "المنتجات والمنيو", "active", ""],
+  ["images", "stars", "الصور والتحسين", "planned", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
+  ["search", "search", "البحث والمرادفات", "planned", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
+  ["customers", "users", "العملاء", "planned", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
+  ["offers", "megaphone", "كودات الخصم", "beta", "أنشئ عروضاً وكودات خصم لعملائك. النسخة الحالية تدعم عروض السعر؛ وكودات الخصم الكاملة (نسبة/مبلغ/توصيل مجاني، حد استخدام، تاريخ انتهاء، وقياس الأداء) قيد الإضافة."],
+  ["campaigns", "megaphone", "الحملات التسويقية", "requires_setup", "أرسل عروضك لعملائك عبر قوالب واتساب المعتمدة ووفق سياسات ميتا (Opt-in / Opt-out). تتطلب هذه الميزة تفعيلاً وربطاً من إدارة دكانجي قبل التشغيل حفاظاً على حسابك."],
+  ["catalog", "box", "كتالوجات ميتا", "planned", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
+  ["analytics", "chart", "التقارير والتحليلات", "active", ""],
+  ["store", "store", "إعدادات المتجر", "active", ""],
+  ["audit", "shield", "سجل التعديلات", "planned", "سجل واضح لكل تعديل: تغيير سعر، إضافة أو حذف منتج، إخفاء منتج، تغيير حالة طلب، وتعديل بيانات المتجر — لتعرف من فعل ماذا ومتى."],
+  ["support", "phone", "الدعم الفني", "planned", "تواصل مع فريق دكانجي مباشرة من لوحتك: أسئلة شائعة، فتح تذكرة دعم، ومحادثة عبر واتساب."],
+  ["share", "share", "رابط المتجر", "active", ""],
+  ["integrations", "settings", "التكاملات", "active", ""],
+  ["subscription", "wallet", "الاشتراك", "active", ""]
+];
+function merchantSection(key) { return MERCHANT_SECTIONS.find(s => s[0] === key); }
+function merchantFeatureStatus(key) { const s = merchantSection(key); return (s && s[3]) || "active"; }
+// [pillClass, label] per non-active status. active → no badge.
+const FEATURE_BADGE = {
+  beta: ["blue", "تجريبي"],
+  planned: ["amber", "قيد التطوير"],
+  requires_setup: ["gray", "يتطلب ربط"],
+  disabled: ["gray", "غير متاحة"]
+};
+function featureBadge(key) {
+  const b = FEATURE_BADGE[merchantFeatureStatus(key)];
+  return b ? `<b class="feature-badge ${b[0]}">${b[1]}</b>` : "";
+}
+
 function dashboardSidebar(type, active) {
   const merchantStore = type === "merchant" ? getMerchantStore() : null;
   const merchantOrderCount = merchantStore
     ? state.orders.filter(order => order.storeId === merchantStore.id).length
     : 0;
-  const merchantItems = [
-    ["overview", "chart", "نظرة عامة"],
-    ["orders", "receipt", "الطلبات"],
-    ["products", "box", "المنتجات"],
-    ["offers", "megaphone", "العروض"],
-    ["store", "store", "بيانات المتجر"],
-    ["analytics", "chart", "تحليلات المتجر"],
-    ["integrations", "settings", "التكاملات"],
-    ["subscription", "wallet", "الاشتراك"]
-  ];
+  const merchantItems = MERCHANT_SECTIONS; // [key, icon, label, status, desc] — .map below ignores extras
   const adminItems = [
     ["overview", "chart", "نظرة عامة"],
     ["stores", "store", "المتاجر"],
@@ -2924,7 +2958,7 @@ function dashboardSidebar(type, active) {
   return `
     <aside class="dashboard-sidebar">
       <div class="dashboard-brand">${brandLogo("brand-on-dark")}<span>${type === "merchant" ? "لوحة المتجر" : "لوحة الإدارة"}</span></div>
-      <nav>${items.map(([key, iconName, label]) => { const waUnread = (state.adminThreads || []).reduce((s, t) => s + (t.unread || 0), 0); return `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}${key === "messages" && waUnread ? `<b class="nav-badge">${waUnread}</b>` : ""}</button>`; }).join("")}</nav>
+      <nav>${items.map(([key, iconName, label]) => { const waUnread = (state.adminThreads || []).reduce((s, t) => s + (t.unread || 0), 0); return `<button class="${active === key ? "active" : ""}" data-action="${type}-tab" data-tab="${key}">${icon(iconName)}<span>${label}</span>${key === "orders" ? `<b class="nav-badge">${type === "merchant" ? merchantOrderCount : state.orders.length}</b>` : ""}${key === "messages" && waUnread ? `<b class="nav-badge">${waUnread}</b>` : ""}${type === "merchant" ? featureBadge(key) : ""}</button>`; }).join("")}</nav>
       <div class="dashboard-user">
         <span class="avatar-mini dashboard-photo"><img src="${merchantStore ? merchantStore.logoImage || merchantStore.image : "/assets/dukkanci-mark.png?v=86"}" alt=""></span>
         <span><strong>${merchantStore ? merchantStore.name : "إدارة دكانجي"}</strong><small>${merchantStore ? `الخطة ${merchantStore.subscription || "الاحترافية"}` : "مدير النظام"}</small></span>
@@ -2936,6 +2970,58 @@ function dashboardSidebar(type, active) {
 
 function statCard(iconName, label, value, trend, tone) {
   return `<article class="stat-card ${tone}"><span class="stat-icon ${tone}">${icon(iconName)}</span><div><small>${label}</small><strong>${value}</strong><span class="trend">${trend}</span></div></article>`;
+}
+
+// Store link + QR + share (spec §15 «رابط المتجر والمشاركة»): one clean link the
+// merchant copies, QR-prints, or pushes to WhatsApp/Facebook/native share. The
+// link is the store's public slug URL (storeParam) on the current origin.
+function merchantShare() {
+  const store = getMerchantStore();
+  const url = location.origin + "/store/" + storeParam(store);
+  const msg = `تسوّق من ${store.name} على دكانجي واطلب أونلاين 👇\n${url}`;
+  const waShare = "https://wa.me/?text=" + encodeURIComponent(msg);
+  const fbShare = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(url);
+  const qrSrc = "https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=" + encodeURIComponent(url);
+  return `
+    <div class="share-grid">
+      <section class="dashboard-card share-link-card">
+        <div class="card-heading"><div><h3>${icon("share")} رابط متجرك</h3><p>شاركه مع عملائك في كل مكان — يفتح صفحة متجرك مباشرة.</p></div></div>
+        <div class="store-link-row">
+          <input id="store-link-input" readonly dir="ltr" value="${escAttr(url)}" onfocus="this.select()">
+          <button type="button" class="primary-button compact" data-action="copy-store-link" data-link="${escAttr(url)}">${icon("check")} نسخ الرابط</button>
+        </div>
+        <div class="share-buttons">
+          <a class="share-btn wa" href="${escAttr(waShare)}" target="_blank" rel="noopener">${icon("whatsapp")} واتساب</a>
+          <a class="share-btn fb" href="${escAttr(fbShare)}" target="_blank" rel="noopener">${icon("facebook")} فيسبوك</a>
+          <button type="button" class="share-btn native" data-action="share-store-link" data-link="${escAttr(url)}" data-text="${escAttr(msg)}">${icon("share")} مشاركة…</button>
+        </div>
+        <label class="share-msg"><span>رسالة جاهزة للإرسال لعملائك</span><textarea rows="3" readonly onfocus="this.select()">${escAttr(msg)}</textarea></label>
+      </section>
+      <section class="dashboard-card share-qr-card">
+        <div class="card-heading"><div><h3>${icon("box")} رمز QR</h3><p>اطبعه على واجهة متجرك أو الفواتير ليمسحه العملاء.</p></div></div>
+        <div class="qr-holder"><img src="${escAttr(qrSrc)}" alt="رمز QR لمتجر ${escAttr(store.name)}" width="220" height="220" loading="lazy"></div>
+        <button type="button" class="secondary-button compact" data-action="download-store-qr" data-qr="${escAttr(qrSrc)}">${icon("download")} تحميل الرمز</button>
+      </section>
+    </div>`;
+}
+
+// Honest placeholder for sections that aren't built yet (spec §24 «لا تكذب على
+// التاجر»): show WHAT the section will do + its status badge, never fake data.
+function merchantComingSoon(key) {
+  const s = merchantSection(key) || [key, "box", "قسم", "planned", ""];
+  const badge = FEATURE_BADGE[s[3]] || FEATURE_BADGE.planned;
+  const setup = s[3] === "requires_setup";
+  return `
+    <div class="empty-dashboard coming-soon">
+      <span class="empty-dashboard__icon">${icon(s[1])}</span>
+      <span class="status-pill ${badge[0]}">${badge[1]}</span>
+      <h3>${esc(s[2])}</h3>
+      <p>${esc(s[4] || "هذه الميزة قيد التطوير وستكون متاحة قريباً في لوحة متجرك.")}</p>
+      ${setup
+        ? `<div class="review-note">${icon("shield")} <span><strong>تتطلب هذه الميزة ربطاً وتفعيلاً من إدارة دكانجي.</strong><small>سنفعّلها لمتجرك بعد ضبط القوالب والموافقات اللازمة حفاظاً على حسابك.</small></span></div>`
+        : `<p class="coming-soon-hint">${icon("clock")} نعمل على إضافتها ضمن خطة تطوير لوحة المتجر — تابع التحديثات.</p>`}
+      <button class="secondary-button compact" data-action="merchant-tab" data-tab="overview">${icon("arrowLeft")} العودة للوحة</button>
+    </div>`;
 }
 
 function merchantOverview() {
@@ -2956,6 +3042,21 @@ function merchantOverview() {
   const subDaysLeft = subEndIso ? Math.max(0, Math.ceil((new Date(subEndIso).getTime() - Date.now()) / 86400000)) : null;
   const subPct = subDaysLeft != null ? Math.max(4, Math.min(100, Math.round((subDaysLeft / 30) * 100))) : 0;
   const subEndText = subEndIso ? `حتى ${formatSubDate(subEndIso)}` : (subActive ? "اشتراك فعّال" : "بحاجة للتجديد");
+  // Real last-7-days order counts (spec §24 «لا أرقام وهمية»): bucket this store's
+  // own orders by calendar day, oldest→newest, ending today. No hardcoded values.
+  const DAY_MS = 86400000;
+  const weekStart = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() - 6 * DAY_MS; })();
+  const week = Array.from({ length: 7 }, (_, i) => ({ t: weekStart + i * DAY_MS, count: 0 }));
+  merchantOrders.forEach(order => {
+    const ts = Date.parse(order.createdAt || "") || 0;
+    if (!ts) return;
+    const d = new Date(ts); d.setHours(0, 0, 0, 0);
+    const idx = Math.round((d.getTime() - weekStart) / DAY_MS);
+    if (idx >= 0 && idx < 7) week[idx].count++;
+  });
+  const weekTotal = week.reduce((s, x) => s + x.count, 0);
+  const weekTop = Math.max(4, ...week.map(x => x.count));
+  const weekDayFmt = new Intl.DateTimeFormat("ar-EG", { weekday: "short" });
   return `
     <div class="stats-grid">
       ${statCard("receipt", "طلبات المتجر", merchantOrders.length.toLocaleString("ar"), openOrders ? `${openOrders.toLocaleString("ar")} طلب يحتاج متابعتك` : "لا طلبات قيد التنفيذ", "green")}
@@ -2966,11 +3067,11 @@ function merchantOverview() {
     <div class="dashboard-grid">
       <section class="dashboard-card chart-card">
         <div class="card-heading"><div><h3>أداء الطلبات</h3><p>آخر 7 أيام</p></div></div>
-        ${merchantOrders.length ? `
+        ${weekTotal ? `
         <div class="chart-wrap">
-          <div class="chart-y"><span>20</span><span>15</span><span>10</span><span>5</span><span>0</span></div>
-          <div class="bar-chart">${[11, 16, 13, 19, 15, 20, 17].map((height, index) => `<div><span style="height:${height * 7}px"></span><small>${["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"][index]}</small></div>`).join("")}</div>
-        </div>` : `<div class="empty-managed">${icon("chart")}<p>لا توجد بيانات كافية بعد. سيظهر الرسم البياني بمجرد استقبال أول الطلبات.</p></div>`}
+          <div class="chart-y">${[weekTop, Math.round(weekTop * 0.75), Math.round(weekTop * 0.5), Math.round(weekTop * 0.25), 0].map(v => `<span>${v.toLocaleString("ar")}</span>`).join("")}</div>
+          <div class="bar-chart">${week.map(x => `<div title="${escAttr(weekDayFmt.format(new Date(x.t)) + " · " + x.count.toLocaleString("ar") + " طلب")}"><span style="height:${Math.round((x.count / weekTop) * 150)}px"></span><small>${weekDayFmt.format(new Date(x.t))}</small></div>`).join("")}</div>
+        </div>` : `<div class="empty-managed">${icon("chart")}<p>${merchantOrders.length ? "لا توجد طلبات في آخر 7 أيام — سيظهر الرسم فور استقبال طلب جديد." : "لا توجد بيانات كافية بعد. سيظهر الرسم البياني بمجرد استقبال أول الطلبات."}</p></div>`}
       </section>
       <section class="dashboard-card subscription-card">
         <div class="card-heading"><div><h3>حالة الاشتراك</h3><p>الخطة الحالية</p></div><span class="status-pill ${subMeta.pill}">${subMeta.text}</span></div>
@@ -3516,7 +3617,10 @@ function renderMerchant(id) {
     loadOrdersFromSupabase(state.merchantStoreId).then(ok => { if (ok) render(); });
   }
   const store = getMerchantStore();
-  const content = {
+  // Live tabs → their real renderers; everything else (planned/requires_setup
+  // sections) falls through to an honest merchantComingSoon() — so a new sidebar
+  // key can never throw here (spec §3/§24).
+  const content = ({
     overview: merchantOverview,
     orders: merchantOrders,
     products: merchantProducts,
@@ -3524,10 +3628,12 @@ function renderMerchant(id) {
     store: merchantStore,
     analytics: merchantAnalytics,
     integrations: merchantIntegrations,
-    subscription: merchantSubscription
-  }[state.merchantTab]();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء فرعك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["إدارة المنتجات", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["العروض والخصومات", "اجذب عملاء أكثر بعروض مميزة"], store: ["بيانات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["تحليلات المتجر", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"] };
-  const [title, subtitle] = titles[state.merchantTab];
+    subscription: merchantSubscription,
+    share: merchantShare
+  }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"] };
+  const _sec = merchantSection(state.merchantTab);
+  const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
   startMerchantOrderWatch();
   return `
@@ -7323,6 +7429,28 @@ document.addEventListener("click", event => {
     saveState(); render(); showToast("تم حذف الشكوى", "success");
   }
   if (action === "merchant-tab") { state.merchantTab = target.dataset.tab; render(); }
+  if (action === "copy-store-link") {
+    const link = target.dataset.link || "";
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
+    else showToast(link, "");
+  }
+  if (action === "share-store-link") {
+    const link = target.dataset.link || "", text = target.dataset.text || "";
+    if (navigator.share) navigator.share({ title: "رابط متجري على دكانجي", text, url: link }).catch(() => {});
+    else if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text || link).then(() => showToast("تم نسخ الرابط", "success")).catch(() => showToast(link, ""));
+    else showToast(link, "");
+  }
+  if (action === "download-store-qr") {
+    const src = target.dataset.qr || "";
+    if (!src) return;
+    fetch(src).then(r => r.blob()).then(blob => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "dukkanci-store-qr.png";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }).catch(() => window.open(src, "_blank"));
+  }
   if (action === "admin-tab") {
     state.adminTab = target.dataset.tab;
     state.adminContentSection = null;
