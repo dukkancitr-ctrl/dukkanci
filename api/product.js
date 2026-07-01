@@ -56,6 +56,16 @@ module.exports = async (req, res) => {
     return res.status(404).send(html);
   }
 
+  // Dialect alternate-names (product_synonyms) — surfaced to Google so a search in
+  // any Arabic dialect resolves to this product. Optional; empty until generated.
+  let synonyms = [];
+  try {
+    const sy = await sbGet(`product_synonyms?product_id=eq.${product.id}&select=synonyms&limit=1`);
+    if (sy && sy[0] && Array.isArray(sy[0].synonyms)) {
+      synonyms = sy[0].synonyms.map(s => String(s == null ? "" : s).trim()).filter(Boolean).slice(0, 12);
+    }
+  } catch (e) { /* synonyms are optional */ }
+
   const storeName = store && store.name ? store.name : "دكانجي";
   const storeSlug = STORE_SLUGS[product.store_id] || product.store_id;
   const title = `${product.name} — ${storeName} | دكانجي`;
@@ -83,14 +93,17 @@ module.exports = async (req, res) => {
     }
   };
   if (!product.price_on_request && priceVal > 0) jsonLd.offers.price = priceVal.toFixed(2);
+  if (synonyms.length) jsonLd.alternateName = synonyms;
 
   const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical);
   const priceLine = product.price_on_request || !priceVal ? "السعر عند الطلب" : `${priceVal} ل.ت`;
+  const synLine = synonyms.length ? `<p class="ssr-synonyms">يُعرف أيضاً باسم: ${esc(synonyms.join("، "))}</p>` : "";
 
   // Visible SSR content inside the SPA mount point (Google reads this in source).
   const body = `<article class="ssr-product"><h1>${esc(product.name)}</h1>`
     + `<p>${esc(desc)}</p>`
     + `<p><strong>${esc(priceLine)}</strong></p>`
+    + synLine
     + `<p><a href="/store/${esc(storeSlug)}">${esc(storeName)}</a></p></article>`;
 
   html = html
