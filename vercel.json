@@ -31,6 +31,7 @@
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/gizlilik", "destination": "/privacy.html" },
     { "source": "/merchants", "destination": "/merchants.html" },
+    { "source": "/features", "destination": "/features.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
