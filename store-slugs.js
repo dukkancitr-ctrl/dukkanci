@@ -70,7 +70,8 @@ const STORE_SLUGS = {
   59: "bhaleeb-sweets",
   60: "yumy-yumy-restaurant",
   62: "bludan-fatih-restaurant",
-  61: "bludan-kayasehir-restaurant"
+  61: "bludan-kayasehir-restaurant",
+  66: "filistin-kunefesi-kayasehir"
 };
 
 // Reverse: slug -> id.
