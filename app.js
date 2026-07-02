@@ -857,7 +857,7 @@ function mapDbOrder(r) {
   return {
     id: r.id, storeId: r.store_id, customer: r.customer, total: Number(r.total) || 0,
     status: r.status, time: r.time, items: r.items,
-    customerPhone: dd.phone || "", fulfillment: dd.fulfillment || (quote ? "delivery" : "pickup"),
+    customerPhone: dd.phone || r.customer_phone || "", fulfillment: dd.fulfillment || (quote ? "delivery" : "pickup"),
     address: dd.address || "", addressDetails: dd.addressDetails || "",
     lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [], notes: dd.notes || "",
     substitution: dd.substitution || "", payment: dd.payment || "",
@@ -4422,7 +4422,11 @@ function customerKey(o) {
   const phone = customerPhoneDigits(o);
   if (phone) return phone;
   const name = (o.customer || "").trim();
-  return name ? "n:" + normalizeAr(name) : "";
+  if (name) return "n:" + normalizeAr(name);
+  // Neither phone nor name: still surface the order as its own customer row (keyed
+  // by order id) instead of silently dropping it, so every order visible in
+  // "الطلبات" also appears in "إدارة العملاء". Only a truly id-less row is skipped.
+  return o.id ? "o:" + String(o.id) : "";
 }
 
 // Aggregate the order set into a customer directory. Optional storeId scopes it
@@ -4457,8 +4461,8 @@ function adminCustomers() {
   const customers = aggregateCustomers();
   if (!customers.length) {
     return `
-      <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
-      <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد. ستظهر بيانات كل عميل (الاسم، الهاتف، طلباته وإنفاقه) تلقائياً بمجرد ورود أول طلب.</p></div></section>`;
+      <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="reload-admin-orders"${state._adminOrdersLoading ? " disabled" : ""}>${state._adminOrdersLoading ? "جارٍ التحديث…" : "تحديث"}</button></div></div>
+      <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>${state._adminOrdersLoading ? "جارٍ تحميل بيانات العملاء…" : "لا يوجد عملاء بعد. ستظهر بيانات كل عميل (الاسم، الهاتف، طلباته وإنفاقه) تلقائياً بمجرد ورود أول طلب. إن كنت تعلم بوجود طلبات، اضغط \"تحديث\"."}</p></div></section>`;
   }
   const totalOrders = customers.reduce((s, c) => s + c.count, 0);
   const totalRevenue = customers.reduce((s, c) => s + c.total, 0);
@@ -4470,7 +4474,7 @@ function adminCustomers() {
       ${statCard("receipt", "إجمالي الطلبات", totalOrders.toLocaleString("ar"), `بمعدل ${(totalOrders / customers.length).toLocaleString("ar", { maximumFractionDigits: 1 })} لكل عميل`, "green")}
       ${statCard("wallet", "إجمالي الإنفاق", money(totalRevenue), "على مستوى المنصة", "orange")}
     </div>
-    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير</button></div></div>
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="reload-admin-orders"${state._adminOrdersLoading ? " disabled" : ""}>${state._adminOrdersLoading ? "جارٍ التحديث…" : "تحديث"}</button><button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير</button></div></div>
     <section class="dashboard-card customers-table-card">
       <div class="table-wrap">
         <table class="admin-table">
@@ -6062,9 +6066,18 @@ function renderAdmin() {
 
   // Pull EVERY store's orders from the cloud once per session so the platform's
   // reports/totals reflect all activity (not just this browser's local orders).
-  if (!state._adminOrdersFetched) {
-    state._adminOrdersFetched = true;
-    loadOrdersFromSupabase().then(ok => { if (ok) render(); });
+  // Latch ONLY on success: a transient failure (cold serverless function, network
+  // blip, momentary 5xx) must not permanently leave the panel empty — especially
+  // "إدارة العملاء", whose whole directory is derived from these orders. The
+  // in-flight flag stops repeated renders from firing overlapping loads; a failed
+  // load just retries on the next render (or via the "تحديث" button).
+  if (!state._adminOrdersFetched && !state._adminOrdersLoading) {
+    state._adminOrdersLoading = true;
+    loadOrdersFromSupabase().then(ok => {
+      state._adminOrdersLoading = false;
+      state._adminOrdersFetched = ok;
+      if (ok) render();
+    });
   }
   const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, ai: adminAI }[state.adminTab]();
   const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
@@ -8540,6 +8553,18 @@ document.addEventListener("click", event => {
       .then(() => { state.adminContacts = null; loadContacts(); showToast("تم حذف جميع الأرقام", ""); });
   }
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
+  if (action === "reload-admin-orders") {
+    if (state._adminOrdersLoading) return;
+    state._adminOrdersLoading = true;
+    state._adminOrdersFetched = false;
+    render();
+    loadOrdersFromSupabase().then(ok => {
+      state._adminOrdersLoading = false;
+      state._adminOrdersFetched = ok;
+      render();
+      showToast(ok ? "تم تحديث بيانات العملاء" : "تعذّر تحديث البيانات — حاول مجدداً", ok ? "success" : "error");
+    });
+  }
   if (action === "copy-creds") {
     const u = target.dataset.username, p = target.dataset.password, n = target.dataset.name;
     const text = `متجر: ${n}\nاسم المستخدم: ${u}\nكلمة المرور: ${p}\nرابط الدخول: ${location.origin}/merchant`;
