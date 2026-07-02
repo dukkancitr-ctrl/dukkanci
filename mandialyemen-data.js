@@ -1,8 +1,8 @@
-// Generated for مطعم مندي اليمن (Mandi Alyemen) — Molla Gürani, Halıcılar Köşkü Sk., Fatih/İstanbul.
+// Generated for مطعم مندي اليمن (Mandi Alyemen) — Şirinevler, Mareşal Fevzi Çakmak 1. Sk. No:7/A, Bahçelievler/İstanbul.
 // Yemeni mandi restaurant. Source: mandi-alyemen.minidine.com (miniandmore/minidine v2.2.16 API),
-// native Arabic names, prices in TL. 118 products, every one with a unique real photo.
-// Location = the owner/user-provided Plus Code «2W7R+XX Fatih» (41.01494, 28.94244) — the source's
-// own listing shows an older Şirinevler address; the provided Fatih pin is used per instruction.
+// native Arabic names, prices in TL. 114 products, 111 unique photos + 3 no-image cards.
+// Location = the restaurant's own listing from the source site (Şirinevler, 40.992496, 28.846321),
+// per the owner's instruction to use the site's address over the earlier Fatih Plus Code.
 // NOTE: mandialyemenProductCatalog is intentionally emptied in the repo (perf) — the full catalog
 // lives in Supabase and is pushed via scripts/_scrape/push-store.cjs.
 
@@ -22,16 +22,16 @@ const mandialyemenStore = {
  "time": "45 - 75 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 41.01494,
-  "lng": 28.94244
+  "lat": 40.992496,
+  "lng": 28.846321
  },
- "mapUrl": "https://www.google.com/maps?q=41.01494,28.94244",
+ "mapUrl": "https://maps.app.goo.gl/hhMQpoCS4QfmQg4m9",
  "open": true,
  "featured": true,
  "hasOffer": false,
  "offer": "",
- "description": "مطعم مندي اليمن — نكهة يمنية أصيلة في قلب الفاتح بإسطنبول. مندي ومنسف لحم التيس والدجاج، ذبائح وولائم ومناسف كاملة، أطباق بحرية، معصوب وعريكة ومأكولات يمنية متنوعة، إضافةً إلى السلطات والمقبلات والحلويات والعصائر الطازجة. يُقدَّم مع الأرز والصوص اليمني. توصيل إلى باب منزلك.",
- "address": "شارع خلجلار كوشكو، حي مُلّا كوراني، الفاتح، إسطنبول، تركيا",
+ "description": "مطعم مندي اليمن — نكهة يمنية أصيلة في شيرين إيفلر بإسطنبول. مندي ومنسف لحم التيس والدجاج، ذبائح وولائم ومناسف كاملة، أطباق بحرية، معصوب وعريكة ومأكولات يمنية متنوعة، إضافةً إلى السلطات والمقبلات والحلويات والعصائر الطازجة. يُقدَّم مع الأرز والصوص اليمني. توصيل إلى باب منزلك.",
+ "address": "شيرين إيفلر، شارع Mareşal Fevzi Çakmak 1. Sk. رقم 7/A، باهتشيلي إيفلر، إسطنبول 34188، تركيا",
  "phone": "+90 531 772 19 39",
  "whatsapp": "+90 531 772 19 39",
  "email": "mandialyaman@gmail.com",
@@ -39,7 +39,8 @@ const mandialyemenStore = {
  "sourceUrl": "https://mandi-alyemen.minidine.com/ar/categories/?branch=mandi-alyemen",
  "hours": "7:00 ص - 1:00 ص",
  "areas": [
-  "الفاتح",
+  "شيرين إيفلر",
+  "باهتشيلي إيفلر",
   "إسطنبول",
   "مناطق التوصيل حسب المسافة"
  ],
