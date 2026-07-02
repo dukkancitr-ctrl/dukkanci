@@ -15,7 +15,8 @@
     }
   },
   "crons": [
-    { "path": "/api/notify-order?action=subscription-cron", "schedule": "0 6 * * *" }
+    { "path": "/api/notify-order?action=subscription-cron", "schedule": "0 6 * * *" },
+    { "path": "/api/ai?action=syn-cron", "schedule": "*/2 * * * *" }
   ],
   "rewrites": [
     { "source": "/media/:path*", "destination": "https://tzcqnqzltrjemdnkzpzn.supabase.co/storage/v1/object/public/:path*" },

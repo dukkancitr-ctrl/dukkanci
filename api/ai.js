@@ -113,12 +113,84 @@ async function synStats() {
   return (s && typeof s === "object") ? s : { total: 0, done: 0, pending: 0, failed: 0, indexed: 0, distinct_names: 0 };
 }
 
+// Generate synonyms for up to `limit` distinct pending names, applying each result
+// to every product sharing that name. Returns { processed, failed, done, providerError }.
+// Shared by the admin button (syn-generate) and the background cron (syn-cron).
+async function runSynonymBatch(limit) {
+  const pool = (await gw.sbGet(`product_synonyms?select=name&status=eq.pending&limit=${limit * 8}`)) || [];
+  const names = [], seen = new Set();
+  for (const row of pool) {
+    const nm = String(row.name || "").trim();
+    if (!nm) continue;
+    const n = synNorm(nm);
+    if (seen.has(n)) continue;
+    seen.add(n); names.push(nm);
+    if (names.length >= limit) break;
+  }
+  if (!names.length) return { processed: 0, failed: 0, done: true };
+
+  const raw = await gw.complete("synonym_generation", {
+    system: SYN_SYSTEM,
+    messages: [{ role: "user", content: JSON.stringify(names) }],
+    maxTokens: 6000, temperature: 0.3, timeoutMs: 50000
+  });
+  if (raw == null) return { processed: 0, failed: 0, done: false, providerError: true };
+
+  const parsed = extractJson(raw);
+  const results = parsed && Array.isArray(parsed.results) ? parsed.results : (Array.isArray(parsed) ? parsed : []);
+  const byName = new Map();
+  for (const r of results) if (r && r.name != null) byName.set(synNorm(r.name), r);
+
+  let processed = 0, failed = 0;
+  for (const name of names) {
+    const nowIso = new Date().toISOString();
+    const entry = byName.get(synNorm(name));
+    const filter = `product_synonyms?name=eq.${encodeURIComponent(name)}&status=eq.pending`;
+    if (entry) {
+      const built = buildEntry(entry, name);
+      const pr = await gw.sbWrite("PATCH", filter, { synonyms: built.synonyms, dialects: built.dialects, status: "done", indexed_at: null, updated_at: nowIso }, "return=minimal");
+      if (pr.ok) processed++; else failed++;
+    } else {
+      await gw.sbWrite("PATCH", filter, { status: "failed", updated_at: nowIso }, "return=minimal");
+      failed++;
+    }
+  }
+  return { processed, failed, done: false };
+}
+
+// Cron auth: Vercel Cron sends "Authorization: Bearer <CRON_SECRET>"; also allow an admin.
+function cronOk(req) {
+  const cs = env("CRON_SECRET");
+  if (cs && req.headers && req.headers.authorization === `Bearer ${cs}`) return true;
+  return adminOk(req);
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
   let q = {};
   try { q = require("url").parse(req.url || "", true).query || {}; } catch (e) { q = req.query || {}; }
   const action = q.action || "";
+
+  // ── Background synonym generation (Vercel Cron) ────────────────────────────
+  // Drains the pending queue in bounded batches within one invocation, so the
+  // whole catalog gets synonyms without the admin keeping a tab open — and NEW
+  // products (which arrive as 'pending') are auto-covered on later runs with no
+  // re-cost for already-done rows. Cron-authed, so it runs before the admin gate.
+  if (action === "syn-cron") {
+    if (!cronOk(req)) return res.status(403).json({ error: "unauthorized" });
+    const deadline = Date.now() + 50000;   // stay within the 60s function budget
+    let processed = 0, failed = 0, batches = 0;
+    while (Date.now() < deadline && batches < 40) {
+      batches++;
+      const r = await runSynonymBatch(20);
+      if (r.providerError) return res.status(200).json({ ok: false, error: "provider", batches: batches - 1, processed, failed });
+      processed += r.processed; failed += r.failed;
+      if (r.done) break;                                   // queue empty
+      if (r.processed === 0 && r.failed === 0) break;       // safety: no progress
+    }
+    return res.status(200).json({ ok: true, batches, processed, failed, stats: await synStats() });
+  }
 
   if (!adminOk(req)) return res.status(403).json({ error: "unauthorized" });
 
@@ -335,50 +407,13 @@ module.exports = async (req, res) => {
   // ── Synonyms: generate one batch of pending names via the AI gateway ───────
   if (action === "syn-generate") {
     const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 40);
-    // Pull a pool of pending rows and dedupe to distinct names (many products
-    // share a name → generate once, apply to all).
-    const pool = (await gw.sbGet(`product_synonyms?select=name&status=eq.pending&limit=${limit * 8}`)) || [];
-    const names = [], seen = new Set();
-    for (const row of pool) {
-      const nm = String(row.name || "").trim();
-      if (!nm) continue;
-      const n = synNorm(nm);
-      if (seen.has(n)) continue;
-      seen.add(n); names.push(nm);
-      if (names.length >= limit) break;
-    }
-    if (!names.length) return res.status(200).json({ ok: true, processed: 0, failed: 0, done: true, stats: await synStats() });
-
-    const raw = await gw.complete("synonym_generation", {
-      system: SYN_SYSTEM,
-      messages: [{ role: "user", content: JSON.stringify(names) }],
-      maxTokens: 6000, temperature: 0.3, timeoutMs: 50000
-    });
-    if (raw == null) {
+    const r = await runSynonymBatch(limit);
+    if (r.providerError) {
       return res.status(200).json({ ok: false, error: "provider", done: false, note: "تعذّر الاتصال بمزوّد الذكاء الاصطناعي — تأكّد أن ميزة «توليد المترادفات» مربوطة بمزوّد ومفتاحه صالح." });
-    }
-    const parsed = extractJson(raw);
-    const results = parsed && Array.isArray(parsed.results) ? parsed.results : (Array.isArray(parsed) ? parsed : []);
-    const byName = new Map();
-    for (const r of results) if (r && r.name != null) byName.set(synNorm(r.name), r);
-
-    let processed = 0, failed = 0;
-    for (const name of names) {
-      const nowIso = new Date().toISOString();
-      const entry = byName.get(synNorm(name));
-      const filter = `product_synonyms?name=eq.${encodeURIComponent(name)}&status=eq.pending`;
-      if (entry) {
-        const built = buildEntry(entry, name);
-        const pr = await gw.sbWrite("PATCH", filter, { synonyms: built.synonyms, dialects: built.dialects, status: "done", indexed_at: null, updated_at: nowIso }, "return=minimal");
-        if (pr.ok) processed++; else failed++;
-      } else {
-        await gw.sbWrite("PATCH", filter, { status: "failed", updated_at: nowIso }, "return=minimal");
-        failed++;
-      }
     }
     const stats = await synStats();
     const remainingPending = Math.max(0, Number(stats.pending || 0) - Number(stats.failed || 0));
-    return res.status(200).json({ ok: true, processed, failed, done: remainingPending === 0, stats });
+    return res.status(200).json({ ok: true, processed: r.processed, failed: r.failed, done: r.done || remainingPending === 0, stats });
   }
 
   // ── Synonyms: reset failed rows back to pending (for a retry pass) ──────────
