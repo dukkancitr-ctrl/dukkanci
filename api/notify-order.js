@@ -345,6 +345,27 @@ async function sbWrite(method, path, body, prefer) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
+// ── Audit log + merchant notifications (spec §17/§19) ───────────────────────
+// Both are BEST-EFFORT: wrapped so a logging failure can never break the main
+// write (same contract as the price-history hook). Service-role-only tables.
+async function logAudit(storeId, actor, action, entityType, entityId, oldValue, newValue) {
+  try {
+    await sbWrite("POST", "audit_logs", {
+      store_id: Number(storeId) || null, actor: actor || null, action,
+      entity_type: entityType || null, entity_id: entityId != null ? String(entityId) : null,
+      old_value: oldValue ?? null, new_value: newValue ?? null
+    }, "return=minimal");
+  } catch (e) { /* audit is best-effort */ }
+}
+async function notifyMerchant(storeId, type, title, message, entityType, entityId) {
+  try {
+    await sbWrite("POST", "merchant_notifications", {
+      store_id: Number(storeId) || null, type, title: title || null, message: message || null,
+      entity_type: entityType || null, entity_id: entityId != null ? String(entityId) : null
+    }, "return=minimal");
+  } catch (e) { /* notifications are best-effort */ }
+}
+
 // ───────────────────────── GoTrue admin: phone-login session ───────────────
 // WhatsApp OTP login is delivered through OUR Meta number (send-order-otp), NOT
 // Supabase's phone provider — so the native signInWithOtp path is dead. Instead,
@@ -1088,6 +1109,27 @@ module.exports = async (req, res) => {
       return res.status(200).json({ enhancedProductIds: ids });
     }
 
+    // Merchant/Admin: this store's audit trail (spec §17 «سجل التعديلات»).
+    if (q.action === "audit-logs") {
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const rows = await sbGet(`audit_logs?store_id=eq.${storeId}&select=actor,action,entity_type,entity_id,old_value,new_value,created_at&order=created_at.desc&limit=100`) || [];
+      return res.status(200).json({ logs: rows });
+    }
+
+    // Merchant/Admin: this store's notification feed + unread count (spec §19).
+    if (q.action === "merchant-notifications") {
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const rows = await sbGet(`merchant_notifications?store_id=eq.${storeId}&select=id,type,title,message,entity_type,entity_id,read_at,created_at&order=created_at.desc&limit=50`) || [];
+      const unread = rows.filter(r => !r.read_at).length;
+      return res.status(200).json({ notifications: rows, unread });
+    }
+
     // Admin: list every store with its login credentials (phone=username +
     // generated password). Lazily generates+persists a password for any store
     // that has a phone but no credential row yet. Passwords live in
@@ -1463,11 +1505,13 @@ module.exports = async (req, res) => {
         }
       });
     }
-    // Read the current price BEFORE the upsert so we can log any change (spec §7).
-    let prevPrice = null;
+    // Read the current row BEFORE the upsert: price for the price-history log
+    // (spec §7) and name/available for the audit entry (spec §17).
+    let prevPrice = null, prevRow = null;
     try {
-      const existing = await sbGet(`products?id=eq.${Number(product.id)}&select=price&limit=1`);
-      if (existing && existing[0] && existing[0].price != null) prevPrice = Number(existing[0].price);
+      const existing = await sbGet(`products?id=eq.${Number(product.id)}&select=price,name,available&limit=1`);
+      prevRow = (existing && existing[0]) || null;
+      if (prevRow && prevRow.price != null) prevPrice = Number(prevRow.price);
     } catch (e) { /* best-effort */ }
     const r = await sbWrite("POST", "products?on_conflict=id", product, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) {
@@ -1485,6 +1529,11 @@ module.exports = async (req, res) => {
         }, "return=minimal");
       }
     } catch (e) { /* logging is best-effort */ }
+    // Audit entry (spec §17): who saved what — add vs update, with a compact old/new snapshot.
+    await logAudit(product.store_id, isAdmin ? "admin" : "merchant",
+      prevRow ? "product_update" : "product_add", "product", product.id,
+      prevRow ? { name: prevRow.name, price: prevRow.price, available: prevRow.available } : null,
+      { name: product.name, price: product.price, available: product.available });
     return res.status(200).json({ ok: true });
   }
 
@@ -1498,8 +1547,12 @@ module.exports = async (req, res) => {
     let authed = isAdmin;
     if (!authed && storeId) authed = merchantOk(req, storeId);
     if (!authed) return res.status(403).json({ error: "unauthorized" });
+    // Capture the name before it's gone, for a readable audit entry (best-effort).
+    let delName = null;
+    try { const ex = await sbGet(`products?id=eq.${productId}&select=name&limit=1`); delName = ex && ex[0] && ex[0].name; } catch (e) {}
     const r = await sbWrite("DELETE", `products?id=eq.${productId}`, undefined, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "delete failed", detail: r.rows });
+    await logAudit(storeId, isAdmin ? "admin" : "merchant", "product_delete", "product", productId, delName ? { name: delName } : null, null);
     return res.status(200).json({ ok: true });
   }
 
@@ -1528,6 +1581,8 @@ module.exports = async (req, res) => {
     } catch (e) { /* backup is best-effort */ }
     const r = await sbWrite("PATCH", `products?id=eq.${productId}`, { image }, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows });
+    await logAudit(storeId, isAdmin ? "admin" : "merchant", "image_approve", "product", productId, null, null);
+    await notifyMerchant(storeId, "image_enhanced", "تم اعتماد صورة محسّنة", "اعتُمدت نسخة محسّنة بالذكاء الاصطناعي لأحد منتجاتك — الأصل محفوظ ويمكن استرجاعه.", "product", productId);
     return res.status(200).json({ ok: true });
   }
 
@@ -1547,7 +1602,21 @@ module.exports = async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: "revert failed", detail: r.rows });
     // Mark this backup consumed so the button hides and it isn't reverted twice.
     try { await sbWrite("PATCH", `product_images?id=eq.${backup.id}`, { status: "reverted" }, "return=minimal"); } catch (e) {}
+    await logAudit(storeId, isAdmin ? "admin" : "merchant", "image_revert", "product", productId, null, null);
     return res.status(200).json({ ok: true, image: backup.original_image });
+  }
+
+  // Merchant/Admin: mark this store's notifications as read (spec §19).
+  if (pq.action === "notifications-read") {
+    const storeId = Number(body.storeId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const r = await sbWrite("PATCH", `merchant_notifications?store_id=eq.${storeId}&read_at=is.null`, { read_at: new Date().toISOString() }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });
+    return res.status(200).json({ ok: true });
   }
 
   // Merchant/Admin: update an order's status using the service-role key.
@@ -1563,10 +1632,18 @@ module.exports = async (req, res) => {
       if (storeId) authed = merchantOk(req, storeId);
     }
     if (!authed) return res.status(403).json({ error: "unauthorized" });
+    // Old status for the audit trail (best-effort read; never blocks the update).
+    let prevStatus = null, orderStoreId = Number(body.storeId) || null;
+    try {
+      const ex = await sbGet(`orders?id=eq.${encodeURIComponent(orderId)}&select=status,store_id&limit=1`);
+      if (ex && ex[0]) { prevStatus = ex[0].status || null; orderStoreId = Number(ex[0].store_id) || orderStoreId; }
+    } catch (e) {}
     const patch = { status: newStatus };
     if (body.items !== undefined) patch.items = body.items;
     const r = await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(orderId)}`, patch, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });
+    await logAudit(orderStoreId, isAdmin ? "admin" : "merchant", "order_status", "order", orderId,
+      prevStatus ? { status: prevStatus } : null, { status: newStatus });
     return res.status(200).json({ ok: true });
   }
 
@@ -1765,6 +1842,10 @@ module.exports = async (req, res) => {
   // even while the WhatsApp number is down. Fire before the WhatsApp gate below.
   let push = { skipped: true };
   try { push = await pushNewOrder(order); } catch (e) {}
+
+  // In-dashboard notification bell (spec §19) — independent of push/WhatsApp.
+  await notifyMerchant(order.storeId, "new_order", "طلب جديد 🛒",
+    `طلب ${order.id} من ${order.customer || "عميل"} بقيمة ${money(order.total)}.`, "order", order.id);
 
   if (!c.token || !c.phoneId) {
     return res.status(200).json({ ok: true, order: order.id, push, whatsapp: { skipped: true, reason: "whatsapp not configured" } });

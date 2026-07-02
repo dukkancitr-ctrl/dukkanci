@@ -259,6 +259,14 @@ module.exports = async (req, res) => {
       const row = { product_id: productId, name, synonyms: clean, dialects: clean.length ? { "مخصّص": clean } : {}, status: "done", indexed_at: null, updated_at: new Date().toISOString() };
       const r = await gw.sbWrite("POST", "product_synonyms?on_conflict=product_id", row, "resolution=merge-duplicates,return=minimal");
       if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows });
+      // Audit entry (spec §17) — best-effort, never blocks the save.
+      try {
+        await gw.sbWrite("POST", "audit_logs", {
+          store_id: storeId || Number(product.store_id) || null, actor: isAdmin ? "admin" : "merchant",
+          action: "synonyms_update", entity_type: "product", entity_id: String(productId),
+          old_value: null, new_value: { count: clean.length }
+        }, "return=minimal");
+      } catch (e) {}
       return res.status(200).json({ ok: true, synonyms: clean });
     }
   }

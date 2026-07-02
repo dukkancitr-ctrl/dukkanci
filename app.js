@@ -2955,7 +2955,7 @@ const MERCHANT_SECTIONS = [
   ["catalog", "box", "كتالوجات ميتا", "planned", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
   ["analytics", "chart", "التقارير والتحليلات", "active", ""],
   ["store", "store", "إعدادات المتجر", "active", ""],
-  ["audit", "shield", "سجل التعديلات", "planned", "سجل واضح لكل تعديل: تغيير سعر، إضافة أو حذف منتج، إخفاء منتج، تغيير حالة طلب، وتعديل بيانات المتجر — لتعرف من فعل ماذا ومتى."],
+  ["audit", "shield", "سجل التعديلات", "beta", "سجل واضح لكل تعديل: تغيير سعر، إضافة أو حذف منتج، إخفاء منتج، تغيير حالة طلب، وتعديل بيانات المتجر — لتعرف من فعل ماذا ومتى."],
   ["support", "phone", "الدعم الفني", "planned", "تواصل مع فريق دكانجي مباشرة من لوحتك: أسئلة شائعة، فتح تذكرة دعم، ومحادثة عبر واتساب."],
   ["share", "share", "رابط المتجر", "active", ""],
   ["integrations", "settings", "التكاملات", "active", ""],
@@ -3356,6 +3356,105 @@ async function synSave() {
   } catch (e) {
     if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ المرادفات`; }
     showToast("خطأ في الاتصال", "");
+  }
+}
+
+// ── Merchant audit log (§17) + notification bell (§19) ──────────────────────
+
+// Arabic labels for audit actions; unknown actions fall back to the raw key.
+const AUDIT_ACTION_LABELS = {
+  product_add: ["إضافة منتج", "green"],
+  product_update: ["تعديل منتج", "blue"],
+  product_delete: ["حذف منتج", "red"],
+  order_status: ["تغيير حالة طلب", "orange"],
+  image_approve: ["اعتماد صورة محسّنة", "blue"],
+  image_revert: ["استرجاع صورة أصلية", "gray"],
+  synonyms_update: ["تحديث المرادفات", "blue"]
+};
+
+function auditRowDetail(l) {
+  const o = l.old_value || {}, n = l.new_value || {};
+  const parts = [];
+  if (l.action === "order_status") parts.push(`${o.status || "—"} ← ${n.status || "—"}`);
+  else {
+    const name = n.name || o.name;
+    if (name) parts.push(String(name));
+    if (o.price != null && n.price != null && Number(o.price) !== Number(n.price)) parts.push(`السعر: ${money(o.price)} ← ${money(n.price)}`);
+    else if (n.price != null && l.action === "product_add") parts.push(money(n.price));
+    if (o.available != null && n.available != null && o.available !== n.available) parts.push(n.available ? "→ متوفر" : "→ غير متوفر");
+    if (n.count != null) parts.push(`${Number(n.count).toLocaleString("ar")} مرادفاً`);
+  }
+  return parts.join(" · ");
+}
+
+function merchantAudit() {
+  const store = getMerchantStore();
+  const a = state._merchantAudit;
+  if (a == null && !state._merchantAuditLoading) {
+    state._merchantAuditLoading = true;
+    fetch(`/api/notify-order?action=audit-logs&storeId=${store.id}`, { headers: merchantHeaders() })
+      .then(r => r.json()).then(data => { state._merchantAudit = Array.isArray(data.logs) ? data.logs : []; })
+      .catch(() => { state._merchantAudit = []; })
+      .finally(() => { state._merchantAuditLoading = false; render(); });
+  }
+  if (a == null) return `<section class="dashboard-card"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل سجل التعديلات…</p></div></section>`;
+  const fmt = iso => { try { return new Date(iso).toLocaleString("ar-EG", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  const rows = a.map(l => {
+    const [label, tone] = AUDIT_ACTION_LABELS[l.action] || [l.action, "gray"];
+    return `<tr>
+      <td><span class="status-pill ${tone}">${esc(label)}</span></td>
+      <td>${esc(auditRowDetail(l) || (l.entity_id ? `#${l.entity_id}` : "—"))}</td>
+      <td>${l.actor === "admin" ? "الإدارة" : "المتجر"}</td>
+      <td>${fmt(l.created_at)}</td>
+    </tr>`;
+  }).join("");
+  return `
+    <div class="review-note">${icon("shield")} <span><strong>كل تعديل على متجرك يُسجَّل تلقائياً.</strong><small>تغيير سعر، إضافة/حذف منتج، حالة طلب، صور، ومرادفات — من فعل ماذا ومتى. يُسجَّل الجديد من الآن فصاعداً.</small></span></div>
+    <section class="dashboard-card">
+      ${a.length ? `<div class="table-wrap"><table class="admin-table"><thead><tr><th>الحدث</th><th>التفاصيل</th><th>بواسطة</th><th>الوقت</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty-managed">${icon("shield")}<p>لا توجد تعديلات مسجّلة بعد — سيظهر هنا كل تعديل تجريه من الآن فصاعداً.</p></div>`}
+    </section>`;
+}
+
+// Notification bell: lazy-load once per dashboard session; badge shows unread.
+function loadMerchantNotifications(force) {
+  const store = getMerchantStore();
+  if (!store) return;
+  if (!force && (state._merchantNotifs != null || state._merchantNotifsLoading)) return;
+  state._merchantNotifsLoading = true;
+  fetch(`/api/notify-order?action=merchant-notifications&storeId=${store.id}`, { headers: merchantHeaders() })
+    .then(r => r.json()).then(data => {
+      state._merchantNotifs = Array.isArray(data.notifications) ? data.notifications : [];
+      state._merchantNotifsUnread = Number(data.unread) || 0;
+    })
+    .catch(() => { state._merchantNotifs = state._merchantNotifs || []; })
+    .finally(() => { state._merchantNotifsLoading = false; render(); });
+}
+
+const NOTIF_TYPE_ICON = { new_order: "receipt", image_enhanced: "stars" };
+
+function openMerchantNotifications() {
+  const list = state._merchantNotifs || [];
+  const fmt = iso => { try { return new Date(iso).toLocaleString("ar-EG", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">لوحة المتجر</span>
+    <h2>${icon("bell")} الإشعارات</h2>
+    ${list.length ? `<ul class="notif-list">${list.map(n => `
+      <li class="${n.read_at ? "" : "unread"}">
+        <span class="notif-icon">${icon(NOTIF_TYPE_ICON[n.type] || "bell")}</span>
+        <div class="notif-body"><strong>${esc(n.title || "إشعار")}</strong><small>${esc(n.message || "")}</small><time>${fmt(n.created_at)}</time></div>
+      </li>`).join("")}</ul>`
+      : `<div class="empty-managed">${icon("bell")}<p>لا إشعارات بعد — ستصلك هنا إشعارات الطلبات الجديدة وتحديثات متجرك.</p></div>`}
+  `, "notif-modal");
+  // Opening the panel marks everything read (server + local badge).
+  if ((state._merchantNotifsUnread || 0) > 0) {
+    const store = getMerchantStore();
+    state._merchantNotifsUnread = 0;
+    (state._merchantNotifs || []).forEach(n => { if (!n.read_at) n.read_at = new Date().toISOString(); });
+    fetch("/api/notify-order?action=notifications-read", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ storeId: store.id }) }).catch(() => {});
+    const badge = document.querySelector(".notif-bell b");
+    if (badge) badge.remove();
   }
 }
 
@@ -3980,13 +4079,16 @@ function renderMerchant(id) {
     subscription: merchantSubscription,
     share: merchantShare,
     images: merchantImages,
-    search: merchantSearch
+    search: merchantSearch,
+    audit: merchantAudit
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
   startMerchantOrderWatch();
+  // Load the notification feed once per session (badge in the header bell).
+  loadMerchantNotifications();
   return `
     <div class="dashboard-shell">
       ${dashboardSidebar("merchant", state.merchantTab)}
@@ -4007,6 +4109,7 @@ function renderMerchant(id) {
                 : `<span class="store-switcher store-switcher--single">${icon("store")} ${escAttr(store.name)}</span>`;
             })()}
             <span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span>
+            <button class="icon-button notif-bell" data-action="merchant-notifications" aria-label="الإشعارات" title="الإشعارات">${icon("bell")}${(state._merchantNotifsUnread || 0) > 0 ? `<b class="notif-count">${state._merchantNotifsUnread > 9 ? "9+" : state._merchantNotifsUnread.toLocaleString("ar")}</b>` : ""}</button>
             <button class="icon-button" data-action="merchant-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button>
             <button class="view-store" data-action="open-store" data-id="${store.id}">${icon("eye")} عرض المتجر</button>
             <button class="icon-button" data-action="merchant-logout" aria-label="تسجيل الخروج" title="تسجيل الخروج">${icon("logout")}</button>
@@ -8059,6 +8162,7 @@ document.addEventListener("click", event => {
   if (action === "syn-accept") synAddTerm(target.dataset.term);
   if (action === "syn-generate") synGenerate();
   if (action === "syn-save") synSave();
+  if (action === "merchant-notifications") openMerchantNotifications();
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
