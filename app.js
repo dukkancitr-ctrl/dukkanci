@@ -399,7 +399,8 @@ const iconPaths = {
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
   dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>',
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  percent: '<circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="M18 6 6 18"/>'
 };
 
 function icon(name, className = "") {
@@ -2383,9 +2384,9 @@ function renderHome() {
           </div>
 
           <div class="h2-trust">
-            <div class="h2-trust-card"><span class="h2-trust-icon">٪</span><div><strong>0% عمولة منتجات</strong><span>المنصة لا تضيف عمولة على سعر المنتج.</span></div></div>
-            <div class="h2-trust-card"><span class="h2-trust-icon">★</span><div><strong>متاجر يتم تقييمها</strong><span>التجربة تساعد في رفع جودة المتاجر.</span></div></div>
-            <div class="h2-trust-card"><span class="h2-trust-icon">✓</span><div><strong>التكلفة قبل التأكيد</strong><span>السعر والتوصيل يظهران قبل إرسال الطلب.</span></div></div>
+            <div class="h2-trust-card zero"><span class="h2-trust-icon">${icon("percent")}</span><div><strong>0% عمولة منتجات</strong><span>المنصة لا تضيف عمولة على سعر المنتج.</span></div></div>
+            <div class="h2-trust-card rated"><span class="h2-trust-icon">${icon("star")}</span><div><strong>متاجر يتم تقييمها</strong><span>التجربة تساعد في رفع جودة المتاجر.</span></div></div>
+            <div class="h2-trust-card clear"><span class="h2-trust-icon">${icon("shield")}</span><div><strong>التكلفة قبل التأكيد</strong><span>السعر والتوصيل يظهران قبل إرسال الطلب.</span></div></div>
           </div>
         </div>
 

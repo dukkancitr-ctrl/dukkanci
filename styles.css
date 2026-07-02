@@ -9609,13 +9609,29 @@ tbody tr:hover {
 .hero2 .h2-dot.active { width: 54px; background: var(--h2-brand); }
 .hero2 .h2-trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; max-width: 680px; }
 .hero2 .h2-trust-card {
-  min-height: 84px; display: flex; gap: 12px; align-items: center; padding: 14px;
-  background: rgba(255, 255, 255, .82); border: 1px solid rgba(154, 0, 0, .09); border-radius: 20px;
+  position: relative; overflow: hidden;
+  min-height: 92px; display: flex; gap: 13px; align-items: center; padding: 15px 16px;
+  background: rgba(255, 255, 255, .9); border: 1px solid rgba(154, 0, 0, .09); border-radius: 22px;
   box-shadow: 0 12px 34px rgba(73, 16, 16, .07);
 }
-.hero2 .h2-trust-icon { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 14px; display: grid; place-items: center; background: var(--h2-soft); color: var(--h2-brand); font-size: 20px; font-weight: 800; }
-.hero2 .h2-trust-card strong { display: block; font-size: 14px; margin-bottom: 3px; color: var(--ink); }
-.hero2 .h2-trust-card span { display: block; font-size: 12.5px; color: #71717a; line-height: 1.45; font-weight: 600; }
+/* Soft color wash behind each card so the trio doesn't read as three flat white boxes. */
+.hero2 .h2-trust-card::before {
+  content: ""; position: absolute; top: -34px; inset-inline-start: -34px; width: 120px; height: 120px;
+  border-radius: 50%; opacity: .5; pointer-events: none;
+  background: radial-gradient(circle, var(--h2-trust-tint, rgba(154, 0, 0, .1)), transparent 70%);
+}
+.hero2 .h2-trust-icon {
+  width: 54px; height: 54px; flex: 0 0 auto; border-radius: 17px; display: grid; place-items: center;
+  position: relative; z-index: 1; color: #fff;
+  background: var(--h2-trust-grad, linear-gradient(135deg, var(--h2-brand), #d51f1f));
+  box-shadow: var(--h2-trust-glow, 0 10px 22px rgba(154, 0, 0, .28));
+}
+.hero2 .h2-trust-icon .icon { width: 27px; height: 27px; stroke-width: 2; }
+.hero2 .h2-trust-card.zero  { --h2-trust-grad: linear-gradient(135deg, #b00020, #e8443a); --h2-trust-glow: 0 10px 22px rgba(176, 0, 32, .3);  --h2-trust-tint: rgba(176, 0, 32, .12); }
+.hero2 .h2-trust-card.rated { --h2-trust-grad: linear-gradient(135deg, #f59e0b, #fbbf24); --h2-trust-glow: 0 10px 22px rgba(245, 158, 11, .32); --h2-trust-tint: rgba(245, 158, 11, .14); }
+.hero2 .h2-trust-card.clear { --h2-trust-grad: linear-gradient(135deg, #0f9d58, #34c37a); --h2-trust-glow: 0 10px 22px rgba(15, 157, 88, .3);  --h2-trust-tint: rgba(15, 157, 88, .12); }
+.hero2 .h2-trust-card strong { display: block; font-size: 14.5px; margin-bottom: 3px; color: var(--ink); position: relative; z-index: 1; }
+.hero2 .h2-trust-card div span { display: block; font-size: 12.5px; color: #71717a; line-height: 1.45; font-weight: 600; position: relative; z-index: 1; }
 
 /* visual stage: phone mock + glass floats */
 .hero2 .h2-stage { position: relative; min-height: 640px; display: grid; place-items: center; perspective: 1300px; }
@@ -9677,6 +9693,13 @@ tbody tr:hover {
   .hero2 .h2-stage { display: none; }
   .hero2 .h2-grid { gap: 4px; }
   .hero2 .h2-copy { padding-bottom: 0; }
+  /* Phones: the stacked trust cards carry the section visually — go bigger and bolder. */
+  .hero2 .h2-trust { gap: 11px; margin-top: 20px; }
+  .hero2 .h2-trust-card { min-height: 96px; padding: 16px 17px; gap: 15px; border-radius: 24px; }
+  .hero2 .h2-trust-icon { width: 60px; height: 60px; border-radius: 19px; }
+  .hero2 .h2-trust-icon .icon { width: 31px; height: 31px; }
+  .hero2 .h2-trust-card strong { font-size: 16px; margin-bottom: 4px; }
+  .hero2 .h2-trust-card div span { font-size: 13.5px; }
 }
 @media (max-width: 560px) {
   .hero2 .h2-grid { padding-top: 18px; }
