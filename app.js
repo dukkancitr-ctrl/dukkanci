@@ -311,6 +311,7 @@ const state = {
   storeProductFilter: "الكل",
   deliveryQuote: null,
   checkoutLocation: null,
+  checkoutSelectedAddressId: null,
   merchantTab: "overview",
   merchantAnalytics: null, // per-store tracking report (null=unloaded, {loading}|{report}|{error})
   merchantAnalyticsFilter: { range: 30 },
@@ -2888,6 +2889,7 @@ function renderCustomerAddresses() {
         <article class="address-card ${address.isDefault ? "default" : ""}">
           <div class="address-card__top"><span class="address-icon">${icon(address.label === "العمل" ? "store" : "home")}</span><div><strong>${address.label}</strong>${address.isDefault ? '<small>العنوان الافتراضي</small>' : ""}</div></div>
           <p>${address.address}</p><small>${address.details}</small>
+          ${address.contactPhone ? `<small class="address-card-phone" dir="ltr">${escAttr(address.contactPhone)}</small>` : ""}
           <span class="address-location-status ${address.lat && address.lng ? "ready" : ""}">${icon("pin")} ${address.lat && address.lng ? "الموقع محدد لحساب التوصيل" : "يلزم تحديد الموقع لحساب المسافة"}</span>
           <div class="address-card__actions">
             ${address.isDefault ? "" : `<button class="text-button" data-action="default-address" data-id="${address.id}">${icon("check")} جعله افتراضيًا</button>`}
@@ -6388,7 +6390,13 @@ function renderCheckout() {
   if (!state.cart.length) return `<section class="section empty-page">${renderEmpty("سلتك فارغة", "أضف بعض المنتجات أولاً لتتمكن من إكمال الطلب.", "تصفح المتاجر", "stores")}</section>`;
   const store = getStore(state.cart[0].storeId);
   const defaultAddress = getDefaultAddress();
-  const selectedAddressId = state.checkoutLocation ? "current" : defaultAddress?.id;
+  // Selection priority: what the customer explicitly picked (if it still exists) →
+  // captured current location → default saved address.
+  const savedSel = state.checkoutSelectedAddressId;
+  const savedSelValid = savedSel === "current"
+    ? !!(state.checkoutLocation || getUserLocationAddress())
+    : state.customerAddresses.some(a => String(a.id) === String(savedSel));
+  const selectedAddressId = (savedSel && savedSelValid) ? savedSel : (state.checkoutLocation ? "current" : defaultAddress?.id);
   const totals = cartTotals(selectedAddressId);
   const deliverySettings = getDeliverySettings(store.id);
   const profile = state.customerProfile || {};
@@ -6413,7 +6421,10 @@ function renderCheckout() {
             <div class="form-grid">
               <label><span>الاسم <i class="req">*</i></span><input name="contactName" autocomplete="name" required value="${escAttr(profile.name || "")}" placeholder="اسمك الكامل"></label>
               <label><span>رقم واتساب <i class="req">*</i></span><input name="contactPhone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" value="${escAttr(profile.phone || "")}" placeholder="+90 555 000 00 00"></label>
-              <label class="wide"><span>عنوان التوصيل</span><select name="address" id="checkout-address" required><option value="">اختر عنواناً محفوظاً</option>${state.customerAddresses.map(address => `<option value="${address.id}" ${String(address.id) === String(selectedAddressId) ? "selected" : ""}>${address.label} - ${address.address}</option>`).join("")}${(state.checkoutLocation || getUserLocationAddress()) ? `<option value="current" ${selectedAddressId === "current" ? "selected" : ""}>📍 ${escAttr((state.checkoutLocation || getUserLocationAddress()).address)}</option>` : ""}</select></label>
+              <div class="wide addr-field"><span class="addr-field-label">عنوان التوصيل <i class="req">*</i></span>
+                <input type="hidden" name="address" id="checkout-address" value="${selectedAddressId ?? ""}">
+                <div id="checkout-address-box">${renderCheckoutAddressBox(selectedAddressId)}</div>
+              </div>
               <label><span>اليوم</span><select name="day">${dayOptions}</select></label>
               <label><span>الوقت</span><select name="time"><option>في أقرب وقت</option><option>14:00 - 15:00</option><option>17:00 - 18:00</option></select></label>
             </div>
@@ -7084,12 +7095,14 @@ function closeDrawers() {
 }
 
 function showModal(content, className = "") {
+  if (addr2Map) { try { addr2Map.remove(); } catch {} addr2Map = null; }
   modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"></div><div class="modal ${className}">${content}</div>`;
   modalRoot.classList.add("open");
   document.body.classList.add("no-scroll");
 }
 
 function closeModal() {
+  if (addr2Map) { try { addr2Map.remove(); } catch {} addr2Map = null; }
   modalRoot.classList.remove("open");
   modalRoot.innerHTML = "";
   document.body.classList.remove("no-scroll");
@@ -7156,36 +7169,140 @@ function reorderCustomerOrder(orderId) {
   `, "confirm-modal");
 }
 
+// ─────────── Address flow V2: picker (عناويني) + map-based details (تفاصيل العنوان) ───────────
+
+// Home-style labels get a home icon, work-style ones a store icon.
+function addressIconFor(label) {
+  return icon(/عمل|دوام|شرك|مكتب/.test(label || "") ? "store" : "home");
+}
+
+const ADDR_PIN_SVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>`;
+
+// The summary box shown inside checkout step ٢ — either the selected address or
+// a dashed "choose/add" button. The actual value lives in the hidden
+// input[name=address] so the submit handler keeps working unchanged.
+function renderCheckoutAddressBox(selectedAddressId) {
+  const a = selectedAddressId ? getCheckoutAddress(selectedAddressId) : null;
+  if (!a) return `<button type="button" class="addr-choose-btn" data-action="open-address-picker"><span>+</span> اختر أو أضف عنوان التوصيل</button>`;
+  const isCurrent = String(a.id) === "current" || a.isCurrent;
+  return `
+    <div class="addr-selected">
+      <span class="addr-pick-icon">${isCurrent ? icon("pin") : addressIconFor(a.label)}</span>
+      <div><strong>${escAttr(a.label)}</strong><small>${escAttr(a.address)}${a.details ? ` — ${escAttr(a.details)}` : ""}</small></div>
+      <button type="button" class="text-button" data-action="open-address-picker">تغيير</button>
+    </div>`;
+}
+
+// Applies a picked address to the open checkout form WITHOUT a full render()
+// (a re-render would wipe whatever the customer already typed in name/phone).
+function applyCheckoutAddressSelection(addressId) {
+  state.checkoutSelectedAddressId = addressId;
+  saveState();
+  const form = document.getElementById("checkout-form");
+  if (!form) return;
+  form.elements.address.value = addressId;
+  const box = document.getElementById("checkout-address-box");
+  if (box) box.innerHTML = renderCheckoutAddressBox(addressId);
+  // Prefill contact info from the address only where the form is still empty.
+  const a = getCheckoutAddress(addressId);
+  if (a?.contactName && !form.elements.contactName.value.trim()) form.elements.contactName.value = a.contactName;
+  if (a?.contactPhone && form.elements.contactPhone.value.replace(/\D/g, "").length < 10) form.elements.contactPhone.value = a.contactPhone;
+  state.deliveryQuote = null;
+  requestDeliveryQuote();
+}
+
+// Screen A — «عناويني»: saved addresses as radio rows + current location + add new.
+function openAddressPickerModal() {
+  const current = state.checkoutLocation || getUserLocationAddress();
+  const selectedId = document.getElementById("checkout-address")?.value || "";
+  const rows = state.customerAddresses.map(a => `
+    <button type="button" class="addr-pick-item ${String(selectedId) === String(a.id) ? "checked" : ""}" data-action="pick-checkout-address" data-id="${a.id}">
+      <span class="addr-pick-icon">${addressIconFor(a.label)}</span>
+      <span class="addr-pick-body"><strong>${escAttr(a.label)}</strong><small>${escAttr(a.address)}${a.details ? `<br>${escAttr(a.details)}` : ""}</small>${a.contactPhone ? `<em dir="ltr">${escAttr(a.contactPhone)}</em>` : ""}</span>
+      <span class="addr-pick-radio"></span>
+    </button>`).join("");
+  const currentRow = current ? `
+    <button type="button" class="addr-pick-item ${selectedId === "current" ? "checked" : ""}" data-action="pick-checkout-address" data-id="current">
+      <span class="addr-pick-icon">${icon("pin")}</span>
+      <span class="addr-pick-body"><strong>موقعي الحالي</strong><small>${escAttr(current.address)}</small></span>
+      <span class="addr-pick-radio"></span>
+    </button>` : "";
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <h2 class="addr-pick-title">عناويني</h2>
+    ${(rows || currentRow) ? `<div class="addr-pick-list">${rows}${currentRow}</div>` : `
+      <div class="addr-pick-empty">
+        <span class="addr-pick-empty-icon">${icon("pin")}</span>
+        <strong>لا يوجد أي عنوان محفوظ بعد</strong>
+        <small>أضف عنوانك الأول لتتمكن من إكمال طلبك</small>
+      </div>`}
+    <button type="button" class="addr-pick-new" data-action="add-address"><span>+</span> عنوان جديد</button>
+  `, "address-picker-modal");
+}
+
+// Screen B — «تفاصيل العنوان»: search + OSM map with a fixed center pin that
+// reverse-geocodes into the same structured Turkish fields the merchant receives.
 function openAddressModal(addressId = null) {
   const address = state.customerAddresses.find(item => item.id === Number(addressId));
+  const profile = state.customerProfile || {};
+  const s = address?.structured || {};
+  const resolvedText = address?.address
+    ? `${s.sokak ? s.sokak + "، " : ""}${address.address}`
+    : "حرّك الخريطة لتحديد موقع مدخل البناء بدقة";
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${address ? "تعديل العنوان" : "عنوان جديد"}</span>
-    <h2>${address ? address.label : "إضافة عنوان توصيل"}</h2>
-    <form id="customer-address-form" class="modal-form" data-id="${address?.id || ""}">
-      <label class="input-label"><span>اسم العنوان</span><select name="label"><option ${address?.label === "المنزل" ? "selected" : ""}>المنزل</option><option ${address?.label === "العمل" ? "selected" : ""}>العمل</option><option ${address?.label === "عنوان آخر" ? "selected" : ""}>عنوان آخر</option></select></label>
-      ${(()=>{ const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z=>`<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone===z.match[0]?"checked":""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone?"checked":""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone||"")}">` })()}
-      <p class="address-section-title">${icon("map")} العنوان بالتنسيق التركي</p>
-      <div class="form-grid">
-        <label><span>المدينة (İl)</span><input name="sf_il" value="${escAttr(address?.structured?.il||"إسطنبول")}" placeholder="إسطنبول" required></label>
-        <label><span>المنطقة (İlçe)</span><input name="sf_ilce" value="${escAttr(address?.structured?.ilce||"")}" placeholder="Esenyurt" required></label>
-        <label class="wide"><span>المحلة (Mahalle)</span><input name="sf_mahalle" value="${escAttr(address?.structured?.mahalle||"")}" placeholder="Cumhuriyet Mahallesi" required></label>
-        <label class="wide"><span>الشارع (Cadde / Sokak)</span><input name="sf_sokak" value="${escAttr(address?.structured?.sokak||"")}" placeholder="Atatürk Caddesi"></label>
-        <label><span>رقم البناء (Bina No)</span><input name="sf_bina" value="${escAttr(address?.structured?.bina||"")}" placeholder="12" required inputmode="numeric"></label>
-        <label><span>الطابق (Kat)</span><input name="sf_kat" value="${escAttr(address?.structured?.kat||"")}" placeholder="3" inputmode="numeric"></label>
-        <label><span>رقم الشقة (Daire No)</span><input name="sf_daire" value="${escAttr(address?.structured?.daire||"")}" placeholder="5" required inputmode="numeric"></label>
+    <h2>تفاصيل العنوان</h2>
+    <form id="customer-address-form" class="modal-form addr2" data-id="${address?.id || ""}">
+      <div class="addr2-search">
+        ${icon("search")}
+        <input type="text" id="addr2-search-input" placeholder="ابحث عن حي، شارع أو معلم قريب" autocomplete="off">
+        <div class="addr2-search-results" id="addr2-search-results" hidden></div>
       </div>
-      <div class="address-location-picker">
-        <input type="hidden" name="lat" value="${address?.lat || ""}">
-        <input type="hidden" name="lng" value="${address?.lng || ""}">
-        <span class="address-location-picker__icon">${icon("pin")}</span>
-        <div><strong>نقطة التوصيل على الخريطة</strong><small id="address-location-copy">${address?.lat && address?.lng ? `تم تحديد الموقع: ${address.lat.toFixed(5)}, ${address.lng.toFixed(5)}` : "مطلوبة لحساب المسافة ورسوم التوصيل تلقائياً."}</small></div>
-        <button type="button" class="secondary-button compact" data-action="capture-address-location">تحديد موقعي</button>
+      <div class="addr2-map-wrap" id="addr2-map-wrap">
+        <div id="addr2-map"></div>
+        <div class="addr2-map-pin">${ADDR_PIN_SVG}</div>
+        <button type="button" class="addr2-locate-btn" data-action="capture-address-location" title="استخدام موقعي الحالي" aria-label="استخدام موقعي الحالي">${icon("pin")}</button>
+      </div>
+      <div class="addr2-resolved">
+        <span class="addr2-resolved-pin">${ADDR_PIN_SVG}</span>
+        <span class="addr2-resolved-text" id="addr2-resolved-text">${escAttr(resolvedText)}</span>
+        <button type="button" class="addr2-edit-pencil" data-action="addr2-toggle-manual" title="تعديل يدوي">${icon("edit")}</button>
+      </div>
+      <input type="hidden" name="lat" value="${address?.lat || ""}">
+      <input type="hidden" name="lng" value="${address?.lng || ""}">
+      <div id="addr2-manual" class="addr2-manual" hidden>
+        <div class="addr2-row2">
+          <input name="sf_il" placeholder="المدينة (İl)" value="${escAttr(s.il || "إسطنبول")}">
+          <input name="sf_ilce" placeholder="المنطقة (İlçe)" value="${escAttr(s.ilce || "")}">
+        </div>
+        <div class="addr2-row2">
+          <input name="sf_mahalle" placeholder="المحلة (Mahalle)" value="${escAttr(s.mahalle || "")}">
+          <input name="sf_sokak" placeholder="الشارع (Cadde/Sokak)" value="${escAttr(s.sokak || "")}">
+        </div>
+      </div>
+      ${(() => { const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone || "")}">`; })()}
+      <p class="addr2-section-label">تفاصيل العنوان</p>
+      <div class="addr2-row3">
+        <input name="sf_bina" placeholder="رقم المبنى *" value="${escAttr(s.bina || "")}" required inputmode="numeric">
+        <input name="sf_kat" placeholder="الطابق" value="${escAttr(s.kat || "")}" inputmode="numeric">
+        <input name="sf_daire" placeholder="رقم الشقة *" value="${escAttr(s.daire || "")}" required inputmode="numeric">
+      </div>
+      <input class="addr2-field-full" name="label" placeholder="اسم العنوان (مثال: المنزل، العمل) *" value="${escAttr(address?.label || "")}" required>
+      <div class="addr2-optional">
+        <input name="note" placeholder="وصف إضافي للعنوان" value="${escAttr(address?.note || "")}">
+        <span>اختياري</span>
+      </div>
+      <p class="addr2-section-label">معلومات التواصل</p>
+      <div class="addr2-row2">
+        <input name="contactName" placeholder="الاسم" autocomplete="name" value="${escAttr(address?.contactName ?? profile.name ?? "")}">
+        <input name="contactPhone" type="tel" inputmode="tel" dir="ltr" placeholder="+90 5__ ___ __ __" value="${escAttr(address?.contactPhone ?? profile.phone ?? "")}">
       </div>
       <label class="notification-setting"><input name="isDefault" type="checkbox" ${address?.isDefault ? "checked" : ""}><span></span><div><strong>استخدامه كعنوان افتراضي</strong><small>سيظهر أولًا عند إتمام الطلب.</small></div></label>
       <button class="primary-button full" type="submit">${icon("check")} حفظ العنوان</button>
     </form>
-  `, "address-modal");
+  `, "address-modal addr2-modal");
+  initAddressMapModal(address);
 }
 
 function openComplaintDetails(complaintId) {
@@ -7341,13 +7458,141 @@ function captureGeolocation(onSuccess) {
   );
 }
 
-function captureAddressLocation() {
+// ─────────── Leaflet/OSM map inside the address modal ───────────
+// Leaflet is lazy-loaded from CDN only when the modal opens, so the main
+// bundle stays untouched. Free OSM tiles — no API key, unaffected by the
+// Google billing state (server routes still prefer Google when it works).
+let leafletLoadPromise = null;
+function ensureLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = new Promise((resolve, reject) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(css);
+    const js = document.createElement("script");
+    js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    js.onload = () => resolve();
+    js.onerror = () => { leafletLoadPromise = null; reject(new Error("leaflet load failed")); };
+    document.head.appendChild(js);
+  });
+  return leafletLoadPromise;
+}
+
+// Client-side Nominatim (CORS-enabled, free). Reverse: full structured Turkish
+// fields for the pinned point. In TR admin levels: state=İl, county/town=İlçe,
+// suburb/neighbourhood=Mahalle.
+async function nominatimReverseFull(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&accept-language=ar&zoom=18&addressdetails=1`, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const a = d.address || {};
+    const mahalle = a.suburb || a.neighbourhood || a.quarter || a.village || "";
+    const ilce = a.county || a.town || a.city_district || a.district || "";
+    const il = a.state || a.province || a.city || "إسطنبول";
+    const sokak = a.road || "";
+    const display = [sokak, mahalle, ilce, il].filter(Boolean).join("، ");
+    return { il, ilce, mahalle, sokak, display: display || d.display_name || "" };
+  } catch { return null; }
+}
+
+async function nominatimSearchPlaces(query) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&accept-language=ar&countrycodes=tr&limit=5`, { headers: { Accept: "application/json" } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (Array.isArray(data) ? data : []).map(r => ({ label: r.display_name, lat: Number(r.lat), lng: Number(r.lon) }));
+  } catch { return []; }
+}
+
+let addr2Map = null;          // live Leaflet instance while the modal is open
+let addr2CommitToken = 0;     // guards overlapping reverse-geocode responses
+
+// Reads the map center as the delivery point: fills lat/lng + the structured
+// Turkish fields and the human-readable resolved line.
+async function commitAddressPin() {
   const form = document.getElementById("customer-address-form");
-  if (!form) return;
+  if (!form || !addr2Map) return;
+  const center = addr2Map.getCenter();
+  form.elements.lat.value = center.lat.toFixed(6);
+  form.elements.lng.value = center.lng.toFixed(6);
+  const textEl = document.getElementById("addr2-resolved-text");
+  if (textEl) textEl.textContent = "جارٍ تحديد العنوان…";
+  const token = ++addr2CommitToken;
+  const info = await nominatimReverseFull(center.lat, center.lng);
+  if (token !== addr2CommitToken || !document.getElementById("customer-address-form")) return;
+  if (!info) {
+    if (textEl) textEl.textContent = "تعذر جلب اسم المنطقة تلقائياً — يمكنك إدخالها يدوياً بزر التعديل";
+    return;
+  }
+  form.elements.sf_il.value = info.il || form.elements.sf_il.value || "إسطنبول";
+  if (info.ilce) form.elements.sf_ilce.value = info.ilce;
+  if (info.mahalle) form.elements.sf_mahalle.value = info.mahalle;
+  if (info.sokak) form.elements.sf_sokak.value = info.sokak;
+  if (textEl) textEl.textContent = info.display;
+}
+
+// Boots the Leaflet map inside the open address modal and wires the search box.
+async function initAddressMapModal(address) {
+  const mapEl = document.getElementById("addr2-map");
+  if (!mapEl) return;
+  try { await ensureLeaflet(); } catch {
+    mapEl.innerHTML = `<div class="addr2-map-fallback">تعذر تحميل الخريطة — استخدم زر تحديد موقعي أو أدخل العنوان يدوياً</div>`;
+    return;
+  }
+  if (!document.getElementById("addr2-map") || addr2Map) return; // modal closed or already booted
+  const hasFix = !!(address?.lat && address?.lng) || !!(state.userLocation?.lat);
+  const start = (address?.lat && address?.lng)
+    ? [address.lat, address.lng]
+    : (state.userLocation?.lat ? [state.userLocation.lat, state.userLocation.lng] : [41.0122, 28.976]);
+  addr2Map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView(start, hasFix ? 17 : 11);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(addr2Map);
+  const wrap = document.getElementById("addr2-map-wrap");
+  addr2Map.on("movestart", () => wrap?.classList.add("moving"));
+  addr2Map.on("moveend", () => { wrap?.classList.remove("moving"); commitAddressPin(); });
+  // With a real starting fix, resolve it right away (new address from the user's
+  // detected location, or refresh the text of an address being edited). Without
+  // one we stay at city level and wait for the customer to actually aim the pin.
+  if (hasFix) commitAddressPin();
+  // Search box → Nominatim place search (debounced), pick → fly the map there.
+  const searchInput = document.getElementById("addr2-search-input");
+  const resultsEl = document.getElementById("addr2-search-results");
+  if (searchInput && resultsEl) {
+    let debounceTimer = null;
+    const runSearch = async () => {
+      const q = searchInput.value.trim();
+      if (q.length < 3) { resultsEl.hidden = true; return; }
+      const places = await nominatimSearchPlaces(q);
+      if (!document.getElementById("addr2-search-results")) return;
+      resultsEl.innerHTML = places.length
+        ? places.map(p => `<button type="button" data-lat="${p.lat}" data-lng="${p.lng}">${escAttr(p.label)}</button>`).join("")
+        : `<button type="button" disabled>لا نتائج — جرّب اسم الحي أو الشارع</button>`;
+      resultsEl.hidden = false;
+    };
+    searchInput.addEventListener("input", () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(runSearch, 450); });
+    searchInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(debounceTimer); runSearch(); } });
+    resultsEl.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-lat]");
+      if (!btn || !addr2Map) return;
+      resultsEl.hidden = true;
+      searchInput.value = "";
+      addr2Map.setView([Number(btn.dataset.lat), Number(btn.dataset.lng)], 17); // moveend → commit
+    });
+  }
+}
+
+// The locate button inside the address modal: fly the map to the GPS fix
+// (moveend then commits it); if the map failed to load, save raw coords.
+function captureAddressLocation() {
   captureGeolocation(location => {
-    form.elements.lat.value = location.lat;
-    form.elements.lng.value = location.lng;
-    document.getElementById("address-location-copy").textContent = `تم تحديد الموقع: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
+    if (window.L && addr2Map) {
+      addr2Map.setView([location.lat, location.lng], 17);
+    } else {
+      const form = document.getElementById("customer-address-form");
+      if (form) { form.elements.lat.value = location.lat; form.elements.lng.value = location.lng; }
+    }
     showToast("تم تحديد نقطة التوصيل", "success");
   });
 }
@@ -7355,16 +7600,15 @@ function captureAddressLocation() {
 function captureCheckoutLocation() {
   captureGeolocation(location => {
     state.checkoutLocation = { id: "current", label: "موقعي الحالي", address: "الموقع الحالي", details: "", ...location };
-    state.deliveryQuote = null;
-    const select = document.getElementById("checkout-address");
-    let option = select.querySelector('option[value="current"]');
-    if (!option) {
-      option = new Option("موقعي الحالي", "current");
-      select.add(option);
-    }
-    select.value = "current";
-    requestDeliveryQuote();
+    applyCheckoutAddressSelection("current");
     showToast("تم استخدام موقعك الحالي للتوصيل", "success");
+    // Resolve a readable area label in the background and refresh the box.
+    reverseGeocodeArea(location.lat, location.lng).then(area => {
+      if (!area || !state.checkoutLocation) return;
+      state.checkoutLocation.address = area;
+      const box = document.getElementById("checkout-address-box");
+      if (box && document.getElementById("checkout-address")?.value === "current") box.innerHTML = renderCheckoutAddressBox("current");
+    });
   });
 }
 
@@ -8393,6 +8637,9 @@ document.addEventListener("click", event => {
   if (action === "confirm-reorder") applyCustomerReorder(target.dataset.id);
   if (action === "add-address") openAddressModal();
   if (action === "edit-address") openAddressModal(target.dataset.id);
+  if (action === "open-address-picker") openAddressPickerModal();
+  if (action === "pick-checkout-address") { applyCheckoutAddressSelection(target.dataset.id); closeModal(); }
+  if (action === "addr2-toggle-manual") { const m = document.getElementById("addr2-manual"); if (m) m.hidden = !m.hidden; }
   if (action === "capture-address-location") captureAddressLocation();
   if (action === "use-current-location") captureCheckoutLocation();
   if (action === "capture-store-location") captureStoreLocation();
@@ -9844,6 +10091,7 @@ document.addEventListener("submit", async event => {
       state.useCredit = false;
       state.deliveryQuote = null;
       state.checkoutLocation = null;
+      state.checkoutSelectedAddressId = null;
       saveState(); updateCartBadges();
       showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2>
         <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
@@ -9939,29 +10187,41 @@ document.addEventListener("submit", async event => {
     const addressId = Number(event.target.dataset.id);
     const wasDefault = state.customerAddresses.find(address => address.id === addressId)?.isDefault;
     const makeDefault = form.get("isDefault") === "on" || !state.customerAddresses.length || Boolean(wasDefault);
-    // build structured Turkish address fields
-    const structured = { il: (form.get("sf_il")||"").trim(), ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
+    // build structured Turkish address fields (auto-filled from the map pin,
+    // manually editable via the pencil toggle)
+    const structured = { il: (form.get("sf_il")||"").trim() || "إسطنبول", ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
+    const lat = Number(form.get("lat")) || null;
+    const lng = Number(form.get("lng")) || null;
+    // The delivery point must exist: either a map pin (fills everything) or a
+    // manually-typed mahalle at minimum.
+    if (!lat && !structured.mahalle) { showToast("حدّد موقعك على الخريطة أو أدخل الحي يدوياً بزر التعديل"); return; }
     // compose a readable address string from structured fields
+    const note = (form.get("note") || "").trim();
     const addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
     const detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
     const composedAddress = addrParts.join("، ");
-    const composedDetails = detailParts.join(" ");
+    const composedDetails = [detailParts.join(" "), note].filter(Boolean).join(" — ");
     const namedZone = (form.get("namedZone") || "").trim();
     const addressData = {
       id: addressId || Date.now(),
-      label: form.get("label"),
-      address: composedAddress || form.get("address")?.trim() || "",
+      label: (form.get("label") || "").trim() || "المنزل",
+      address: composedAddress,
       details: composedDetails,
+      note,
       structured,
       namedZone,
-      lat: Number(form.get("lat")) || null,
-      lng: Number(form.get("lng")) || null,
+      contactName: (form.get("contactName") || "").trim(),
+      contactPhone: (form.get("contactPhone") || "").trim(),
+      lat,
+      lng,
       isDefault: makeDefault
     };
     if (makeDefault) state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: false }));
     if (addressId) state.customerAddresses = state.customerAddresses.map(address => address.id === addressId ? addressData : address);
     else state.customerAddresses.push(addressData);
     saveState(); syncAddressesToCloud(); closeModal(); render(); showToast(addressId ? "تم تحديث العنوان" : "تمت إضافة العنوان", "success");
+    // Saved from checkout (picker → new/edit): select it right away and re-quote.
+    if (state.route === "checkout") applyCheckoutAddressSelection(String(addressData.id));
   }
   // (The old insecure phone-only merchant login was removed — merchants now
   //  authenticate via Supabase Auth: see merchantLogin()/resolveMerchantStores().)
