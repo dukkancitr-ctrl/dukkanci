@@ -76,7 +76,8 @@ const STORE_SLUGS = {
   72: "hadramout-yemen-restaurant",
   71: "meat-moot-ortakoy-restaurant",
   69: "baraka-restaurant",
-  73: "sham-grill-restaurant"
+  73: "sham-grill-restaurant",
+  77: "hawa-mahal-restaurant"
 };
 
 // Reverse: slug -> id.
