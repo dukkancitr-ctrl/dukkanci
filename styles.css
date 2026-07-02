@@ -9873,3 +9873,11 @@ tbody tr:hover {
 .catalog-steps { margin: 14px 0 6px; padding-inline-start: 20px; color: #334155; font-size: 13.5px; display: flex; flex-direction: column; gap: 7px; }
 .catalog-steps b { color: #0f172a; }
 .store-link-row a.secondary-button { white-space: nowrap; }
+
+/* ===== Merchant support (Increment 10) ===== */
+.support-faq details { border-bottom: 1px solid #f1f5f9; }
+.support-faq details:last-child { border-bottom: 0; }
+.support-faq summary { cursor: pointer; padding: 12px 4px; font-weight: 700; font-size: 14px; color: #0f172a; list-style-position: inside; }
+.support-faq summary:hover { color: #e30613; }
+.support-faq details[open] summary { color: #e30613; }
+.support-faq details p { margin: 0 22px 14px; color: #475569; font-size: 13.5px; line-height: 1.8; }
