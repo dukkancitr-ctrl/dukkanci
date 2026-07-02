@@ -2953,7 +2953,7 @@ const MERCHANT_SECTIONS = [
   ["customers", "users", "العملاء", "beta", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
   ["offers", "megaphone", "كودات الخصم", "active", ""],
   ["campaigns", "megaphone", "الحملات التسويقية", "requires_setup", "أرسل عروضك لعملائك عبر قوالب واتساب المعتمدة ووفق سياسات ميتا (Opt-in / Opt-out). تتطلب هذه الميزة تفعيلاً وربطاً من إدارة دكانجي قبل التشغيل حفاظاً على حسابك."],
-  ["catalog", "box", "كتالوجات ميتا", "planned", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
+  ["catalog", "box", "كتالوجات ميتا", "beta", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
   ["analytics", "chart", "التقارير والتحليلات", "active", ""],
   ["store", "store", "إعدادات المتجر", "active", ""],
   ["audit", "shield", "سجل التعديلات", "beta", "سجل واضح لكل تعديل: تغيير سعر، إضافة أو حذف منتج، إخفاء منتج، تغيير حالة طلب، وتعديل بيانات المتجر — لتعرف من فعل ماذا ومتى."],
@@ -3656,6 +3656,58 @@ function exportMerchantReportCsv() {
   link.click();
   URL.revokeObjectURL(link.href);
   showToast("تم تجهيز ملف التقرير", "success");
+}
+
+// ── Meta catalog feed (spec §13): readiness report + public feed URL ──────────
+// Meta ingests a scheduled feed URL (Commerce Manager → Data Sources), so the
+// merchant's job is: fix the "needs review" items, then paste ONE link. The feed
+// itself is served by the public meta-feed action (same rules as below).
+function catalogReadiness(p) {
+  const img = String(p.image || "");
+  if (!img || isPlaceholderImage(img)) return "no_image";
+  if (img.startsWith("data:")) return "embedded_image"; // needs a public URL, data-URLs can't go in a feed
+  if (p.priceOnRequest || !(Number(p.price) > 0)) return "no_price";
+  return "ready";
+}
+
+function merchantCatalog() {
+  const store = getMerchantStore();
+  const list = allProducts.filter(p => p.storeId === store.id);
+  const groups = { ready: [], no_image: [], embedded_image: [], no_price: [] };
+  list.forEach(p => groups[catalogReadiness(p)].push(p));
+  const feedUrl = `${location.origin}/api/notify-order?action=meta-feed&storeId=${store.id}`;
+  const nameList = (arr) => arr.length
+    ? `<ul class="report-name-list">${arr.slice(0, 6).map(p => `<li>${esc(p.name)}</li>`).join("")}${arr.length > 6 ? `<li class="more">…و${(arr.length - 6).toLocaleString("ar")} منتجاً آخر</li>` : ""}</ul>`
+    : "";
+  const reviewBlocks = [
+    ["بلا صورة", groups.no_image, "أضِف صورة من قسم «المنتجات» — منتج بلا صورة لا يدخل الكتالوج.", "images"],
+    ["صورة مضمّنة (تحتاج رابطاً عاماً)", groups.embedded_image, "هذه الصور رُفعت كملفات مضمّنة ولا تقبلها ميتا في الـFeed — تواصل مع إدارة دكانجي لرفعها كروابط عامة.", null],
+    ["بلا سعر صالح", groups.no_price, "منتجات «السعر عند الطلب» أو بسعر صفر لا تدخل الكتالوج — حدّد سعراً رقمياً.", "products"]
+  ].filter(([, arr]) => arr.length);
+  return `
+    <div class="stats-grid admin-stats">
+      ${statCard("check", "جاهز للكتالوج", groups.ready.length.toLocaleString("ar"), "يدخل الـFeed تلقائياً", "green")}
+      ${statCard("stars", "يحتاج مراجعة", (list.length - groups.ready.length).toLocaleString("ar"), "صور أو أسعار ناقصة", "orange")}
+      ${statCard("box", "إجمالي المنتجات", list.length.toLocaleString("ar"), `${store.name}`, "blue")}
+    </div>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${icon("share")} رابط الـFeed لكتالوج ميتا</h3><p>الصق هذا الرابط في Commerce Manager وستُحدَّث منتجاتك تلقائياً كل ساعة.</p></div></div>
+      <div class="store-link-row">
+        <input readonly dir="ltr" value="${escAttr(feedUrl)}" onfocus="this.select()">
+        <button type="button" class="primary-button compact" data-action="copy-store-link" data-link="${escAttr(feedUrl)}">${icon("check")} نسخ الرابط</button>
+        <a class="secondary-button compact" href="${escAttr(feedUrl)}" target="_blank" rel="noopener">${icon("download")} تحميل CSV</a>
+      </div>
+      <ol class="catalog-steps">
+        <li>افتح <b dir="ltr">Meta Commerce Manager</b> ← <b>Catalog</b> ← <b>Data Sources</b>.</li>
+        <li>اختر <b>Data Feed</b> ثم <b>Scheduled Feed</b> والصق الرابط أعلاه.</li>
+        <li>اضبط الجلب على «كل ساعة» — أي تعديل تجريه هنا يصل الكتالوج تلقائياً.</li>
+      </ol>
+      <p class="field-hint">${icon("shield")} الرابط عام لأن ميتا تجلبه دون تسجيل دخول — ولا يعرض إلا بيانات منتجاتك الظاهرة أصلاً في متجرك.</p>
+    </section>
+    ${reviewBlocks.length ? `<div class="dashboard-grid ${reviewBlocks.length > 1 ? "two-col" : ""}">${reviewBlocks.map(([title, arr, hint, tab]) => `
+      <section class="dashboard-card"><div class="card-heading"><div><h3>${esc(title)}</h3><p>${arr.length.toLocaleString("ar")} منتجاً — ${esc(hint)}</p></div>${tab ? `<button class="text-button" data-action="merchant-tab" data-tab="${tab}">${icon("arrowLeft")}</button>` : ""}</div>${nameList(arr)}</section>`).join("")}</div>`
+      : `<section class="dashboard-card"><p class="report-ok">${icon("check")} كل منتجاتك جاهزة للكتالوج — ممتاز!</p></section>`}
+    <div class="review-note">${icon("clock")} <span><strong>المزامنة المباشرة عبر Meta API (بدون Feed)</strong><small>تتطلب ربط كتالوج وحساب أعمال من إدارة دكانجي — ستُفعَّل لاحقاً؛ رابط الـFeed أعلاه يغنيك عنها الآن.</small></span></div>`;
 }
 
 function merchantOverview() {
@@ -4370,9 +4422,10 @@ function renderMerchant(id) {
     images: merchantImages,
     search: merchantSearch,
     audit: merchantAudit,
-    customers: merchantCustomers
+    customers: merchantCustomers,
+    catalog: merchantCatalog
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"], customers: ["عملاء متجرك", "اعرف عملاءك الجدد والمتكررين وتواصل معهم"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"], customers: ["عملاء متجرك", "اعرف عملاءك الجدد والمتكررين وتواصل معهم"], catalog: ["كتالوجات ميتا", "اربط منتجاتك بفيسبوك وإنستغرام عبر رابط Feed جاهز"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
