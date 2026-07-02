@@ -9782,3 +9782,25 @@ tbody tr:hover {
 .before-after figcaption { font-size: 13px; color: #64748b; margin-bottom: 6px; font-weight: 700; }
 .before-after img { width: 100%; border-radius: 12px; border: 1px solid var(--border, #e2e8f0); background: #f8fafc; aspect-ratio: 1 / 1; object-fit: contain; }
 .enhance-modal .form-actions { flex-wrap: wrap; gap: 8px; }
+
+/* ===== Merchant search synonyms (Increment 4) ===== */
+.syn-list { display: flex; flex-direction: column; }
+.syn-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 4px; border-bottom: 1px solid #f1f5f9; }
+.syn-row:last-child { border-bottom: 0; }
+.syn-row__name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.syn-row__name strong { font-size: 14px; }
+.syn-row__name small { color: #64748b; font-size: 12px; }
+.syn-block { margin: 14px 0 6px; }
+.syn-label { display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 8px; }
+.syn-gen-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.syn-chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; align-items: center; }
+.syn-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+.syn-chip button { display: inline-flex; background: none; border: 0; cursor: pointer; color: inherit; padding: 0; opacity: .7; }
+.syn-chip button:hover { opacity: 1; }
+.syn-chip button .icon { width: 14px; height: 14px; }
+.syn-chip.suggest { background: #fff; border: 1px dashed #c7d2fe; color: #4338ca; cursor: pointer; }
+.syn-chip.suggest:hover { background: #eef2ff; }
+.syn-chip.suggest .icon { width: 14px; height: 14px; }
+.syn-empty { color: #94a3b8; font-size: 13px; }
+.syn-add-row { display: flex; gap: 8px; margin-top: 4px; }
+.syn-add-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border, #e2e8f0); border-radius: 12px; background: #f8fafc; font: inherit; }
