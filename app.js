@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore);
 
 const products = [];
 
@@ -92,6 +92,7 @@ products.push(...reyhanProducts);
 products.push(...nahlProducts);
 products.push(...dec8Products);
 products.push(...alahdabProducts);
+products.push(...rumanProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -209,7 +210,8 @@ const initialDeliverySettings = {
   ...reyhanDeliverySettings,
   ...nahlDeliverySettings,
   ...dec8DeliverySettings,
-  ...alahdabDeliverySettings
+  ...alahdabDeliverySettings,
+  ...rumanDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -1449,8 +1451,12 @@ async function resendOrderOtp(phone) {
   else showToast("تعذّر إرسال الرمز");
 }
 
+// Fallback so a store that is in the cloud catalog but not yet in the bundled
+// delivery config (e.g. a freshly pushed store whose frontend PR hasn't deployed)
+// still renders with a sane delivery estimate instead of crashing the store page.
+const DEFAULT_DELIVERY_SETTINGS = { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 };
 function getDeliverySettings(storeId) {
-  return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)];
+  return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)] || DEFAULT_DELIVERY_SETTINGS;
 }
 
 function getStoreLocation(storeId) {
