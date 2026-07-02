@@ -82,7 +82,8 @@ const STORE_SLUGS = {
   66: "filistin-kunefesi-kayasehir",
   75: "wingi-chicken-bahcesehir",
   76: "wingi-chicken-kayasehir",
-  74: "albaraka-bagcilar-restaurant"
+  74: "albaraka-bagcilar-restaurant",
+  63: "istanbul-chicken-restaurant"
 };
 
 // Reverse: slug -> id.
