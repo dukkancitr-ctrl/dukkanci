@@ -1141,6 +1141,30 @@ module.exports = async (req, res) => {
       return res.status(200).json({ coupons, stats });
     }
 
+    // Merchant/Admin: this store's search-term report (spec §16 «تقرير البحث»):
+    // top queries + zero-result queries, aggregated from the last 1000 searches.
+    if (q.action === "store-search-terms") {
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const rows = await sbGet(`search_logs?store_id=eq.${storeId}&select=query,normalized_query,results_count,created_at&order=created_at.desc&limit=1000`) || [];
+      const agg = new Map();
+      for (const r of rows) {
+        const k = r.normalized_query || String(r.query || "").toLowerCase();
+        if (!k) continue;
+        let a = agg.get(k);
+        if (!a) { a = { query: r.query, count: 0, zero: 0 }; agg.set(k, a); }
+        a.count += 1;
+        if (Number(r.results_count) === 0) a.zero += 1;
+      }
+      const all = [...agg.values()].sort((a, b) => b.count - a.count);
+      const top = all.slice(0, 20);
+      // "Zero-result" terms = searches that mostly found nothing → synonym/product gaps.
+      const zero = all.filter(t => t.zero > 0 && t.zero >= t.count / 2).slice(0, 20);
+      return res.status(200).json({ total: rows.length, top, zero });
+    }
+
     // Merchant/Admin: this store's notification feed + unread count (spec §19).
     if (q.action === "merchant-notifications") {
       const storeId = Number(q.storeId);
@@ -1691,6 +1715,20 @@ module.exports = async (req, res) => {
     const r = await sbWrite("PATCH", `coupons?id=eq.${couponId}`, { active }, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });
     await logAudit(storeId, isAdmin ? "admin" : "merchant", "coupon_status", "coupon", couponId, null, { code: own[0].code, active });
+    return res.status(200).json({ ok: true });
+  }
+
+  // PUBLIC: log an in-store product search (spec §16 «تقرير البحث»). Customers
+  // aren't authenticated, so this is open — but strictly validated and size-capped
+  // (same trust model as the order-notification endpoint). Fire-and-forget client-side.
+  if (pq.action === "log-search") {
+    const storeId = Number(body.storeId);
+    const query = String(body.query || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const resultsCount = Math.max(0, Math.min(9999, Math.round(Number(body.resultsCount) || 0)));
+    if (!storeId || query.length < 2) return res.status(400).json({ error: "storeId and query (2+ chars) required" });
+    const normalized = query.toLowerCase()
+      .replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ًٌٍَُِّْ]/g, "");
+    await sbWrite("POST", "search_logs", { store_id: storeId, query, normalized_query: normalized, results_count: resultsCount }, "return=minimal");
     return res.status(200).json({ ok: true });
   }
 
