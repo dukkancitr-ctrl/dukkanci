@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore);
 
 const products = [];
 
@@ -89,6 +89,7 @@ products.push(...wingiProducts);
 products.push(...albarakaProducts);
 products.push(...istanbulchickenProducts);
 products.push(...reyhanProducts);
+products.push(...nahlProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -203,7 +204,8 @@ const initialDeliverySettings = {
   ...wingiDeliverySettings,
   ...albarakaDeliverySettings,
   ...istanbulchickenDeliverySettings,
-  ...reyhanDeliverySettings
+  ...reyhanDeliverySettings,
+  ...nahlDeliverySettings
 };
 
 function loadCustomerAddresses() {
@@ -2237,7 +2239,8 @@ const HOME_CATEGORIES = [
   ["ملاحم", "/assets/photos/store-butcher.jpg", "لحوم طازجة يومياً"],
   ["حلويات", "/assets/photos/store-bakery.jpg", "لأحلى المناسبات"],
   ["مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان"],
-  ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"]
+  ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"],
+  ["مواد غذائية متخصصة", "/assets/photos/store-specialty-food.jpg", "عسل طبيعي ومنتجات النحل"]
 ];
 // The editable homepage categories. From site_settings.categories.items when
 // set (admin add/delete/edit), else built from the HOME_CATEGORIES defaults
@@ -3483,7 +3486,8 @@ const CATEGORY_SUBSCRIPTION = [
   [/خضار|فواكه/, 4000],          // خضار وفواكه
   [/ملحم|ملاحم|لحوم/, 4000],     // ملاحم
   [/عصير|عصائر/, 4500],          // عصائر
-  [/مكسرات|بهارات|\bبن\b|قهوة/, 4500] // مكسرات وبهارات / بن
+  [/مكسرات|بهارات|\bبن\b|قهوة/, 4500], // مكسرات وبهارات / بن
+  [/مواد غذائية|متخصص|عسل/, 4500]      // مواد غذائية متخصصة
 ];
 const DEFAULT_SUBSCRIPTION_PRICE = 4500;
 function categorySubscriptionPrice(category) {
@@ -3494,7 +3498,8 @@ function categorySubscriptionPrice(category) {
 // Display rows for the admin-only category pricing table.
 const CATEGORY_SUBSCRIPTION_ROWS = [
   ["سوبر ماركت", 4000], ["مطاعم", 4500], ["حلويات", 5000], ["خضار وفواكه", 4000],
-  ["ملاحم", 4000], ["عصائر", 4500], ["مكسرات وبهارات / بن", 4500]
+  ["ملاحم", 4000], ["عصائر", 4500], ["مكسرات وبهارات / بن", 4500],
+  ["مواد غذائية متخصصة", 4500]
 ];
 // Per-category Whop checkout link — the renew/manage button on the merchant
 // subscription page routes each store to the plan that matches its category.
