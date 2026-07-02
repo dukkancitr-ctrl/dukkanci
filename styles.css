@@ -9868,3 +9868,8 @@ tbody tr:hover {
 .search-report-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .search-report-cols h4 { margin: 0 0 8px; font-size: 14px; color: #475569; }
 @media (max-width: 720px) { .search-report-cols { grid-template-columns: 1fr; } }
+
+/* ===== Meta catalog (Increment 9) ===== */
+.catalog-steps { margin: 14px 0 6px; padding-inline-start: 20px; color: #334155; font-size: 13.5px; display: flex; flex-direction: column; gap: 7px; }
+.catalog-steps b { color: #0f172a; }
+.store-link-row a.secondary-button { white-space: nowrap; }

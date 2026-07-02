@@ -1004,6 +1004,43 @@ module.exports = async (req, res) => {
       return res.status(200).json(await runSubscriptionCron(c));
     }
 
+    // PUBLIC: Meta Commerce product feed for one store (spec §13). Meta fetches
+    // this URL on a schedule with no auth, so it must be public — it exposes only
+    // data already public on the storefront (name/price/image/link). Approved
+    // stores only. CSV per Meta's feed spec; excluded rows are the merchant's
+    // "needs review" list (data-URL/placeholder images, on-request/zero prices).
+    if (q.action === "meta-feed") {
+      const storeId = Number(q.storeId);
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const sRows = await sbGet(`stores?id=eq.${storeId}&select=name,approval_status&limit=1`);
+      const store = sRows && sRows[0];
+      if (!store || (store.approval_status && store.approval_status !== "approved")) {
+        return res.status(404).json({ error: "store not available" });
+      }
+      const prods = await sbGet(`products?store_id=eq.${storeId}&select=id,name,description,price,price_on_request,available,image,category,slug&order=id&limit=2000`) || [];
+      const csvCell = v => `"${String(v == null ? "" : v).replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
+      const rows = [["id", "title", "description", "availability", "condition", "price", "link", "image_link", "brand", "product_type"]];
+      for (const p of prods) {
+        const img = String(p.image || "");
+        const isRealImg = img && !img.startsWith("data:") && !/store-market\.jpg|placeholder/i.test(img);
+        const priceNum = Number(p.price) || 0;
+        if (!p.name || !isRealImg || p.price_on_request || priceNum <= 0) continue; // needs review → not in feed
+        const imageLink = /^https?:\/\//i.test(img) ? img : SITE_URL + (img.startsWith("/") ? img : "/" + img);
+        rows.push([
+          `dk-${p.id}`, p.name, (p.description || p.name).slice(0, 500),
+          p.available === false ? "out of stock" : "in stock", "new",
+          `${priceNum.toFixed(2)} TRY`,
+          `${SITE_URL}/product/${p.slug || p.id}`,
+          imageLink, store.name, p.category || ""
+        ]);
+      }
+      const csv = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="dukkanci-store-${storeId}-meta-feed.csv"`);
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600");
+      return res.status(200).send(csv);
+    }
+
     // Admin inbox reads.
     if (q.action === "threads" || q.action === "thread") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
