@@ -2950,7 +2950,7 @@ const MERCHANT_SECTIONS = [
   ["images", "stars", "الصور والتحسين", "beta", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
   ["search", "search", "البحث والمرادفات", "beta", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
   ["customers", "users", "العملاء", "beta", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
-  ["offers", "megaphone", "كودات الخصم", "beta", "أنشئ عروضاً وكودات خصم لعملائك. النسخة الحالية تدعم عروض السعر؛ وكودات الخصم الكاملة (نسبة/مبلغ/توصيل مجاني، حد استخدام، تاريخ انتهاء، وقياس الأداء) قيد الإضافة."],
+  ["offers", "megaphone", "كودات الخصم", "active", ""],
   ["campaigns", "megaphone", "الحملات التسويقية", "requires_setup", "أرسل عروضك لعملائك عبر قوالب واتساب المعتمدة ووفق سياسات ميتا (Opt-in / Opt-out). تتطلب هذه الميزة تفعيلاً وربطاً من إدارة دكانجي قبل التشغيل حفاظاً على حسابك."],
   ["catalog", "box", "كتالوجات ميتا", "planned", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
   ["analytics", "chart", "التقارير والتحليلات", "active", ""],
@@ -3714,20 +3714,109 @@ function merchantProducts() {
   `;
 }
 
+// Arabic label for a coupon's type/value ("خصم 10%", "خصم 50 ل.ت", "توصيل مجاني").
+function couponTypeLabel(c) {
+  if (c.discount_type === "percent") return `خصم ${Number(c.value).toLocaleString("ar")}%${c.max_discount ? ` (حتى ${money(c.max_discount)})` : ""}`;
+  if (c.discount_type === "free_delivery") return "توصيل مجاني";
+  return `خصم ${money(c.value)}`;
+}
+
 function merchantOffers() {
   const store = getMerchantStore();
   const discountedProducts = products.filter(product => product.storeId === store.id && product.oldPrice);
+  // ── Discount coupons (spec §11) — lazy-loaded once per section open ──
+  const cs = state._merchantCoupons;
+  if (cs == null && !state._merchantCouponsLoading) {
+    state._merchantCouponsLoading = true;
+    fetch(`/api/notify-order?action=merchant-coupons&storeId=${store.id}`, { headers: merchantHeaders() })
+      .then(r => r.json()).then(data => { state._merchantCoupons = { list: Array.isArray(data.coupons) ? data.coupons : [], stats: data.stats || {} }; })
+      .catch(() => { state._merchantCoupons = { list: [], stats: {} }; })
+      .finally(() => { state._merchantCouponsLoading = false; render(); });
+  }
+  const fmtDate = iso => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)); } catch (e) { return ""; } };
+  const couponCards = cs == null
+    ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل كوداتك…</p></div>`
+    : (cs.list.length ? `<div class="coupon-grid">${cs.list.map(c => {
+        const st = cs.stats[c.id] || { uses: 0, discount: 0 };
+        const expired = c.ends_at && Date.parse(c.ends_at) < Date.now();
+        const exhausted = c.usage_limit && st.uses >= c.usage_limit;
+        const [pill, pillLabel] = !c.active ? ["gray", "موقوف"] : expired ? ["red", "منتهي"] : exhausted ? ["orange", "استُنفد"] : ["green", "فعّال"];
+        return `
+        <article class="dashboard-card coupon-card">
+          <div class="coupon-card__head"><code class="coupon-code" dir="ltr">${esc(c.code)}</code><span class="status-pill ${pill}">${pillLabel}</span></div>
+          <strong class="coupon-type">${couponTypeLabel(c)}</strong>
+          <div class="coupon-meta">
+            ${c.min_subtotal ? `<span>حد أدنى ${money(c.min_subtotal)}</span>` : ""}
+            ${c.ends_at ? `<span>${icon("calendar")} ينتهي ${fmtDate(c.ends_at)}</span>` : `<span>بلا تاريخ انتهاء</span>`}
+            <span>${icon("receipt")} ${st.uses.toLocaleString("ar")}${c.usage_limit ? ` / ${c.usage_limit.toLocaleString("ar")}` : ""} استخدام</span>
+            ${st.discount ? `<span>${icon("wallet")} خصومات مصروفة ${money(st.discount)}</span>` : ""}
+          </div>
+          <div class="offer-card-actions">
+            <button class="secondary-button compact" data-action="edit-coupon" data-id="${c.id}">${icon("edit")} تعديل</button>
+            <button class="secondary-button compact" data-action="toggle-coupon" data-id="${c.id}" data-active="${c.active ? "0" : "1"}">${c.active ? "إيقاف" : "تفعيل"}</button>
+          </div>
+        </article>`;
+      }).join("")}</div>`
+      : `<div class="empty-managed">${icon("megaphone")}<p>لا كودات خصم بعد — أنشئ كوداً لحملاتك أو عملائك (نسبة، مبلغ ثابت، أو توصيل مجاني).</p></div>`);
   return `
-    <div class="empty-dashboard">
-      <span class="empty-dashboard__icon">${icon("megaphone")}</span>
-      <h3>${discountedProducts.length ? `عروض ${store.name}` : "أنشئ عرضاً جديداً لعملائك"}</h3>
-      <p>حدد منتجاً وخصماً أو فعّل التوصيل المجاني فوق مبلغ معين.</p>
-      <button class="primary-button" data-action="create-offer">${icon("plus")} إنشاء عرض</button>
-    </div>
-    ${discountedProducts.length ? `<div class="offer-management-grid">${discountedProducts.map(product => `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${icon("megaphone")} كودات الخصم</h3><p>أنشئ أكواداً لحملاتك والمؤثرين وعملائك — تُطبَّق في صفحة الدفع وتُقاس نتائجها هنا.</p></div>
+        <button class="primary-button compact" data-action="create-coupon">${icon("plus")} كود جديد</button></div>
+      ${couponCards}
+    </section>
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${icon("star")} عروض الأسعار</h3><p>خصم مباشر على سعر منتج يظهر لكل الزوار في صفحة متجرك.</p></div>
+        <button class="secondary-button compact" data-action="create-offer">${icon("plus")} إنشاء عرض</button></div>
+      ${discountedProducts.length ? `<div class="offer-management-grid">${discountedProducts.map(product => `
       <article class="dashboard-card"><span class="status-pill green">فعّال</span><h3>${product.name}</h3><p>السعر قبل الخصم ${money(product.oldPrice)} · الآن ${money(product.price)}</p><div><strong>${Math.round((1 - product.price / product.oldPrice) * 100)}%</strong><small>خصم</small></div><div class="offer-card-actions"><button class="secondary-button compact" data-action="edit-product" data-id="${product.id}">${icon("edit")} تعديل</button><button class="table-action danger" data-action="end-offer" data-id="${product.id}" title="إنهاء العرض">${icon("trash")}</button></div></article>
-    `).join("")}</div>` : ""}
+    `).join("")}</div>` : `<div class="empty-managed">${icon("star")}<p>لا عروض أسعار حالياً — اختر منتجاً وحدّد نسبة خصم ليظهر بشارة «وفر».</p></div>`}
+    </section>
   `;
+}
+
+// Create/edit coupon modal (spec §11). Saving goes through the merchant-gated
+// server action which forces store_id and enforces globally-unique codes.
+function openCouponForm(id) {
+  const cs = state._merchantCoupons || { list: [] };
+  const editing = id ? cs.list.find(c => Number(c.id) === Number(id)) : null;
+  const endsVal = editing && editing.ends_at ? new Date(editing.ends_at).toISOString().slice(0, 10) : "";
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">كودات الخصم</span>
+    <h2>${editing ? "تعديل كود الخصم" : "كود خصم جديد"}</h2>
+    <form class="modal-form" id="merchant-coupon-form" data-id="${editing ? editing.id : ""}">
+      <div class="form-grid">
+        <label class="input-label"><span>الكود <i class="req">*</i></span><input name="code" required dir="ltr" placeholder="RAMADAN20" pattern="[A-Za-z0-9_-]{3,24}" value="${editing ? escAttr(editing.code) : ""}"><small class="field-hint">3-24 حرفاً لاتينياً/رقماً، بلا مسافات.</small></label>
+        <label class="input-label"><span>نوع الخصم</span>
+          <select name="discount_type">
+            <option value="percent" ${!editing || editing.discount_type === "percent" ? "selected" : ""}>نسبة مئوية %</option>
+            <option value="fixed" ${editing && editing.discount_type === "fixed" ? "selected" : ""}>مبلغ ثابت (ل.ت)</option>
+            <option value="free_delivery" ${editing && editing.discount_type === "free_delivery" ? "selected" : ""}>توصيل مجاني</option>
+          </select>
+        </label>
+        <label class="input-label"><span>قيمة الخصم</span><input name="value" type="number" min="0" step="1" inputmode="numeric" value="${editing ? Number(editing.value) || "" : ""}" placeholder="10"><small class="field-hint">للنسبة: 1-90. تُتجاهل مع «توصيل مجاني».</small></label>
+        <label class="input-label"><span>أقصى خصم (للنسبة، اختياري)</span><input name="max_discount" type="number" min="0" step="1" value="${editing && editing.max_discount ? Number(editing.max_discount) : ""}" placeholder="100"></label>
+        <label class="input-label"><span>الحد الأدنى للطلب (اختياري)</span><input name="min_subtotal" type="number" min="0" step="1" value="${editing && editing.min_subtotal ? Number(editing.min_subtotal) : ""}" placeholder="200"></label>
+        <label class="input-label"><span>تاريخ الانتهاء (اختياري)</span><input name="ends_at" type="date" value="${endsVal}"></label>
+        <label class="input-label"><span>حد الاستخدامات الكلي (اختياري)</span><input name="usage_limit" type="number" min="0" step="1" value="${editing && editing.usage_limit ? editing.usage_limit : ""}" placeholder="100"></label>
+        <label class="input-label"><span>حد الاستخدام لكل عميل (اختياري)</span><input name="per_customer_limit" type="number" min="0" step="1" value="${editing && editing.per_customer_limit ? editing.per_customer_limit : ""}" placeholder="1"></label>
+      </div>
+      <button class="primary-button full" type="submit">${icon("check")} ${editing ? "حفظ التعديلات" : "إنشاء الكود"}</button>
+    </form>
+  `, "coupon-form-modal");
+}
+
+async function toggleCoupon(id, active) {
+  const store = getMerchantStore();
+  try {
+    const r = await fetch("/api/notify-order?action=merchant-coupon-status", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ storeId: store.id, couponId: Number(id), active }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) { showToast("تعذّر تحديث حالة الكود", ""); return; }
+    const c = (state._merchantCoupons?.list || []).find(x => Number(x.id) === Number(id));
+    if (c) c.active = active;
+    showToast(active ? "تم تفعيل الكود" : "تم إيقاف الكود", "success");
+    render();
+  } catch (e) { showToast("خطأ في الاتصال", ""); }
 }
 
 function merchantStore() {
@@ -8269,6 +8358,9 @@ document.addEventListener("click", event => {
   if (action === "merchant-notifications") openMerchantNotifications();
   if (action === "merchant-customer") openMerchantCustomer(target.dataset.key);
   if (action === "export-merchant-customers") exportMerchantCustomersCsv();
+  if (action === "create-coupon") openCouponForm();
+  if (action === "edit-coupon") openCouponForm(target.dataset.id);
+  if (action === "toggle-coupon") toggleCoupon(target.dataset.id, target.dataset.active === "1");
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
@@ -9412,6 +9504,39 @@ document.addEventListener("submit", async event => {
     }
     state.merchantTab = "products";
     closeModal(); render();
+  }
+  if (event.target.id === "merchant-coupon-form") {
+    const f = event.target;
+    const store = getMerchantStore();
+    const submitBtn = f.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الحفظ..."; }
+    const restore = () => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; } };
+    const coupon = {
+      id: f.dataset.id ? Number(f.dataset.id) : null,
+      code: f.code.value, discount_type: f.discount_type.value, value: f.value.value,
+      max_discount: f.max_discount.value, min_subtotal: f.min_subtotal.value,
+      ends_at: f.ends_at.value || null, usage_limit: f.usage_limit.value, per_customer_limit: f.per_customer_limit.value
+    };
+    if (coupon.discount_type !== "free_delivery" && !(Number(coupon.value) > 0)) { restore(); showToast("أدخل قيمة الخصم"); return; }
+    try {
+      const r = await fetch("/api/notify-order?action=merchant-coupon-save", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ storeId: store.id, coupon }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.ok === false) {
+        restore();
+        showToast(data.error === "duplicate_code" ? "هذا الكود مستخدم بالفعل — اختر كوداً آخر"
+          : data.error === "bad_code" ? "صيغة الكود غير صالحة (3-24 حرفاً لاتينياً/رقماً)"
+          : data.error === "bad_value" ? "قيمة الخصم غير صالحة (النسبة 1-90)"
+          : data.error === "unauthorized" ? "انتهت جلسة المتجر. سجّل الدخول من جديد."
+          : "تعذّر حفظ الكود", "");
+        return;
+      }
+      state._merchantCoupons = null; // re-fetch the fresh list on next render
+      closeModal();
+      showToast(coupon.id ? "تم حفظ تعديلات الكود" : "تم إنشاء كود الخصم 🎉", "success");
+      render();
+    } catch (e) { restore(); showToast("خطأ في الاتصال", ""); }
+    return;
   }
   if (event.target.id === "merchant-integrations-form") {
     const f = event.target;
