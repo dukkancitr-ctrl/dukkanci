@@ -111,6 +111,12 @@
          (see tracking.js / integrations.js). It was removed from here so it no
          longer loads unconditionally on every page view. -->
     <link rel="dns-prefetch" href="https://analytics.tiktok.com">
+    <!-- Vercel Web Analytics -->
+    <script>
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
+    <!-- End Vercel Web Analytics -->
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
