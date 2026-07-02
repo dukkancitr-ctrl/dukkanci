@@ -89,7 +89,8 @@ const STORE_SLUGS = {
   82: "8dec-coffee",
   81: "alahdab-market",
   65: "ruman-restaurant",
-  80: "golden-mix-coffee"
+  80: "golden-mix-coffee",
+  67: "bab-alyemen-restaurant"
 };
 
 // Reverse: slug -> id.
