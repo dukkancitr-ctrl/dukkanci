@@ -1077,6 +1077,17 @@ module.exports = async (req, res) => {
       return res.status(200).json({ history: rows });
     }
 
+    // Merchant/Admin: which products in this store have a revertible AI-image backup (spec §8).
+    if (q.action === "product-images") {
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const rows = await sbGet(`product_images?store_id=eq.${storeId}&status=eq.enhanced&select=product_id&order=created_at.desc&limit=2000`) || [];
+      const ids = [...new Set(rows.map(r => Number(r.product_id)))];
+      return res.status(200).json({ enhancedProductIds: ids });
+    }
+
     // Admin: list every store with its login credentials (phone=username +
     // generated password). Lazily generates+persists a password for any store
     // that has a phone but no credential row yet. Passwords live in
@@ -1490,6 +1501,53 @@ module.exports = async (req, res) => {
     const r = await sbWrite("DELETE", `products?id=eq.${productId}`, undefined, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "delete failed", detail: r.rows });
     return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: apply an AI-enhanced image. Backs up the CURRENT image to
+  // product_images BEFORE overwriting (spec §8 «الأصل لا يُحذف»), then updates the
+  // product image. The original stays recoverable via revert-product-image.
+  if (pq.action === "apply-enhanced-image") {
+    const productId = Number(body.productId);
+    const storeId = Number(body.storeId);
+    const image = typeof body.image === "string" ? body.image : "";
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    if (!productId || !image) return res.status(400).json({ error: "productId and image required" });
+    // Back up the current image (best-effort) so the merchant can always revert.
+    try {
+      const existing = await sbGet(`products?id=eq.${productId}&select=image,store_id&limit=1`);
+      const cur = existing && existing[0];
+      if (cur) {
+        await sbWrite("POST", "product_images", {
+          product_id: productId, store_id: storeId || cur.store_id || null,
+          original_image: cur.image || null, status: "enhanced", provider: "openai"
+        }, "return=minimal");
+      }
+    } catch (e) { /* backup is best-effort */ }
+    const r = await sbWrite("PATCH", `products?id=eq.${productId}`, { image }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows });
+    return res.status(200).json({ ok: true });
+  }
+
+  // Merchant/Admin: revert a product image to the most recent backed-up original.
+  if (pq.action === "revert-product-image") {
+    const productId = Number(body.productId);
+    const storeId = Number(body.storeId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    if (!productId) return res.status(400).json({ error: "productId required" });
+    const rows = await sbGet(`product_images?product_id=eq.${productId}&status=eq.enhanced&order=created_at.desc&limit=1&select=id,original_image`);
+    const backup = rows && rows[0];
+    if (!backup || backup.original_image == null) return res.status(404).json({ error: "no original to restore" });
+    const r = await sbWrite("PATCH", `products?id=eq.${productId}`, { image: backup.original_image }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "revert failed", detail: r.rows });
+    // Mark this backup consumed so the button hides and it isn't reverted twice.
+    try { await sbWrite("PATCH", `product_images?id=eq.${backup.id}`, { status: "reverted" }, "return=minimal"); } catch (e) {}
+    return res.status(200).json({ ok: true, image: backup.original_image });
   }
 
   // Merchant/Admin: update an order's status using the service-role key.

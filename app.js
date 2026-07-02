@@ -2925,7 +2925,7 @@ const MERCHANT_SECTIONS = [
   ["overview", "chart", "نظرة عامة", "active", ""],
   ["orders", "receipt", "الطلبات", "active", ""],
   ["products", "box", "المنتجات والمنيو", "active", ""],
-  ["images", "stars", "الصور والتحسين", "planned", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
+  ["images", "stars", "الصور والتحسين", "beta", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
   ["search", "search", "البحث والمرادفات", "planned", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
   ["customers", "users", "العملاء", "planned", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
   ["offers", "megaphone", "كودات الخصم", "beta", "أنشئ عروضاً وكودات خصم لعملائك. النسخة الحالية تدعم عروض السعر؛ وكودات الخصم الكاملة (نسبة/مبلغ/توصيل مجاني، حد استخدام، تاريخ انتهاء، وقياس الأداء) قيد الإضافة."],
@@ -3044,6 +3044,187 @@ function merchantComingSoon(key) {
         : `<p class="coming-soon-hint">${icon("clock")} نعمل على إضافتها ضمن خطة تطوير لوحة المتجر — تابع التحديثات.</p>`}
       <button class="secondary-button compact" data-action="merchant-tab" data-tab="overview">${icon("arrowLeft")} العودة للوحة</button>
     </div>`;
+}
+
+// ── Merchant AI image enhancement (spec §8): dedicated before/after section ──
+
+// Recompress a data-URL (e.g. an AI-enhanced 1024px PNG) to a compact JPEG so it
+// doesn't bloat the product row / catalog load — mirrors the upload resize path.
+function resizeDataUrl(dataUrl, maxDim = 720, quality = 0.82) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onerror = () => resolve(dataUrl);
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/jpeg", quality)); } catch (e) { resolve(dataUrl); }
+      };
+      img.src = dataUrl;
+    } catch (e) { resolve(dataUrl); }
+  });
+}
+
+// The enhance API fetches the URL server-side, so a relative /assets path must be
+// made absolute; data-URLs and http(s) URLs pass through unchanged.
+function absoluteImageUrl(src) {
+  if (!src) return "";
+  if (/^https?:\/\//i.test(src) || src.startsWith("data:")) return src;
+  if (src.startsWith("/")) return location.origin + src;
+  return src;
+}
+
+function merchantImages() {
+  const store = getMerchantStore();
+  const list = allProducts.filter(p => p.storeId === store.id);
+  const filter = state.merchantImageFilter || "all";
+  const backups = state._merchantImageBackups; // Set of productIds with a revertible original (null = unloaded)
+  // Lazy-load which products have a revertible backup, once per section open.
+  if (backups == null && !state._merchantImageBackupsLoading) {
+    state._merchantImageBackupsLoading = true;
+    loadMerchantImageBackups(store.id).then(() => { state._merchantImageBackupsLoading = false; render(); });
+  }
+  const needsImage = p => isPlaceholderImage(p.image);
+  let shown = list;
+  if (filter === "needs") shown = list.filter(needsImage);
+  else if (filter === "enhanced") shown = list.filter(p => backups && backups.has(Number(p.id)));
+  const needsCount = list.filter(needsImage).length;
+  const enhancedCount = backups ? list.filter(p => backups.has(Number(p.id))).length : 0;
+  const chip = (key, label, count) => `<button type="button" class="cat-chip ${filter === key ? "active" : ""}" data-action="merchant-image-filter" data-filter="${key}">${label}${count != null ? ` <span>${count}</span>` : ""}</button>`;
+  const cards = shown.map(p => {
+    const noImg = isPlaceholderImage(p.image);
+    const hasBackup = backups && backups.has(Number(p.id));
+    return `
+      <article class="image-card">
+        <div class="image-card__thumb ${noImg ? "no-image" : ""}">${noImg ? icon("box") : `<img src="${escAttr(p.image)}" alt="${escAttr(p.name)}" loading="lazy">`}</div>
+        <div class="image-card__body">
+          <strong>${esc(p.name)}</strong><small>${esc(p.category || "")}</small>
+          <div class="image-card__actions">
+            <button class="secondary-button compact" data-action="enhance-image-product" data-id="${p.id}">${icon("stars")} تحسين</button>
+            ${hasBackup ? `<button class="table-action" data-action="revert-image-product" data-id="${p.id}" title="استرجاع الصورة الأصلية">${icon("arrowLeft")}</button>` : ""}
+          </div>
+        </div>
+      </article>`;
+  }).join("");
+  return `
+    <div class="review-note images-safety">${icon("shield")} <span><strong>التحسين لتجميل العرض فقط — لا يغيّر حقيقة منتجك.</strong><small>نحفظ صورتك الأصلية دائماً، ويمكنك استرجاعها بضغطة في أي وقت.</small></span></div>
+    <div class="product-cat-filter">
+      ${chip("all", "كل المنتجات", list.length)}
+      ${chip("needs", "بحاجة إلى صورة", needsCount)}
+      ${chip("enhanced", "تم تحسينها", enhancedCount)}
+    </div>
+    <section class="dashboard-card">
+      ${shown.length ? `<div class="image-grid">${cards}</div>` : `<div class="empty-managed">${icon("stars")}<p>${filter === "needs" ? "كل منتجاتك لديها صور — رائع!" : (filter === "enhanced" ? "لم تُحسّن أي صورة بعد." : "لا توجد منتجات بعد.")}</p></div>`}
+    </section>`;
+}
+
+async function loadMerchantImageBackups(storeId) {
+  const headers = {};
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  try {
+    const r = await fetch(`/api/notify-order?action=product-images&storeId=${storeId}`, { headers });
+    const data = await r.json().catch(() => ({}));
+    state._merchantImageBackups = new Set((data.enhancedProductIds || []).map(Number));
+  } catch (e) { state._merchantImageBackups = new Set(); }
+}
+
+function showEnhanceError(msg) {
+  const el = document.querySelector(".enhance-body");
+  if (el) el.innerHTML = `<div class="empty-managed">${icon("shield")}<p>${esc(msg)}</p></div><div class="form-actions"><button class="secondary-button" data-action="close-modal">إغلاق</button></div>`;
+}
+
+// Enhance a product's image via the AI endpoint, then show a before/after modal.
+async function openImageEnhance(id) {
+  const p = getProduct(id);
+  if (!p) { showToast("تعذّر العثور على المنتج"); return; }
+  const before = p.image;
+  showModal(`<button class="modal-close" data-action="close-modal">${icon("close")}</button><span class="section-kicker">${esc(p.name)}</span><h2>تحسين الصورة بالذكاء الاصطناعي</h2><div class="enhance-body"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحسين الصورة… قد يستغرق حتى دقيقة.</p></div></div>`, "enhance-modal");
+  if (isPlaceholderImage(before)) {
+    const el = document.querySelector(".enhance-body");
+    if (el) el.innerHTML = `<div class="empty-managed">${icon("box")}<p>هذا المنتج بلا صورة. أضف صورة من قسم «المنتجات» أولاً ثم حسّنها هنا.</p></div>`;
+    return;
+  }
+  const body = before.startsWith("data:") ? { imageData: before, name: p.name } : { imageUrl: absoluteImageUrl(before), name: p.name };
+  try {
+    const r = await fetch("/api/enhance-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 503) return showEnhanceError("خدمة التحسين غير مُفعّلة حالياً. تواصل مع إدارة دكانجي لتفعيلها.");
+    if (!r.ok || !data.url) return showEnhanceError(data.error || "تعذّر تحسين الصورة. جرّب صورة أوضح.");
+    state._enhancePending = { id: p.id, enhanced: data.url };
+    const el = document.querySelector(".enhance-body");
+    if (!el) return;
+    el.innerHTML = `
+      <div class="before-after">
+        <figure><figcaption>قبل</figcaption><img src="${escAttr(before)}" alt="قبل"></figure>
+        <figure><figcaption>بعد</figcaption><img src="${escAttr(data.url)}" alt="بعد"></figure>
+      </div>
+      <p class="field-hint">${icon("shield")} إن اعتمدت النسخة المحسّنة سنحفظ صورتك الأصلية ويمكنك استرجاعها لاحقاً.</p>
+      <div class="form-actions">
+        <button class="secondary-button" data-action="reenhance-image" data-id="${p.id}">${icon("stars")} إعادة التحسين</button>
+        <button class="secondary-button" data-action="close-modal">الاحتفاظ بالأصل</button>
+        <button class="primary-button" data-action="approve-enhanced-image">${icon("check")} اعتماد المحسّنة</button>
+      </div>`;
+  } catch (e) { showEnhanceError("خطأ في الاتصال بخدمة التحسين."); }
+}
+
+async function approveEnhancedImage() {
+  const pending = state._enhancePending;
+  if (!pending) { closeModal(); return; }
+  const p = getProduct(pending.id);
+  if (!p) { closeModal(); return; }
+  const btn = document.querySelector('[data-action="approve-enhanced-image"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = "جارٍ الحفظ..."; }
+  // Recompress the enhanced image so the product row / catalog stays lightweight.
+  const compact = await resizeDataUrl(pending.enhanced, 720, 0.82);
+  const store = getMerchantStore();
+  const headers = { "Content-Type": "application/json" };
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  try {
+    const r = await fetch("/api/notify-order?action=apply-enhanced-image", { method: "POST", headers, body: JSON.stringify({ productId: p.id, storeId: store.id, image: compact }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) {
+      if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} اعتماد المحسّنة`; }
+      showToast(data.error === "unauthorized" ? "انتهت جلسة المتجر. سجّل الدخول من جديد." : "تعذّر حفظ الصورة المحسّنة", "");
+      return;
+    }
+    p.image = compact;
+    upsertCatalogProduct(p);
+    saveProductOverride(p.id, { image: compact });
+    if (state._merchantImageBackups) state._merchantImageBackups.add(Number(p.id));
+    state._enhancePending = null;
+    closeModal();
+    showToast("تم اعتماد الصورة المحسّنة ✓ (الأصل محفوظ)", "success");
+    render();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} اعتماد المحسّنة`; }
+    showToast("خطأ في الاتصال", "");
+  }
+}
+
+async function revertProductImage(id) {
+  const p = getProduct(id);
+  if (!p) return;
+  const store = getMerchantStore();
+  const headers = { "Content-Type": "application/json" };
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  try {
+    const r = await fetch("/api/notify-order?action=revert-product-image", { method: "POST", headers, body: JSON.stringify({ productId: p.id, storeId: store.id }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.image) { showToast(data.error === "no original to restore" ? "لا توجد صورة أصلية محفوظة." : "تعذّر استرجاع الصورة", ""); return; }
+    p.image = data.image;
+    upsertCatalogProduct(p);
+    saveProductOverride(p.id, { image: data.image });
+    if (state._merchantImageBackups) state._merchantImageBackups.delete(Number(p.id));
+    showToast("تم استرجاع الصورة الأصلية", "success");
+    render();
+  } catch (e) { showToast("خطأ في الاتصال", ""); }
 }
 
 function merchantOverview() {
@@ -3663,9 +3844,10 @@ function renderMerchant(id) {
     analytics: merchantAnalytics,
     integrations: merchantIntegrations,
     subscription: merchantSubscription,
-    share: merchantShare
+    share: merchantShare,
+    images: merchantImages
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
@@ -7626,6 +7808,10 @@ document.addEventListener("click", event => {
   if (action === "preview-product") openProductPreview(target.dataset.id);
   if (action === "price-history") openPriceHistory(target.dataset.id);
   if (action === "apply-csv-import") applyCsvImport();
+  if (action === "merchant-image-filter") { state.merchantImageFilter = target.dataset.filter; render(); }
+  if (action === "enhance-image-product" || action === "reenhance-image") openImageEnhance(target.dataset.id);
+  if (action === "approve-enhanced-image") approveEnhancedImage();
+  if (action === "revert-image-product") revertProductImage(target.dataset.id);
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
