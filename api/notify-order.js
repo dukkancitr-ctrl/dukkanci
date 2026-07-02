@@ -1119,6 +1119,28 @@ module.exports = async (req, res) => {
       return res.status(200).json({ logs: rows });
     }
 
+    // Merchant/Admin: this store's discount coupons + per-coupon performance (spec §11).
+    if (q.action === "merchant-coupons") {
+      const storeId = Number(q.storeId);
+      const isAdmin = adminOk({ headers: req.headers, query: q });
+      if (!isAdmin && !(storeId && merchantOk(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+      if (!storeId) return res.status(400).json({ error: "storeId required" });
+      const coupons = await sbGet(`coupons?store_id=eq.${storeId}&select=id,code,discount_type,value,min_subtotal,max_discount,starts_at,ends_at,usage_limit,per_customer_limit,active,created_at&order=created_at.desc&limit=100`) || [];
+      // Redemption stats (count + total discount) per coupon — one query for all.
+      const stats = {};
+      if (coupons.length) {
+        const ids = coupons.map(c => c.id).join(",");
+        const reds = await sbGet(`coupon_redemptions?coupon_id=in.(${ids})&select=coupon_id,amount&limit=5000`) || [];
+        for (const r of reds) {
+          const k = Number(r.coupon_id);
+          if (!stats[k]) stats[k] = { uses: 0, discount: 0 };
+          stats[k].uses += 1;
+          stats[k].discount += Number(r.amount) || 0;
+        }
+      }
+      return res.status(200).json({ coupons, stats });
+    }
+
     // Merchant/Admin: this store's notification feed + unread count (spec §19).
     if (q.action === "merchant-notifications") {
       const storeId = Number(q.storeId);
@@ -1604,6 +1626,72 @@ module.exports = async (req, res) => {
     try { await sbWrite("PATCH", `product_images?id=eq.${backup.id}`, { status: "reverted" }, "return=minimal"); } catch (e) {}
     await logAudit(storeId, isAdmin ? "admin" : "merchant", "image_revert", "product", productId, null, null);
     return res.status(200).json({ ok: true, image: backup.original_image });
+  }
+
+  // Merchant/Admin: create or update a discount coupon for THIS store (spec §11).
+  // store_id is always forced to the authed store — a merchant can never create a
+  // global/other-store coupon. Codes are globally unique (case-insensitive) so
+  // validate_coupon can never resolve one code to two different coupons.
+  if (pq.action === "merchant-coupon-save") {
+    const storeId = Number(body.storeId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const c = (body.coupon && typeof body.coupon === "object") ? body.coupon : {};
+    const code = String(c.code || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!/^[A-Z0-9_-]{3,24}$/.test(code)) return res.status(400).json({ error: "bad_code" });
+    const type = String(c.discount_type || "");
+    if (!["percent", "fixed", "free_delivery"].includes(type)) return res.status(400).json({ error: "bad_type" });
+    let value = Math.round(Number(c.value) || 0);
+    if (type === "percent" && (value < 1 || value > 90)) return res.status(400).json({ error: "bad_value" });
+    if (type === "fixed" && value < 1) return res.status(400).json({ error: "bad_value" });
+    if (type === "free_delivery") value = 0;
+    const couponId = Number(c.id) || null;
+    // Uniqueness: no OTHER coupon may carry this code (spec §23 acceptance).
+    const dup = await sbGet(`coupons?code=ilike.${encodeURIComponent(code)}&select=id&limit=2`) || [];
+    if (dup.some(d => Number(d.id) !== couponId)) return res.status(409).json({ error: "duplicate_code" });
+    const row = {
+      code, discount_type: type, value, store_id: storeId,
+      min_subtotal: Math.max(0, Math.round(Number(c.min_subtotal) || 0)) || null,
+      max_discount: type === "percent" && Number(c.max_discount) > 0 ? Math.round(Number(c.max_discount)) : null,
+      ends_at: c.ends_at ? new Date(c.ends_at).toISOString() : null,
+      usage_limit: Number(c.usage_limit) > 0 ? Math.round(Number(c.usage_limit)) : null,
+      per_customer_limit: Number(c.per_customer_limit) > 0 ? Math.round(Number(c.per_customer_limit)) : null,
+      active: c.active !== false
+    };
+    let r;
+    if (couponId) {
+      // Update: only if the coupon belongs to this store.
+      const own = await sbGet(`coupons?id=eq.${couponId}&select=store_id&limit=1`);
+      if (!own || !own[0] || Number(own[0].store_id) !== storeId) return res.status(403).json({ error: "forbidden" });
+      r = await sbWrite("PATCH", `coupons?id=eq.${couponId}`, row, "return=representation");
+    } else {
+      r = await sbWrite("POST", "coupons", row, "return=representation");
+    }
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows });
+    const saved = Array.isArray(r.rows) ? r.rows[0] : null;
+    await logAudit(storeId, isAdmin ? "admin" : "merchant", couponId ? "coupon_update" : "coupon_create", "coupon", (saved && saved.id) || couponId, null, { code, type, value });
+    return res.status(200).json({ ok: true, coupon: saved });
+  }
+
+  // Merchant/Admin: enable/disable one of this store's coupons (spec §11).
+  if (pq.action === "merchant-coupon-status") {
+    const storeId = Number(body.storeId);
+    const couponId = Number(body.couponId);
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
+    if (!authed && storeId) authed = merchantOk(req, storeId);
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    if (!storeId || !couponId) return res.status(400).json({ error: "storeId and couponId required" });
+    const own = await sbGet(`coupons?id=eq.${couponId}&select=store_id,code&limit=1`);
+    if (!own || !own[0] || Number(own[0].store_id) !== storeId) return res.status(403).json({ error: "forbidden" });
+    const active = body.active !== false;
+    const r = await sbWrite("PATCH", `coupons?id=eq.${couponId}`, { active }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });
+    await logAudit(storeId, isAdmin ? "admin" : "merchant", "coupon_status", "coupon", couponId, null, { code: own[0].code, active });
+    return res.status(200).json({ ok: true });
   }
 
   // Merchant/Admin: mark this store's notifications as read (spec §19).
