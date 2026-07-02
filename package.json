@@ -5,5 +5,8 @@
   "description": "منصة دكانجي للطلب من المتاجر المحلية",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
   }
 }
