@@ -38,6 +38,29 @@ function adminOk(req) {
   return verifyAdminToken(req.headers && req.headers["x-admin-token"]) || adminPasswordOk(req);
 }
 
+// ── Merchant auth (mirrors api/notify-order.js) — a store owner manages the search
+// synonyms of THEIR OWN products (spec §9). Same HMAC/pepper as the merchant token.
+function verifyMerchantToken(token) {
+  const secret = adminSecret();
+  if (!secret) return null;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  let payload;
+  try { payload = Buffer.from(parts[0], "base64url").toString("utf8"); } catch (e) { return null; }
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const a = Buffer.from(parts[1]), b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const pm = /storeIds=([^&]+)&exp=(\d+)/.exec(payload);
+  if (!pm || Date.now() >= Number(pm[2])) return null;
+  return pm[1].split(",").map(Number).filter(Boolean);
+}
+function merchantOk(req, storeId) {
+  const token = String((req.headers && req.headers["x-merchant-token"]) || "").trim();
+  if (!token || !storeId) return false;
+  const ids = verifyMerchantToken(token);
+  return Array.isArray(ids) && ids.includes(Number(storeId));
+}
+
 const FEATURES = ["whatsapp_autoreply", "image_enhancement", "synonym_generation", "embeddings"];
 
 // Chunk → embed (batched) → bulk-insert chunks, then flip the document status.
@@ -190,6 +213,54 @@ module.exports = async (req, res) => {
       if (r.processed === 0 && r.failed === 0) break;       // safety: no progress
     }
     return res.status(200).json({ ok: true, batches, processed, failed, stats: await synStats() });
+  }
+
+  // ── Merchant-facing synonyms (spec §9) — runs BEFORE the admin gate. A store
+  // owner reads/generates/saves the search terms for THEIR OWN product only.
+  // Writes are scoped by product_id (upsert), so they never touch another store's
+  // rows and stay compatible with the per-product_id search index + SSR.
+  if (action === "merchant-syn-get" || action === "merchant-syn-generate" || action === "merchant-syn-save") {
+    const mbody = (req.body && typeof req.body === "object") ? req.body : {};
+    const productId = Number(q.productId || mbody.productId);
+    const storeId = Number(q.storeId || mbody.storeId);
+    const isAdmin = adminOk(req);
+    if (!isAdmin && !merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
+    if (!productId) return res.status(400).json({ error: "productId required" });
+    const prow = await gw.sbGet(`products?id=eq.${productId}&select=name,store_id&limit=1`);
+    const product = prow && prow[0];
+    if (!product) return res.status(404).json({ error: "product not found" });
+    if (!isAdmin && Number(product.store_id) !== storeId) return res.status(403).json({ error: "forbidden" });
+    const name = String(product.name || "").trim();
+
+    if (action === "merchant-syn-get") {
+      const rows = await gw.sbGet(`product_synonyms?product_id=eq.${productId}&select=name,synonyms,status&limit=1`);
+      const row = rows && rows[0];
+      return res.status(200).json({ name, synonyms: (row && Array.isArray(row.synonyms)) ? row.synonyms : [], status: (row && row.status) || "none" });
+    }
+
+    if (action === "merchant-syn-generate") {
+      const raw = await gw.complete("synonym_generation", {
+        system: SYN_SYSTEM,
+        messages: [{ role: "user", content: JSON.stringify([name]) }],
+        maxTokens: 1200, temperature: 0.3, timeoutMs: 45000
+      });
+      if (raw == null) return res.status(200).json({ ok: false, error: "provider", suggestions: [] });
+      const parsed = extractJson(raw);
+      const results = parsed && Array.isArray(parsed.results) ? parsed.results : (Array.isArray(parsed) ? parsed : []);
+      const entry = results.find(r => r && r.name != null) || results[0];
+      const built = entry ? buildEntry(entry, name) : { synonyms: [] };
+      return res.status(200).json({ ok: true, suggestions: built.synonyms });
+    }
+
+    if (action === "merchant-syn-save") {
+      const incoming = Array.isArray(mbody.synonyms) ? mbody.synonyms.map(s => String(s == null ? "" : s).trim()).filter(Boolean).slice(0, 40) : [];
+      const seen = new Set([synNorm(name)]); const clean = [];
+      for (const s of incoming) { const n = synNorm(s); if (!seen.has(n)) { seen.add(n); clean.push(s); } }
+      const row = { product_id: productId, name, synonyms: clean, dialects: clean.length ? { "مخصّص": clean } : {}, status: "done", indexed_at: null, updated_at: new Date().toISOString() };
+      const r = await gw.sbWrite("POST", "product_synonyms?on_conflict=product_id", row, "resolution=merge-duplicates,return=minimal");
+      if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows });
+      return res.status(200).json({ ok: true, synonyms: clean });
+    }
   }
 
   if (!adminOk(req)) return res.status(403).json({ error: "unauthorized" });

@@ -2948,7 +2948,7 @@ const MERCHANT_SECTIONS = [
   ["orders", "receipt", "الطلبات", "active", ""],
   ["products", "box", "المنتجات والمنيو", "active", ""],
   ["images", "stars", "الصور والتحسين", "beta", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
-  ["search", "search", "البحث والمرادفات", "planned", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
+  ["search", "search", "البحث والمرادفات", "beta", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
   ["customers", "users", "العملاء", "planned", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
   ["offers", "megaphone", "كودات الخصم", "beta", "أنشئ عروضاً وكودات خصم لعملائك. النسخة الحالية تدعم عروض السعر؛ وكودات الخصم الكاملة (نسبة/مبلغ/توصيل مجاني، حد استخدام، تاريخ انتهاء، وقياس الأداء) قيد الإضافة."],
   ["campaigns", "megaphone", "الحملات التسويقية", "requires_setup", "أرسل عروضك لعملائك عبر قوالب واتساب المعتمدة ووفق سياسات ميتا (Opt-in / Opt-out). تتطلب هذه الميزة تفعيلاً وربطاً من إدارة دكانجي قبل التشغيل حفاظاً على حسابك."],
@@ -3247,6 +3247,116 @@ async function revertProductImage(id) {
     showToast("تم استرجاع الصورة الأصلية", "success");
     render();
   } catch (e) { showToast("خطأ في الاتصال", ""); }
+}
+
+// ── Merchant search synonyms (spec §9): per-product search-term manager ──
+// Reuses the shared AI gateway + product_synonyms via merchant-gated /api/ai actions.
+function merchantHeaders(json) {
+  const h = json ? { "Content-Type": "application/json" } : {};
+  if (state.adminKey) h["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) h["x-merchant-token"] = state.merchantPwAuth.token;
+  return h;
+}
+
+function merchantSearch() {
+  const store = getMerchantStore();
+  const list = allProducts.filter(p => p.storeId === store.id);
+  const query = (state.merchantSynSearch || "").trim();
+  const nq = normalizeAr(query);
+  const shown = nq ? list.filter(p => normalizeAr(`${p.name} ${p.category}`).includes(nq)) : list;
+  const rows = shown.map(p => `
+    <article class="syn-row">
+      <div class="syn-row__name"><strong>${esc(p.name)}</strong><small>${esc(p.category || "")}</small></div>
+      <button class="secondary-button compact" data-action="manage-synonyms" data-id="${p.id}">${icon("search")} كلمات البحث</button>
+    </article>`).join("");
+  return `
+    <div class="review-note">${icon("stars")} <span><strong>أضف الكلمات والمرادفات التي يبحث بها عملاؤك عن كل منتج.</strong><small>مثلاً «بطيخ» يعرفه بعض العملاء بـ«دلّاع» أو «حبحب» — أضِفها ليظهر منتجك مهما اختلفت التسمية أو اللهجة. يمكنك توليد اقتراحات بالذكاء الاصطناعي ثم مراجعتها.</small></span></div>
+    <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="merchant-syn-search" placeholder="ابحث عن منتج" value="${escAttr(query)}"></div><div class="toolbar-actions"><span class="toolbar-count">${shown.length.toLocaleString("ar")} منتج</span></div></div>
+    <section class="dashboard-card">
+      ${shown.length ? `<div class="syn-list">${rows}</div>` : `<div class="empty-managed">${icon("search")}<p>${query ? "لا منتجات مطابقة لبحثك" : "لا توجد منتجات بعد."}</p></div>`}
+    </section>`;
+}
+
+function openSynonymManager(id) {
+  const p = getProduct(id);
+  if (!p) { showToast("تعذّر العثور على المنتج"); return; }
+  state._synMgr = { id: p.id, name: p.name, active: [], suggestions: [], generating: false, suggested: false };
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">كلمات البحث والمرادفات</span>
+    <h2>${esc(p.name)}</h2>
+    <p class="field-hint">الاسم الأساسي يظهر دائماً في البحث. أضِف المرادفات واللهجات ليجده العملاء بأي تسمية.</p>
+    <div class="syn-block"><label class="syn-label">المرادفات الفعّالة</label><div id="syn-active" class="syn-chips"><span class="delivery-loader"></span></div></div>
+    <div class="syn-add-row"><input id="syn-add-input" placeholder="أضف كلمة أو مرادفاً ثم اضغط Enter" autocomplete="off"><button type="button" class="secondary-button compact" data-action="syn-add">${icon("plus")} إضافة</button></div>
+    <div class="syn-block"><div class="syn-gen-head"><label class="syn-label">اقتراحات الذكاء الاصطناعي</label><button type="button" class="secondary-button compact" data-action="syn-generate">${icon("stars")} توليد اقتراحات</button></div><div id="syn-suggest" class="syn-chips syn-suggest-chips"><small class="syn-empty">اضغط «توليد اقتراحات» للحصول على مرادفات مقترحة بالذكاء الاصطناعي.</small></div></div>
+    <div class="form-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="primary-button" data-action="syn-save">${icon("check")} حفظ المرادفات</button></div>
+  `, "syn-manager-modal");
+  const store = getMerchantStore();
+  fetch(`/api/ai?action=merchant-syn-get&productId=${p.id}&storeId=${store.id}`, { headers: merchantHeaders() })
+    .then(r => r.json()).then(data => {
+      if (!state._synMgr || state._synMgr.id !== p.id) return;
+      state._synMgr.active = Array.isArray(data.synonyms) ? data.synonyms.slice() : [];
+      refreshSynonymUI();
+    }).catch(() => refreshSynonymUI());
+}
+
+function refreshSynonymUI() {
+  const m = state._synMgr; if (!m) return;
+  const activeEl = document.getElementById("syn-active");
+  if (activeEl) activeEl.innerHTML = m.active.length
+    ? m.active.map((s, i) => `<span class="syn-chip">${esc(s)}<button type="button" data-action="syn-remove" data-i="${i}" aria-label="حذف">${icon("close")}</button></span>`).join("")
+    : `<small class="syn-empty">لا توجد مرادفات بعد — أضِف يدوياً أو ولّد اقتراحات.</small>`;
+  const sugEl = document.getElementById("syn-suggest");
+  if (sugEl) {
+    const fresh = m.suggestions.filter(s => !m.active.some(a => normalizeAr(a) === normalizeAr(s)));
+    if (m.generating) sugEl.innerHTML = `<span class="delivery-loader"></span> <small class="syn-empty">جارٍ توليد الاقتراحات…</small>`;
+    else if (fresh.length) sugEl.innerHTML = fresh.map(s => `<button type="button" class="syn-chip suggest" data-action="syn-accept" data-term="${escAttr(s)}">${icon("plus")} ${esc(s)}</button>`).join("");
+    else if (m.suggested) sugEl.innerHTML = `<small class="syn-empty">لا اقتراحات جديدة — كل المقترحات مضافة بالفعل.</small>`;
+    else sugEl.innerHTML = `<small class="syn-empty">اضغط «توليد اقتراحات» للحصول على مرادفات مقترحة بالذكاء الاصطناعي.</small>`;
+  }
+}
+
+function synAddTerm(term) {
+  const m = state._synMgr; const v = String(term || "").trim();
+  if (!m || !v) return;
+  if (!m.active.some(a => normalizeAr(a) === normalizeAr(v)) && normalizeAr(v) !== normalizeAr(m.name)) m.active.push(v);
+  refreshSynonymUI();
+}
+
+async function synGenerate() {
+  const m = state._synMgr; if (!m) return;
+  m.generating = true; refreshSynonymUI();
+  const store = getMerchantStore();
+  try {
+    const r = await fetch("/api/ai?action=merchant-syn-generate", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ productId: m.id, storeId: store.id }) });
+    const data = await r.json().catch(() => ({}));
+    m.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    m.suggested = true;
+    if (data.ok === false) showToast("خدمة التوليد غير متاحة حالياً — أضِف المرادفات يدوياً", "");
+  } catch (e) { showToast("خطأ في الاتصال بخدمة التوليد", ""); }
+  m.generating = false; refreshSynonymUI();
+}
+
+async function synSave() {
+  const m = state._synMgr; if (!m) return;
+  const btn = document.querySelector('[data-action="syn-save"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = "جارٍ الحفظ..."; }
+  const store = getMerchantStore();
+  try {
+    const r = await fetch("/api/ai?action=merchant-syn-save", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ productId: m.id, storeId: store.id, synonyms: m.active }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) {
+      if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ المرادفات`; }
+      showToast(data.error === "unauthorized" ? "انتهت جلسة المتجر. سجّل الدخول من جديد." : "تعذّر حفظ المرادفات", "");
+      return;
+    }
+    state._synMgr = null;
+    closeModal();
+    showToast(`تم حفظ ${((data.synonyms || m.active).length).toLocaleString("ar")} مرادفاً — ستظهر في نتائج البحث`, "success");
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ المرادفات`; }
+    showToast("خطأ في الاتصال", "");
+  }
 }
 
 function merchantOverview() {
@@ -3869,9 +3979,10 @@ function renderMerchant(id) {
     integrations: merchantIntegrations,
     subscription: merchantSubscription,
     share: merchantShare,
-    images: merchantImages
+    images: merchantImages,
+    search: merchantSearch
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
@@ -7942,6 +8053,12 @@ document.addEventListener("click", event => {
   if (action === "enhance-image-product" || action === "reenhance-image") openImageEnhance(target.dataset.id);
   if (action === "approve-enhanced-image") approveEnhancedImage();
   if (action === "revert-image-product") revertProductImage(target.dataset.id);
+  if (action === "manage-synonyms") openSynonymManager(target.dataset.id);
+  if (action === "syn-add") { const inp = document.getElementById("syn-add-input"); if (inp) { synAddTerm(inp.value); inp.value = ""; inp.focus(); } }
+  if (action === "syn-remove") { const i = Number(target.dataset.i); if (state._synMgr && i >= 0) { state._synMgr.active.splice(i, 1); refreshSynonymUI(); } }
+  if (action === "syn-accept") synAddTerm(target.dataset.term);
+  if (action === "syn-generate") synGenerate();
+  if (action === "syn-save") synSave();
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
@@ -8533,6 +8650,10 @@ document.addEventListener("keydown", event => {
     state.search = event.target.value.trim();
     render();
     setTimeout(() => document.getElementById("stores-search")?.focus(), 0);
+  } else if (event.target.id === "syn-add-input") {
+    event.preventDefault();
+    synAddTerm(event.target.value);
+    event.target.value = "";
   }
 });
 
@@ -8760,6 +8881,14 @@ document.addEventListener("input", event => {
     // Show/hide clear button dynamically
     const clearBtn = document.querySelector(".store-search-clear");
     if (clearBtn) clearBtn.style.display = q ? "" : "none";
+  }
+  if (event.target.id === "merchant-syn-search") {
+    state.merchantSynSearch = event.target.value;
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".syn-list .syn-row").forEach(row => {
+      const nameEl = row.querySelector(".syn-row__name");
+      row.style.display = (!q || normalizeAr(nameEl ? nameEl.textContent : "").includes(q)) ? "" : "none";
+    });
   }
   if (event.target.id === "merchant-product-search") {
     state.merchantProductSearch = event.target.value;
