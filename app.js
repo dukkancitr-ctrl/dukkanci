@@ -3557,6 +3557,106 @@ function exportMerchantCustomersCsv() {
   showToast("تم تجهيز ملف العملاء", "success");
 }
 
+// ── Merchant reports (spec §16): product reports + in-store search report ──
+
+// Debounced first-party log of in-store product searches → search_logs (server
+// validates + caps). Skips repeats so typing "شاورما" logs once, not 6 times.
+let _searchLogTimer = null, _searchLogLast = "";
+function logStoreSearch(storeId, query, resultsCount) {
+  clearTimeout(_searchLogTimer);
+  _searchLogTimer = setTimeout(() => {
+    const q = String(query || "").trim();
+    if (!storeId || q.length < 2 || q === _searchLogLast) return;
+    _searchLogLast = q;
+    fetch("/api/notify-order?action=log-search", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, query: q, resultsCount })
+    }).catch(() => {});
+  }, 1400);
+}
+
+// Client-side product reports from this store's loaded orders + catalog:
+// best sellers / no movement / needs photo / needs description (spec §16).
+function merchantProductReportData() {
+  const store = getMerchantStore();
+  const storeProducts = allProducts.filter(p => p.storeId === store.id);
+  const qtyByProduct = new Map();
+  state.orders.filter(o => o.storeId === store.id).forEach(o => (o.lineItems || []).forEach(li => {
+    const k = li.name || "";
+    if (k) qtyByProduct.set(k, (qtyByProduct.get(k) || 0) + (li.qty || 1));
+  }));
+  const top = [...qtyByProduct.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  const noMove = storeProducts.filter(p => !qtyByProduct.has(p.name));
+  const needsImage = storeProducts.filter(p => isPlaceholderImage(p.image));
+  const needsDesc = storeProducts.filter(p => !(p.description || "").trim() || (p.description || "").trim().length < 10);
+  return { store, storeProducts, top, noMove, needsImage, needsDesc };
+}
+
+function merchantProductReports() {
+  const d = merchantProductReportData();
+  const nameList = (list) => list.length
+    ? `<ul class="report-name-list">${list.slice(0, 8).map(p => `<li>${esc(p.name)}</li>`).join("")}${list.length > 8 ? `<li class="more">…و${(list.length - 8).toLocaleString("ar")} منتجاً آخر</li>` : ""}</ul>`
+    : `<p class="report-ok">${icon("check")} لا شيء هنا — ممتاز!</p>`;
+  return `
+    <div class="dashboard-grid two-col">
+      <section class="dashboard-card"><div class="card-heading"><div><h3>الأكثر طلباً</h3><p>حسب الكمية في آخر الطلبات المحمّلة</p></div></div>
+        ${d.top.length ? analyticsHBars(d.top, v => `${v.toLocaleString("ar")}×`) : `<div class="empty-managed">${icon("chart")}<p>لا طلبات بعد.</p></div>`}
+      </section>
+      <section class="dashboard-card"><div class="card-heading"><div><h3>بلا حركة</h3><p>${d.noMove.length.toLocaleString("ar")} منتجاً لم يُطلب في آخر الطلبات — جرّب عرضاً أو صورة أفضل</p></div></div>
+        ${nameList(d.noMove)}
+      </section>
+    </div>
+    <div class="dashboard-grid two-col">
+      <section class="dashboard-card"><div class="card-heading"><div><h3>تحتاج صورة</h3><p>${d.needsImage.length.toLocaleString("ar")} منتجاً بلا صورة — لا يظهر للعملاء</p></div>${d.needsImage.length ? `<button class="text-button" data-action="merchant-tab" data-tab="images">قسم الصور ${icon("arrowLeft")}</button>` : ""}</div>
+        ${nameList(d.needsImage)}
+      </section>
+      <section class="dashboard-card"><div class="card-heading"><div><h3>تحتاج وصفاً أفضل</h3><p>${d.needsDesc.length.toLocaleString("ar")} منتجاً بلا وصف — الوصف يرفع الثقة والتحويل</p></div></div>
+        ${nameList(d.needsDesc)}
+      </section>
+    </div>`;
+}
+
+// In-store search report card (top terms + zero-result terms) — lazy-loaded.
+function merchantSearchReportCard() {
+  const store = getMerchantStore();
+  const sr = state._merchantSearchReport;
+  if (sr == null && !state._merchantSearchReportLoading) {
+    state._merchantSearchReportLoading = true;
+    fetch(`/api/notify-order?action=store-search-terms&storeId=${store.id}`, { headers: merchantHeaders() })
+      .then(r => r.json()).then(data => { state._merchantSearchReport = { total: Number(data.total) || 0, top: data.top || [], zero: data.zero || [] }; })
+      .catch(() => { state._merchantSearchReport = { total: 0, top: [], zero: [] }; })
+      .finally(() => { state._merchantSearchReportLoading = false; render(); });
+  }
+  const body = sr == null
+    ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل تقرير البحث…</p></div>`
+    : (!sr.total
+      ? `<div class="empty-managed">${icon("search")}<p>لا عمليات بحث مسجّلة بعد — يُسجَّل من الآن ما يكتبه زوّارك في بحث صفحة متجرك.</p></div>`
+      : `<div class="search-report-cols">
+          <div><h4>أكثر كلمات البحث</h4>${analyticsHBars(sr.top.slice(0, 8).map(t => ({ label: t.query, value: t.count })), v => v.toLocaleString("ar"))}</div>
+          <div><h4>بحثوا ولم يجدوا</h4>${sr.zero.length
+            ? `<ul class="report-name-list">${sr.zero.slice(0, 8).map(t => `<li>${esc(t.query)} <small>(${t.count.toLocaleString("ar")}×)</small></li>`).join("")}</ul><p class="field-hint">${icon("stars")} أضِف هذه الكلمات كمرادفات لمنتجاتك من قسم «البحث والمرادفات».</p>`
+            : `<p class="report-ok">${icon("check")} كل عمليات البحث وجدت نتائج.</p>`}</div>
+        </div>`);
+  return `
+    <section class="dashboard-card"><div class="card-heading"><div><h3>تقرير البحث داخل متجرك</h3><p>ماذا يكتب زوّارك في مربع البحث — وما لم يجدوه</p></div>${sr && sr.total ? `<button class="text-button" data-action="merchant-tab" data-tab="search">قسم المرادفات ${icon("arrowLeft")}</button>` : ""}</div>${body}</section>`;
+}
+
+// Export the full product report as one CSV (spec §16 تصدير التقارير).
+function exportMerchantReportCsv() {
+  const d = merchantProductReportData();
+  const qty = new Map(d.top.map(t => [t.label, t.value]));
+  const rows = [["المنتج", "التصنيف", "السعر", "مرات الطلب", "لديه صورة", "لديه وصف"],
+    ...d.storeProducts.map(p => [p.name, p.category || "", Number(p.price) || 0, qty.get(p.name) || 0,
+      isPlaceholderImage(p.image) ? "لا" : "نعم", (p.description || "").trim().length >= 10 ? "نعم" : "لا"])];
+  const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `dukkanci-${storeParam(d.store)}-report.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast("تم تجهيز ملف التقرير", "success");
+}
+
 function merchantOverview() {
   const store = getMerchantStore();
   const merchantOrders = state.orders.filter(order => order.storeId === store.id);
@@ -6112,7 +6212,7 @@ function merchantAnalytics() {
     <div class="dashboard-toolbar">
       <div class="toolbar-actions">${ranges.map(([d, l]) =>
         `<button class="${(f.range || 30) === d ? "primary-button" : "secondary-button"} compact" data-action="merchant-range" data-days="${d}">${l}</button>`).join("")}</div>
-      <div class="toolbar-actions"><button class="secondary-button compact" data-action="merchant-report-refresh">${icon("filter")} تحديث</button></div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="export-merchant-report">${icon("download")} تصدير التقرير</button><button class="secondary-button compact" data-action="merchant-report-refresh">${icon("filter")} تحديث</button></div>
     </div>`;
   if (!m || m.loading) return toolbar + `<section class="dashboard-card"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل تحليلات متجرك…</p></div></section>`;
   if (m.error) return toolbar + `<section class="dashboard-card"><div class="empty-managed">${icon("shield")}<p>تعذّر تحميل التحليلات.<br><small dir="ltr">${esc(m.error)}</small></p></div></section>`;
@@ -6142,7 +6242,9 @@ function merchantAnalytics() {
       ${kpi(ar(r.abandoned_carts), "سلات متروكة", "bag", "orange")}
     </div>
     ${tableCard("أكثر منتجاتك مشاهدةً", "ما الذي يجذب اهتمام زوّارك", `<th>المنتج</th><th>مشاهدات</th><th>إضافات للسلة</th>`, products)}
-    ${tableCard("مصادر زوّارك", "من أين يأتي زوّار متجرك", `<th>المصدر</th><th>زوّار</th>`, sources)}`;
+    ${tableCard("مصادر زوّارك", "من أين يأتي زوّار متجرك", `<th>المصدر</th><th>زوّار</th>`, sources)}
+    ${merchantProductReports()}
+    ${merchantSearchReportCard()}`;
 }
 
 function renderAdmin() {
@@ -8359,6 +8461,7 @@ document.addEventListener("click", event => {
   if (action === "merchant-customer") openMerchantCustomer(target.dataset.key);
   if (action === "export-merchant-customers") exportMerchantCustomersCsv();
   if (action === "create-coupon") openCouponForm();
+  if (action === "export-merchant-report") exportMerchantReportCsv();
   if (action === "edit-coupon") openCouponForm(target.dataset.id);
   if (action === "toggle-coupon") toggleCoupon(target.dataset.id, target.dataset.active === "1");
   if (action === "copy-store-link") {
@@ -9179,6 +9282,13 @@ document.addEventListener("input", event => {
         if (show) visible++;
       });
       if (countEl) countEl.textContent = q ? `${visible} نتيجة من ${cards.length}` : `${cards.length} منتجاً`;
+      // First-party search log (spec §16): debounced, so a settled query logs once
+      // with how many results it found — feeds the merchant «تقرير البحث».
+      const { route: _r, id: _sid } = parseRoute();
+      if (_r === "store" && q) {
+        const sidNum = /^\d+$/.test(String(_sid)) ? Number(_sid) : ((stores.find(s => SLUG_MAP[s.id] === _sid) || {}).id);
+        if (sidNum) logStoreSearch(sidNum, q, visible);
+      }
     }
     // Show/hide clear button dynamically
     const clearBtn = document.querySelector(".store-search-clear");
