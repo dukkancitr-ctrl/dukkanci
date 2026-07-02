@@ -2949,7 +2949,7 @@ const MERCHANT_SECTIONS = [
   ["products", "box", "المنتجات والمنيو", "active", ""],
   ["images", "stars", "الصور والتحسين", "beta", "حسّن صور منتجاتك بالذكاء الصناعي: إضاءة أفضل، خلفية نظيفة، ومقاس موحّد يناسب كروت المنتجات — مع الاحتفاظ بالصورة الأصلية دائماً وإمكانية اعتماد النسخة المحسّنة أو رفضها."],
   ["search", "search", "البحث والمرادفات", "beta", "أضف مرادفات ولهجات لكل منتج (مثلاً «كاربوز» و«دلّاع» ← بطيخ) ليظهر منتجك مهما اختلفت تسمية العميل، مع توليد اقتراحات بالذكاء الصناعي ومراجعتها قبل التفعيل."],
-  ["customers", "users", "العملاء", "planned", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
+  ["customers", "users", "العملاء", "beta", "دليل عملائك الجدد والمتكررين: الاسم، الهاتف، عدد الطلبات، آخر تواصل، والمنطقة — مبنيّ من طلباتك ومحادثاتك، مع إمكانية تصدير القائمة."],
   ["offers", "megaphone", "كودات الخصم", "beta", "أنشئ عروضاً وكودات خصم لعملائك. النسخة الحالية تدعم عروض السعر؛ وكودات الخصم الكاملة (نسبة/مبلغ/توصيل مجاني، حد استخدام، تاريخ انتهاء، وقياس الأداء) قيد الإضافة."],
   ["campaigns", "megaphone", "الحملات التسويقية", "requires_setup", "أرسل عروضك لعملائك عبر قوالب واتساب المعتمدة ووفق سياسات ميتا (Opt-in / Opt-out). تتطلب هذه الميزة تفعيلاً وربطاً من إدارة دكانجي قبل التشغيل حفاظاً على حسابك."],
   ["catalog", "box", "كتالوجات ميتا", "planned", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
@@ -3456,6 +3456,105 @@ function openMerchantNotifications() {
     const badge = document.querySelector(".notif-bell b");
     if (badge) badge.remove();
   }
+}
+
+// ── Merchant customers directory (spec §10) — built from THIS store's orders ──
+// Pure client-side: the merchant session already loads its own orders from the
+// cloud (loadOrdersFromSupabase), so no new endpoint or table is needed.
+
+// Customer lifecycle per spec §10: repeat (2+ orders) / inactive (30+ days quiet) / new.
+function customerStatus(c) {
+  const THIRTY_D = 30 * 86400000;
+  if (c.lastAt && Date.now() - c.lastAt > THIRTY_D) return ["غير نشط", "gray"];
+  if (c.count > 1) return ["عميل متكرر", "green"];
+  return ["جديد", "blue"];
+}
+
+function merchantCustomers() {
+  const store = getMerchantStore();
+  const customers = aggregateCustomers(store.id);
+  if (!customers.length) {
+    return `<section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد — سيُبنى دليل عملائك تلقائياً (الاسم، الهاتف، الطلبات) بمجرد ورود أول طلب على متجرك.</p></div></section>`;
+  }
+  const repeat = customers.filter(c => c.count > 1).length;
+  const inactive = customers.filter(c => c.lastAt && Date.now() - c.lastAt > 30 * 86400000).length;
+  const totalRevenue = customers.reduce((s, c) => s + c.total, 0);
+  const fmtDate = ms => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short" }).format(new Date(ms)); } catch (e) { return ""; } };
+  const rows = customers.map(c => {
+    const [stLabel, stTone] = customerStatus(c);
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong>${c.address ? `<small class="cust-addr">${esc(c.address)}</small>` : ""}</td>
+      <td>${c.phone ? `<code dir="ltr">${esc(c.phone)}</code>` : `<span class="creds-muted">—</span>`}</td>
+      <td>${c.count.toLocaleString("ar")}</td>
+      <td><strong>${money(c.total)}</strong></td>
+      <td>${c.firstAt ? fmtDate(c.firstAt) : "—"}</td>
+      <td>${c.lastAt ? fmtDate(c.lastAt) : esc(c.lastTime)}</td>
+      <td><span class="status-pill ${stTone}">${stLabel}</span></td>
+      <td class="creds-actions">
+        ${c.phone ? `<a class="table-action" href="https://wa.me/${c.phone}" target="_blank" rel="noopener" title="مراسلة عبر واتساب">${icon("whatsapp")}</a>` : ""}
+        <button class="table-action" data-action="merchant-customer" data-key="${escAttr(c.key)}" title="ملف العميل وطلباته">${icon("eye")}</button>
+      </td>
+    </tr>`;
+  }).join("");
+  return `
+    <div class="stats-grid admin-stats">
+      ${statCard("users", "عملاء متجرك", customers.length.toLocaleString("ar"), repeat ? `${repeat.toLocaleString("ar")} عميل متكرّر` : "من واقع طلبات متجرك", "blue")}
+      ${statCard("star", "عملاء متكررون", repeat.toLocaleString("ar"), customers.length ? `${Math.round((repeat / customers.length) * 100).toLocaleString("ar")}% من عملائك` : "—", "green")}
+      ${statCard("clock", "غير نشطين", inactive.toLocaleString("ar"), "لم يطلبوا منذ 30 يوماً — أرسل لهم عرضاً", "orange")}
+      ${statCard("wallet", "إجمالي إنفاقهم", money(totalRevenue), `من ${customers.reduce((s, c) => s + c.count, 0).toLocaleString("ar")} طلب`, "yellow")}
+    </div>
+    <div class="dashboard-toolbar">
+      <div class="dashboard-search">${icon("search")}<input id="merchant-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div>
+      <div class="toolbar-actions"><button class="secondary-button compact" data-action="export-merchant-customers">${icon("download")} تصدير</button></div>
+    </div>
+    <section class="dashboard-card customers-table-card">
+      <div class="table-wrap">
+        <table class="admin-table merchant-customers-table">
+          <thead><tr><th>العميل</th><th>الهاتف</th><th>الطلبات</th><th>الإنفاق</th><th>أول طلب</th><th>آخر طلب</th><th>الحالة</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+    <p class="managed-hint">${icon("shield")} بيانات عملائك من طلبات متجرك فقط. راعِ موافقتهم عند المراسلة — لا تُرسل رسائل جماعية عشوائية حفاظاً على رقمك.</p>`;
+}
+
+// Customer profile for the merchant: contact + THEIR orders at this store,
+// rendered with the merchant order-table (manage-order actions the owner has).
+function openMerchantCustomer(key) {
+  const store = getMerchantStore();
+  const c = aggregateCustomers(store.id).find(x => x.key === key);
+  if (!c) return;
+  const orders = state.orders
+    .filter(o => o.storeId === store.id && customerKey(o) === key)
+    .sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
+  const [stLabel, stTone] = customerStatus(c);
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">ملف العميل</span><h2>${esc(c.name)} <span class="status-pill ${stTone}">${stLabel}</span></h2>
+    <div class="order-manager-summary">
+      <span><small>الطلبات</small><strong>${c.count.toLocaleString("ar")}</strong></span>
+      <span><small>إجمالي الإنفاق</small><strong>${money(c.total)}</strong></span>
+      <span><small>متوسط الطلب</small><strong>${money(c.count ? Math.round(c.total / c.count) : 0)}</strong></span>
+    </div>
+    ${c.phone ? `<div class="order-contact"><div class="order-contact__row">${icon("phone")}<span dir="ltr">${esc(c.phone)}</span><a class="order-wa-btn" href="https://wa.me/${c.phone}" target="_blank" rel="noopener">${icon("whatsapp")} مراسلة العميل</a></div></div>` : ""}
+    ${orders.length ? renderOrdersTable(orders.slice(0, 10), "merchant") : ""}
+  `, "customer-detail-modal");
+}
+
+function exportMerchantCustomersCsv() {
+  const store = getMerchantStore();
+  const customers = aggregateCustomers(store.id);
+  if (!customers.length) { showToast("لا يوجد عملاء للتصدير"); return; }
+  const fmt = ms => { try { return new Date(ms).toISOString().slice(0, 10); } catch (e) { return ""; } };
+  const rows = [["العميل", "الهاتف", "الطلبات", "إجمالي الإنفاق", "أول طلب", "آخر طلب", "الحالة", "العنوان"],
+    ...customers.map(c => [c.name, c.phone || "", c.count, c.total, c.firstAt ? fmt(c.firstAt) : "", c.lastAt ? fmt(c.lastAt) : "", customerStatus(c)[0], c.address || ""])];
+  const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `dukkanci-${storeParam(store)}-customers.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast("تم تجهيز ملف العملاء", "success");
 }
 
 function merchantOverview() {
@@ -4080,9 +4179,10 @@ function renderMerchant(id) {
     share: merchantShare,
     images: merchantImages,
     search: merchantSearch,
-    audit: merchantAudit
+    audit: merchantAudit,
+    customers: merchantCustomers
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"], customers: ["عملاء متجرك", "اعرف عملاءك الجدد والمتكررين وتواصل معهم"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
@@ -4325,19 +4425,23 @@ function customerKey(o) {
   return name ? "n:" + normalizeAr(name) : "";
 }
 
-function aggregateCustomers() {
+// Aggregate the order set into a customer directory. Optional storeId scopes it
+// to one store's orders (merchant view §10); admin callers pass nothing (all).
+function aggregateCustomers(storeId) {
   const map = new Map();
   (state.orders || []).forEach(o => {
+    if (storeId != null && o.storeId !== storeId) return;
     const key = customerKey(o);
     if (!key) return; // order with neither name nor phone — can't attribute it
     const phone = customerPhoneDigits(o);
     const name = (o.customer || "").trim();
     let c = map.get(key);
-    if (!c) { c = { key, name: name || "عميل بدون اسم", phone, total: 0, count: 0, stores: new Set(), lastAt: 0, lastTime: "", address: "" }; map.set(key, c); }
+    if (!c) { c = { key, name: name || "عميل بدون اسم", phone, total: 0, count: 0, stores: new Set(), firstAt: 0, lastAt: 0, lastTime: "", address: "" }; map.set(key, c); }
     c.count += 1;
     c.total += o.total || 0;
     if (o.storeId != null) c.stores.add(o.storeId);
     const t = Date.parse(o.createdAt || "") || 0;
+    if (t && (!c.firstAt || t < c.firstAt)) c.firstAt = t;
     // Keep the most recent order's details (name/phone/address can change over time).
     if (t >= c.lastAt) {
       c.lastAt = t; c.lastTime = o.time || "";
@@ -8163,6 +8267,8 @@ document.addEventListener("click", event => {
   if (action === "syn-generate") synGenerate();
   if (action === "syn-save") synSave();
   if (action === "merchant-notifications") openMerchantNotifications();
+  if (action === "merchant-customer") openMerchantCustomer(target.dataset.key);
+  if (action === "export-merchant-customers") exportMerchantCustomersCsv();
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
@@ -8985,6 +9091,12 @@ document.addEventListener("input", event => {
     // Show/hide clear button dynamically
     const clearBtn = document.querySelector(".store-search-clear");
     if (clearBtn) clearBtn.style.display = q ? "" : "none";
+  }
+  if (event.target.id === "merchant-customer-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".merchant-customers-table tbody tr").forEach(row => {
+      row.style.display = (!q || normalizeAr(row.textContent).includes(q)) ? "" : "none";
+    });
   }
   if (event.target.id === "merchant-syn-search") {
     state.merchantSynSearch = event.target.value;
