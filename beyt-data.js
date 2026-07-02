@@ -18,10 +18,10 @@ const beytStore = {
  "time": "45 - 75 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 40.9822,
-  "lng": 28.6599
+  "lat": 40.98469,
+  "lng": 28.66006
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.9822,28.6599",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.98469,28.66006",
  "open": true,
  "featured": true,
  "hasOffer": false,
