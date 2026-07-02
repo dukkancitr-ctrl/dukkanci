@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store);
 
 const products = [];
 
@@ -90,6 +90,7 @@ products.push(...albarakaProducts);
 products.push(...istanbulchickenProducts);
 products.push(...reyhanProducts);
 products.push(...nahlProducts);
+products.push(...dec8Products);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -205,7 +206,8 @@ const initialDeliverySettings = {
   ...albarakaDeliverySettings,
   ...istanbulchickenDeliverySettings,
   ...reyhanDeliverySettings,
-  ...nahlDeliverySettings
+  ...nahlDeliverySettings,
+  ...dec8DeliverySettings
 };
 
 function loadCustomerAddresses() {
