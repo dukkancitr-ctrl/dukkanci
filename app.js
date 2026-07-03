@@ -369,6 +369,7 @@ const iconPaths = {
   instagram: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/>',
   whatsapp: '<path d="M20 11.5a8 8 0 0 1-12 7L3 20l1.5-4.5A8 8 0 1 1 20 11.5Z"/><path d="M8.5 8c.5 3 2.5 5 5.5 6l1.5-1.5"/>',
   facebook: '<path d="M14 8h4V3h-4c-3 0-5 2-5 5v3H6v5h3v6h5v-6h4l1-5h-5V8c0-.1 0 0 0 0Z"/>',
+  tiktok: '<circle cx="9.5" cy="15.5" r="3.5"/><path d="M13 15.5V4.2c.6 2.3 2.5 3.9 5 4"/>',
   download: '<path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v11h14V10M9 21v-7h6v7"/>',
   store: '<path d="M4 10v11h16V10"/><path d="M3 10h18l-2-6H5l-2 6Z"/><path d="M8 21v-6h8v6M3 10c0 2 4 2 4 0 0 2 5 2 5 0 0 2 5 2 5 0 0 2 4 2 4 0"/>',
@@ -10140,8 +10141,50 @@ document.addEventListener("input", event => {
   }
 });
 
+// Footer «اشترك لتصلك آخر العروض»: validate a TR WhatsApp number and POST it to
+// /api/subscribe (stores it in wa_contacts for the admin campaign sender).
+async function submitFooterSubscribe(form) {
+  const input = form.querySelector('input[name="phone"]');
+  const btn = form.querySelector('button[type="submit"]');
+  const statusEl = document.querySelector(".footer-subscribe__status");
+  const setStatus = (msg, kind) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.hidden = false;
+    statusEl.className = "footer-subscribe__status" + (kind ? " is-" + kind : "");
+  };
+  const digits = normalizePhone(input ? input.value : "").replace(/\D/g, ""); // → "90XXXXXXXXXX"
+  if (digits.length !== 12 || !digits.startsWith("905")) {
+    setStatus("يرجى إدخال رقم واتساب تركي صحيح (يبدأ بـ 5).", "error");
+    if (input) input.focus();
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.dataset.label || btn.textContent; btn.textContent = "جارٍ…"; }
+  try {
+    const r = await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: digits })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (data && data.ok) {
+      form.reset();
+      setStatus("تمّ اشتراكك! ستصلك آخر العروض والأخبار على واتساب. 🎉", "success");
+    } else {
+      setStatus(data && data.error === "invalid_phone"
+        ? "يرجى إدخال رقم واتساب تركي صحيح (يبدأ بـ 5)."
+        : "تعذّر الاشتراك، حاول لاحقاً.", "error");
+    }
+  } catch (e) {
+    setStatus("تعذّر الاتصال، تحقّق من الإنترنت وحاول مجدداً.", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || "اشترك"; }
+  }
+}
+
 document.addEventListener("submit", async event => {
   event.preventDefault();
+  if (event.target.id === "footer-subscribe-form") { submitFooterSubscribe(event.target); return; }
   if (event.target.id === "group-create-form") { submitCreateGroup(event.target); return; }
   if (event.target.id === "group-join-form") { submitJoinGroup(event.target); return; }
   if (event.target.id === "store-review-form") {

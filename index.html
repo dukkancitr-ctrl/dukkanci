@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://tzcqnqzltrjemdnkzpzn.supabase.co" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=146">
+    <link rel="stylesheet" href="/styles.css?v=147">
     <title>دكانجي | سوق الحي بين يديك</title>
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="دكانجي">
@@ -168,16 +168,33 @@
       <main id="app" tabindex="-1"></main>
 
       <footer class="site-footer">
+        <div class="container footer-subscribe">
+          <div class="footer-subscribe__inner">
+            <div class="footer-subscribe__text">
+              <h3>اشترك لتصلك آخر العروض</h3>
+              <p>أرسل رقمك لاستلام التحديثات والعروض مباشرة على واتساب.</p>
+            </div>
+            <form id="footer-subscribe-form" class="footer-subscribe__form" novalidate>
+              <div class="footer-subscribe__field">
+                <span class="icon-slot" data-icon="phone"></span>
+                <input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="رقم الواتساب — 5XX XXX XX XX" aria-label="رقم الواتساب" required>
+              </div>
+              <button type="submit" class="footer-subscribe__btn">اشترك</button>
+            </form>
+          </div>
+          <p class="footer-subscribe__status" role="status" aria-live="polite" hidden></p>
+        </div>
         <div class="container footer-grid">
           <div class="footer-brand">
             <a class="brand footer-logo" href="#home" data-route="home" aria-label="دكانجي">
               <img class="brand-logo" src="/assets/dukkanci-logo.png?v=71" alt="دكانجي - Dukkanci Marketplace" width="719" height="733">
             </a>
-            <p>منصة تجمعك بمتاجر حيك وتسهّل طلب احتياجاتك اليومية بكل وضوح وراحة.</p>
+            <p>منصة تجمعك بمتاجر حيك وتسهّل طلب احتياجاتك اليومية بكل وضوح وراحة. نحن نؤمن بتمكين المجتمعات المحلية من خلال التكنولوجيا المتقدمة.</p>
             <div class="social-row">
-              <button aria-label="انستغرام"><span class="icon-slot" data-icon="instagram"></span></button>
-              <button aria-label="واتساب"><span class="icon-slot" data-icon="whatsapp"></span></button>
-              <button aria-label="فيسبوك"><span class="icon-slot" data-icon="facebook"></span></button>
+              <a href="https://www.facebook.com/dukkanci.tr" target="_blank" rel="noopener" aria-label="فيسبوك"><span class="icon-slot" data-icon="facebook"></span></a>
+              <a href="https://www.facebook.com/profile.php?id=61591578056185" target="_blank" rel="noopener" aria-label="فيسبوك — صفحة ثانية"><span class="icon-slot" data-icon="facebook"></span></a>
+              <a href="https://www.instagram.com/dukkanci.marketplace/" target="_blank" rel="noopener" aria-label="انستغرام"><span class="icon-slot" data-icon="instagram"></span></a>
+              <a href="https://www.tiktok.com/@dukkanci.marketplace" target="_blank" rel="noopener" aria-label="تيك توك"><span class="icon-slot" data-icon="tiktok"></span></a>
             </div>
           </div>
           <div>
@@ -303,7 +320,7 @@
     <script src="/goldenmix-data.js?v=230"></script>
     <script src="/babalyemen-data.js?v=231"></script>
     <script src="/beyazit-data.js?v=233"></script>
-    <script src="/app.js?v=249"></script>
+    <script src="/app.js?v=250"></script>
     <script src="/tracking.js?v=6"></script>
     <script src="/integrations.js?v=88"></script>
     <script>
