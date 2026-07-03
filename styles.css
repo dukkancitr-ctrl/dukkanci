@@ -8249,24 +8249,23 @@ tbody tr:hover {
     font-size: 25px;
   }
 
-  /* Compact, centered mobile footer. The desktop 4-column version stacked into a
-     ~900px wall of links. Smaller logo, tighter gaps, centered columns and the
-     "install" blurb hidden bring it to roughly half the height, tidier too. */
+  /* Minimal mobile footer: logo + slogan only. Nav-link columns, social icons,
+     the install column and the copyright bar all add up to a ~900px wall of
+     content on a phone, so they're hidden and only the brand block remains. */
   .site-footer {
-    padding: 34px 0 22px;
+    padding: 28px 0;
   }
 
   .footer-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 24px 18px;
-    text-align: center;
+    display: flex;
+    justify-content: center;
   }
 
   .footer-brand {
-    grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
     align-items: center;
+    text-align: center;
   }
 
   .footer-logo {
@@ -8282,47 +8281,15 @@ tbody tr:hover {
 
   .footer-brand p {
     max-width: 300px;
-    margin: 0 auto 12px;
+    margin: 0 auto;
     font-size: 13px;
     line-height: 1.6;
   }
 
-  .social-row {
-    justify-content: center;
-  }
-
-  .footer-grid > div:not(.footer-brand) {
-    align-items: center;
-  }
-
-  .footer-grid h3 {
-    margin: 0 0 9px;
-    font-size: 15px;
-  }
-
-  .footer-grid a {
-    margin: 3px 0;
-    font-size: 13.5px;
-  }
-
-  .footer-grid > div:last-child {
-    grid-column: 1 / -1;
-  }
-
-  .footer-grid > div:last-child p {
-    display: none;
-  }
-
-  .install-button {
-    margin: 2px auto 0;
-  }
-
+  .footer-brand .social-row,
+  .footer-grid > div:not(.footer-brand),
   .footer-bottom {
-    flex-direction: column;
-    gap: 4px;
-    margin-top: 24px;
-    text-align: center;
-    align-items: center;
+    display: none;
   }
 
   .page-hero.compact {
