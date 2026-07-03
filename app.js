@@ -293,6 +293,7 @@ const state = {
   myOrdersFetched: false,
   storeFilter: "الكل",
   storeSort: "recommended",
+  offersCategory: "الكل",
   search: "",
   coupon: null,            // Feature 2: applied coupon (validated via RPC), session-only
   referral: null,          // Feature 4: { code, balance } loaded for signed-in user
@@ -2178,12 +2179,12 @@ function isStoreOpenNow(store) {
 function storeCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   return `
-    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""} ${hasBannerCover(store) ? "store-card--banner" : ""}">
+    <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
         <span class="status-badge ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح" : "مغلق الآن"}</span>
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
-        ${store.hasOffer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
+        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
       </button>
       <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
         ${icon("heart")}
@@ -2632,7 +2633,12 @@ function renderStores() {
 }
 
 function renderOffers() {
-  const offerProducts = products.filter(product => product.oldPrice && product.available);
+  const allOfferProducts = products.filter(product => product.oldPrice && product.available);
+  const offerCategories = [...new Set(allOfferProducts.map(product => (getStore(product.storeId) || {}).category).filter(Boolean))];
+  const activeOffersCategory = offerCategories.includes(state.offersCategory) ? state.offersCategory : "الكل";
+  const offerProducts = activeOffersCategory === "الكل"
+    ? allOfferProducts
+    : allOfferProducts.filter(product => (getStore(product.storeId) || {}).category === activeOffersCategory);
   return `
     <section class="page-hero offers-page-hero">
       <div class="container offers-page-grid">
@@ -2643,20 +2649,14 @@ function renderOffers() {
     <section class="section">
       <div class="container">
         <div class="section-heading"><div><span class="section-kicker">لفترة محدودة</span><h2>خصومات اليوم</h2></div><span class="count-chip">${offerProducts.length} عروض متاحة</span></div>
-        <div class="product-grid">${offerProducts.map(productCard).join("")}</div>
+        ${offerCategories.length > 1 ? `<div class="filter-pills" style="margin-bottom:18px">
+          <button class="${activeOffersCategory === "الكل" ? "active" : ""}" data-action="offers-filter" data-category="الكل">الكل</button>
+          ${offerCategories.map(category => `<button class="${activeOffersCategory === category ? "active" : ""}" data-action="offers-filter" data-category="${escAttr(category)}">${esc(category)}</button>`).join("")}
+        </div>` : ""}
+        ${offerProducts.length ? `<div class="product-grid">${offerProducts.map(productCard).join("")}</div>` : renderEmpty("لا توجد عروض في هذا التصنيف حالياً", "جرّب تصنيفاً آخر أو تصفّح كل العروض.")}
       </div>
     </section>
   `;
-}
-
-// These stores use a wide 1600×600 promo banner (logo + product montage on a solid
-// background) as their cover. With object-fit:cover the short mobile box crops the logo
-// and products off the side edges, so we show the full banner instead (see styles.css:
-// .store-cover--banner). Matched by image path so it works for bundled and Supabase data.
-const BANNER_COVER_SLUGS = ["kady", "tihama", "afgan", "nour", "salloura", "ezzedine", "sam"];
-function hasBannerCover(store) {
-  const src = store.coverImage || store.image || "";
-  return BANNER_COVER_SLUGS.some(slug => src.includes(`/photos/${slug}/`));
 }
 
 function renderStorePage(id) {
@@ -2670,6 +2670,7 @@ function renderStorePage(id) {
     : [];
   const nearestSiblingId = store.branchGroup ? nearestBranchId(store.branchGroup, store.id) : null;
   const allStoreProducts = products.filter(product => product.storeId === store.id);
+  const storeOfferProducts = allStoreProducts.filter(product => product.oldPrice && product.available);
   const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
   const searchQuery = (state.storeProductSearch || "").trim().toLowerCase();
@@ -2689,7 +2690,7 @@ function renderStorePage(id) {
     <section class="store-page-head">
       <div class="container">
         <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${store.name}</strong></div>
-        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""} ${hasBannerCover(store) ? "store-cover--banner" : ""}">
+        <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""}">
           <img src="${store.coverImage || store.image}" alt="${store.name}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح ويستقبل الطلبات" : "مغلق الآن"}</span>
@@ -2764,7 +2765,7 @@ function renderStorePage(id) {
               ${defaultQuote ? `<b>${formatDistance(defaultQuote.roundTripKm)} · ${money(defaultQuote.fee)}</b>` : '<b>حدد موقعك لإظهار السعر</b>'}
             </div>
           ` : ""}
-          ${store.hasOffer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
+          ${store.hasOffer && store.offer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
           <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip" id="store-products-count">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
           ${storeProducts.length === 0 && searchQuery ? `<div class="store-search-empty">${icon("search")}<p>لا توجد نتائج لـ "<strong>${esc(searchQuery)}</strong>"</p><button class="secondary-button" data-action="clear-store-search">مسح البحث</button></div>` : ""}
           <div class="product-grid store-products-grid" id="store-products-grid">${storeProducts.map(productCard).join("")}</div>
@@ -8521,6 +8522,7 @@ document.addEventListener("click", event => {
     navigate(slug ? `category/${slug}` : "stores");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
+  if (action === "offers-filter") { state.offersCategory = target.dataset.category; render(); }
   if (action === "admin-cat-filter") {
     state.adminProductCategory = target.dataset.cat || null;
     render();

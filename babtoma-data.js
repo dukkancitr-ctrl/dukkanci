@@ -21,7 +21,7 @@ const babtomaStore = {
  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0201389,28.6706606",
  "open": true,
  "featured": true,
- "hasOffer": true,
+ "hasOffer": false,
  "description": "مطعم شامي شرق أوسطي يقدم الأطباق الشامية مثل المشاوي و المعجنات والصفائح و الوجبات الغربيةبالإضافة إلى الشاورما مع المقبلات الباردة والمقبلات الساخنة مع السلطات الطازجة",
  "address": "إسنيورت، إسطنبول، تركيا",
  "phone": "+90 555 170 60 00",
