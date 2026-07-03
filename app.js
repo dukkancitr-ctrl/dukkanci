@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore, goldenmixStore, babalyemenStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, badeelStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore);
 
 const products = [];
 
@@ -95,6 +95,7 @@ products.push(...alahdabProducts);
 products.push(...rumanProducts);
 products.push(...goldenmixProducts);
 products.push(...babalyemenProducts);
+products.push(...beyazitProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -213,7 +214,8 @@ const initialDeliverySettings = {
   ...alahdabDeliverySettings,
   ...rumanDeliverySettings,
   ...goldenmixDeliverySettings,
-  ...babalyemenDeliverySettings
+  ...babalyemenDeliverySettings,
+  ...beyazitDeliverySettings
 };
 
 function loadCustomerAddresses() {
