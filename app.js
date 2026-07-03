@@ -884,29 +884,16 @@ function mapDbOrder(r) {
 // Customer-facing: load THIS customer's orders (matched by phone) from the cloud,
 // so "طلباتي" shows real orders and tracks them across devices.
 async function loadCustomerOrdersFromSupabase(phoneKey) {
-  const sb = window.supabaseClient;
-  if (!sb) return false;
   const ids = (state.myOrders || []).map(o => o.id).filter(Boolean);
   if (!phoneKey && !ids.length) return false;
   try {
-    const cb = Date.now();
-    const rows = [];
-    // Cross-device history: every order this phone has placed.
-    if (phoneKey) {
-      const { data } = await sb.from("orders").select("*")
-        .eq("delivery_details->>phoneKey", phoneKey)
-        .order("created_at", { ascending: false }).neq("id", "__cb" + cb);
-      if (Array.isArray(data)) rows.push(...data);
-    }
-    // Also refresh orders saved on THIS device by id — covers the case where the
-    // profile phone format differs from the order's stored phoneKey, so status
-    // changes the store made still propagate to the customer.
-    const missing = ids.filter(id => !rows.some(r => r.id === id));
-    if (missing.length) {
-      const { data } = await sb.from("orders").select("*")
-        .in("id", missing).neq("id", "__cb" + cb);
-      if (Array.isArray(data)) rows.push(...data);
-    }
+    const params = new URLSearchParams({ action: "customer-orders" });
+    if (phoneKey) params.set("phone", phoneKey);
+    if (ids.length) params.set("ids", ids.slice(0, 50).join(","));
+    const r = await fetch(`/api/notify-order?${params}`);
+    if (!r.ok) return false;
+    const json = await r.json().catch(() => ({}));
+    const rows = Array.isArray(json.orders) ? json.orders : [];
     if (!rows.length) return false;
     const mapped = rows.map(mapDbOrder);
     // Merge cloud orders (fresh status) over local ones; keep any local guest
