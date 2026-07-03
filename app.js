@@ -145,8 +145,6 @@ const allProducts = products.slice();
 
 const initialOrders = [];
 
-const customerOrders = [];
-
 const initialCustomerProfile = {
   name: "",
   phone: "",
@@ -3083,7 +3081,7 @@ function renderCustomerComplaints() {
     <section class="account-card complaint-compose">
       <div class="account-card__heading"><span class="account-card__icon">${icon("megaphone")}</span><div><h2>إرسال شكوى أو ملاحظة</h2><p>سنراجع رسالتك ونجيبك داخل هذا القسم.</p></div></div>
       <form id="customer-complaint-form" class="account-form">
-        <label><span>الطلب المرتبط</span><select name="orderId"><option value="">شكوى عامة</option>${customerOrders.map(order => `<option value="${order.id}">${order.id} · ${getStore(order.storeId).name}</option>`).join("")}</select></label>
+        <label><span>الطلب المرتبط</span><select name="orderId"><option value="">شكوى عامة</option>${(state.myOrders || []).map(order => `<option value="${order.id}">${order.id} · ${getStore(order.storeId).name}</option>`).join("")}</select></label>
         <label><span>عنوان الشكوى</span><input name="subject" required placeholder="اكتب عنوانًا مختصرًا"></label>
         <label class="wide"><span>التفاصيل</span><textarea name="message" required placeholder="اشرح ما حدث وكيف يمكننا مساعدتك..."></textarea></label>
         <div class="account-form__actions wide"><button class="primary-button" type="submit">${icon("megaphone")} إرسال الشكوى</button></div>
@@ -3876,9 +3874,9 @@ function merchantCatalog() {
 }
 
 // ── Merchant support (الدعم الفني): FAQ + direct WhatsApp to the Dukkanci team ──
-// Same platform number merchants already use at login (wa.me/905551706000);
-// inbound messages land in the admin «المحادثات» inbox.
-const SUPPORT_WA = "905551706000";
+// Dedicated Dukkanci merchant-support line; inbound messages land in the
+// admin «المحادثات» inbox.
+const SUPPORT_WA = "905528000220";
 const MERCHANT_FAQ = [
   ["كيف أعدّل سعر منتج بسرعة؟", "من قسم «المنتجات والمنيو» عدّل الرقم في حقل السعر داخل الجدول واضغط Enter — يُحفظ فوراً ويُسجَّل في «سجل التعديلات». ولتعديل أسعار كثيرة دفعة واحدة استخدم «تصدير» ثم «تحديث بالجملة» بملف Excel/CSV."],
   ["لماذا لا يظهر منتجي للعملاء؟", "المنتج لا يظهر إذا كان بلا صورة حقيقية أو مُعلَّماً «غير متوفر». أضِف صورة من قسم «المنتجات» أو حسّنها من قسم «الصور والتحسين»، وتأكد أن مفتاح التوفر مفعّل."],
@@ -4516,7 +4514,7 @@ function merchantLogin() {
         <div class="merchant-auth__divider"><span>طرق دخول أخرى</span></div>
         <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بحساب بريد إلكتروني (Google)</button>
         <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} ليس لديك متجر؟ أنشئ متجرك الآن</button>
-        <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+        <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905528000220" target="_blank" rel="noopener">واتساب</a>.</p>
       </form>
     </div>
   `;
@@ -4639,7 +4637,7 @@ function merchantNoStore() {
     <p>لم نعثر على متجر مرتبط برقمك. أنشئ متجرك، أو تواصل مع الدعم لربط متجرك القائم بحسابك.</p>
     <button type="button" class="primary-button full large" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
     <button type="button" class="secondary-button full" data-action="merchant-logout">${icon("logout")} تسجيل الخروج</button>
-    <p class="merchant-auth__note">${icon("shield")} لربط متجر قائم بحسابك تواصل مع دكانجي عبر <a href="https://wa.me/905551706000" target="_blank" rel="noopener">واتساب</a>.</p>
+    <p class="merchant-auth__note">${icon("shield")} لربط متجر قائم بحسابك تواصل مع دكانجي عبر <a href="https://wa.me/905528000220" target="_blank" rel="noopener">واتساب</a>.</p>
   </form></div>`;
 }
 
@@ -5093,9 +5091,24 @@ function adminOrders() {
     <section class="dashboard-card orders-table-card">${filtered.length ? renderOrdersTable(filtered, "admin") : `<div class="empty-managed">${icon("receipt")}<p>لا توجد طلبات مطابقة للفلاتر.</p></div>`}</section>`;
 }
 
+// G4: complaints used to only exist in the submitting customer's own browser
+// localStorage — this reads the real, shared record via complaints-list
+// (service-role key), lazy-loaded once and cached in state._adminComplaints.
 function adminComplaints() {
-  const complaints = state.customerComplaints || [];
-  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث في الشكاوى"></div></div><section class="dashboard-card complaint-list">${complaints.length ? complaints.map(c => `<article><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${c.subject}</strong><small>${c.id} · ${c.orderId || "شكوى عامة"} · ${c.date}</small></div><span class="status-pill ${statusClass(c.status)}">${c.status}</span></article>`).join("") : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد شكاوى حالياً.</p></div>`}</section>`;
+  const list = state._adminComplaints;
+  if (list == null && !state._adminComplaintsLoading) {
+    state._adminComplaintsLoading = true;
+    adminApi("complaints-list")
+      .then(data => { state._adminComplaints = Array.isArray(data.complaints) ? data.complaints : []; })
+      .catch(() => { state._adminComplaints = []; })
+      .finally(() => { state._adminComplaintsLoading = false; render(); });
+  }
+  const fmtDate = iso => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)); } catch (e) { return ""; } };
+  const rows = list == null
+    ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل الشكاوى…</p></div>`
+    : (list.length ? list.map(c => `<article data-action="complaint-detail" data-id="${escAttr(c.id)}" role="button" tabindex="0"><span class="complaint-icon">${icon("megaphone")}</span><div><strong>${esc(c.subject || "")}</strong><small>${esc(c.id)} · ${esc(c.order_id || "شكوى عامة")}${c.customer ? " · " + esc(c.customer) : ""} · ${fmtDate(c.created_at)}</small></div><span class="status-pill ${statusClass(c.status)}">${esc(c.status || "")}</span></article>`).join("")
+      : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد شكاوى حالياً.</p></div>`);
+  return `<div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-complaint-search" placeholder="ابحث في الشكاوى"></div></div><section class="dashboard-card complaint-list">${rows}</section>`;
 }
 
 function adminDeliveryZones() {
@@ -8593,15 +8606,28 @@ function openOfferForm() {
   `, "offer-modal");
 }
 
-function openComplaintDetail(data) {
+// Admin complaint detail + status/reply editor (G4). Was previously a dead
+// mockup whose "save" button just closed the modal with a canned toast and
+// never wrote anywhere — now backed by complaint-update (service-role key).
+function openComplaintDetail(id) {
+  const c = (state._adminComplaints || []).find(x => x.id === id);
+  if (!c) return;
+  const fmtDate = iso => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date(iso)); } catch (e) { return ""; } };
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <span class="section-kicker">شكوى ${data.id}</span>
-    <h2>${data.subject}</h2>
-    <div class="order-manager-summary"><span><small>العميل</small><strong>${data.customer}</strong></span><span><small>ضد متجر</small><strong>${data.store}</strong></span><span><small>الحالة</small><strong>${data.status}</strong></span></div>
-    <label class="input-label"><span>تحديث حالة الشكوى</span><select id="complaint-status-select"><option ${data.status === "شكوى جديدة" ? "selected" : ""}>شكوى جديدة</option><option ${data.status === "قيد المراجعة" ? "selected" : ""}>قيد المراجعة</option><option ${data.status === "تم الحل" ? "selected" : ""}>تم الحل</option></select></label>
-    <label class="input-label"><span>رد على العميل</span><textarea placeholder="اكتب رد الإدارة..."></textarea></label>
-    <button class="primary-button full" data-action="close-modal-toast" data-message="تم حفظ الرد وإشعار العميل">حفظ الرد</button>
+    <span class="section-kicker">شكوى ${esc(c.id)}</span>
+    <h2>${esc(c.subject || "")}</h2>
+    <div class="order-manager-summary"><span><small>العميل</small><strong>${esc(c.customer || "—")}</strong></span><span><small>ضد متجر</small><strong>${esc(c.store || c.order_id || "شكوى عامة")}</strong></span><span><small>تاريخ الإرسال</small><strong>${fmtDate(c.created_at)}</strong></span></div>
+    <div class="complaint-message"><strong>الرسالة</strong><p>${esc(c.body || "")}</p></div>
+    <form class="modal-form" id="admin-complaint-form" data-id="${escAttr(c.id)}">
+      <label class="input-label"><span>تحديث حالة الشكوى</span><select name="status">
+        <option value="شكوى جديدة" ${c.status === "شكوى جديدة" ? "selected" : ""}>شكوى جديدة</option>
+        <option value="قيد المراجعة" ${c.status === "قيد المراجعة" ? "selected" : ""}>قيد المراجعة</option>
+        <option value="تم الحل" ${c.status === "تم الحل" ? "selected" : ""}>تم الحل</option>
+      </select></label>
+      <label class="input-label"><span>رد على العميل</span><textarea name="response" placeholder="اكتب رد الإدارة...">${esc(c.admin_response || "")}</textarea></label>
+      <button class="primary-button full" type="submit">${icon("check")} حفظ</button>
+    </form>
   `, "complaint-modal");
 }
 
@@ -9792,7 +9818,7 @@ document.addEventListener("click", event => {
       showToast(`تم إنهاء العرض على "${product.name}"`, "success");
     }
   }
-  if (action === "complaint-detail") openComplaintDetail(target.dataset);
+  if (action === "complaint-detail") openComplaintDetail(target.dataset.id);
   if (action === "close-modal-toast") { closeModal(); showToast(target.dataset.message || "تم الحفظ", "success"); }
 });
 
@@ -9997,6 +10023,12 @@ document.addEventListener("input", event => {
     const q = normalizeAr(event.target.value.trim());
     document.querySelectorAll(".admin-store-list article").forEach(card => {
       card.style.display = !q || normalizeAr(card.textContent).includes(q) ? "" : "none";
+    });
+  }
+  if (event.target.id === "admin-complaint-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".complaint-list article").forEach(row => {
+      row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
     });
   }
   if (event.target.id === "admin-customer-search") {
@@ -10763,17 +10795,68 @@ document.addEventListener("submit", async event => {
     showToast("تم حفظ بيانات المتجر وإعدادات التوصيل", "success");
   }
   if (event.target.id === "customer-complaint-form") {
-    const form = new FormData(event.target);
-    const nextNumber = Math.max(143, ...state.customerComplaints.map(complaint => Number(complaint.id.replace("SH-", "")) || 0)) + 1;
-    state.customerComplaints.unshift({
-      id: `SH-${nextNumber}`,
-      subject: form.get("subject").trim(),
-      orderId: form.get("orderId"),
-      message: form.get("message").trim(),
-      status: "قيد المتابعة",
-      date: new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date())
-    });
-    saveState(); render(); showToast("تم إرسال الشكوى إلى فريق الدعم", "success");
+    const form = event.target;
+    const fd = new FormData(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الإرسال..."; }
+    const orderId = (fd.get("orderId") || "").toString();
+    const order = orderId ? (state.myOrders || []).find(o => o.id === orderId) : null;
+    const payload = {
+      subject: (fd.get("subject") || "").toString().trim(),
+      message: (fd.get("message") || "").toString().trim(),
+      orderId: orderId || null,
+      customer: (state.customerProfile && state.customerProfile.name) || null,
+      store: order ? getStore(order.storeId).name : null
+    };
+    try {
+      const r = await fetch("/api/notify-order?action=complaint-create", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.ok === false) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+        showToast("تعذّر إرسال الشكوى — حاول مرة أخرى", "");
+        return;
+      }
+      const c = data.complaint || {};
+      state.customerComplaints.unshift({
+        id: c.id, subject: payload.subject, orderId: payload.orderId, message: payload.message,
+        status: c.status || "شكوى جديدة",
+        date: new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date(c.created_at || Date.now()))
+      });
+      saveState(); render(); showToast("تم إرسال الشكوى إلى فريق الدعم", "success");
+    } catch (e) {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+      showToast("خطأ في الاتصال", "");
+    }
+  }
+  if (event.target.id === "admin-complaint-form") {
+    const form = event.target;
+    const id = form.dataset.id;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الحفظ..."; }
+    try {
+      const data = await adminApi("complaint-update", {
+        method: "POST",
+        body: { id, status: form.status.value, response: form.response.value.trim() }
+      });
+      if (data.ok === false) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+        showToast("تعذّر تحديث الشكوى", "");
+        return;
+      }
+      const list = state._adminComplaints || [];
+      const idx = list.findIndex(x => x.id === id);
+      if (idx > -1 && data.complaint) list[idx] = data.complaint;
+      closeModal();
+      showToast("تم حفظ التحديث", "success");
+      render();
+    } catch (e) {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+      showToast("تعذّر تحديث الشكوى", "");
+    }
   }
 });
 

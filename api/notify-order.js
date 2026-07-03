@@ -1150,6 +1150,15 @@ module.exports = async (req, res) => {
       return res.status(200).json({ orders: rows });
     }
 
+    // Admin: every customer complaint (G4 — was previously localStorage-only on
+    // the submitting customer's own browser, invisible to admin and to anyone
+    // else; see complaint-create below).
+    if (q.action === "complaints-list") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      const complaints = await sbGet("complaints?select=*&order=created_at.desc&limit=500") || [];
+      return res.status(200).json({ complaints });
+    }
+
     // Merchant/Admin: a product's recent price-change history (spec §7).
     if (q.action === "product-price-history") {
       const productId = Number(q.productId);
@@ -2016,6 +2025,50 @@ module.exports = async (req, res) => {
     const r = await sbWrite("POST", "stores?on_conflict=id", row, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
     return res.status(200).json({ ok: true });
+  }
+
+  // Public: submit a customer complaint. No auth required (matches order
+  // creation — a guest can complain about an order same as they can place
+  // one). G4: this used to be the ENTIRE implementation client-side
+  // (state.customerComplaints + localStorage only) — invisible to admin and
+  // lost on a browser clear. Now persisted with the service-role key.
+  if (pq.action === "complaint-create") {
+    const subject = String(body.subject || "").trim().slice(0, 200);
+    const message = String(body.message || "").trim().slice(0, 4000);
+    if (!subject || !message) return res.status(400).json({ error: "subject and message required" });
+    const orderId = body.orderId ? String(body.orderId).trim() : null;
+    const row = {
+      id: "SH-" + Date.now().toString(36).toUpperCase(),
+      subject, body: message, order_id: orderId || null,
+      customer: body.customer ? String(body.customer).trim().slice(0, 200) : null,
+      store: body.store ? String(body.store).trim().slice(0, 200) : null,
+      status: "شكوى جديدة"
+    };
+    const r = await sbWrite("POST", "complaints", row, "return=representation");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    const saved = Array.isArray(r.rows) ? r.rows[0] : row;
+    return res.status(200).json({ ok: true, complaint: saved });
+  }
+
+  // Admin: update a complaint's status and/or write a reply (G4). Resolves
+  // resolved_at automatically when the status moves to "تم الحل".
+  if (pq.action === "complaint-update") {
+    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    const id = String(body.id || "").trim();
+    if (!id) return res.status(400).json({ error: "id required" });
+    const allowedStatuses = ["شكوى جديدة", "قيد المراجعة", "تم الحل"];
+    const patch = {};
+    if (body.status != null) {
+      if (!allowedStatuses.includes(body.status)) return res.status(400).json({ error: "bad_status" });
+      patch.status = body.status;
+      patch.resolved_at = body.status === "تم الحل" ? new Date().toISOString() : null;
+    }
+    if (body.response != null) patch.admin_response = String(body.response).trim().slice(0, 4000) || null;
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "nothing to update" });
+    const r = await sbWrite("PATCH", `complaints?id=eq.${encodeURIComponent(id)}`, patch, "return=representation");
+    if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows || r.error });
+    const saved = Array.isArray(r.rows) ? r.rows[0] : null;
+    return res.status(200).json({ ok: true, complaint: saved });
   }
 
   // Admin inbox writes (password-gated).
