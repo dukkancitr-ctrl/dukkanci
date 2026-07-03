@@ -1124,6 +1124,32 @@ module.exports = async (req, res) => {
       return res.status(200).json({ orders: rows });
     }
 
+    // Guest/customer: "طلباتي" cross-device order history, keyed by phone (no
+    // Supabase Auth session for guest checkout, so RLS can't scope this by
+    // auth.uid()). Requires an explicit phone or id list — never an unscoped
+    // table read — same exposure guest checkout has always had (whoever has
+    // the phone number can see those orders), but no longer lets anyone dump
+    // every order in the table the way the old open RLS policy did.
+    if (q.action === "customer-orders") {
+      // NOT the phoneKey() helper (which slices to the last 10 digits) — the
+      // client stores/searches the full digit string here (see delivery_details
+      // .phoneKey in pushOrderCloud), so matching must use the same normalization.
+      const phone = String(q.phone || "").replace(/\D/g, "");
+      const ids = String(q.ids || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 50);
+      if (!phone && !ids.length) return res.status(400).json({ error: "phone or ids required" });
+      const rows = [];
+      if (phone) {
+        const r = await sbGet(`orders?delivery_details->>phoneKey=eq.${encodeURIComponent(phone)}&select=*&order=created_at.desc&limit=200`);
+        if (Array.isArray(r)) rows.push(...r);
+      }
+      const missing = ids.filter(id => !rows.some(r => r.id === id));
+      if (missing.length) {
+        const r = await sbGet(`orders?id=in.(${missing.map(encodeURIComponent).join(",")})&select=*`);
+        if (Array.isArray(r)) rows.push(...r);
+      }
+      return res.status(200).json({ orders: rows });
+    }
+
     // Merchant/Admin: a product's recent price-change history (spec §7).
     if (q.action === "product-price-history") {
       const productId = Number(q.productId);
