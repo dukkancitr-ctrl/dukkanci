@@ -383,8 +383,25 @@ module.exports = async (req, res) => {
   if (action === "test") {
     const feature = String(body.feature || "whatsapp_autoreply");
     const text = String(body.text || "مرحبا").slice(0, 500);
+    let system = "أنت مساعد اختبار. ردّ بإيجاز بنفس لغة الرسالة.";
+    // For the WhatsApp auto-reply feature, ground the test the same way the real
+    // bot does (retrieveKnowledge in api/notify-order.js) — otherwise this "quick
+    // test" answers from the base prompt alone and misleadingly looks like the
+    // knowledge base isn't wired up, when only THIS test path skipped it.
+    if (feature === "whatsapp_autoreply") {
+      const vec = await gw.embed("embeddings", text);
+      if (vec) {
+        const r = await gw.sbWrite("POST", "rpc/match_knowledge",
+          { query_embedding: "[" + vec.join(",") + "]", match_count: 4, p_store_id: null }, "return=representation");
+        const chunks = (r.ok && Array.isArray(r.rows) ? r.rows : []).filter(c => c.similarity == null || c.similarity > 0.2);
+        if (chunks.length) {
+          const context = chunks.map((c, i) => `[${i + 1}] ${String(c.content).slice(0, 700)}`).join("\n\n");
+          system += `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${context}`;
+        }
+      }
+    }
     const reply = await gw.complete(feature, {
-      system: "أنت مساعد اختبار. ردّ بإيجاز بنفس لغة الرسالة.",
+      system,
       messages: [{ role: "user", content: text }],
       maxTokens: 300,
       timeoutMs: 15000

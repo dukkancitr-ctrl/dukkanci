@@ -1204,6 +1204,33 @@ module.exports = async (req, res) => {
       return res.status(200).json({ coupons, stats });
     }
 
+    // Admin: every coupon across every store, including global/platform-wide
+    // coupons (store_id null — e.g. a launch code created directly in the DB).
+    // The merchant-coupons action above requires a single storeId and can't
+    // see these; this is the cross-store view for the admin panel.
+    if (q.action === "admin-coupons") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      const coupons = await sbGet(`coupons?select=id,code,discount_type,value,store_id,min_subtotal,max_discount,starts_at,ends_at,usage_limit,per_customer_limit,active,created_at&order=created_at.desc&limit=500`) || [];
+      const stats = {};
+      if (coupons.length) {
+        const ids = coupons.map(c => c.id).join(",");
+        const reds = await sbGet(`coupon_redemptions?coupon_id=in.(${ids})&select=coupon_id,amount&limit=5000`) || [];
+        for (const r of reds) {
+          const k = Number(r.coupon_id);
+          if (!stats[k]) stats[k] = { uses: 0, discount: 0 };
+          stats[k].uses += 1;
+          stats[k].discount += Number(r.amount) || 0;
+        }
+      }
+      const storeIds = [...new Set(coupons.map(c => c.store_id).filter(Boolean))];
+      let storeNames = {};
+      if (storeIds.length) {
+        const rows = await sbGet(`stores?id=in.(${storeIds.join(",")})&select=id,name`) || [];
+        storeNames = Object.fromEntries(rows.map(s => [s.id, s.name]));
+      }
+      return res.status(200).json({ coupons, stats, storeNames });
+    }
+
     // Merchant/Admin: this store's search-term report (spec §16 «تقرير البحث»):
     // top queries + zero-result queries, aggregated from the last 1000 searches.
     if (q.action === "store-search-terms") {
@@ -1715,17 +1742,20 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, image: backup.original_image });
   }
 
-  // Merchant/Admin: create or update a discount coupon for THIS store (spec §11).
-  // store_id is always forced to the authed store — a merchant can never create a
-  // global/other-store coupon. Codes are globally unique (case-insensitive) so
-  // validate_coupon can never resolve one code to two different coupons.
+  // Merchant/Admin: create or update a discount coupon (spec §11). A merchant's
+  // store_id is always forced to their own authed store — they can never create
+  // a global/other-store coupon. Admin may additionally omit storeId entirely to
+  // create/edit a global, platform-wide coupon (store_id null — e.g. DUKKAN10).
+  // Codes are globally unique (case-insensitive) so validate_coupon can never
+  // resolve one code to two different coupons.
   if (pq.action === "merchant-coupon-save") {
-    const storeId = Number(body.storeId);
     const isAdmin = adminOk({ headers: req.headers, query: pq });
+    const rawStoreId = body.storeId;
+    const storeId = (rawStoreId === null || rawStoreId === undefined || rawStoreId === "") ? null : Number(rawStoreId);
     let authed = isAdmin;
     if (!authed && storeId) authed = merchantOk(req, storeId);
     if (!authed) return res.status(403).json({ error: "unauthorized" });
-    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    if (!storeId && !isAdmin) return res.status(400).json({ error: "storeId required" });
     const c = (body.coupon && typeof body.coupon === "object") ? body.coupon : {};
     const code = String(c.code || "").trim().toUpperCase().replace(/\s+/g, "");
     if (!/^[A-Z0-9_-]{3,24}$/.test(code)) return res.status(400).json({ error: "bad_code" });
@@ -1750,9 +1780,12 @@ module.exports = async (req, res) => {
     };
     let r;
     if (couponId) {
-      // Update: only if the coupon belongs to this store.
+      // Update: a merchant may only touch their own store's coupon (never a
+      // global one, never another store's); admin may edit any coupon.
       const own = await sbGet(`coupons?id=eq.${couponId}&select=store_id&limit=1`);
-      if (!own || !own[0] || Number(own[0].store_id) !== storeId) return res.status(403).json({ error: "forbidden" });
+      if (!own || !own[0]) return res.status(404).json({ error: "not_found" });
+      const ownerStoreId = own[0].store_id == null ? null : Number(own[0].store_id);
+      if (!isAdmin && ownerStoreId !== storeId) return res.status(403).json({ error: "forbidden" });
       r = await sbWrite("PATCH", `coupons?id=eq.${couponId}`, row, "return=representation");
     } else {
       r = await sbWrite("POST", "coupons", row, "return=representation");
@@ -1763,17 +1796,22 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, coupon: saved });
   }
 
-  // Merchant/Admin: enable/disable one of this store's coupons (spec §11).
+  // Merchant/Admin: enable/disable a coupon (spec §11). Admin may toggle any
+  // coupon, including a global one (store_id null); a merchant only their own.
   if (pq.action === "merchant-coupon-status") {
-    const storeId = Number(body.storeId);
-    const couponId = Number(body.couponId);
     const isAdmin = adminOk({ headers: req.headers, query: pq });
+    const rawStoreId = body.storeId;
+    const storeId = (rawStoreId === null || rawStoreId === undefined || rawStoreId === "") ? null : Number(rawStoreId);
+    const couponId = Number(body.couponId);
     let authed = isAdmin;
     if (!authed && storeId) authed = merchantOk(req, storeId);
     if (!authed) return res.status(403).json({ error: "unauthorized" });
-    if (!storeId || !couponId) return res.status(400).json({ error: "storeId and couponId required" });
+    if (!couponId) return res.status(400).json({ error: "couponId required" });
+    if (!storeId && !isAdmin) return res.status(400).json({ error: "storeId required" });
     const own = await sbGet(`coupons?id=eq.${couponId}&select=store_id,code&limit=1`);
-    if (!own || !own[0] || Number(own[0].store_id) !== storeId) return res.status(403).json({ error: "forbidden" });
+    if (!own || !own[0]) return res.status(404).json({ error: "not_found" });
+    const ownerStoreId = own[0].store_id == null ? null : Number(own[0].store_id);
+    if (!isAdmin && ownerStoreId !== storeId) return res.status(403).json({ error: "forbidden" });
     const active = body.active !== false;
     const r = await sbWrite("PATCH", `coupons?id=eq.${couponId}`, { active }, "return=minimal");
     if (!r.ok) return res.status(502).json({ error: "update failed", detail: r.rows });

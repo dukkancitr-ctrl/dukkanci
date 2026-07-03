@@ -3156,6 +3156,7 @@ function dashboardSidebar(type, active) {
     ["campaigns", "megaphone", "الحملات"],
     ["media", "image", "مكتبة الصور"],
     ["complaints", "megaphone", "الشكاوى"],
+    ["coupons", "megaphone", "الكوبونات"],
     ["delivery", "bike", "التوصيل"],
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"],
@@ -4166,6 +4167,109 @@ async function toggleCoupon(id, active) {
     const c = (state._merchantCoupons?.list || []).find(x => Number(x.id) === Number(id));
     if (c) c.active = active;
     showToast(active ? "تم تفعيل الكود" : "تم إيقاف الكود", "success");
+    render();
+  } catch (e) { showToast("خطأ في الاتصال", ""); }
+}
+
+// ─────────── Admin: cross-store coupons (spec §11 admin view) ───────────
+// Unlike the merchant coupon list (one store), this shows every coupon on the
+// platform — including global/platform-wide coupons (store_id null, e.g. a
+// launch code created directly in the DB, which no merchant session can see
+// or edit) — via the admin-only "admin-coupons" server action.
+function adminCoupons() {
+  const cs = state._adminCoupons;
+  if (cs == null && !state._adminCouponsLoading) {
+    state._adminCouponsLoading = true;
+    fetch("/api/notify-order?action=admin-coupons", { headers: merchantHeaders() })
+      .then(r => r.json())
+      .then(data => { state._adminCoupons = { list: Array.isArray(data.coupons) ? data.coupons : [], stats: data.stats || {}, storeNames: data.storeNames || {} }; })
+      .catch(() => { state._adminCoupons = { list: [], stats: {}, storeNames: {} }; })
+      .finally(() => { state._adminCouponsLoading = false; render(); });
+  }
+  const fmtDate = iso => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)); } catch (e) { return ""; } };
+  const couponCards = cs == null
+    ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل الكوبونات…</p></div>`
+    : (cs.list.length ? `<div class="coupon-grid">${cs.list.map(c => {
+        const st = cs.stats[c.id] || { uses: 0, discount: 0 };
+        const expired = c.ends_at && Date.parse(c.ends_at) < Date.now();
+        const exhausted = c.usage_limit && st.uses >= c.usage_limit;
+        const [pill, pillLabel] = !c.active ? ["gray", "موقوف"] : expired ? ["red", "منتهي"] : exhausted ? ["orange", "استُنفد"] : ["green", "فعّال"];
+        const scopeLabel = c.store_id ? (cs.storeNames[c.store_id] || `متجر #${c.store_id}`) : "عام — كل المتاجر";
+        return `
+        <article class="dashboard-card coupon-card">
+          <div class="coupon-card__head"><code class="coupon-code" dir="ltr">${esc(c.code)}</code><span class="status-pill ${pill}">${pillLabel}</span></div>
+          <strong class="coupon-type">${couponTypeLabel(c)}</strong>
+          <div class="coupon-meta">
+            <span>${icon("store")} ${esc(scopeLabel)}</span>
+            ${c.min_subtotal ? `<span>حد أدنى ${money(c.min_subtotal)}</span>` : ""}
+            ${c.ends_at ? `<span>${icon("calendar")} ينتهي ${fmtDate(c.ends_at)}</span>` : `<span>بلا تاريخ انتهاء</span>`}
+            <span>${icon("receipt")} ${st.uses.toLocaleString("ar")}${c.usage_limit ? ` / ${c.usage_limit.toLocaleString("ar")}` : ""} استخدام</span>
+            ${st.discount ? `<span>${icon("wallet")} خصومات مصروفة ${money(st.discount)}</span>` : ""}
+          </div>
+          <div class="offer-card-actions">
+            <button class="secondary-button compact" data-action="edit-admin-coupon" data-id="${c.id}">${icon("edit")} تعديل</button>
+            <button class="secondary-button compact" data-action="toggle-admin-coupon" data-id="${c.id}" data-active="${c.active ? "0" : "1"}">${c.active ? "إيقاف" : "تفعيل"}</button>
+          </div>
+        </article>`;
+      }).join("")}</div>`
+      : `<div class="empty-managed">${icon("megaphone")}<p>لا كوبونات بعد — أنشئ كوداً عاماً لكل المتاجر أو لمتجر واحد.</p></div>`);
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>${icon("megaphone")} كل الكوبونات</h3><p>أكواد الخصم على مستوى المنصة أو لكل متجر — يديرها التاجر من لوحته أيضاً لكودات متجره.</p></div>
+        <button class="primary-button compact" data-action="create-admin-coupon">${icon("plus")} كوبون جديد</button></div>
+      ${couponCards}
+    </section>`;
+}
+
+// Create/edit modal for the admin coupon view. Unlike the merchant version,
+// this includes a store picker ("عام — كل المتاجر" or one specific store),
+// since admin can create/edit a coupon for any scope.
+function openAdminCouponForm(id) {
+  const cs = state._adminCoupons || { list: [] };
+  const editing = id ? cs.list.find(c => Number(c.id) === Number(id)) : null;
+  const endsVal = editing && editing.ends_at ? new Date(editing.ends_at).toISOString().slice(0, 10) : "";
+  const storeOptions = stores.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"))
+    .map(s => `<option value="${s.id}" ${editing && Number(editing.store_id) === s.id ? "selected" : ""}>${escAttr(s.name)}</option>`).join("");
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">الكوبونات</span>
+    <h2>${editing ? "تعديل كوبون" : "كوبون جديد"}</h2>
+    <form class="modal-form" id="admin-coupon-form" data-id="${editing ? editing.id : ""}">
+      <div class="form-grid">
+        <label class="input-label"><span>الكود <i class="req">*</i></span><input name="code" required dir="ltr" placeholder="RAMADAN20" pattern="[A-Za-z0-9_-]{3,24}" value="${editing ? escAttr(editing.code) : ""}"><small class="field-hint">3-24 حرفاً لاتينياً/رقماً، بلا مسافات.</small></label>
+        <label class="input-label"><span>النطاق</span>
+          <select name="storeId">
+            <option value="" ${!editing || !editing.store_id ? "selected" : ""}>عام — كل المتاجر</option>
+            ${storeOptions}
+          </select>
+        </label>
+        <label class="input-label"><span>نوع الخصم</span>
+          <select name="discount_type">
+            <option value="percent" ${!editing || editing.discount_type === "percent" ? "selected" : ""}>نسبة مئوية %</option>
+            <option value="fixed" ${editing && editing.discount_type === "fixed" ? "selected" : ""}>مبلغ ثابت (ل.ت)</option>
+            <option value="free_delivery" ${editing && editing.discount_type === "free_delivery" ? "selected" : ""}>توصيل مجاني</option>
+          </select>
+        </label>
+        <label class="input-label"><span>قيمة الخصم</span><input name="value" type="number" min="0" step="1" inputmode="numeric" value="${editing ? Number(editing.value) || "" : ""}" placeholder="10"><small class="field-hint">للنسبة: 1-90. تُتجاهل مع «توصيل مجاني».</small></label>
+        <label class="input-label"><span>أقصى خصم (للنسبة، اختياري)</span><input name="max_discount" type="number" min="0" step="1" value="${editing && editing.max_discount ? Number(editing.max_discount) : ""}" placeholder="100"></label>
+        <label class="input-label"><span>الحد الأدنى للطلب (اختياري)</span><input name="min_subtotal" type="number" min="0" step="1" value="${editing && editing.min_subtotal ? Number(editing.min_subtotal) : ""}" placeholder="200"></label>
+        <label class="input-label"><span>تاريخ الانتهاء (اختياري)</span><input name="ends_at" type="date" value="${endsVal}"></label>
+        <label class="input-label"><span>حد الاستخدامات الكلي (اختياري)</span><input name="usage_limit" type="number" min="0" step="1" value="${editing && editing.usage_limit ? editing.usage_limit : ""}" placeholder="100"></label>
+        <label class="input-label"><span>حد الاستخدام لكل عميل (اختياري)</span><input name="per_customer_limit" type="number" min="0" step="1" value="${editing && editing.per_customer_limit ? editing.per_customer_limit : ""}" placeholder="1"></label>
+      </div>
+      <button class="primary-button full" type="submit">${icon("check")} ${editing ? "حفظ التعديلات" : "إنشاء الكوبون"}</button>
+    </form>
+  `, "coupon-form-modal");
+}
+
+async function toggleAdminCoupon(id, active) {
+  try {
+    const r = await fetch("/api/notify-order?action=merchant-coupon-status", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ couponId: Number(id), active }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) { showToast("تعذّر تحديث حالة الكوبون", ""); return; }
+    const c = (state._adminCoupons?.list || []).find(x => Number(x.id) === Number(id));
+    if (c) c.active = active;
+    showToast(active ? "تم تفعيل الكوبون" : "تم إيقاف الكوبون", "success");
     render();
   } catch (e) { showToast("خطأ في الاتصال", ""); }
 }
@@ -6554,8 +6658,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -9110,6 +9214,9 @@ document.addEventListener("click", event => {
   if (action === "export-merchant-report") exportMerchantReportCsv();
   if (action === "edit-coupon") openCouponForm(target.dataset.id);
   if (action === "toggle-coupon") toggleCoupon(target.dataset.id, target.dataset.active === "1");
+  if (action === "create-admin-coupon") openAdminCouponForm();
+  if (action === "edit-admin-coupon") openAdminCouponForm(target.dataset.id);
+  if (action === "toggle-admin-coupon") toggleAdminCoupon(target.dataset.id, target.dataset.active === "1");
   if (action === "copy-store-link") {
     const link = target.dataset.link || "";
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => showToast("تم نسخ رابط المتجر", "success")).catch(() => showToast(link, ""));
@@ -10331,6 +10438,38 @@ document.addEventListener("submit", async event => {
       state._merchantCoupons = null; // re-fetch the fresh list on next render
       closeModal();
       showToast(coupon.id ? "تم حفظ تعديلات الكود" : "تم إنشاء كود الخصم 🎉", "success");
+      render();
+    } catch (e) { restore(); showToast("خطأ في الاتصال", ""); }
+    return;
+  }
+  if (event.target.id === "admin-coupon-form") {
+    const f = event.target;
+    const submitBtn = f.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الحفظ..."; }
+    const restore = () => { if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; } };
+    const coupon = {
+      id: f.dataset.id ? Number(f.dataset.id) : null,
+      code: f.code.value, discount_type: f.discount_type.value, value: f.value.value,
+      max_discount: f.max_discount.value, min_subtotal: f.min_subtotal.value,
+      ends_at: f.ends_at.value || null, usage_limit: f.usage_limit.value, per_customer_limit: f.per_customer_limit.value
+    };
+    if (coupon.discount_type !== "free_delivery" && !(Number(coupon.value) > 0)) { restore(); showToast("أدخل قيمة الخصم"); return; }
+    const storeId = f.storeId.value ? Number(f.storeId.value) : null; // empty = عام (كل المتاجر)
+    try {
+      const r = await fetch("/api/notify-order?action=merchant-coupon-save", { method: "POST", headers: merchantHeaders(true), body: JSON.stringify({ storeId, coupon }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.ok === false) {
+        restore();
+        showToast(data.error === "duplicate_code" ? "هذا الكود مستخدم بالفعل — اختر كوداً آخر"
+          : data.error === "bad_code" ? "صيغة الكود غير صالحة (3-24 حرفاً لاتينياً/رقماً)"
+          : data.error === "bad_value" ? "قيمة الخصم غير صالحة (النسبة 1-90)"
+          : "تعذّر حفظ الكوبون", "");
+        return;
+      }
+      state._adminCoupons = null; // re-fetch the fresh list on next render
+      closeModal();
+      showToast(coupon.id ? "تم حفظ تعديلات الكوبون" : "تم إنشاء الكوبون 🎉", "success");
       render();
     } catch (e) { restore(); showToast("خطأ في الاتصال", ""); }
     return;
