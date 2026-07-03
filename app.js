@@ -979,13 +979,17 @@ async function ensureReviewEligibility(storeId) {
   if (!sb) return;
   state.reviewEligibility[storeId] = null; // in-flight guard
   try {
+    // Cloudflare edge-caches PostgREST GET responses by URL (see loadCatalogFromSupabase);
+    // vary the URL each call so a just-submitted review isn't masked by a stale cache hit.
+    const cb = Date.now();
     const { data: myOrders } = await sb.from("orders").select("id")
       .eq("store_id", storeId).eq("customer_id", state.user.id)
-      .in("status", REVIEW_ELIGIBLE_STATUSES).order("created_at", { ascending: false });
+      .in("status", REVIEW_ELIGIBLE_STATUSES).neq("id", "__cb" + cb)
+      .order("created_at", { ascending: false });
     const orderIds = (myOrders || []).map(o => o.id);
     let reviewedIds = [];
     if (orderIds.length) {
-      const { data: myReviews } = await sb.from("store_reviews").select("order_id").in("order_id", orderIds);
+      const { data: myReviews } = await sb.from("store_reviews").select("order_id").in("order_id", orderIds).gt("id", -cb);
       reviewedIds = (myReviews || []).map(r => r.order_id);
     }
     const orderId = orderIds.find(id => !reviewedIds.includes(id)) || null;
@@ -1001,7 +1005,8 @@ async function refreshStoreRatingFromCloud(storeId) {
   const sb = window.supabaseClient;
   if (!sb) return;
   try {
-    const { data } = await sb.from("stores").select("rating,reviews").eq("id", storeId).single();
+    const cb = Date.now(); // dodge Cloudflare's edge cache on this exact GET URL
+    const { data } = await sb.from("stores").select("rating,reviews").eq("id", storeId).gt("id", -cb).single();
     const store = getStore(storeId);
     if (data && store) { store.rating = data.rating; store.reviews = data.reviews; }
   } catch (e) { /* aggregate refresh is best-effort */ }
@@ -1026,8 +1031,9 @@ async function loadStoreReviews(storeId) {
   const sb = window.supabaseClient;
   if (!sb) return [];
   try {
+    const cb = Date.now(); // dodge Cloudflare's edge cache so a fresh review shows immediately
     const { data } = await sb.from("store_reviews").select("rating,comment,customer_name,created_at")
-      .eq("store_id", storeId).order("created_at", { ascending: false }).limit(50);
+      .eq("store_id", storeId).gt("id", -cb).order("created_at", { ascending: false }).limit(50);
     return data || [];
   } catch (e) { return []; }
 }
@@ -8588,7 +8594,7 @@ async function openStoreReviewsModal(storeId) {
   el.innerHTML = rows.length ? rows.map(rv => `
     <div class="review-item">
       <div class="review-item__head">
-        <span class="review-item__stars">${Array.from({ length: 5 }, (_, i) => icon("star")).slice(0, Math.round(rv.rating)).join("")}</span>
+        <span class="review-item__stars">${icon("star")} ${rv.rating}</span>
         <strong>${esc(rv.customer_name || "عميل دكانجي")}</strong>
         <small>${formatOrderDate(rv.created_at)}</small>
       </div>
@@ -8979,6 +8985,14 @@ document.addEventListener("click", event => {
   if (action === "export-merchant-products") exportMerchantProductsCsv();
   if (action === "preview-product") openProductPreview(target.dataset.id);
   if (action === "price-history") openPriceHistory(target.dataset.id);
+  if (action === "open-rate-store") openRateStoreModal(Number(target.dataset.id));
+  if (action === "open-store-reviews") openStoreReviewsModal(Number(target.dataset.id));
+  if (action === "set-rate-star") {
+    const ta = document.querySelector('#store-review-form textarea[name="comment"]');
+    if (ta) state._rateStore.comment = ta.value;
+    state._rateStore.stars = Number(target.dataset.value);
+    showModal(renderRateStoreModal(), "rate-store-modal");
+  }
   if (action === "apply-csv-import") applyCsvImport();
   if (action === "merchant-image-filter") { state.merchantImageFilter = target.dataset.filter; render(); }
   if (action === "enhance-image-product" || action === "reenhance-image") openImageEnhance(target.dataset.id);
@@ -9879,6 +9893,21 @@ document.addEventListener("submit", async event => {
   event.preventDefault();
   if (event.target.id === "group-create-form") { submitCreateGroup(event.target); return; }
   if (event.target.id === "group-join-form") { submitJoinGroup(event.target); return; }
+  if (event.target.id === "store-review-form") {
+    const r = state._rateStore;
+    if (!r || !r.stars) return;
+    const btn = event.target.querySelector('button[type="submit"]');
+    const comment = (event.target.querySelector('textarea[name="comment"]')?.value || "").trim();
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الإرسال…"; }
+    submitStoreReview(r.storeId, r.orderId, r.stars, comment).then(ok => {
+      if (ok) { state._rateStore = null; showToast("شكراً لتقييمك!", "success"); closeModal(); render(); }
+      else {
+        showToast("تعذّر إرسال التقييم، حاول لاحقاً", "");
+        if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} إرسال التقييم`; }
+      }
+    });
+    return;
+  }
   if (event.target.id === "admin-login-form") {
     const input = document.getElementById("admin-login-input");
     const pwd = (input?.value || "").trim();
