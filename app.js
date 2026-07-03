@@ -6363,6 +6363,14 @@ function renderDeliveryQuoteDetails(store, quote, status = "") {
   if (!quote) {
     return `<div class="delivery-calculator warning">${icon("pin")}<div><strong>حدد موقع العنوان أولاً</strong><p>أضف إحداثيات العنوان أو استخدم موقعك الحالي لنحسب المسافة والتكلفة.</p></div></div>`;
   }
+  if (quote.provider === "zone" || quote.provider === "fixed") {
+    const note = quote.provider === "zone" ? `سعر توصيل ثابت لمنطقة ${escAttr(quote.zoneLabel || "")}` : "سعر توصيل ثابت لهذا المتجر";
+    return `
+      <div class="delivery-calculator">
+        <div class="delivery-calculator__head"><span>${icon("map")}</span><div><strong>حسبة التوصيل لهذا العنوان</strong><p>${note}</p></div><b>${money(quote.fee)}</b></div>
+      </div>
+    `;
+  }
   if (quote.exceedsMaxDistance) {
     return `<div class="delivery-calculator warning">${icon("map")}<div><strong>العنوان خارج نطاق التوصيل</strong><p>المسافة ذهاباً وإياباً ${formatDistance(quote.roundTripKm)}، والحد الأقصى لهذا المتجر ${formatDistance(settings.maxRoundTripKm)}.</p></div></div>`;
   }
