@@ -7095,14 +7095,14 @@ function closeDrawers() {
 }
 
 function showModal(content, className = "") {
-  if (addr2Map) { try { addr2Map.remove(); } catch {} addr2Map = null; }
+  if (addr2Map) { try { google.maps.event.clearInstanceListeners(addr2Map); } catch {} addr2Map = null; }
   modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"></div><div class="modal ${className}">${content}</div>`;
   modalRoot.classList.add("open");
   document.body.classList.add("no-scroll");
 }
 
 function closeModal() {
-  if (addr2Map) { try { addr2Map.remove(); } catch {} addr2Map = null; }
+  if (addr2Map) { try { google.maps.event.clearInstanceListeners(addr2Map); } catch {} addr2Map = null; }
   modalRoot.classList.remove("open");
   modalRoot.innerHTML = "";
   document.body.classList.remove("no-scroll");
@@ -7284,7 +7284,7 @@ function openAddressModal(addressId = null) {
       ${(() => { const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone || "")}">`; })()}
       <p class="addr2-section-label">تفاصيل العنوان</p>
       <div class="addr2-row3">
-        <input name="sf_bina" placeholder="رقم المبنى *" value="${escAttr(s.bina || "")}" required inputmode="numeric">
+        <input name="sf_bina" placeholder="رقم المبنى *" value="${escAttr(s.bina || "")}" required>
         <input name="sf_kat" placeholder="الطابق" value="${escAttr(s.kat || "")}" inputmode="numeric">
         <input name="sf_daire" placeholder="رقم الشقة *" value="${escAttr(s.daire || "")}" required inputmode="numeric">
       </div>
@@ -7458,56 +7458,71 @@ function captureGeolocation(onSuccess) {
   );
 }
 
-// ─────────── Leaflet/OSM map inside the address modal ───────────
-// Leaflet is lazy-loaded from CDN only when the modal opens, so the main
-// bundle stays untouched. Free OSM tiles — no API key, unaffected by the
-// Google billing state (server routes still prefer Google when it works).
-let leafletLoadPromise = null;
-function ensureLeaflet() {
-  if (window.L) return Promise.resolve();
-  if (leafletLoadPromise) return leafletLoadPromise;
-  leafletLoadPromise = new Promise((resolve, reject) => {
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(css);
-    const js = document.createElement("script");
-    js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    js.onload = () => resolve();
-    js.onerror = () => { leafletLoadPromise = null; reject(new Error("leaflet load failed")); };
-    document.head.appendChild(js);
-  });
-  return leafletLoadPromise;
+// ─────────── Google Maps JS API inside the address modal ───────────
+// Loaded lazily from Google's CDN only when the modal opens, so the main
+// bundle stays untouched. The key never touches the repo — the browser
+// fetches it from /api/maps-key (same GOOGLE_MAPS_API_KEY the server routes
+// use), then loads the Maps JS SDK with it.
+let googleMapsLoadPromise = null;
+function ensureGoogleMaps() {
+  if (window.google?.maps) return Promise.resolve();
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
+  googleMapsLoadPromise = fetch("/api/maps-key", { headers: { Accept: "application/json" } })
+    .then(res => res.json())
+    .then(({ key }) => new Promise((resolve, reject) => {
+      if (!key) { reject(new Error("no maps key")); return; }
+      const callbackName = "__dukkanciGmapsReady";
+      window[callbackName] = () => { delete window[callbackName]; resolve(); };
+      const js = document.createElement("script");
+      js.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&language=ar&region=TR&loading=async&callback=${callbackName}`;
+      js.async = true;
+      js.onerror = () => { googleMapsLoadPromise = null; reject(new Error("google maps load failed")); };
+      document.head.appendChild(js);
+    }))
+    .catch(err => { googleMapsLoadPromise = null; throw err; });
+  return googleMapsLoadPromise;
 }
 
-// Client-side Nominatim (CORS-enabled, free). Reverse: full structured Turkish
-// fields for the pinned point. In TR admin levels: state=İl, county/town=İlçe,
-// suburb/neighbourhood=Mahalle.
-async function nominatimReverseFull(lat, lng) {
+// Reverse: full structured Turkish fields for the pinned point, via Google's
+// Geocoder. TR admin levels: administrative_area_level_1=İl,
+// administrative_area_level_2/sublocality_level_1=İlçe, neighborhood=Mahalle.
+function pickAddressComponent(components, types) {
+  for (const wanted of types) {
+    const hit = components.find(c => (c.types || []).includes(wanted));
+    if (hit) return hit.long_name;
+  }
+  return "";
+}
+async function googleReverseFull(lat, lng) {
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&accept-language=ar&zoom=18&addressdetails=1`, { headers: { Accept: "application/json" } });
-    if (!res.ok) return null;
-    const d = await res.json();
-    const a = d.address || {};
-    const mahalle = a.suburb || a.neighbourhood || a.quarter || a.village || "";
-    const ilce = a.county || a.town || a.city_district || a.district || "";
-    const il = a.state || a.province || a.city || "إسطنبول";
-    const sokak = a.road || "";
+    await ensureGoogleMaps();
+    const geocoder = new google.maps.Geocoder();
+    const { results } = await geocoder.geocode({ location: { lat, lng } });
+    if (!results?.length) return null;
+    const components = results[0].address_components || [];
+    const il = pickAddressComponent(components, ["administrative_area_level_1"]) || "إسطنبول";
+    const ilce = pickAddressComponent(components, ["administrative_area_level_2", "sublocality_level_1"]);
+    const mahalle = pickAddressComponent(components, ["neighborhood", "sublocality_level_2", "sublocality"]);
+    const sokak = pickAddressComponent(components, ["route"]);
     const display = [sokak, mahalle, ilce, il].filter(Boolean).join("، ");
-    return { il, ilce, mahalle, sokak, display: display || d.display_name || "" };
+    return { il, ilce, mahalle, sokak, display: display || results[0].formatted_address || "" };
   } catch { return null; }
 }
 
-async function nominatimSearchPlaces(query) {
+async function googleSearchPlaces(query) {
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&accept-language=ar&countrycodes=tr&limit=5`, { headers: { Accept: "application/json" } });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (Array.isArray(data) ? data : []).map(r => ({ label: r.display_name, lat: Number(r.lat), lng: Number(r.lon) }));
+    await ensureGoogleMaps();
+    const geocoder = new google.maps.Geocoder();
+    const { results } = await geocoder.geocode({ address: query, componentRestrictions: { country: "tr" } });
+    return (results || []).slice(0, 5).map(r => ({
+      label: r.formatted_address,
+      lat: r.geometry.location.lat(),
+      lng: r.geometry.location.lng()
+    }));
   } catch { return []; }
 }
 
-let addr2Map = null;          // live Leaflet instance while the modal is open
+let addr2Map = null;          // live google.maps.Map instance while the modal is open
 let addr2CommitToken = 0;     // guards overlapping reverse-geocode responses
 
 // Reads the map center as the delivery point: fills lat/lng + the structured
@@ -7516,12 +7531,13 @@ async function commitAddressPin() {
   const form = document.getElementById("customer-address-form");
   if (!form || !addr2Map) return;
   const center = addr2Map.getCenter();
-  form.elements.lat.value = center.lat.toFixed(6);
-  form.elements.lng.value = center.lng.toFixed(6);
+  const lat = center.lat(), lng = center.lng();
+  form.elements.lat.value = lat.toFixed(6);
+  form.elements.lng.value = lng.toFixed(6);
   const textEl = document.getElementById("addr2-resolved-text");
   if (textEl) textEl.textContent = "جارٍ تحديد العنوان…";
   const token = ++addr2CommitToken;
-  const info = await nominatimReverseFull(center.lat, center.lng);
+  const info = await googleReverseFull(lat, lng);
   if (token !== addr2CommitToken || !document.getElementById("customer-address-form")) return;
   if (!info) {
     if (textEl) textEl.textContent = "تعذر جلب اسم المنطقة تلقائياً — يمكنك إدخالها يدوياً بزر التعديل";
@@ -7534,29 +7550,40 @@ async function commitAddressPin() {
   if (textEl) textEl.textContent = info.display;
 }
 
-// Boots the Leaflet map inside the open address modal and wires the search box.
+// Boots the Google Maps map inside the open address modal and wires the search box.
 async function initAddressMapModal(address) {
   const mapEl = document.getElementById("addr2-map");
   if (!mapEl) return;
-  try { await ensureLeaflet(); } catch {
+  try { await ensureGoogleMaps(); } catch {
     mapEl.innerHTML = `<div class="addr2-map-fallback">تعذر تحميل الخريطة — استخدم زر تحديد موقعي أو أدخل العنوان يدوياً</div>`;
     return;
   }
   if (!document.getElementById("addr2-map") || addr2Map) return; // modal closed or already booted
   const hasFix = !!(address?.lat && address?.lng) || !!(state.userLocation?.lat);
   const start = (address?.lat && address?.lng)
-    ? [address.lat, address.lng]
-    : (state.userLocation?.lat ? [state.userLocation.lat, state.userLocation.lng] : [41.0122, 28.976]);
-  addr2Map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView(start, hasFix ? 17 : 11);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(addr2Map);
+    ? { lat: address.lat, lng: address.lng }
+    : (state.userLocation?.lat ? { lat: state.userLocation.lat, lng: state.userLocation.lng } : { lat: 41.0122, lng: 28.976 });
+  addr2Map = new google.maps.Map(mapEl, {
+    center: start,
+    zoom: hasFix ? 17 : 11,
+    disableDefaultUI: true,
+    zoomControl: true,
+    gestureHandling: "greedy"
+  });
   const wrap = document.getElementById("addr2-map-wrap");
-  addr2Map.on("movestart", () => wrap?.classList.add("moving"));
-  addr2Map.on("moveend", () => { wrap?.classList.remove("moving"); commitAddressPin(); });
-  // With a real starting fix, resolve it right away (new address from the user's
-  // detected location, or refresh the text of an address being edited). Without
-  // one we stay at city level and wait for the customer to actually aim the pin.
-  if (hasFix) commitAddressPin();
-  // Search box → Nominatim place search (debounced), pick → fly the map there.
+  // Google fires "idle" once right after the initial render too (unlike
+  // Leaflet's moveend). With a real starting fix, resolve it right away (new
+  // address from the user's detected location, or refresh of an address being
+  // edited) — but without one, stay at city level and wait for the customer
+  // to actually aim the pin, so skip just that first idle.
+  let firstIdle = true;
+  addr2Map.addListener("dragstart", () => wrap?.classList.add("moving"));
+  addr2Map.addListener("idle", () => {
+    wrap?.classList.remove("moving");
+    if (firstIdle) { firstIdle = false; if (!hasFix) return; }
+    commitAddressPin();
+  });
+  // Search box → Google place search (debounced), pick → fly the map there.
   const searchInput = document.getElementById("addr2-search-input");
   const resultsEl = document.getElementById("addr2-search-results");
   if (searchInput && resultsEl) {
@@ -7564,7 +7591,7 @@ async function initAddressMapModal(address) {
     const runSearch = async () => {
       const q = searchInput.value.trim();
       if (q.length < 3) { resultsEl.hidden = true; return; }
-      const places = await nominatimSearchPlaces(q);
+      const places = await googleSearchPlaces(q);
       if (!document.getElementById("addr2-search-results")) return;
       resultsEl.innerHTML = places.length
         ? places.map(p => `<button type="button" data-lat="${p.lat}" data-lng="${p.lng}">${escAttr(p.label)}</button>`).join("")
@@ -7578,17 +7605,19 @@ async function initAddressMapModal(address) {
       if (!btn || !addr2Map) return;
       resultsEl.hidden = true;
       searchInput.value = "";
-      addr2Map.setView([Number(btn.dataset.lat), Number(btn.dataset.lng)], 17); // moveend → commit
+      addr2Map.setCenter({ lat: Number(btn.dataset.lat), lng: Number(btn.dataset.lng) });
+      addr2Map.setZoom(17); // idle → commit
     });
   }
 }
 
 // The locate button inside the address modal: fly the map to the GPS fix
-// (moveend then commits it); if the map failed to load, save raw coords.
+// (idle then commits it); if the map failed to load, save raw coords.
 function captureAddressLocation() {
   captureGeolocation(location => {
-    if (window.L && addr2Map) {
-      addr2Map.setView([location.lat, location.lng], 17);
+    if (window.google?.maps && addr2Map) {
+      addr2Map.setCenter({ lat: location.lat, lng: location.lng });
+      addr2Map.setZoom(17);
     } else {
       const form = document.getElementById("customer-address-form");
       if (form) { form.elements.lat.value = location.lat; form.elements.lng.value = location.lng; }
