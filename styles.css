@@ -3643,11 +3643,14 @@ img {
   border-radius: 10px;
   display: flex;
   align-items: center;
+  /* Numbers always read left-to-right, regardless of page language, so the
+     Turkey country code stays pinned to the left of the number itself. */
+  direction: ltr;
 }
 
 .phone-input span {
   padding: 0 13px;
-  border-left: 1px solid var(--line);
+  border-inline-end: 1px solid var(--line);
   color: var(--muted);
 }
 
@@ -8521,6 +8524,43 @@ tbody tr:hover {
     left: 10px;
   }
 
+  /* Mobile sign-in/up: email+password stays desktop-only — on a phone only
+     Google and the WhatsApp code request are offered, so the whole card
+     fits one screen with no scrolling. */
+  .auth-modal {
+    padding-top: 24px;
+  }
+
+  .auth-modal .auth-email-section {
+    display: none;
+  }
+
+  .auth-modal .auth-logo {
+    margin-bottom: 8px;
+  }
+
+  .auth-modal .auth-logo .brand-mark {
+    width: 52px;
+    height: 52px;
+  }
+
+  .auth-modal > h2 {
+    font-size: 19px;
+    margin: 4px 0 6px;
+  }
+
+  .auth-modal > p {
+    margin: 0 0 14px;
+  }
+
+  .auth-modal .or-line {
+    margin: 14px 0;
+  }
+
+  .auth-modal .auth-terms {
+    margin-top: 10px;
+  }
+
   .join-modal .form-grid,
   .form-grid {
     grid-template-columns: 1fr;
@@ -8532,25 +8572,51 @@ tbody tr:hover {
 
   .account-layout {
     grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* Compact, centered account hero ("طلباتي"/"بياناتي"/...): the generic
+     .compact hero is sized for pages with a lot of content underneath, but
+     here the tab strip follows right away, so trim its padding, drop the
+     .section wrapper's usual top gap, and center the heading/text. */
+  .account-hero.compact {
+    padding: 16px 0 12px;
+  }
+
+  .account-hero .container {
+    text-align: center;
+  }
+
+  .account-hero h1 {
+    margin: 4px 0;
+    font-size: 24px;
+  }
+
+  .account-hero p {
+    font-size: 13px;
+  }
+
+  .account-hero + .section {
+    padding-top: 12px;
   }
 
   .account-menu {
     position: static;
-    padding: 6px;
+    padding: 8px;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 2px;
+    gap: 4px;
     overflow: visible;
   }
 
   .account-menu button {
     min-width: 0;
-    min-height: 54px;
-    padding: 5px 2px;
+    min-height: 60px;
+    padding: 6px 2px;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
+    gap: 4px;
     text-align: center;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .account-menu button.active {
@@ -8558,7 +8624,32 @@ tbody tr:hover {
   }
 
   .account-menu .icon {
-    width: 17px;
+    width: 23px;
+  }
+
+  .account-menu .account-logout,
+  .account-menu .account-login-cta {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: center;
+    min-height: 38px;
+    margin-top: 2px;
+    padding-top: 10px;
+  }
+
+  .empty-state {
+    padding: 26px 20px;
+  }
+
+  .empty-state > span {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 10px;
+  }
+
+  .empty-state > span .icon {
+    width: 24px;
+    height: 24px;
   }
 
   .account-form,

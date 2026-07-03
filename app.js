@@ -7874,16 +7874,18 @@ function openLoginModal(mode = "signin") {
     <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
     <h2>${signup ? "أنشئ حسابك في دكانجي" : "أهلاً بك في دكانجي"}</h2><p>${signup ? "أنشئ حساباً ببريدك الإلكتروني لمتابعة طلباتك وحفظ عناوينك." : "سجّل دخولك لمتابعة طلباتك وحفظ عناوينك ومفضلاتك."}</p>
     <button class="google-button" data-action="google-login"><b>G</b> المتابعة باستخدام Google</button>
-    <div class="or-line"><span>أو بالبريد الإلكتروني</span></div>
-    <form id="email-auth-form" data-mode="${signup ? "signup" : "signin"}">
-      ${signup ? `<label class="input-label"><span>الاسم</span><input name="name" autocomplete="name" placeholder="الاسم الكامل"></label>` : ""}
-      <label class="input-label"><span>البريد الإلكتروني</span><input name="email" type="email" inputmode="email" autocomplete="email" required dir="ltr" placeholder="you@example.com"></label>
-      <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" required dir="ltr" placeholder="${signup ? "٦ أحرف على الأقل" : "••••••••"}"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
-      <p class="auth-error" id="email-auth-error" role="alert" hidden></p>
-      ${signup ? "" : `<button type="button" class="text-button auth-forgot" data-action="forgot-password">نسيت كلمة المرور؟</button>`}
-      <button class="primary-button full large" type="submit">${signup ? "إنشاء الحساب" : "تسجيل الدخول"}</button>
-    </form>
-    <p class="auth-switch">${signup ? `لديك حساب بالفعل؟ <button type="button" class="text-button" data-action="auth-switch-signin">سجّل الدخول</button>` : `ليس لديك حساب؟ <button type="button" class="text-button" data-action="auth-switch-signup">أنشئ حساباً</button>`}</p>
+    <div class="auth-email-section">
+      <div class="or-line"><span>أو بالبريد الإلكتروني</span></div>
+      <form id="email-auth-form" data-mode="${signup ? "signup" : "signin"}">
+        ${signup ? `<label class="input-label"><span>الاسم</span><input name="name" autocomplete="name" placeholder="الاسم الكامل"></label>` : ""}
+        <label class="input-label"><span>البريد الإلكتروني</span><input name="email" type="email" inputmode="email" autocomplete="email" required dir="ltr" placeholder="you@example.com"></label>
+        <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" required dir="ltr" placeholder="${signup ? "٦ أحرف على الأقل" : "••••••••"}"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
+        <p class="auth-error" id="email-auth-error" role="alert" hidden></p>
+        ${signup ? "" : `<button type="button" class="text-button auth-forgot" data-action="forgot-password">نسيت كلمة المرور؟</button>`}
+        <button class="primary-button full large" type="submit">${signup ? "إنشاء الحساب" : "تسجيل الدخول"}</button>
+      </form>
+      <p class="auth-switch">${signup ? `لديك حساب بالفعل؟ <button type="button" class="text-button" data-action="auth-switch-signin">سجّل الدخول</button>` : `ليس لديك حساب؟ <button type="button" class="text-button" data-action="auth-switch-signup">أنشئ حساباً</button>`}</p>
+    </div>
     ${phoneBlock}
     <small class="auth-terms">بالمتابعة أنت توافق على الشروط وسياسة الخصوصية.</small>
   `, "auth-modal");
