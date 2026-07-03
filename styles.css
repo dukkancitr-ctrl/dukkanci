@@ -2038,6 +2038,86 @@ img {
   font-weight: 800;
 }
 
+.store-offers-slider {
+  margin-bottom: 24px;
+}
+
+.store-offers-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.store-offers-track::-webkit-scrollbar {
+  display: none;
+}
+
+.store-offer-card {
+  flex: 0 0 140px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 8px;
+  background: #fff;
+  text-align: right;
+  cursor: pointer;
+}
+
+.store-offer-card__image {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f4f4f4;
+}
+
+.store-offer-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.store-offer-card__image .discount-chip {
+  top: 6px;
+  right: 6px;
+}
+
+.store-offer-card strong {
+  font-size: 12.5px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.store-offer-card__price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.store-offer-card__price b {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.store-offer-card__price del {
+  color: #9aa39d;
+  font-size: 11px;
+}
+
 .product-favorite {
   position: absolute;
   top: 10px;
@@ -7785,7 +7865,7 @@ tbody tr:hover {
     background: rgba(255, 255, 255, 0.97);
     backdrop-filter: blur(12px);
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
   }
 
   .mobile-nav a,
@@ -7817,14 +7897,16 @@ tbody tr:hover {
   }
 
   .mobile-nav .icon {
-    width: 20px;
+    width: 18px;
   }
 
-  .mobile-cart-wrap {
+  .mobile-cart-wrap,
+  .mobile-nav-badge-wrap {
     position: relative;
   }
 
-  .mobile-cart-wrap b {
+  .mobile-cart-wrap b,
+  .mobile-nav-badge-wrap b {
     position: absolute;
     top: -9px;
     right: -11px;
@@ -7836,6 +7918,15 @@ tbody tr:hover {
     display: grid;
     place-items: center;
     font-size: 8px;
+    padding: 0 3px;
+  }
+
+  .mobile-nav-badge-wrap b {
+    background: var(--red);
+  }
+
+  .mobile-nav-badge-wrap b[hidden] {
+    display: none;
   }
 
   .hero__grid {

@@ -291,6 +291,7 @@ const state = {
   // merchant/admin dashboards overwrite from the cloud).
   myOrders: JSON.parse(localStorage.getItem("dukkanci-my-orders") || "[]"),
   myOrdersFetched: false,
+  reviewEligibility: {},  // storeId → { hasAnyOrder, hasReviewable, orderId } — checked lazily per store page visit
   storeFilter: "الكل",
   storeSort: "recommended",
   offersCategory: "الكل",
@@ -964,6 +965,71 @@ async function loadCustomerCloud() {
       await syncAddressesToCloud();   // first login on a device that already had addresses
     }
   } catch (e) { console.warn("customer cloud load:", e.message); }
+}
+
+// ─────────── Store reviews: verified-purchase rating + comment ───────────
+// Only a customer with a completed order at this exact store may review it
+// (enforced again server-side by RLS — this client check is just for UI).
+// "مكتمل"/"تم التوصيل" are the two successful terminal statuses (see orderProgress).
+const REVIEW_ELIGIBLE_STATUSES = ["مكتمل", "تم التوصيل"];
+async function ensureReviewEligibility(storeId) {
+  if (!isFeatureOn("feature_customer_accounts") || !state.user) return;
+  if (storeId in state.reviewEligibility) return; // already checked (or in flight) this session
+  const sb = window.supabaseClient;
+  if (!sb) return;
+  state.reviewEligibility[storeId] = null; // in-flight guard
+  try {
+    const { data: myOrders } = await sb.from("orders").select("id")
+      .eq("store_id", storeId).eq("customer_id", state.user.id)
+      .in("status", REVIEW_ELIGIBLE_STATUSES).order("created_at", { ascending: false });
+    const orderIds = (myOrders || []).map(o => o.id);
+    let reviewedIds = [];
+    if (orderIds.length) {
+      const { data: myReviews } = await sb.from("store_reviews").select("order_id").in("order_id", orderIds);
+      reviewedIds = (myReviews || []).map(r => r.order_id);
+    }
+    const orderId = orderIds.find(id => !reviewedIds.includes(id)) || null;
+    state.reviewEligibility[storeId] = { hasAnyOrder: orderIds.length > 0, hasReviewable: !!orderId, orderId };
+  } catch (e) {
+    state.reviewEligibility[storeId] = { hasAnyOrder: false, hasReviewable: false, orderId: null };
+  }
+  const cur = parseRoute();
+  if (cur.route === "store" && getStore(cur.id)?.id === storeId) render();
+}
+// Pull just this store's fresh rating/reviews count after the DB trigger recomputes them.
+async function refreshStoreRatingFromCloud(storeId) {
+  const sb = window.supabaseClient;
+  if (!sb) return;
+  try {
+    const { data } = await sb.from("stores").select("rating,reviews").eq("id", storeId).single();
+    const store = getStore(storeId);
+    if (data && store) { store.rating = data.rating; store.reviews = data.reviews; }
+  } catch (e) { /* aggregate refresh is best-effort */ }
+}
+async function submitStoreReview(storeId, orderId, rating, comment) {
+  const sb = window.supabaseClient;
+  if (!sb || !state.user || !orderId) return false;
+  try {
+    const { error } = await sb.from("store_reviews").insert({
+      store_id: storeId, order_id: orderId, customer_id: state.user.id,
+      customer_name: (state.customerProfile && state.customerProfile.name) || null,
+      rating, comment: comment || null
+    });
+    if (error) throw error;
+    delete state.reviewEligibility[storeId];
+    await Promise.all([ensureReviewEligibility(storeId), refreshStoreRatingFromCloud(storeId)]);
+    return true;
+  } catch (e) { console.warn("submit review:", e.message); return false; }
+}
+// Fetches the individual review list for the "reviews details" modal (public read).
+async function loadStoreReviews(storeId) {
+  const sb = window.supabaseClient;
+  if (!sb) return [];
+  try {
+    const { data } = await sb.from("store_reviews").select("rating,comment,customer_name,created_at")
+      .eq("store_id", storeId).order("created_at", { ascending: false }).limit(50);
+    return data || [];
+  } catch (e) { return []; }
 }
 // Map an order status to the 5-step tracking progress shown to the customer.
 function orderProgress(status) {
@@ -2082,6 +2148,17 @@ function updateCartBadges() {
   document.getElementById("mobile-cart-count").textContent = count;
 }
 
+// Honest count of currently live offers (never a fabricated/urgency number) —
+// shown as a small badge on the mobile "العروض" tab so it doesn't rely on the
+// user stumbling onto the offers page to know deals exist.
+function updateOffersBadge() {
+  const badge = document.getElementById("mobile-offers-count");
+  if (!badge) return;
+  const count = products.filter(product => product.oldPrice && product.available).length;
+  badge.textContent = count > 9 ? "9+" : String(count);
+  badge.hidden = count === 0;
+}
+
 function hydrateIcons(root = document) {
   root.querySelectorAll(".icon-slot[data-icon]").forEach(slot => {
     slot.innerHTML = icon(slot.dataset.icon);
@@ -2664,6 +2741,7 @@ function renderStorePage(id) {
   if (!store) return renderNotFound();
   // view_store — deduped per store so re-renders don't double-count.
   window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
+  if (!store.newStore) ensureReviewEligibility(store.id); // fire-and-forget; re-renders once resolved
   const siblingBranches = store.branchGroup
     ? stores.filter(branch => branch.branchGroup === store.branchGroup)
         .sort((a, b) => (branchDistanceKm(a) ?? Infinity) - (branchDistanceKm(b) ?? Infinity))
@@ -2766,6 +2844,26 @@ function renderStorePage(id) {
             </div>
           ` : ""}
           ${store.hasOffer && store.offer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
+          ${storeOfferProducts.length ? `
+          <section class="store-offers-slider">
+            <div class="section-heading small"><div><span class="section-kicker">لفترة محدودة</span><h2>عروض ${esc(store.name)}</h2></div><span class="count-chip">${storeOfferProducts.length} عرض</span></div>
+            <div class="store-offers-track">
+              ${storeOfferProducts.map(product => {
+                const noImg = isPlaceholderImage(product.image);
+                const pct = Math.round((1 - product.price / product.oldPrice) * 100);
+                return `
+              <button class="store-offer-card" data-action="open-product" data-id="${product.id}">
+                <span class="store-offer-card__image ${noImg ? "no-image" : ""}">
+                  ${noImg ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">`}
+                  <span class="discount-chip">وفر ${pct}%</span>
+                </span>
+                <strong>${esc(product.name)}</strong>
+                <span class="store-offer-card__price"><b>${money(product.price)}</b><del>${money(product.oldPrice)}</del></span>
+              </button>`;
+              }).join("")}
+            </div>
+          </section>
+          ` : ""}
           <div class="section-heading small"><div><span class="section-kicker">من ${store.name}</span><h2 id="store-products">المنتجات</h2></div><span class="count-chip" id="store-products-count">${storeProducts.length} من ${allStoreProducts.length} منتجاً</span></div>
           ${storeProducts.length === 0 && searchQuery ? `<div class="store-search-empty">${icon("search")}<p>لا توجد نتائج لـ "<strong>${esc(searchQuery)}</strong>"</p><button class="secondary-button" data-action="clear-store-search">مسح البحث</button></div>` : ""}
           <div class="product-grid store-products-grid" id="store-products-grid">${storeProducts.map(productCard).join("")}</div>
@@ -2774,13 +2872,19 @@ function renderStorePage(id) {
             <span>${icon("star")}</span>
             <div><span class="section-kicker">جديد على دكانجي</span><h2>كن أول من يقيّم ${store.name}</h2><p>تمت إضافة بيانات المتجر ومنتجاته من موقعه الرسمي، وستظهر تقييمات عملاء دكانجي بعد اكتمال الطلبات.</p></div>
           </section>
-          ` : `<section class="reviews-block">
-            <div class="section-heading small"><div><span class="section-kicker">تجارب العملاء</span><h2>التقييمات والتعليقات</h2></div></div>
+          ` : (() => {
+            const elig = state.reviewEligibility[store.id];
+            const rateAction = elig && elig.hasReviewable
+              ? `<button class="secondary-button" data-action="open-rate-store" data-id="${store.id}">${icon("star")} قيّم تجربتك</button>`
+              : (state.user && elig && !elig.hasAnyOrder ? `<small class="muted-note">قيّم تجربتك بعد اكتمال أول طلب من هذا المتجر</small>` : "");
+            return `<section class="reviews-block">
+            <div class="section-heading small"><div><span class="section-kicker">تجارب العملاء</span><h2>التقييمات والتعليقات</h2></div>${rateAction}</div>
             ${Number(store.reviews) > 0 ? `
-            <div class="rating-summary">
-              <div class="rating-big"><strong>${store.rating}</strong><span>${icon("star")}${icon("star")}${icon("star")}${icon("star")}${icon("star")}</span><small>من ${store.reviews} تقييم</small></div>
-            </div>` : `<div class="review-list"><p class="muted-note">لا توجد تقييمات بعد — كن أول من يقيّم هذا المتجر بعد طلبك.</p></div>`}
-          </section>`}
+            <button type="button" class="rating-summary rating-summary--clickable" data-action="open-store-reviews" data-id="${store.id}">
+              <div class="rating-big"><strong>${store.rating}</strong><span>${icon("star")}${icon("star")}${icon("star")}${icon("star")}${icon("star")}</span><small>من ${store.reviews} تقييم · اضغط للتفاصيل</small></div>
+            </button>` : `<div class="review-list"><p class="muted-note">لا توجد تقييمات بعد — كن أول من يقيّم هذا المتجر بعد طلبك.</p></div>`}
+          </section>`;
+          })()}
         </div>
         <aside class="store-info-card">
           <h3>معلومات المتجر</h3>
@@ -7032,6 +7136,7 @@ function render() {
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   hydrateIcons(app);
   updateCartBadges();
+  updateOffersBadge();
   // Home/join render the V2 hero with its rotating headline — arm its auto-advance slider.
   if (route === "home" || route === "join") { setupHeroSlider(); setupHeroSearchTyper(); }
   // Only reset scroll on actual navigation (route/id change). Data-refresh
@@ -8439,6 +8544,57 @@ function openProductPreview(id) {
     <div class="product-preview-wrap">${productCard(p)}</div>
     <p class="field-hint">${isShownOnStore(p) ? "هذا المنتج معروض حالياً في متجرك." : (isPlaceholderImage(p.image) ? "المنتج مخفي لأنه بلا صورة — أضف صورة ليظهر للعملاء." : "هذا المنتج مخفي حالياً.")}</p>
   `, "product-preview-modal");
+}
+
+// ── Store reviews modals: submit (verified-purchase) + read individual reviews ──
+function openRateStoreModal(storeId) {
+  const store = getStore(storeId);
+  const elig = state.reviewEligibility[storeId];
+  if (!store || !elig || !elig.hasReviewable) return;
+  state._rateStore = { storeId, orderId: elig.orderId, stars: 0, comment: "" };
+  showModal(renderRateStoreModal(), "rate-store-modal");
+}
+function renderRateStoreModal() {
+  const r = state._rateStore;
+  const store = getStore(r.storeId);
+  return `
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">${esc(store.name)}</span>
+    <h2>قيّم تجربتك</h2>
+    <div class="star-picker">
+      ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star-picker__star ${n <= r.stars ? "active" : ""}" data-action="set-rate-star" data-value="${n}" aria-label="${n} نجوم">${icon("star")}</button>`).join("")}
+    </div>
+    <form id="store-review-form">
+      <label class="input-label"><span>تعليقك (اختياري)</span><textarea name="comment" rows="4" placeholder="شاركنا تجربتك مع ${escAttr(store.name)}...">${esc(r.comment || "")}</textarea></label>
+      <div class="form-actions">
+        <button type="button" class="secondary-button" data-action="close-modal">إلغاء</button>
+        <button type="submit" class="primary-button" ${r.stars ? "" : "disabled"}>${icon("check")} إرسال التقييم</button>
+      </div>
+    </form>
+  `;
+}
+async function openStoreReviewsModal(storeId) {
+  const store = getStore(storeId);
+  if (!store) return;
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">${esc(store.name)}</span>
+    <h2>${store.rating} ${icon("star")} <small>من ${store.reviews} تقييم</small></h2>
+    <div class="review-list" id="store-reviews-list"><div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ التحميل…</p></div></div>
+  `, "store-reviews-modal");
+  const rows = await loadStoreReviews(storeId);
+  const el = document.getElementById("store-reviews-list");
+  if (!el) return; // modal was closed before the fetch resolved
+  el.innerHTML = rows.length ? rows.map(rv => `
+    <div class="review-item">
+      <div class="review-item__head">
+        <span class="review-item__stars">${Array.from({ length: 5 }, (_, i) => icon("star")).slice(0, Math.round(rv.rating)).join("")}</span>
+        <strong>${esc(rv.customer_name || "عميل دكانجي")}</strong>
+        <small>${formatOrderDate(rv.created_at)}</small>
+      </div>
+      ${rv.comment ? `<p>${esc(rv.comment)}</p>` : ""}
+    </div>
+  `).join("") : `<p class="muted-note">لا توجد تقييمات بعد.</p>`;
 }
 
 // Fetch + show a product's recent price changes (server: product-price-history).
