@@ -736,12 +736,24 @@ function toDbStore(s) {
     order_count: s.orderCount ?? 0, official_store: !!s.officialStore, branch_group: s.branchGroup ?? null, brand_theme: s.brandTheme ?? null
   };
 }
-function pushStoreCloud(store) {
-  const sb = window.supabaseClient;
-  if (sb) sb.from("stores").upsert(toDbStore(store), { onConflict: "id" }).then(({ error }) => {
-    if (error) console.warn("store cloud save:", error.message);
-    else notifyGoogleIndex(`/store/${storeParam(store)}`);
-  });
+async function pushStoreCloud(store) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  if (!headers["x-admin-token"] && !headers["x-merchant-token"] && window.supabaseClient) {
+    try {
+      const { data } = await window.supabaseClient.auth.getSession();
+      const tok = data && data.session && data.session.access_token;
+      if (tok) headers["x-sb-token"] = tok;
+    } catch (e) {}
+  }
+  try {
+    const r = await fetch("/api/notify-order?action=save-store", {
+      method: "POST", headers, body: JSON.stringify({ store: toDbStore(store) })
+    });
+    if (r.ok) notifyGoogleIndex(`/store/${storeParam(store)}`);
+    else { const e = await r.json().catch(() => ({})); console.warn("store cloud save:", e.error || r.status); }
+  } catch (e) { console.warn("store cloud save:", e.message); }
 }
 function deleteProductCloud(id) {
   const numId = Number(id);

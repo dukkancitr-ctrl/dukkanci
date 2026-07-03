@@ -1927,6 +1927,33 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // Merchant/Admin: upsert a store using the service-role key. Required so the
+  // anon client no longer needs write access to `stores` (was previously an
+  // unconditional direct upsert with no auth check at all). Accepts the admin
+  // token, a merchant password token that owns storeId, or a Supabase session
+  // that owns storeId (Google/email/OTP login). For a brand-new store (the
+  // join-flow signup path, before store_users links ownership) any signed-in
+  // Supabase user may create their own not-yet-existing row.
+  if (pq.action === "save-store") {
+    const row = body.store || {};
+    const storeId = Number(row.id);
+    if (!storeId) return res.status(400).json({ error: "id required" });
+    let authed = adminOk({ headers: req.headers, query: pq });
+    if (!authed) authed = merchantOk(req, storeId);
+    if (!authed) authed = await verifySupabaseStoreOwner(req, storeId);
+    if (!authed) {
+      const existing = await sbGet(`stores?id=eq.${storeId}&select=id&limit=1`);
+      if (!existing || !existing.length) {
+        const token = String(req.headers["x-sb-token"] || "").trim();
+        if (token) { const u = await goTrueUser(token); authed = !!(u && u.id); }
+      }
+    }
+    if (!authed) return res.status(403).json({ error: "unauthorized" });
+    const r = await sbWrite("POST", "stores?on_conflict=id", row, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true });
+  }
+
   // Admin inbox writes (password-gated).
   if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai" || pq.action === "set-pin" || pq.action === "set-label") {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
