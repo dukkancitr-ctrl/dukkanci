@@ -4570,6 +4570,18 @@ p.success-note.order-closed-note {
   margin-top: 20px;
 }
 
+/* أكمل بياناتك — center the intro (logo/kicker/title/subtitle) like .auth-modal,
+   while the form itself keeps its normal RTL field alignment. */
+.profile-setup-modal {
+  width: min(430px, calc(100% - 30px));
+}
+
+.profile-setup-modal > .section-kicker,
+.profile-setup-modal > h2,
+.profile-setup-modal > .modal-sub {
+  text-align: center;
+}
+
 .customer-order-modal {
   width: min(610px, calc(100% - 30px));
 }
@@ -10304,7 +10316,7 @@ tbody tr:hover {
 .addr2-edit-pencil { background: none; border: none; cursor: pointer; color: var(--muted); flex-shrink: 0; padding: 0; }
 .addr2-edit-pencil .icon { width: 15px; height: 15px; }
 .addr2-manual { margin-bottom: 10px; padding: 10px; border: 1.5px dashed var(--line); border-radius: var(--radius-sm); }
-.addr2-section-label { font-weight: 800; font-size: 13.5px; color: var(--ink); margin: 4px 0 10px; }
+.addr2-section-label { font-weight: 800; font-size: 13.5px; color: var(--ink); margin: 4px 0 10px; display: flex; align-items: center; gap: 6px; }
 .addr2-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .addr2-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .addr2-row2:last-child { margin-bottom: 0; }

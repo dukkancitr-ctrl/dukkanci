@@ -7406,7 +7406,7 @@ function openAddressModal(addressId = null) {
       <div class="addr2-row3">
         <input name="sf_bina" placeholder="رقم المبنى *" value="${escAttr(s.bina || "")}" required>
         <input name="sf_kat" placeholder="الطابق" value="${escAttr(s.kat || "")}" inputmode="numeric">
-        <input name="sf_daire" placeholder="رقم الشقة *" value="${escAttr(s.daire || "")}" required inputmode="numeric">
+        <input name="sf_daire" placeholder="رقم الشقة *" value="${escAttr(s.daire || "")}" required>
       </div>
       <input class="addr2-field-full" name="label" placeholder="اسم العنوان (مثال: المنزل، العمل) *" value="${escAttr(address?.label || "")}" required>
       <div class="addr2-optional">
@@ -7934,23 +7934,27 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
         <label><span>رقم الواتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" required dir="ltr" value="${escAttr(p.phone || "")}" placeholder="+90 555 000 00 00"></label>
       </div>
       ${zoneBlock}
-      <div id="zone-address-fields" ${isZone ? "" : 'style="display:none"'}>
-        <p class="address-section-title">${icon("pin")} تفاصيل المجمع</p>
-        <div class="form-grid">
-          <label><span>Bina No <i class="req">*</i></span><input name="zf_bina" value="${escAttr(sf.bina || "")}" placeholder="12A"></label>
-          <label><span>Daire No <i class="req">*</i></span><input name="zf_daire" value="${escAttr(sf.daire || "")}" placeholder="5"></label>
+      <div id="zone-address-fields" class="addr2" ${isZone ? "" : 'style="display:none"'}>
+        <p class="addr2-section-label">${icon("pin")} تفاصيل المجمع</p>
+        <div class="addr2-row2">
+          <input name="zf_bina" value="${escAttr(sf.bina || "")}" placeholder="Bina No *">
+          <input name="zf_daire" value="${escAttr(sf.daire || "")}" placeholder="Daire No *">
         </div>
       </div>
-      <div id="full-address-fields" ${isZone ? 'style="display:none"' : ""}>
-        <p class="address-section-title">${icon("map")} العنوان التفصيلي</p>
-        <div class="form-grid">
-          <label><span>İl (المدينة)</span><input name="sf_il" value="${escAttr(sf.il || "İstanbul")}" placeholder="İstanbul"></label>
-          <label><span>İlçe (المنطقة)</span><input name="sf_ilce" value="${escAttr(sf.ilce || "")}" placeholder="Esenyurt"></label>
-          <label class="wide"><span>Mahalle</span><input name="sf_mahalle" value="${escAttr(sf.mahalle || "")}" placeholder="Cumhuriyet Mahallesi"></label>
-          <label class="wide"><span>Cadde / Sokak</span><input name="sf_sokak" value="${escAttr(sf.sokak || "")}" placeholder="Atatürk Caddesi"></label>
-          <label><span>Bina No <i class="req">*</i></span><input name="sf_bina" value="${escAttr(sf.bina || "")}" placeholder="12A"></label>
-          <label><span>Kat</span><input name="sf_kat" value="${escAttr(sf.kat || "")}" placeholder="3" inputmode="numeric"></label>
-          <label><span>Daire No <i class="req">*</i></span><input name="sf_daire" value="${escAttr(sf.daire || "")}" placeholder="5" inputmode="numeric"></label>
+      <div id="full-address-fields" class="addr2" ${isZone ? 'style="display:none"' : ""}>
+        <p class="addr2-section-label">${icon("map")} العنوان التفصيلي</p>
+        <div class="addr2-row2">
+          <input name="sf_il" value="${escAttr(sf.il || "İstanbul")}" placeholder="İl (المدينة)">
+          <input name="sf_ilce" value="${escAttr(sf.ilce || "")}" placeholder="İlçe (المنطقة)">
+        </div>
+        <div class="addr2-row2">
+          <input name="sf_mahalle" value="${escAttr(sf.mahalle || "")}" placeholder="Mahalle">
+          <input name="sf_sokak" value="${escAttr(sf.sokak || "")}" placeholder="Cadde / Sokak">
+        </div>
+        <div class="addr2-row3">
+          <input name="sf_bina" value="${escAttr(sf.bina || "")}" placeholder="Bina No *">
+          <input name="sf_kat" value="${escAttr(sf.kat || "")}" placeholder="Kat" inputmode="numeric">
+          <input name="sf_daire" value="${escAttr(sf.daire || "")}" placeholder="Daire No *">
         </div>
       </div>
       <button class="primary-button full large" type="submit">${icon("check")} حفظ وإضافة للسلة</button>
