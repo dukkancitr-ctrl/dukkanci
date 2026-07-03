@@ -1909,6 +1909,116 @@ img {
   transform: rotate(-10deg);
 }
 
+/* «عرض اليوم» — the offers-page hero when the admin has bound an uploaded
+   image to a product (site_settings.dailyDeal). The whole banner is one button
+   that opens the linked product. */
+.offers-page-hero--dd {
+  padding: 24px 0 8px;
+  background: none;
+}
+
+.dd-hero {
+  position: relative;
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 0;
+  border-radius: 22px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: right;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.dd-hero:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px rgba(76, 27, 31, 0.22);
+}
+
+.dd-hero img {
+  width: 100%;
+  height: clamp(210px, 32vw, 380px);
+  object-fit: cover;
+  display: block;
+}
+
+.dd-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(20, 6, 8, 0.8), rgba(20, 6, 8, 0.2) 55%, transparent);
+}
+
+.dd-hero__badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 30px;
+  background: #e30613;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.dd-hero__badge .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.dd-hero__info {
+  position: absolute;
+  z-index: 2;
+  bottom: 16px;
+  right: 18px;
+  left: 18px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dd-hero__info strong {
+  font-size: clamp(18px, 3vw, 28px);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+
+.dd-hero__info small {
+  color: #f3d9d9;
+  font-size: 13px;
+}
+
+.dd-hero__price {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.dd-hero__price b {
+  font-size: clamp(17px, 2.6vw, 24px);
+}
+
+.dd-hero__price del {
+  color: #e8bcbc;
+  font-size: 14px;
+}
+
+.dd-hero__price i {
+  font-style: normal;
+  background: var(--yellow);
+  color: #4c1b1f;
+  padding: 3px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .count-chip {
   padding: 7px 12px;
   border-radius: 20px;

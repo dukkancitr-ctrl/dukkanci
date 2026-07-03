@@ -2715,19 +2715,71 @@ function renderStores() {
   `;
 }
 
+// Seeded per-item pseudo-random key (mulberry32 mixed with the product id),
+// NOT a Fisher-Yates shuffle — the sort order for a given (seed, id) pair is
+// fixed regardless of the source array's order or length. That matters
+// because the offers page paints from a near-empty bundled catalog first,
+// then re-renders as the un-ordered Supabase hydration and the full
+// id-ordered catalog load land a few seconds apart: a sequence-dependent
+// shuffle (Fisher-Yates) would produce a different permutation each time and
+// rearrange the whole grid under the visitor mid-visit. A per-item key sorts
+// the same regardless of input order, so it only shows random order per
+// visit while staying stable across those re-renders.
+function seededRandomKey(seed, id) {
+  let s = (seed ^ Math.imul(id, 0x9E3779B1)) >>> 0;
+  s = (s + 0x6D2B79F5) >>> 0;
+  let t = Math.imul(s ^ (s >>> 15), 1 | s);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return (t ^ (t >>> 14)) >>> 0;
+}
+function seededShuffle(list, seed) {
+  return list.map(item => [seededRandomKey(seed, item.id), item]).sort((a, b) => a[0] - b[0]).map(pair => pair[1]);
+}
+
 function renderOffers() {
-  const allOfferProducts = products.filter(product => product.oldPrice && product.available);
-  const offerCategories = [...new Set(allOfferProducts.map(product => (getStore(product.storeId) || {}).category).filter(Boolean))];
+  // render() writes state._lastNavKey ("offers/") only after this returns, so
+  // "the visitor just navigated here" is exactly when it still holds another
+  // route — that's the moment to draw a fresh shuffle seed.
+  if (state._lastNavKey !== "offers/" || !state._offersSeed) state._offersSeed = Math.max(1, (Math.random() * 0x7fffffff) | 0);
+  // Categories come from the UNshuffled list so the filter pills keep a
+  // stable order across visits — only the product grid itself is shuffled.
+  const baseOfferProducts = products.filter(product => product.oldPrice && product.available);
+  const offerCategories = [...new Set(baseOfferProducts.map(product => (getStore(product.storeId) || {}).category).filter(Boolean))];
+  const allOfferProducts = seededShuffle(baseOfferProducts, state._offersSeed);
   const activeOffersCategory = offerCategories.includes(state.offersCategory) ? state.offersCategory : "الكل";
   const offerProducts = activeOffersCategory === "الكل"
     ? allOfferProducts
     : allOfferProducts.filter(product => (getStore(product.storeId) || {}).category === activeOffersCategory);
+  // «عرض اليوم» — admin-managed hero (site_settings.dailyDeal = {image, storeId,
+  // productId}): an uploaded banner image bound to one product; tapping it opens
+  // that product. Rendered only while the bound product still exists and is
+  // available, and its store is still approved — a removed/sold-out product
+  // or a store demoted after the deal was bound silently falls back to the
+  // default hero rather than leaving a dead (or still-orderable-from-a-
+  // delisted-store) banner.
+  const DD = (state.siteSettings && state.siteSettings.dailyDeal) || {};
+  const ddProductRaw = DD.image && DD.productId ? products.find(p => p.id === Number(DD.productId) && p.available) : null;
+  const ddStore = ddProductRaw ? getStore(ddProductRaw.storeId) : null;
+  const ddProduct = ddStore && isStoreApproved(ddStore) ? ddProductRaw : null;
+  const ddPct = ddProduct && ddProduct.oldPrice ? Math.round((1 - ddProduct.price / ddProduct.oldPrice) * 100) : 0;
   return `
-    <section class="page-hero offers-page-hero">
+    <section class="page-hero offers-page-hero${ddProduct ? " offers-page-hero--dd" : ""}">
+      ${ddProduct ? `
+      <div class="container">
+        <button class="dd-hero" data-action="open-product" data-id="${ddProduct.id}" aria-label="عرض اليوم: ${escAttr(ddProduct.name)}">
+          <img src="${escAttr(DD.image)}" alt="${escAttr(ddProduct.name)}">
+          <span class="dd-hero__badge">${icon("percent")} عرض اليوم</span>
+          <span class="dd-hero__info">
+            <strong>${esc(ddProduct.name)}</strong>
+            ${ddStore ? `<small>${esc(ddStore.name)}</small>` : ""}
+            <span class="dd-hero__price"><b>${money(ddProduct.price)}</b>${ddProduct.oldPrice ? `<del>${money(ddProduct.oldPrice)}</del>` : ""}${ddPct > 0 ? `<i>وفر ${ddPct}%</i>` : ""}</span>
+          </span>
+        </button>
+      </div>` : `
       <div class="container offers-page-grid">
         <div><span class="eyebrow light"><span></span> وفر على كل طلب</span><h1>عروض دكانجي</h1><p>أفضل عروض متاجر الحي، مجموعة في مكان واحد وتتجدد باستمرار.</p></div>
         <div class="big-percent">%</div>
-      </div>
+      </div>`}
     </section>
     <section class="section">
       <div class="container">
@@ -5394,11 +5446,13 @@ function adminContent() {
   if (state.adminContentSection === "plans") return adminContentPlans();
   if (state.adminContentSection === "categories") return adminContentCategories();
   if (state.adminContentSection === "banners") return adminContentForm("banner");
+  if (state.adminContentSection === "offers-hero") return adminContentDailyDeal();
   if (state.adminContentSection === "texts") return adminContentForm("hero");
   if (state.adminContentSection === "join") return adminContentForm("join");
   // [key, icon, title, subtitle, built]
   const cards = [
     ["banners", "megaphone", "بنرات الصفحة الرئيسية", "تعديل نصوص بنر العروض في الرئيسية", true],
+    ["offers-hero", "percent", "عرض اليوم", "صورة هيرو صفحة العروض مربوطة بمنتج", true],
     ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات الرئيسية", true],
     ["featured", "star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية", true],
     ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والمزايا", true],
@@ -5495,6 +5549,48 @@ function adminContentForm(sectionKey) {
           }
           return `<label class="input-label" style="grid-column:1/-1"><span>${f.label}</span>${f.area ? `<textarea name="${f.name}" rows="3">${v(f)}</textarea>` : `<input name="${f.name}" value="${v(f)}"${f.type === "url" ? ' dir="ltr"' : ""}>`}</label>`;
         }).join("")}
+        <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ</button>
+      </form>
+    </section>`;
+}
+// Content > «عرض اليوم»: the offers-page hero — upload a banner image and bind
+// it to one product (store select → product select); visitors who tap the hero
+// land on that product. Saved to site_settings.dailyDeal; clearing the image
+// restores the default offers hero. Reuses the content-image-file/-preview ids
+// so the shared upload + remove handlers work here without extra JS.
+function adminContentDailyDeal() {
+  const saved = (state.siteSettings && state.siteSettings.dailyDeal) || {};
+  const savedProduct = saved.productId ? products.find(p => p.id === Number(saved.productId)) : null;
+  const savedStoreId = Number(saved.storeId) || (savedProduct ? savedProduct.storeId : "");
+  const approvedStores = stores.filter(isStoreApproved).slice().sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  // Keep the saved product selectable even if it went unavailable since the
+  // deal was bound — otherwise the select silently falls back to the
+  // placeholder, the form looks unbound, and re-submitting (e.g. just to swap
+  // the image) gets rejected by the image-without-product guard below.
+  const storeProducts = savedStoreId ? products.filter(p => p.storeId === Number(savedStoreId) && (p.available || p.id === Number(saved.productId))) : [];
+  const cur = saved.image || "";
+  return `
+    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <section class="dashboard-card form-card">
+      <div class="card-heading"><div><h3>عرض اليوم — هيرو صفحة العروض</h3><p>ارفع صورة واربطها بمنتج من أحد المتاجر؛ تظهر أعلى صفحة العروض والضغط عليها يفتح المنتج. إزالة الصورة تعيد الهيرو الافتراضي.</p></div></div>
+      <form id="daily-deal-form" class="form-grid">
+        <div class="input-label" style="grid-column:1/-1"><span>صورة العرض</span>
+          <input type="hidden" name="image" value="${escAttr(cur)}">
+          <div class="image-preview" id="content-image-preview">${cur ? `<img src="${escAttr(cur)}" alt="">` : icon("box")}</div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+            <label class="upload-tile" style="flex:0 0 auto">${icon("upload")}<span>رفع صورة</span><input type="file" id="content-image-file" accept="image/*" hidden></label>
+            <button type="button" class="secondary-button compact" data-action="content-image-remove">${icon("trash")} إزالة الصورة</button>
+          </div></div>
+        <label class="input-label"><span>المتجر</span>
+          <select id="dd-store-select" name="storeId">
+            <option value="">اختر المتجر…</option>
+            ${approvedStores.map(s => `<option value="${s.id}" ${Number(savedStoreId) === s.id ? "selected" : ""}>${escAttr(s.name)}</option>`).join("")}
+          </select></label>
+        <label class="input-label"><span>المنتج المرتبط</span>
+          <select id="dd-product-select" name="productId" ${storeProducts.length ? "" : "disabled"}>
+            <option value="">${storeProducts.length ? "اختر المنتج…" : "اختر المتجر أولاً"}</option>
+            ${storeProducts.map(p => `<option value="${p.id}" ${Number(saved.productId) === p.id ? "selected" : ""}>${escAttr(p.name)}${p.oldPrice ? " — عليه خصم" : ""}${p.available ? "" : " (غير متوفر حالياً)"}</option>`).join("")}
+          </select></label>
         <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ</button>
       </form>
     </section>`;
@@ -9763,6 +9859,17 @@ document.addEventListener("change", event => {
       showToast(`تم اختيار "${file.name}"`, "success");
     }).catch(() => { if (preview) preview.innerHTML = icon("box"); showToast("تعذّر رفع الصورة، جرّب صورة أخرى", ""); });
   }
+  // «عرض اليوم»: picking a store repopulates the linked-product select with
+  // that store's available products (selection resets to the placeholder).
+  if (event.target.id === "dd-store-select") {
+    const sel = document.getElementById("dd-product-select");
+    if (!sel) return;
+    const sid = Number(event.target.value);
+    const list = sid ? products.filter(p => p.storeId === sid && p.available) : [];
+    sel.disabled = !list.length;
+    sel.innerHTML = `<option value="">${list.length ? "اختر المنتج…" : "اختر المتجر أولاً"}</option>`
+      + list.map(p => `<option value="${p.id}">${escAttr(p.name)}${p.oldPrice ? " — عليه خصم" : ""}</option>`).join("");
+  }
 });
 
 document.addEventListener("input", event => {
@@ -10087,6 +10194,21 @@ document.addEventListener("submit", async event => {
     if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
     adminApi("save-settings", { method: "POST", body: { key: cfg.key, value } })
       .then(() => { state.siteSettings = { ...state.siteSettings, [cfg.key]: value }; showToast("تم الحفظ بنجاح", "success"); render(); })
+      .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
+    return;
+  }
+  if (event.target.id === "daily-deal-form") {
+    const f = event.target;
+    const image = (f.querySelector('[name="image"]')?.value || "").trim();
+    const storeId = Number(f.querySelector('[name="storeId"]')?.value) || null;
+    const productId = Number(f.querySelector('[name="productId"]')?.value) || null;
+    // An image with no product would render a banner that leads nowhere.
+    if (image && !productId) { showToast("اختر المنتج الذي تُربط به الصورة", ""); return; }
+    const value = { image, storeId, productId };
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
+    adminApi("save-settings", { method: "POST", body: { key: "dailyDeal", value } })
+      .then(() => { state.siteSettings = { ...state.siteSettings, dailyDeal: value }; showToast("تم حفظ عرض اليوم", "success"); render(); })
       .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
     return;
   }
