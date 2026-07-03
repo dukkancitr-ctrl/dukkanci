@@ -1010,23 +1010,6 @@ img {
   transform: scale(1.035);
 }
 
-/* Wide 1600x600 promo banners (logo + product montage on a solid background): with
-   object-fit:cover the card crops the side edges, cutting off the logo on the right.
-   Match the image box to the banner ratio + object-fit:contain so the full banner —
-   including the logo — shows. Mirrors .store-cover--banner on the store page. */
-.store-card--banner .store-card__image {
-  height: auto;
-  aspect-ratio: 1600 / 600;
-}
-
-.store-card--banner .store-card__image img {
-  object-fit: contain;
-}
-
-.store-card--banner .store-card__image::after {
-  display: none;
-}
-
 .source-branded-store-card {
   border-color: rgba(192, 154, 72, 0.28);
   box-shadow: 0 14px 34px rgba(1, 80, 46, 0.08);
@@ -8486,22 +8469,6 @@ tbody tr:hover {
 
   .store-cover {
     height: 210px;
-  }
-
-  /* Wide promo banners (logo + product montage on a solid background): the short cover
-     box crops their edges with object-fit:cover, cutting off the logo/products. Show the
-     full banner by matching the box to the banner's own 1600:600 ratio + object-fit:contain. */
-  .store-cover--banner {
-    height: auto;
-    aspect-ratio: 1600 / 600;
-  }
-
-  .store-cover--banner > img {
-    object-fit: contain;
-  }
-
-  .store-cover--banner .store-cover__gradient {
-    display: none;
   }
 
   .branch-switcher {
