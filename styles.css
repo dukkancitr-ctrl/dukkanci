@@ -1255,6 +1255,8 @@ img {
 .store-title-row > span:last-child {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .store-title-row strong {
@@ -8203,12 +8205,112 @@ tbody tr:hover {
 
   .category-card .arrow { display: none; }
 
+  /* Two-up store grid on mobile: everything below is a compact remix of the
+     desktop card (smaller image/avatar/type, tighter padding) so two cards
+     fit per row without crowding or truncating the delivery-meta row. */
   .store-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .store-card {
+    border-radius: 16px;
   }
 
   .store-card__image {
-    height: 220px;
+    height: 120px;
+  }
+
+  .store-card__image .status-badge {
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    font-size: 9.5px;
+  }
+
+  .store-card__image .status-badge::before {
+    width: 5px;
+    height: 5px;
+  }
+
+  .official-branch-badge {
+    left: 8px;
+    bottom: 8px;
+    min-height: 22px;
+    padding: 3px 7px;
+    font-size: 8.5px;
+    gap: 4px;
+  }
+
+  .official-branch-badge .icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .offer-ribbon {
+    right: 8px;
+    bottom: 8px;
+    padding: 5px 8px;
+    font-size: 9.5px;
+  }
+
+  .store-card > .favorite-button {
+    top: 8px;
+    left: 8px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .store-card > .favorite-button .icon {
+    width: 14px;
+  }
+
+  .store-card__body {
+    padding: 10px;
+  }
+
+  .store-title-row {
+    gap: 8px;
+  }
+
+  .store-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .store-title-row strong {
+    display: block;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .store-title-row small {
+    font-size: 10.5px;
+  }
+
+  .store-rating {
+    margin-top: 9px;
+    font-size: 10.5px;
+  }
+
+  .store-rating .icon {
+    width: 13px;
+  }
+
+  .store-meta {
+    margin-top: 8px;
+    padding-top: 8px;
+    gap: 8px;
+    font-size: 10px;
+    flex-wrap: wrap;
+  }
+
+  .store-meta .icon {
+    width: 13px;
   }
 
   .offers-banner {
