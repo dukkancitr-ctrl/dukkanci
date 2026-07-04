@@ -1624,45 +1624,45 @@ img {
   width: 18px;
 }
 
+/* ============================================================
+   Footer — dark charcoal (subscribe · links · contact cards · copyright)
+   ============================================================ */
 .site-footer {
-  padding: 62px 0 22px;
-  background:
-    radial-gradient(circle at 85% 0%, rgba(227, 6, 19, 0.18), transparent 30%),
-    #22080b;
-  color: #e4eee9;
+  background: #292a2a;
+  color: #e3e2e2;
 }
 
-/* ── Subscribe band: WhatsApp number → offers/news (top of the footer) ── */
+/* ── Subscribe band ── */
 .footer-subscribe {
-  padding-bottom: 34px;
-  margin-bottom: 40px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 30px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .footer-subscribe__inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 26px 40px;
+  gap: 22px 40px;
   flex-wrap: wrap;
 }
 
 .footer-subscribe__text h3 {
   margin: 0 0 6px;
-  color: #fff;
+  color: #ffb3ad;
   font-size: 21px;
+  font-weight: 700;
 }
 
 .footer-subscribe__text p {
   margin: 0;
-  color: #aebfb8;
+  color: #e7bdb9;
   font-size: 14px;
 }
 
 .footer-subscribe__form {
   display: flex;
-  gap: 10px;
-  flex: 0 1 480px;
+  gap: 12px;
+  flex: 0 1 470px;
   min-width: 300px;
 }
 
@@ -1673,57 +1673,56 @@ img {
   align-items: center;
   gap: 9px;
   padding: 0 14px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: #1a1c1c;
+  border: 1px solid #5d3f3c;
+  border-radius: 10px;
+  transition: border-color 0.15s ease;
 }
 
 .footer-subscribe__field:focus-within {
-  border-color: rgba(255, 255, 255, 0.4);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: #ffb3ad;
 }
 
 .footer-subscribe__field .icon {
   width: 18px;
-  color: #90a29b;
+  color: #ae8884;
   flex-shrink: 0;
 }
 
 .footer-subscribe__field input {
   flex: 1;
   min-width: 0;
-  height: 50px;
+  height: 46px;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: #e3e2e2;
   font: inherit;
   font-size: 15px;
   outline: none;
 }
 
 .footer-subscribe__field input::placeholder {
-  color: #82958d;
+  color: #8a6f6e;
 }
 
 .footer-subscribe__btn {
   flex-shrink: 0;
-  min-width: 118px;
-  height: 50px;
-  padding: 0 26px;
+  min-width: 120px;
+  height: 48px;
+  padding: 0 28px;
   border: 0;
-  border-radius: 12px;
-  background: #e30613;
+  border-radius: 10px;
+  background: #e61e2a;
   color: #fff;
   font: inherit;
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
 .footer-subscribe__btn:hover {
-  background: #c40510;
+  opacity: 0.9;
 }
 
 .footer-subscribe__btn:disabled {
@@ -1732,213 +1731,382 @@ img {
 }
 
 .footer-subscribe__status {
-  margin: 13px 0 0;
+  margin: 12px 0 0;
   font-size: 13.5px;
-  color: #aebfb8;
+  color: #b4b5b5;
 }
 
 .footer-subscribe__status.is-success {
-  color: #4ade80;
+  color: #7ee2a8;
 }
 
 .footer-subscribe__status.is-error {
-  color: #ff909b;
+  color: #ffb4ab;
 }
 
+/* ── 4-column links grid ── */
 .footer-grid {
   display: grid;
-  grid-template-columns: 1.7fr 0.75fr 0.8fr 1fr;
-  gap: 40px 56px;
+  grid-template-columns: 1.7fr 1fr 1fr 1.3fr;
+  gap: 32px 48px;
+  padding: 48px 0;
   align-items: start;
 }
 
-.footer-logo {
-  margin-bottom: 15px;
-}
-
-.footer-logo .brand-mark {
-  width: 58px;
-  height: 58px;
-  padding: 3px;
-  border-color: rgba(255, 255, 255, 0.22);
-  background: #fff8f4;
-}
-
-.footer-logo .brand-logo {
-  height: 104px;
-  padding: 16px 22px;
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
-}
-
-.footer-logo .brand-wordmark strong,
-.brand-on-dark .brand-wordmark strong {
-  color: #fff;
-}
-
-.footer-logo .brand-wordmark small,
-.brand-on-dark .brand-wordmark small {
-  color: #caa8aa;
-}
-
-.footer-grid p {
-  color: #aebfb8;
-  line-height: 1.75;
-  font-size: 14px;
-}
-
-.footer-brand {
-  grid-column: 1;
-  grid-row: 1 / 3;
-}
-
-.footer-brand p {
-  max-width: 330px;
+.footer-grid > div:not(.footer-brand) {
+  display: flex;
+  flex-direction: column;
 }
 
 .footer-grid h3 {
-  margin: 5px 0 17px;
-  color: #fff;
-  font-size: 16px;
+  margin: 0 0 20px;
+  color: #ffb3ad;
+  font-size: 20px;
+  font-weight: 600;
 }
 
-.footer-grid > div:not(:first-child) {
+.footer-col a {
+  margin: 0 0 14px;
+  color: #e7bdb9;
+  font-size: 14px;
+  width: fit-content;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.footer-col a:last-child {
+  margin-bottom: 0;
+}
+
+.footer-col a:hover {
+  color: #ffb3ad;
+  transform: translateX(-4px);
+}
+
+/* Brand column */
+.footer-brand {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  gap: 22px;
 }
 
-.footer-grid a {
-  margin: 5px 0;
-  color: #aebfb8;
+.footer-logo {
+  display: inline-flex;
+  width: fit-content;
+  padding: 14px 18px;
+  background: #fff;
+  border-radius: 14px;
+}
+
+.footer-logo .brand-logo {
+  height: 44px;
+  width: auto;
+  display: block;
+}
+
+.footer-brand p {
+  margin: 0;
+  max-width: 340px;
+  color: #b4b5b5;
   font-size: 14px;
+  line-height: 1.7;
 }
 
-.footer-grid a:hover {
-  color: #fff;
-}
-
+/* Social icons */
 .social-row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
-.social-row button,
 .social-row a {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  width: 40px;
+  height: 40px;
+  border: 1px solid #5d3f3c;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
   display: grid;
   place-items: center;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  color: #e3e2e2;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .social-row a:hover {
-  background: rgba(227, 6, 19, 0.22);
-  border-color: rgba(227, 6, 19, 0.6);
+  background: rgba(255, 179, 173, 0.16);
+  border-color: #ffb3ad;
+  color: #ffb3ad;
 }
 
 .social-row .icon {
   width: 17px;
 }
 
-.footer-contact {
-  grid-column: 2 / -1;
-  grid-row: 2;
-  align-self: end;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 13px;
-  margin-top: 0;
-}
-
-.footer-contact > h3 {
+/* Apps column */
+.footer-apps p {
   margin: 0;
+  color: #b4b5b5;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.footer-contact__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.footer-wa {
-  display: inline-flex;
-  align-items: center;
-  gap: 11px;
-  margin: 0;
-  padding: 9px 15px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+.footer-apps .install-button {
+  width: 100%;
+  min-height: 58px;
+  margin-top: 2px;
+  padding: 10px 16px;
+  border: 1px solid #5d3f3c;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  background: transparent;
+  color: #e3e2e2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  text-align: right;
+  transition: border-color 0.2s ease;
 }
 
-.footer-wa:hover {
-  background: rgba(37, 211, 102, 0.16);
-  border-color: rgba(37, 211, 102, 0.5);
+.footer-apps .install-button:hover {
+  border-color: #ffb3ad;
 }
 
-.footer-wa .icon {
-  width: 21px;
-  color: #25d366;
+.footer-apps .install-button .icon {
+  width: 26px;
   flex-shrink: 0;
+  color: #e3e2e2;
+  transition: color 0.2s ease;
 }
 
-.footer-wa__text {
+.footer-apps .install-button:hover .icon {
+  color: #ffb3ad;
+}
+
+.install-button__text {
   display: flex;
   flex-direction: column;
   line-height: 1.35;
 }
 
-.footer-wa__text b {
-  color: #fff;
-  font-size: 13.5px;
+.install-button__text small {
+  color: #8a6f6e;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+.install-button__text b {
+  color: #e3e2e2;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.footer-store-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.store-badge {
+  flex: 1;
+  height: 44px;
+  border: 1px solid #5d3f3c;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  opacity: 0.55;
+}
+
+.store-badge b {
+  color: #e3e2e2;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
-.footer-wa__text em {
-  color: #aebfb8;
-  font-size: 12.5px;
-  font-style: normal;
-  letter-spacing: 0.3px;
+.store-badge small {
+  color: #8a6f6e;
+  font-size: 10px;
 }
 
-.footer-wa:hover .footer-wa__text em {
-  color: #e4eee9;
+/* ── Contact cards ── */
+.footer-contact-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  padding-bottom: 48px;
 }
 
-.install-button {
-  min-height: 44px;
-  padding: 0 15px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+.contact-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #1e2020, #1a1c1c);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
-.install-button .icon {
-  width: 18px;
+.contact-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 179, 173, 0.28);
 }
 
-.footer-bottom {
-  margin-top: 45px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #82958d;
+.contact-card__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 179, 173, 0.12);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.contact-card__avatar .icon {
+  width: 24px;
+  color: #ffb3ad;
+}
+
+.contact-card__body {
   display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-card__body b {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.contact-card__body em {
+  color: #e7bdb9;
+  font-size: 14px;
+  font-style: normal;
+  direction: ltr;
+  text-align: right;
+}
+
+.contact-card__wa {
+  flex-shrink: 0;
+  color: #ffb3ad;
+  transition: transform 0.2s ease;
+}
+
+.contact-card:hover .contact-card__wa {
+  transform: scale(1.12);
+}
+
+.contact-card__wa .icon {
+  width: 30px;
+}
+
+/* ── Copyright bar ── */
+.footer-copyright {
+  background: #0d0e0f;
+  padding: 22px 0;
+}
+
+.footer-copyright__inner {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.footer-copyright__inner > span {
+  color: #b4b5b5;
+  font-size: 13.5px;
+}
+
+.footer-copyright__links {
+  display: flex;
+  gap: 24px;
+}
+
+.footer-copyright__links a {
+  color: #e7bdb9;
   font-size: 12px;
+  letter-spacing: 0.03em;
+  transition: color 0.2s ease;
+}
+
+.footer-copyright__links a:hover {
+  color: #ffb3ad;
+}
+
+/* ── Footer responsive ── */
+@media (max-width: 900px) {
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 36px 40px;
+  }
+
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .footer-subscribe__inner {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+    gap: 14px;
+  }
+
+  .footer-subscribe__text h3 {
+    font-size: 18px;
+  }
+
+  .footer-subscribe__form {
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .footer-subscribe__btn {
+    width: 100%;
+  }
+
+  .footer-subscribe__status {
+    text-align: center;
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: 36px 0;
+    text-align: center;
+  }
+
+  .footer-brand {
+    align-items: center;
+    text-align: center;
+  }
+
+  .footer-brand p {
+    margin: 0 auto;
+  }
+
+  .footer-grid > div:not(.footer-brand) {
+    align-items: center;
+  }
+
+  .footer-store-badges {
+    width: 100%;
+  }
+
+  .footer-contact-cards {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding-bottom: 32px;
+  }
+
+  .footer-copyright__inner {
+    flex-direction: column;
+    text-align: center;
+  }
 }
 
 .mobile-nav {
@@ -8405,26 +8573,6 @@ tbody tr:hover {
     margin: auto;
   }
 
-  .footer-grid {
-    grid-template-columns: 1.4fr 1fr 1fr;
-  }
-
-  .footer-brand {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .footer-contact {
-    grid-column: 1 / -1;
-    grid-row: auto;
-    align-self: auto;
-    margin-top: 4px;
-  }
-
-  .footer-grid > div:nth-last-child(2) {
-    grid-column: 1 / -1;
-  }
-
   .store-content-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -8853,105 +9001,6 @@ tbody tr:hover {
 
   .merchant-cta h2 {
     font-size: 25px;
-  }
-
-  /* Minimal mobile footer: logo + slogan only. Nav-link columns, social icons,
-     the install column and the copyright bar all add up to a ~900px wall of
-     content on a phone, so they're hidden and only the brand block remains. */
-  .site-footer {
-    padding: 28px 0;
-  }
-
-  .footer-grid {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .footer-brand {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .footer-logo {
-    margin-bottom: 8px;
-  }
-
-  .footer-logo .brand-logo {
-    height: 52px;
-    padding: 8px 14px;
-    border-radius: 14px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
-  }
-
-  .footer-brand p {
-    max-width: 300px;
-    margin: 0 auto;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  .footer-grid > div:not(.footer-brand):not(.footer-contact),
-  .footer-bottom {
-    display: none;
-  }
-
-  .footer-brand .social-row {
-    justify-content: center;
-    margin-top: 4px;
-  }
-
-  .footer-subscribe {
-    padding-bottom: 22px;
-    margin-bottom: 26px;
-  }
-
-  .footer-subscribe__inner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    text-align: center;
-  }
-
-  .footer-subscribe__text h3 {
-    font-size: 18px;
-  }
-
-  .footer-subscribe__form {
-    flex: 1 1 auto;
-    min-width: 0;
-    flex-direction: column;
-  }
-
-  .footer-subscribe__btn {
-    width: 100%;
-  }
-
-  .footer-subscribe__status {
-    text-align: center;
-  }
-
-  .footer-contact {
-    grid-column: auto;
-    grid-row: auto;
-    align-self: auto;
-    align-items: center;
-    width: 100%;
-    margin-top: 18px;
-  }
-
-  .footer-contact > h3 {
-    text-align: center;
-  }
-
-  .footer-contact__row {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
-    max-width: 300px;
-    margin: 0 auto;
   }
 
   .page-hero.compact {

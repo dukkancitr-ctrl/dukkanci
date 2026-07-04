@@ -370,6 +370,7 @@ const iconPaths = {
   whatsapp: '<path d="M20 11.5a8 8 0 0 1-12 7L3 20l1.5-4.5A8 8 0 1 1 20 11.5Z"/><path d="M8.5 8c.5 3 2.5 5 5.5 6l1.5-1.5"/>',
   facebook: '<path d="M14 8h4V3h-4c-3 0-5 2-5 5v3H6v5h3v6h5v-6h4l1-5h-5V8c0-.1 0 0 0 0Z"/>',
   tiktok: '<circle cx="9.5" cy="15.5" r="3.5"/><path d="M13 15.5V4.2c.6 2.3 2.5 3.9 5 4"/>',
+  headset: '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2.5" y="13" width="4.2" height="6.5" rx="1.6"/><rect x="17.3" y="13" width="4.2" height="6.5" rx="1.6"/><path d="M19.4 19.5v.6a2.5 2.5 0 0 1-2.5 2.5H13"/>',
   download: '<path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v11h14V10M9 21v-7h6v7"/>',
   store: '<path d="M4 10v11h16V10"/><path d="M3 10h18l-2-6H5l-2 6Z"/><path d="M8 21v-6h8v6M3 10c0 2 4 2 4 0 0 2 5 2 5 0 0 2 5 2 5 0 0 2 4 2 4 0"/>',
