@@ -6931,6 +6931,44 @@ tr:last-child td {
   opacity: 0.45;
 }
 
+/* ── Shared supermarket image bank ("مخزن الصور المشترك") ── */
+.catalog-import-modal { max-width: 880px; }
+.catalog-import-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.catalog-import-card {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface, #fff);
+}
+.catalog-import-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e5e7eb);
+}
+.catalog-import-card .input-label { gap: 2px; font-size: 11px; }
+.catalog-import-card .ci-price-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.catalog-import-card--done {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .offer-card-actions {
   display: flex;
   gap: 8px;

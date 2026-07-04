@@ -4,6 +4,14 @@
   "private": true,
   "description": "منصة دكانجي للطلب من المتاجر المحلية",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:catalog": "node scripts/build-shared-catalog.js",
+    "build:catalog:dry": "cross-env DRY_RUN=true node scripts/build-shared-catalog.js"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }

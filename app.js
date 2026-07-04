@@ -565,7 +565,10 @@ function mapDbProduct(r) {
     id: r.id, storeId: r.store_id, sourceId: r.source_id, name: r.name, image: r.image, slug: r.slug,
     price: Number(r.price), oldPrice: r.old_price != null ? Number(r.old_price) : undefined,
     priceOnRequest: r.price_on_request, unit: r.unit, category: r.category, available: r.available,
-    featured: r.featured, description: r.description, imageFit: r.image_fit, options: r.options || []
+    featured: r.featured, description: r.description, imageFit: r.image_fit, options: r.options || [],
+    // Traceability link back to the shared supermarket image bank ("مخزن الصور
+    // المشترك") this product was imported from, if any — see catalog_products.
+    catalogProductId: r.catalog_product_id ?? null
   };
 }
 function toDbProduct(p) {
@@ -573,7 +576,8 @@ function toDbProduct(p) {
     id: p.id, store_id: p.storeId, source_id: p.sourceId ?? null, name: p.name, image: p.image ?? null,
     price: p.price ?? 0, old_price: p.oldPrice ?? null, price_on_request: !!p.priceOnRequest,
     unit: p.unit ?? null, category: p.category ?? null, available: p.available !== false, featured: !!p.featured,
-    description: p.description ?? null, image_fit: p.imageFit ?? null, options: p.options ?? []
+    description: p.description ?? null, image_fit: p.imageFit ?? null, options: p.options ?? [],
+    catalog_product_id: p.catalogProductId ?? null
   };
 }
 async function loadCatalogFromSupabase() {
@@ -4057,6 +4061,7 @@ function merchantProducts() {
         <span class="toolbar-count">${merchantProducts.length.toLocaleString("ar")} منتج</span>
         <button class="secondary-button compact" data-action="export-merchant-products" title="تصدير كل منتجاتك كملف Excel/CSV">${icon("download")} تصدير</button>
         <label class="secondary-button compact csv-import-btn" title="حدّث الأسعار والتوفر بالجملة من ملف CSV">${icon("upload")} تحديث بالجملة<input type="file" id="merchant-csv-input" accept=".csv,text/csv" hidden></label>
+        ${isSupermarketStore(store) ? `<button class="secondary-button compact" data-action="open-catalog-import" title="اختر منتجات جاهزة الصور من مخزن الصور المشترك بين متاجر السوبر ماركت">${icon("stars")} استيراد من مخزن الصور</button>` : ""}
         <button class="primary-button compact" data-action="add-product-form">${icon("plus")} منتج جديد</button>
       </div>
     </div>
@@ -4066,6 +4071,134 @@ function merchantProducts() {
     </section>
     ${allStoreProducts.length ? `<p class="managed-hint">${icon("edit")} عدّل السعر مباشرة من الحقل واضغط Enter، أو استخدم «تصدير» و«تحديث بالجملة» لتعديل أسعار كثيرة دفعة واحدة. يُسجَّل كل تغيير سعر في «سجل الأسعار».</p>` : ""}
   `;
+}
+
+// ── Shared supermarket image bank ("مخزن الصور المشترك") ──────────────────
+// Arab-owned supermarkets opening on Dukkanci rarely arrive with their own
+// product photos/database, yet products overlap ~90% between them. This lets
+// a supermarket-category store browse a curated, admin-approved catalog of
+// standardized photos (background removed, uniform size/zoom — see
+// lib/catalog-image-pipeline.js) and pull products straight into their own
+// catalog: the name stays editable, no price is required up front, and an
+// optional sale price can be set right away. Every catalog_products row a
+// store can even SEE is already filtered server-side (RLS: approved AND
+// brand_free) — see migrations/20260704_shared_supermarket_catalog.sql.
+
+function isSupermarketStore(store) {
+  if (!store) return false;
+  const supermarketLabel = (typeof CATEGORY_SLUGS !== "undefined" && CATEGORY_SLUGS.supermarket) || "سوبر ماركت";
+  return store.category === supermarketLabel;
+}
+
+function mapDbCatalogProduct(r) {
+  return {
+    id: r.id, canonicalName: r.canonical_name, category: r.category, unit: r.unit,
+    image: r.image, keywords: r.keywords || []
+  };
+}
+
+// Loads the public, pre-approved shared catalog once and caches it on state.
+// Safe to call repeatedly — only fetches while not already loading/loaded.
+async function loadSharedCatalog() {
+  if (state._sharedCatalog || state._sharedCatalogLoading) return state._sharedCatalog || [];
+  const sb = window.supabaseClient;
+  if (!sb) return [];
+  state._sharedCatalogLoading = true;
+  try {
+    const { data, error } = await sb.from("catalog_products").select("*").order("canonical_name");
+    if (error) { console.warn("shared catalog load:", error.message); state._sharedCatalog = []; return []; }
+    state._sharedCatalog = (data || []).map(mapDbCatalogProduct);
+    return state._sharedCatalog;
+  } finally {
+    state._sharedCatalogLoading = false;
+  }
+}
+
+function openCatalogImportModal() {
+  const store = getMerchantStore();
+  if (!isSupermarketStore(store)) return;
+  const alreadyImported = new Set(
+    allProducts.filter(p => p.storeId === store.id && p.catalogProductId).map(p => p.catalogProductId)
+  );
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">${store.name}</span>
+    <h2>استيراد من مخزن الصور المشترك</h2>
+    <p class="modal-note">منتجات جاهزة بصور نظيفة وموحّدة القياس، ساهمت بها متاجر سوبر ماركت أخرى على دكانجي وراجعتها الإدارة. عدّل الاسم إن أردت، وحدّد سعرك الخاص — أو اتركه بلا سعر الآن وحدّده لاحقاً.</p>
+    <div class="dashboard-search">${icon("search")}<input id="catalog-import-search" placeholder="ابحث في مخزن الصور..."></div>
+    <div id="catalog-import-grid" class="catalog-import-grid">${icon("box")} <span>جارٍ التحميل...</span></div>
+  `, "catalog-import-modal");
+
+  loadSharedCatalog().then(list => {
+    const grid = document.getElementById("catalog-import-grid");
+    if (!grid) return; // modal closed before load finished
+    const available = list.filter(item => !alreadyImported.has(item.id));
+    if (!available.length) {
+      grid.innerHTML = `<div class="empty-managed">${icon("box")}<p>لا توجد منتجات جديدة في المخزن حالياً — إمّا استوردتها جميعاً، أو أن المخزن لا يزال قيد التجهيز من الإدارة.</p></div>`;
+      return;
+    }
+    grid.innerHTML = available.map(item => {
+      const searchBlob = normalizeAr([item.canonicalName, ...(item.keywords || []), item.category || ""].join(" "));
+      return `
+      <article class="catalog-import-card" data-catalog-id="${item.id}" data-search="${escAttr(searchBlob)}">
+        <img src="${escAttr(item.image)}" alt="${escAttr(item.canonicalName)}" loading="lazy">
+        <label class="input-label"><span>اسم المنتج</span><input class="ci-name" value="${escAttr(item.canonicalName)}"></label>
+        <div class="ci-price-row">
+          <label class="input-label"><span>السعر (اختياري)</span><input class="ci-price" type="number" min="0" step="1" inputmode="numeric" placeholder="بلا سعر الآن"></label>
+          <label class="input-label"><span>سعر العرض (اختياري)</span><input class="ci-old-price" type="number" min="0" step="1" inputmode="numeric" placeholder="اختياري"></label>
+        </div>
+        <label class="input-label"><span>الوحدة</span><input class="ci-unit" value="${escAttr(item.unit || "")}"></label>
+        <button type="button" class="primary-button compact full" data-action="import-catalog-item" data-catalog-id="${item.id}">${icon("plus")} إضافة لمتجري</button>
+      </article>
+    `;
+    }).join("");
+  });
+}
+
+// Builds one product from a catalog card's current inputs and saves it to
+// THIS merchant's store through the exact same secure path as the normal
+// "إضافة منتج" form (pushProductCloud → /api/notify-order?action=save-product).
+async function importCatalogItem(catalogId, cardEl) {
+  const store = getMerchantStore();
+  const item = (state._sharedCatalog || []).find(x => x.id === Number(catalogId));
+  if (!item) { showToast("تعذّر العثور على المنتج في المخزن"); return; }
+
+  const nameInput = cardEl.querySelector(".ci-name");
+  const priceInput = cardEl.querySelector(".ci-price");
+  const oldPriceInput = cardEl.querySelector(".ci-old-price");
+  const unitInput = cardEl.querySelector(".ci-unit");
+  const btn = cardEl.querySelector('[data-action="import-catalog-item"]');
+
+  const name = (nameInput?.value || item.canonicalName || "").trim();
+  if (!name) { showToast("أدخل اسم المنتج"); return; }
+  const priceVal = Math.max(0, Math.round(Number(priceInput?.value) || 0));
+  const oldPriceVal = Math.max(0, Math.round(Number(oldPriceInput?.value) || 0));
+  const hasPrice = priceVal > 0;
+
+  if (btn) { btn.disabled = true; btn.innerHTML = "جارٍ الإضافة..."; }
+
+  const newId = Math.max(0, ...allProducts.map(p => Number(p.id) || 0), ...products.map(p => Number(p.id) || 0)) + 1;
+  const newProduct = {
+    id: newId, storeId: store.id, sourceId: `catalog-${item.id}-${newId}`,
+    name, category: item.category || "منتجات", unit: (unitInput?.value || item.unit || "").trim(),
+    image: item.image, imageFit: "contain", // uniform framing set by the shared-bank pipeline
+    price: hasPrice ? priceVal : 0, priceOnRequest: !hasPrice,
+    oldPrice: hasPrice && oldPriceVal > 0 && oldPriceVal < priceVal ? oldPriceVal : null,
+    available: true, featured: false, options: [], description: "",
+    catalogProductId: item.id
+  };
+
+  const result = await pushProductCloud(newProduct);
+  if (!result.ok) {
+    if (btn) { btn.disabled = false; btn.innerHTML = `${icon("plus")} إضافة لمتجري`; }
+    showToast(productSaveErrorMessage(result));
+    return;
+  }
+  upsertCatalogProduct(newProduct);
+  saveCustomProduct(newProduct);
+  if (btn) { btn.disabled = true; btn.innerHTML = `${icon("check")} أُضيف`; }
+  cardEl.classList.add("catalog-import-card--done");
+  showToast(`تمت إضافة "${name}" إلى متجرك`, "success");
 }
 
 // Arabic label for a coupon's type/value ("خصم 10%", "خصم 50 ل.ت", "توصيل مجاني").
@@ -9741,6 +9874,8 @@ document.addEventListener("click", event => {
     } else showToast("من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» لتثبيت دكانجي");
   }
   if (action === "add-product-form") openProductForm();
+  if (action === "open-catalog-import") openCatalogImportModal();
+  if (action === "import-catalog-item") importCatalogItem(target.dataset.catalogId, target.closest(".catalog-import-card"));
   if (action === "edit-product") openProductForm(target.dataset.id);
   if (action === "delete-product") openDeleteProductConfirm(target.dataset.id);
   if (action === "confirm-delete-product") deleteProduct(target.dataset.id);
@@ -10106,6 +10241,13 @@ document.addEventListener("input", event => {
     document.querySelectorAll(".syn-list .syn-row").forEach(row => {
       const nameEl = row.querySelector(".syn-row__name");
       row.style.display = (!q || normalizeAr(nameEl ? nameEl.textContent : "").includes(q)) ? "" : "none";
+    });
+  }
+  if (event.target.id === "catalog-import-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".catalog-import-card").forEach(card => {
+      const match = !q || (card.dataset.search || "").includes(q);
+      card.style.display = match ? "" : "none";
     });
   }
   if (event.target.id === "merchant-product-search") {
