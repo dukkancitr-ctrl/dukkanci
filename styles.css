@@ -1798,14 +1798,13 @@ img {
   margin-bottom: 6px;
 }
 
-/* Red neon glow around the transparent red logo (no white halo) */
+/* Clean monochrome white logo on the dark footer — max contrast, no box/halo/glow */
 .footer-logo .brand-logo {
-  height: 104px;
+  height: 108px;
   width: auto;
   display: block;
-  filter:
-    drop-shadow(0 0 5px rgba(237, 28, 36, 0.8))
-    drop-shadow(0 0 15px rgba(237, 28, 36, 0.5));
+  filter: brightness(0) invert(1) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  opacity: 0.96;
 }
 
 .footer-brand p {
