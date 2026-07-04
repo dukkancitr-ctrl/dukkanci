@@ -4166,6 +4166,28 @@ img {
   font-size: 19px;
 }
 
+.google-g {
+  width: 19px;
+  height: 19px;
+  flex: none;
+}
+
+.join-modal .google-button {
+  min-height: 50px;
+  border: 1.5px solid rgba(35, 31, 32, 0.13);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  font-size: 14px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.join-modal .google-button:hover {
+  border-color: rgba(35, 31, 32, 0.24);
+  background: #fcfcfc;
+}
+
+.join-modal .or-line { margin: 22px 0; }
+
 .or-line {
   margin: 19px 0;
   border-top: 1px solid var(--line);
@@ -4228,19 +4250,21 @@ img {
 }
 
 /* Join modal: the account-creation section above the store fields */
-.join-account { margin-bottom: 6px; }
+.join-account { margin-bottom: 8px; }
 .join-account__hint {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  background: var(--red-soft, #fdeaec);
+  gap: 10px;
+  background: #fdf5f4;
+  border: 1px solid rgba(227, 6, 19, 0.1);
   color: var(--ink, #1f2430);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 13px;
+  padding: 13px 16px;
   font-size: 13.5px;
-  margin: 0 0 14px;
+  line-height: 1.55;
+  margin: 0 0 18px;
 }
-.join-account__hint svg { width: 18px; height: 18px; flex: none; color: var(--red, #e30613); margin-top: 1px; }
+.join-account__hint svg { width: 17px; height: 17px; flex: none; color: var(--green-800, #e30613); opacity: 0.75; margin-top: 2px; }
 
 /* Post-creation onboarding checklist */
 .onboarding-checklist {
@@ -4304,32 +4328,47 @@ img {
 
 .join-modal {
   width: min(650px, calc(100% - 30px));
+  padding: 38px;
 }
 
 .join-modal-head {
-  margin-bottom: 25px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  margin-bottom: 28px;
+  text-align: center;
 }
 
-.join-modal-head > span {
-  width: 60px;
-  height: 60px;
-  border-radius: 17px;
-  background: var(--green-100);
-  color: var(--green-800);
-  display: grid;
-  place-items: center;
+.join-modal-head .auth-logo {
+  margin: 0 auto 16px;
 }
 
 .join-modal-head h2 {
-  margin: 0 0 3px;
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--ink);
 }
 
 .join-modal-head p {
   margin: 0;
   color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.join-section-label {
+  margin: 26px 0 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.join-section-label .icon {
+  width: 17px;
+  height: 17px;
+  color: var(--green-800);
 }
 
 .review-note {
@@ -4341,6 +4380,36 @@ img {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.join-modal .review-note {
+  margin: 20px 0 18px;
+  padding: 14px 16px;
+  border-radius: 13px;
+  background: #fefaf9;
+  border: 1px solid rgba(227, 6, 19, 0.12);
+  color: var(--ink);
+}
+
+.join-modal .review-note svg { color: var(--green-800); opacity: 0.8; }
+
+.join-form button[type="submit"] {
+  min-height: 56px;
+  margin-top: 4px;
+  border-radius: 14px;
+  font-size: 15px;
+  box-shadow: 0 14px 28px rgba(227, 6, 19, 0.26);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease;
+}
+
+.join-form button[type="submit"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(227, 6, 19, 0.3);
+}
+
+.join-form button[type="submit"]:active {
+  transform: translateY(0);
+  box-shadow: 0 10px 20px rgba(227, 6, 19, 0.24);
 }
 
 .review-note.order-closed-note {
@@ -5908,6 +5977,141 @@ p.success-note.order-closed-note {
   line-height: 1.5;
 }
 .field-hint .icon { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* Join modal: unified field styling — same height/radius/border/focus
+   across text inputs, selects and the custom file-upload control. */
+.join-modal .form-grid { gap: 18px; }
+.join-modal .form-grid label > span { font-size: 13px; margin-bottom: 7px; color: var(--ink); text-align: center; }
+
+.join-modal .join-account input[name="email"],
+.join-modal .join-account input[name="password"] {
+  text-align: center;
+}
+
+.join-modal .pw-input input[name="password"] {
+  padding-left: 44px;
+  padding-right: 44px;
+}
+.join-modal .field-hint { margin-top: 7px; }
+
+/* Phone field: label stays inline with a compact (not full-width) box. */
+.join-modal .phone-row__top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.join-modal .phone-row__top > span {
+  flex: none;
+  margin-bottom: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+.join-modal .phone-row__top input {
+  flex: 0 1 210px;
+  width: 210px;
+  text-align: center;
+}
+
+.join-modal .form-grid input,
+.join-modal .form-grid select {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1.5px solid rgba(35, 31, 32, 0.13);
+  border-radius: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.join-modal .form-grid input:hover,
+.join-modal .form-grid select:hover {
+  border-color: rgba(35, 31, 32, 0.22);
+}
+
+.join-modal .form-grid input:focus,
+.join-modal .form-grid select:focus {
+  outline: 0;
+  border-color: var(--green-800);
+  box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.08);
+}
+
+.join-modal .form-grid select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-left: 38px;
+  background-repeat: no-repeat;
+  background-position: left 14px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23756d6e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  cursor: pointer;
+}
+
+/* Custom logo upload control — replaces the native "Choose file / No file
+   chosen" chrome with a styled dropzone-style button while the underlying
+   <input type=file> keeps its normal name/behavior (see the delegated
+   "change" listener that fills .file-upload__text with the picked name). */
+.join-modal .file-upload {
+  position: relative;
+  display: block;
+}
+
+.join-modal .file-upload__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.join-modal .file-upload__visual {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1.5px dashed rgba(35, 31, 32, 0.2);
+  border-radius: 12px;
+  background: var(--cream, #fff9f5);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13.5px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.join-modal .file-upload__visual .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--green-800);
+}
+
+.join-modal .file-upload__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+
+.join-modal .file-upload:hover .file-upload__visual {
+  border-color: var(--green-800);
+  background: #fff;
+}
+
+.join-modal .file-upload__input:focus-visible + .file-upload__visual {
+  outline: 3px solid rgba(227, 6, 19, 0.2);
+  outline-offset: 2px;
+}
+
+.join-modal .file-upload.has-file .file-upload__visual {
+  border-style: solid;
+  border-color: rgba(227, 6, 19, 0.25);
+  background: #fff;
+  color: var(--ink);
+}
 
 .location-link {
   margin-top: 11px;
@@ -9322,6 +9526,20 @@ tbody tr:hover {
 
   .form-grid label.wide {
     grid-column: auto;
+  }
+
+  .join-modal .phone-row__top {
+    gap: 10px;
+  }
+
+  .join-modal .phone-row__top > span {
+    font-size: 12px;
+  }
+
+  .join-modal .phone-row__top input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
   }
 
   .account-layout {
