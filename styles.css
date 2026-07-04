@@ -1809,9 +1809,9 @@ img {
   height: 215px;
   transform: translate(-50%, -50%);
   background: radial-gradient(circle,
-    rgba(255, 255, 255, 0.97) 0%,
-    rgba(255, 255, 255, 0.9) 30%,
-    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.39) 0%,
+    rgba(255, 255, 255, 0.36) 30%,
+    rgba(255, 255, 255, 0.16) 50%,
     rgba(255, 255, 255, 0) 66%);
   border-radius: 50%;
   pointer-events: none;
@@ -1831,6 +1831,7 @@ img {
   color: #b4b5b5;
   font-size: 14px;
   line-height: 1.7;
+  text-align: justify;
 }
 
 /* Social icons */
@@ -2109,6 +2110,7 @@ img {
 
   .footer-brand p {
     margin: 0 auto;
+    text-align: center;
   }
 
   .footer-grid > div:not(.footer-brand) {
