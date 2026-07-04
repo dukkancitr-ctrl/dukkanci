@@ -1790,39 +1790,22 @@ img {
 }
 
 .footer-logo {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 22px 0;
+  padding: 16px 0;
   margin-bottom: 6px;
 }
 
-/* Soft white halo behind the transparent red logo (no white box) */
-.footer-logo::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 215px;
-  height: 215px;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle,
-    rgba(255, 255, 255, 0.51) 0%,
-    rgba(255, 255, 255, 0.47) 30%,
-    rgba(255, 255, 255, 0.21) 50%,
-    rgba(255, 255, 255, 0) 66%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
+/* Red neon glow around the transparent red logo (no white halo) */
 .footer-logo .brand-logo {
-  position: relative;
-  z-index: 1;
-  height: 96px;
+  height: 104px;
   width: auto;
   display: block;
+  filter:
+    drop-shadow(0 0 5px rgba(237, 28, 36, 0.8))
+    drop-shadow(0 0 15px rgba(237, 28, 36, 0.5));
 }
 
 .footer-brand p {
