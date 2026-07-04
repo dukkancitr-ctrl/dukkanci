@@ -106,6 +106,27 @@
     }
   };
 
+  // Per-merchant Meta Pixel (owned by an individual store, not the platform-wide
+  // meta_pixel_id above). Uses trackSingle so it never conflates with the
+  // site-wide pixel or fires on unrelated pages — callers must scope this to
+  // the moment that merchant's own store page is actually being viewed.
+  // Dedup is keyed on the URL path (not on caller re-renders): renderStorePage
+  // can run several times for the same visit as data streams in, but the path
+  // only changes on an actual navigation, so this fires once per real visit.
+  const storeMetaInited = {};
+  const storeMetaLastPath = {};
+  I.storeVisitPixel = function (pixelId) {
+    if (!pixelId || !consentOK("marketing")) return;
+    const path = location.pathname + location.search;
+    if (storeMetaLastPath[pixelId] === path) return;
+    storeMetaLastPath[pixelId] = path;
+    if (!window.fbq) {
+      !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments) }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s) }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+    }
+    if (!storeMetaInited[pixelId]) { storeMetaInited[pixelId] = true; window.fbq("init", pixelId); }
+    window.fbq("trackSingle", pixelId, "PageView");
+  };
+
   I._injectTiktok = function () {
     // TikTok Pixel — marketing consent required
     if (this.enabled("tiktok_pixel_id") && !injected.tiktok && consentOK("marketing")) {

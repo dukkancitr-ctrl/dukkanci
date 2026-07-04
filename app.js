@@ -1543,6 +1543,13 @@ function getDeliverySettings(storeId) {
   return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)] || DEFAULT_DELIVERY_SETTINGS;
 }
 
+// Merchant-owned Meta Pixels for a specific store's page (so that merchant can
+// monitor their own visits). Kept here rather than on the store object because
+// the `stores` array is rebuilt wholesale from Supabase on every load (see
+// mapDbStore/loadCatalogFromSupabase) — there's no matching DB column, so
+// anything set only on the bundled store object would be silently dropped.
+const STORE_META_PIXELS = { 31: "2102305900374021" }; // 31 = مطعم الخوالي
+
 function getStoreLocation(storeId) {
   return state.storeLocations[Number(storeId)] || getStore(storeId)?.location;
 }
@@ -2804,6 +2811,10 @@ function renderStorePage(id) {
   if (!store) return renderNotFound();
   // view_store — deduped per store so re-renders don't double-count.
   window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
+  // Merchant's own Meta Pixel (if configured for this store) — integrations.js
+  // dedupes this internally by URL path, so it's safe to call on every render.
+  const storeMetaPixelId = STORE_META_PIXELS[store.id];
+  if (storeMetaPixelId) window.DUKKANCI_INTEGRATIONS?.storeVisitPixel(storeMetaPixelId);
   if (!store.newStore) ensureReviewEligibility(store.id); // fire-and-forget; re-renders once resolved
   const siblingBranches = store.branchGroup
     ? stores.filter(branch => branch.branchGroup === store.branchGroup)
