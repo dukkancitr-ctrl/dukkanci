@@ -8420,9 +8420,9 @@ function openJoinModal() {
       <div class="form-grid">
         <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
         <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option>${storeCategoryNames().map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
+        <label class="wide"><span>رقم واتساب للتواصل <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">رقم تواصل المتجر، وعليه تصلك إشعارات الطلبات.</small></label>
         <label><span>اسم صاحب المتجر</span><input name="ownerName" autocomplete="name" placeholder="الاسم الكامل"></label>
-        <label><span>رقم واتساب للتواصل <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">رقم تواصل المتجر، وعليه تصلك إشعارات الطلبات.</small></label>
-        <label class="wide"><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
+        <label><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
         <label class="wide"><span>شعار المتجر (اختياري)</span><input name="logo" type="file" accept="image/*"><small class="field-hint">يساعد عملاءك على التعرّف على متجرك. يمكنك إضافته لاحقاً من اللوحة.</small></label>
       </div>
       <p class="auth-error" id="join-error" role="alert" hidden></p>
