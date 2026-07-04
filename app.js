@@ -8401,29 +8401,47 @@ function openJoinModal() {
   const loggedIn = !!state.user;
   // When not signed in, we create an email+password account as part of the flow
   // (the store is bound to that account). Signed-in users skip this section.
+  const googleG = `<svg class="google-g" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>`;
   const accountSection = loggedIn ? "" : `
       <div class="join-account">
         <p class="join-account__hint">${icon("shield")} لإنشاء متجرك ننشئ لك حساباً بالبريد الإلكتروني للدخول إلى لوحة التحكم.</p>
-        <button type="button" class="google-button" data-action="join-google"><b>G</b> المتابعة باستخدام Google</button>
+        <button type="button" class="google-button" data-action="join-google">${googleG} المتابعة باستخدام Google</button>
         <div class="or-line"><span>أو بالبريد الإلكتروني</span></div>
         <div class="form-grid">
           <label><span>البريد الإلكتروني <i class="req">*</i></span><input name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" placeholder="you@example.com"></label>
           <label><span>كلمة المرور <i class="req">*</i></span><div class="pw-input"><input name="password" type="password" autocomplete="new-password" dir="ltr" placeholder="٦ أحرف على الأقل"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
         </div>
       </div>
-      <div class="merchant-auth__divider"><span>بيانات المتجر</span></div>`;
+      <p class="join-section-label">${icon("store")} بيانات المتجر</p>`;
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <div class="join-modal-head"><span>${icon("store")}</span><div><h2>${escAttr(jTitle)}</h2><p>${escAttr(jSub)}</p></div></div>
+    <div class="join-modal-head">
+      <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
+      <h2>${escAttr(jTitle)}</h2>
+      <p>${escAttr(jSub)}</p>
+    </div>
     <form id="join-form" class="join-form" novalidate>
       ${accountSection}
       <div class="form-grid">
-        <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: متجر الحي"></label>
+        <label><span>اسم المتجر الحقيقي <i class="req">*</i></span><input name="storeName" required placeholder="مثال: مطعم البركة"></label>
         <label><span>تصنيف المتجر <i class="req">*</i></span><select name="category" required><option value="">اختر التصنيف</option>${storeCategoryNames().map(c => `<option>${esc(c)}</option>`).join("")}</select></label>
-        <label class="wide"><span>رقم واتساب للتواصل <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00"><small class="field-hint">رقم تواصل المتجر، وعليه تصلك إشعارات الطلبات.</small></label>
+        <label class="wide phone-row">
+          <div class="phone-row__top">
+            <span>رقم واتساب للتواصل <i class="req">*</i></span>
+            <input name="phone" type="tel" inputmode="tel" autocomplete="tel" required dir="ltr" placeholder="+90 555 000 00 00">
+          </div>
+          <small class="field-hint">رقم تواصل المتجر، وعليه تصلك إشعارات الطلبات.</small>
+        </label>
         <label><span>اسم صاحب المتجر</span><input name="ownerName" autocomplete="name" placeholder="الاسم الكامل"></label>
         <label><span>عنوان المتجر</span><input name="address" placeholder="الحي، الشارع، رقم البناء"></label>
-        <label class="wide"><span>شعار المتجر (اختياري)</span><input name="logo" type="file" accept="image/*"><small class="field-hint">يساعد عملاءك على التعرّف على متجرك. يمكنك إضافته لاحقاً من اللوحة.</small></label>
+        <label class="wide file-field">
+          <span>شعار المتجر (اختياري)</span>
+          <span class="file-upload">
+            <input name="logo" type="file" accept="image/*" class="file-upload__input">
+            <span class="file-upload__visual">${icon("upload")}<span class="file-upload__text">اختر صورة من جهازك</span></span>
+          </span>
+          <small class="field-hint">يساعد عملاءك على التعرّف على متجرك. يمكنك إضافته لاحقاً من اللوحة.</small>
+        </label>
       </div>
       <p class="auth-error" id="join-error" role="alert" hidden></p>
       <div class="review-note">${icon("shield")} <span><strong>يُراجَع متجرك قبل الظهور</strong><small>${escAttr(jNote)}</small></span></div>
@@ -9984,6 +10002,14 @@ document.addEventListener("change", event => {
   if (event.target.id === "img-file-input") {
     const file = event.target.files && event.target.files[0];
     if (file) uploadCampaignImage(file);
+    return;
+  }
+  if (event.target.classList.contains("file-upload__input")) {
+    const wrap = event.target.closest(".file-upload");
+    const label = wrap && wrap.querySelector(".file-upload__text");
+    const file = event.target.files && event.target.files[0];
+    if (wrap) wrap.classList.toggle("has-file", !!file);
+    if (label) label.textContent = file ? file.name : "اختر صورة من جهازك";
     return;
   }
   if (event.target.id === "cf-audience") {
