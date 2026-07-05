@@ -11036,3 +11036,48 @@ tbody tr:hover {
   .addr2-map-wrap { height: 190px; }
   .addr2-row3 { gap: 8px; }
 }
+
+/* ── "استهداف فيسبوك" — Facebook ads geo-targeting tool ── */
+.fbads-shell { display: flex; flex-direction: column; gap: 16px; }
+.fbads-region-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.fbads-region-tab {
+  padding: 8px 16px; border: 1.5px solid var(--line); border-radius: 999px;
+  background: #fff; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; transition: 0.15s;
+}
+.fbads-region-tab.active { border-color: var(--brand, #e30613); color: var(--brand, #e30613); background: var(--cream); }
+.fbads-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.fbads-inline-form input {
+  flex: 1; min-width: 160px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-sm);
+  font-size: 13px; font-family: var(--font-body); background: var(--cream); color: var(--ink);
+}
+.fbads-inline-form input:focus { outline: none; border-color: var(--brand, #e30613); background: #fff; }
+.fbads-compound-form input { min-width: 140px; }
+.fbads-geostatus { color: var(--muted); font-size: 11px; }
+.fbads-row-actions { display: flex; gap: 6px; white-space: nowrap; }
+.fbads-editing-row input { width: 100%; padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; font-size: 12px; }
+.fbads-results-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fbads-summary-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.fbads-max-km { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.fbads-max-km input { width: 70px; padding: 6px 8px; border: 1.5px solid var(--line); border-radius: 8px; text-align: center; }
+.fbads-distance-table td small.fbads-geostatus { display: block; margin-top: 2px; }
+.fbads-map-wrap { margin-top: 18px; }
+.fbads-map-legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.fbads-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-inline-start: 6px; }
+.fbads-legend-dot.green { background: #16a34a; }
+.fbads-legend-dot.yellow { background: #d97706; }
+.fbads-legend-dot.red { background: #dc2626; }
+.fbads-targets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.fbads-target-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-sm);
+  background: #fff; cursor: pointer; text-align: right; font-family: var(--font-body);
+}
+.fbads-target-item span { display: flex; flex-direction: column; gap: 2px; }
+.fbads-target-item small { color: var(--muted); font-size: 11px; }
+.fbads-target-item.active { border-color: var(--brand, #e30613); background: var(--cream); }
+
+@media (max-width: 640px) {
+  .fbads-inline-form { flex-direction: column; align-items: stretch; }
+  .fbads-inline-form input { min-width: 0; }
+  .fbads-target-item { flex-direction: column; align-items: flex-start; }
+}
