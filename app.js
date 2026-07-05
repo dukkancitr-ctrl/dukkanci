@@ -5373,6 +5373,8 @@ async function fbadsApi(action, { method = "GET", body = null, params = null } =
   return data;
 }
 
+const FBADS_LAST_TARGET_KEY = "dukkanci-fbads-last-target";
+
 function loadFbAdsBootstrap() {
   state.fbadsRegions = null; state.fbadsCompounds = null; state.fbadsSettings = null; state.fbadsTargets = null;
   Promise.all([
@@ -5380,7 +5382,18 @@ function loadFbAdsBootstrap() {
     fbadsApi("compounds", { params: { region: state.fbadsRegion } }).then(d => { state.fbadsCompounds = d.items || []; }).catch(() => { state.fbadsCompounds = []; }),
     fbadsApi("settings").then(d => { state.fbadsSettings = d.item; }).catch(() => { state.fbadsSettings = { rate_per_km: 20 }; }),
     fbadsApi("targets").then(d => { state.fbadsTargets = d.items || []; }).catch(() => { state.fbadsTargets = []; })
-  ]).then(render);
+  ]).then(() => {
+    render();
+    // Reopen whichever map the admin was last looking at (or the most recent
+    // one) so coming back to this tab never requires recomputing anything —
+    // every distance/target is already saved in fbads_target*, this just
+    // decides which saved panel to show by default.
+    if (!state.fbadsActiveTargetId && state.fbadsTargets.length) {
+      const savedId = localStorage.getItem(FBADS_LAST_TARGET_KEY);
+      const restoreId = (savedId && state.fbadsTargets.some(t => String(t.id) === savedId)) ? savedId : state.fbadsTargets[0].id;
+      loadFbAdsTargetDetail(restoreId);
+    }
+  });
 }
 
 function loadFbAdsCompounds() {
@@ -5395,7 +5408,7 @@ function loadFbAdsTargetDetail(id) {
   state.fbadsActiveTargetId = id;
   state.fbadsActiveTarget = null;
   fbadsApi("target", { params: { id } })
-    .then(d => { state.fbadsActiveTarget = d; })
+    .then(d => { state.fbadsActiveTarget = d; localStorage.setItem(FBADS_LAST_TARGET_KEY, String(id)); })
     .catch(() => { state.fbadsActiveTarget = "error"; })
     .finally(render);
 }
@@ -5498,7 +5511,10 @@ async function fbadsDeleteTarget(id) {
   if (!confirm("حذف هذا المحل من السجل نهائياً؟")) return;
   try {
     await fbadsApi("target", { method: "DELETE", params: { id } });
-    if (String(state.fbadsActiveTargetId) === String(id)) { state.fbadsActiveTargetId = null; state.fbadsActiveTarget = null; }
+    if (String(state.fbadsActiveTargetId) === String(id)) {
+      state.fbadsActiveTargetId = null; state.fbadsActiveTarget = null;
+      if (localStorage.getItem(FBADS_LAST_TARGET_KEY) === String(id)) localStorage.removeItem(FBADS_LAST_TARGET_KEY);
+    }
     fbadsApi("targets").then(d => { state.fbadsTargets = d.items || []; render(); });
   } catch (e) { showToast(e.message || "تعذّر الحذف", "error"); }
 }
