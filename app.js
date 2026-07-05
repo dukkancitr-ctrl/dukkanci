@@ -5686,6 +5686,7 @@ function adminFbAds() {
 // at a glance (an actual driving route per compound would mean one Directions
 // API call each — the table above already gives the real driving distance).
 let fbadsMap = null;
+let fbadsMapEl = null;   // the DOM node fbadsMap is actually attached to
 let fbadsMapOverlays = [];
 function fbadsClearMapOverlays() {
   fbadsMapOverlays.forEach(o => { try { o.setMap(null); } catch {} });
@@ -5695,8 +5696,13 @@ async function initFbAdsMap() {
   const mapEl = document.getElementById("fbads-map");
   const data = state.fbadsActiveTarget;
   if (!mapEl || !data || data === "error") return;
+  // render() rebuilds app.innerHTML from scratch on every state change (e.g.
+  // typing in the max-km field), so #fbads-map is a BRAND NEW node each time —
+  // reusing fbadsMap without checking the node changed leaves the new,
+  // visible div empty while the map silently keeps painting into the old,
+  // detached one. Only skip work when it's truly the same live node.
   const sig = `${data.target.id}:${data.distances.length}:${state.fbadsMaxKm}`;
-  if (state._fbadsMapSig === sig && fbadsMap) return;
+  if (state._fbadsMapSig === sig && fbadsMap && fbadsMapEl === mapEl) return;
   state._fbadsMapSig = sig;
   try { await ensureGoogleMaps(); } catch {
     mapEl.innerHTML = `<div class="addr2-map-fallback">تعذّر تحميل خرائط Google — تحقّق من مفتاح GOOGLE_MAPS_API_KEY</div>`;
@@ -5704,8 +5710,12 @@ async function initFbAdsMap() {
   }
   if (!document.getElementById("fbads-map")) return;
   const { target, distances } = data;
-  if (!fbadsMap) fbadsMap = new google.maps.Map(mapEl, { center: { lat: target.lat, lng: target.lng }, zoom: 13, gestureHandling: "greedy" });
-  else fbadsClearMapOverlays();
+  if (!fbadsMap || fbadsMapEl !== mapEl) {
+    fbadsMap = new google.maps.Map(mapEl, { center: { lat: target.lat, lng: target.lng }, zoom: 13, gestureHandling: "greedy" });
+    fbadsMapEl = mapEl;
+  } else {
+    fbadsClearMapOverlays();
+  }
   fbadsMapOverlays.push(new google.maps.Marker({
     map: fbadsMap, position: { lat: target.lat, lng: target.lng }, title: target.name,
     icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#e11d48", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 }
@@ -9821,7 +9831,7 @@ document.addEventListener("click", event => {
     if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
     if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
     if (target.dataset.tab === "fbads" && state.fbadsCompounds == null) loadFbAdsBootstrap();
-    if (target.dataset.tab !== "fbads") { fbadsMap = null; state._fbadsMapSig = null; }
+    if (target.dataset.tab !== "fbads") { fbadsMap = null; fbadsMapEl = null; state._fbadsMapSig = null; }
     render();
   }
   // ── Facebook ads targeting actions ──
