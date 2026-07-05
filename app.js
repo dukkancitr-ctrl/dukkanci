@@ -348,6 +348,21 @@ const state = {
   adminCampaignErrors: null, // { id, rows[] }
   adminImages: null,         // null | { loading } | { list: [] }
   _campaignPollTimer: null,
+  // Facebook Ads targeting tool — own isolated data (see api/fbads.js), no
+  // relation to stores/products/customers.
+  fbadsRegion: "esenyurt",
+  fbadsRegions: null,        // null=unloaded, array once loaded
+  fbadsCompounds: null,      // null=unloaded, array for the active region
+  fbadsSettings: null,       // { rate_per_km }
+  fbadsTargets: null,        // saved store analyses (list)
+  fbadsActiveTargetId: null,
+  fbadsActiveTarget: null,   // { target, distances } for the open panel
+  fbadsMaxKm: 5,             // display-only classification threshold
+  fbadsCompoundFormOpen: false,
+  fbadsEditingCompoundId: null,
+  fbadsRegionFormOpen: false,
+  fbadsBusy: false,
+  fbadsError: null,
   user: null,
   deferredInstall: null
 };
@@ -3168,6 +3183,7 @@ function dashboardSidebar(type, active) {
     ["content", "settings", "المحتوى"],
     ["integrations", "megaphone", "التكاملات"],
     ["marketing", "chart", "التتبع والتسويق"],
+    ["fbads", "map", "استهداف فيسبوك"],
     ["ai", "stars", "الذكاء الاصطناعي"]
   ];
   const items = type === "merchant" ? merchantItems : adminItems;
@@ -5340,6 +5356,407 @@ function adminIntegrations() {
   return merchantIntegrations();
 }
 
+// ───────────────── "استهداف فيسبوك" — Facebook ads geo-targeting ─────────────────
+// Compares any store's location against the residential compounds of an
+// Istanbul district (starting with Esenyurt) — distance, drive time, and an
+// estimated delivery cost at an adjustable ₺/km rate. Talks only to
+// /api/fbads (its own fbads_* tables — no relation to stores/products).
+async function fbadsApi(action, { method = "GET", body = null, params = null } = {}) {
+  const p = new URLSearchParams({ action });
+  if (params) for (const k in params) { if (params[k] != null && params[k] !== "") p.set(k, params[k]); }
+  const opts = { method, headers: { "x-admin-token": state.adminKey || "" } };
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(`/api/fbads?${p.toString()}`, opts);
+  if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  return data;
+}
+
+const FBADS_LAST_TARGET_KEY = "dukkanci-fbads-last-target";
+
+function loadFbAdsBootstrap() {
+  state.fbadsRegions = null; state.fbadsCompounds = null; state.fbadsSettings = null; state.fbadsTargets = null;
+  Promise.all([
+    fbadsApi("regions").then(d => { state.fbadsRegions = d.items || []; }).catch(() => { state.fbadsRegions = []; }),
+    fbadsApi("compounds", { params: { region: state.fbadsRegion } }).then(d => { state.fbadsCompounds = d.items || []; }).catch(() => { state.fbadsCompounds = []; }),
+    fbadsApi("settings").then(d => { state.fbadsSettings = d.item; }).catch(() => { state.fbadsSettings = { rate_per_km: 20 }; }),
+    fbadsApi("targets").then(d => { state.fbadsTargets = d.items || []; }).catch(() => { state.fbadsTargets = []; })
+  ]).then(() => {
+    render();
+    // Reopen whichever map the admin was last looking at (or the most recent
+    // one) so coming back to this tab never requires recomputing anything —
+    // every distance/target is already saved in fbads_target*, this just
+    // decides which saved panel to show by default.
+    if (!state.fbadsActiveTargetId && state.fbadsTargets.length) {
+      const savedId = localStorage.getItem(FBADS_LAST_TARGET_KEY);
+      const restoreId = (savedId && state.fbadsTargets.some(t => String(t.id) === savedId)) ? savedId : state.fbadsTargets[0].id;
+      loadFbAdsTargetDetail(restoreId);
+    }
+  });
+}
+
+function loadFbAdsCompounds() {
+  state.fbadsCompounds = null;
+  fbadsApi("compounds", { params: { region: state.fbadsRegion } })
+    .then(d => { state.fbadsCompounds = d.items || []; })
+    .catch(() => { state.fbadsCompounds = []; })
+    .finally(render);
+}
+
+function loadFbAdsTargetDetail(id) {
+  state.fbadsActiveTargetId = id;
+  state.fbadsActiveTarget = null;
+  fbadsApi("target", { params: { id } })
+    .then(d => { state.fbadsActiveTarget = d; localStorage.setItem(FBADS_LAST_TARGET_KEY, String(id)); })
+    .catch(() => { state.fbadsActiveTarget = "error"; })
+    .finally(render);
+}
+
+function fbadsSwitchRegion(slug) {
+  state.fbadsRegion = slug;
+  state.fbadsActiveTargetId = null;
+  state.fbadsActiveTarget = null;
+  loadFbAdsCompounds();
+}
+
+async function fbadsAddRegion() {
+  const nameEl = document.getElementById("fbads-region-name");
+  const name = nameEl?.value.trim();
+  if (!name) { showToast("اسم المنطقة مطلوب", "error"); return; }
+  const slug = name.toLowerCase().replace(/[^a-z0-9أ-ي\s-]/gi, "").trim().replace(/\s+/g, "-") || `region-${Date.now()}`;
+  try {
+    await fbadsApi("region", { method: "POST", body: { slug, name } });
+    state.fbadsRegionFormOpen = false;
+    state.fbadsRegions = null;
+    fbadsApi("regions").then(d => { state.fbadsRegions = d.items || []; render(); });
+    showToast("تمت إضافة المنطقة", "success");
+  } catch (e) { showToast(e.message || "تعذّرت الإضافة", "error"); }
+}
+
+async function fbadsSaveRate() {
+  const rate = Number(document.getElementById("fbads-rate-input")?.value);
+  if (!Number.isFinite(rate) || rate <= 0) { showToast("سعر غير صالح", "error"); return; }
+  try {
+    await fbadsApi("settings", { method: "POST", body: { ratePerKm: rate } });
+    state.fbadsSettings = { ...(state.fbadsSettings || {}), rate_per_km: rate };
+    showToast("تم حفظ سعر الكيلومتر", "success");
+    render();
+  } catch (e) { showToast(e.message || "تعذّر الحفظ", "error"); }
+}
+
+async function fbadsAddCompound() {
+  const name = document.getElementById("fbads-c-name")?.value.trim();
+  const area = document.getElementById("fbads-c-area")?.value.trim();
+  const mapsUrl = document.getElementById("fbads-c-url")?.value.trim();
+  const note = document.getElementById("fbads-c-note")?.value.trim();
+  if (!name || !mapsUrl) { showToast("اسم المجمع ورابط خرائط Google مطلوبان", "error"); return; }
+  try {
+    await fbadsApi("compound", { method: "POST", body: { regionSlug: state.fbadsRegion, name, area, mapsUrl, note } });
+    state.fbadsCompoundFormOpen = false;
+    showToast("تمت إضافة المجمع", "success");
+    loadFbAdsCompounds();
+  } catch (e) { showToast(e.message || "تعذّرت الإضافة", "error"); }
+}
+
+async function fbadsSaveCompoundEdit(id) {
+  const name = document.getElementById(`fbads-e-name-${id}`)?.value.trim();
+  const area = document.getElementById(`fbads-e-area-${id}`)?.value.trim();
+  const mapsUrl = document.getElementById(`fbads-e-url-${id}`)?.value.trim();
+  const note = document.getElementById(`fbads-e-note-${id}`)?.value.trim();
+  try {
+    await fbadsApi("compound", { method: "PATCH", params: { id }, body: { name, area, mapsUrl, note } });
+    state.fbadsEditingCompoundId = null;
+    showToast("تم الحفظ", "success");
+    loadFbAdsCompounds();
+  } catch (e) { showToast(e.message || "تعذّر الحفظ", "error"); }
+}
+
+async function fbadsDeleteCompound(id) {
+  if (!confirm("حذف هذا المجمع نهائياً؟")) return;
+  try { await fbadsApi("compound", { method: "DELETE", params: { id } }); loadFbAdsCompounds(); }
+  catch (e) { showToast(e.message || "تعذّر الحذف", "error"); }
+}
+
+async function fbadsComputeTarget() {
+  const name = document.getElementById("fbads-t-name")?.value.trim();
+  const input = document.getElementById("fbads-t-input")?.value.trim();
+  if (!name || !input) { showToast("اسم المحل ورابط موقعه مطلوبان", "error"); return; }
+  state.fbadsBusy = true; render();
+  try {
+    const data = await fbadsApi("compute-target", { method: "POST", body: { name, input, regionSlug: state.fbadsRegion } });
+    state.fbadsBusy = false;
+    fbadsApi("targets").then(d => { state.fbadsTargets = d.items || []; render(); });
+    loadFbAdsTargetDetail(data.targetId);
+    showToast("تم حساب المسافات", "success");
+  } catch (e) {
+    state.fbadsBusy = false; render();
+    showToast(e.message || "تعذّر الحساب", "error");
+  }
+}
+
+async function fbadsRecomputeActive() {
+  const t = state.fbadsActiveTarget?.target;
+  if (!t) return;
+  state.fbadsBusy = true; render();
+  try {
+    const data = await fbadsApi("compute-target", { method: "POST", body: { name: t.name, input: t.input_url, regionSlug: state.fbadsRegion } });
+    state.fbadsBusy = false;
+    loadFbAdsTargetDetail(data.targetId);
+    showToast("تمت إعادة الحساب", "success");
+  } catch (e) { state.fbadsBusy = false; render(); showToast(e.message || "تعذّر الحساب", "error"); }
+}
+
+async function fbadsDeleteTarget(id) {
+  if (!confirm("حذف هذا المحل من السجل نهائياً؟")) return;
+  try {
+    await fbadsApi("target", { method: "DELETE", params: { id } });
+    if (String(state.fbadsActiveTargetId) === String(id)) {
+      state.fbadsActiveTargetId = null; state.fbadsActiveTarget = null;
+      if (localStorage.getItem(FBADS_LAST_TARGET_KEY) === String(id)) localStorage.removeItem(FBADS_LAST_TARGET_KEY);
+    }
+    fbadsApi("targets").then(d => { state.fbadsTargets = d.items || []; render(); });
+  } catch (e) { showToast(e.message || "تعذّر الحذف", "error"); }
+}
+
+// Client-side classification only — changing the slider re-labels instantly
+// without re-querying Google, since the raw distances are already cached.
+function fbadsDecision(km, maxKm) {
+  if (km == null) return { label: "غير محسوب", tone: "gray" };
+  if (km > maxKm) return { label: "استبعاد بسبب البعد", tone: "red" };
+  if (km <= 3) return { label: "استهداف قوي جدًا", tone: "green" };
+  if (km <= 5) return { label: "استهداف جيد", tone: "teal" };
+  return { label: "اختبار فقط", tone: "yellow" };
+}
+
+function fbadsExportCsv() {
+  const data = state.fbadsActiveTarget;
+  if (!data || data === "error") return;
+  const rows = [...data.distances].sort((a, b) => (a.driving_km ?? a.direct_km ?? 0) - (b.driving_km ?? b.direct_km ?? 0));
+  const header = ["اسم المجمع", "المنطقة", "مسافة مباشرة كم", "مسافة قيادة كم", "زمن القيادة (دقيقة)", "تقدير تكلفة التوصيل", "القرار", "رابط خرائط Google"];
+  const lines = [header, ...rows.map(r => {
+    const km = r.driving_km ?? r.direct_km;
+    const decision = fbadsDecision(km, state.fbadsMaxKm).label;
+    return [r.fbads_compounds?.name || "", r.fbads_compounds?.area || "", r.direct_km, r.driving_km, r.driving_minutes, r.estimated_cost, decision, r.fbads_compounds?.maps_url || ""];
+  })];
+  const csv = "﻿" + lines.map(line => line.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `fbads-${(data.target.name || "target").replace(/[^\w-]+/g, "-")}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function fbadsCompoundRow(c) {
+  if (state.fbadsEditingCompoundId === c.id) {
+    return `<tr class="fbads-editing-row">
+      <td><input id="fbads-e-name-${c.id}" value="${escAttr(c.name)}"></td>
+      <td><input id="fbads-e-area-${c.id}" value="${escAttr(c.area || "")}"></td>
+      <td><input id="fbads-e-url-${c.id}" dir="ltr" value="${escAttr(c.maps_url)}"></td>
+      <td><input id="fbads-e-note-${c.id}" value="${escAttr(c.note || "")}"></td>
+      <td class="fbads-row-actions">
+        <button class="secondary-button compact" data-action="fbads-save-compound" data-id="${c.id}">${icon("check")} حفظ</button>
+        <button class="text-button" data-action="fbads-cancel-edit-compound">إلغاء</button>
+      </td>
+    </tr>`;
+  }
+  return `<tr>
+    <td><strong>${esc(c.name)}</strong>${c.lat == null ? ` <small class="fbads-geostatus">لم تُحدَّد الإحداثيات بعد — تُحسب عند أول حساب مسافات</small>` : ""}</td>
+    <td>${esc(c.area || "—")}</td>
+    <td><a href="${escAttr(c.maps_url)}" target="_blank" rel="noopener" class="text-button compact">${icon("map")} فتح الموقع</a></td>
+    <td>${esc(c.note || "—")}</td>
+    <td class="fbads-row-actions">
+      <button class="icon-button" data-action="fbads-edit-compound" data-id="${c.id}" aria-label="تعديل">${icon("edit")}</button>
+      <button class="icon-button" data-action="fbads-delete-compound" data-id="${c.id}" aria-label="حذف">${icon("trash")}</button>
+    </td>
+  </tr>`;
+}
+
+function fbadsResultsPanel() {
+  const data = state.fbadsActiveTarget;
+  if (!data) return "";
+  if (data === "error") return `<section class="dashboard-card"><div class="empty-managed">${icon("map")}<p>تعذّر تحميل بيانات هذا المحل.</p></div></section>`;
+  const { target, distances } = data;
+  const rows = [...distances].sort((a, b) => (a.driving_km ?? a.direct_km ?? 0) - (b.driving_km ?? b.direct_km ?? 0));
+  const within = rows.filter(r => (r.driving_km ?? r.direct_km) <= state.fbadsMaxKm).length;
+  return `
+    <section class="dashboard-card fbads-results-card">
+      <div class="card-heading">
+        <div><h3>${icon("map")} ${esc(target.name)}</h3><p>${esc(target.resolved_address || "")}</p></div>
+        <div class="fbads-results-actions">
+          <button class="secondary-button compact" data-action="fbads-recompute" ${state.fbadsBusy ? "disabled" : ""}>${icon("map")} إعادة الحساب</button>
+          <button class="secondary-button compact" data-action="fbads-export-csv">${icon("download")} تصدير CSV</button>
+          <button class="icon-button" data-action="fbads-delete-target" data-id="${target.id}" aria-label="حذف">${icon("trash")}</button>
+        </div>
+      </div>
+      <div class="fbads-summary-row">
+        <label class="fbads-max-km">أقصى مسافة للاستهداف <input id="fbads-max-km-input" type="number" min="0.5" step="0.5" value="${state.fbadsMaxKm}"> كم</label>
+        <span class="status-pill green">${within.toLocaleString("ar")} مناسب ضمن المسافة</span>
+        <span class="status-pill red">${(rows.length - within).toLocaleString("ar")} مستبعد</span>
+      </div>
+      <div class="table-wrap">
+        <table class="admin-table fbads-distance-table">
+          <thead><tr><th>المجمع</th><th>المنطقة</th><th>مسافة مباشرة</th><th>مسافة قيادة</th><th>زمن القيادة</th><th>تكلفة تقديرية</th><th>القرار</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map(r => {
+              const km = r.driving_km ?? r.direct_km;
+              const decision = fbadsDecision(km, state.fbadsMaxKm);
+              const c = r.fbads_compounds || {};
+              return `<tr>
+                <td><strong>${esc(c.name || "")}</strong></td>
+                <td>${esc(c.area || "—")}</td>
+                <td>${r.direct_km != null ? formatDistance(r.direct_km) : "—"}</td>
+                <td>${r.driving_km != null ? formatDistance(r.driving_km) : "—"}${r.provider === "estimate" ? ` <small class="fbads-geostatus">(تقدير)</small>` : ""}</td>
+                <td>${r.driving_minutes ? r.driving_minutes.toLocaleString("ar") + " دقيقة" : "—"}</td>
+                <td>${r.estimated_cost != null ? money(r.estimated_cost) : "—"}</td>
+                <td><span class="status-pill ${decision.tone}">${decision.label}</span></td>
+                <td>${c.maps_url ? `<a href="${escAttr(c.maps_url)}" target="_blank" rel="noopener" class="text-button compact">${icon("map")}</a>` : ""}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="fbads-map-wrap">
+        <div id="fbads-map" style="height:420px;border-radius:16px"></div>
+        <p class="fbads-map-legend"><span class="fbads-legend-dot green"></span> ≤3 كم &nbsp; <span class="fbads-legend-dot yellow"></span> ≤5 كم &nbsp; <span class="fbads-legend-dot red"></span> أبعد من أقصى مسافة</p>
+      </div>
+    </section>`;
+}
+
+function adminFbAds() {
+  if (state.fbadsCompounds == null) { loadFbAdsBootstrap(); return `<section class="dashboard-card"><div class="empty-managed">${icon("map")}<p>جارٍ تحميل بيانات الاستهداف…</p></div></section>`; }
+  const regions = state.fbadsRegions || [];
+  const settings = state.fbadsSettings || { rate_per_km: 20 };
+  const compounds = state.fbadsCompounds || [];
+  const targets = state.fbadsTargets || [];
+  return `
+    <div class="fbads-shell">
+      <section class="dashboard-card">
+        <div class="card-heading"><div><h3>${icon("shield")} قاعدة بيانات مستقلة</h3><p>هذا القسم له جداول خاصة به فقط (اسم المحل وموقعه على خرائط Google، وقائمة المجمعات لكل منطقة) — لا صلة له بجداول متاجر ومنتجات وعملاء الموقع.</p></div></div>
+      </section>
+      <section class="dashboard-card">
+        <div class="card-heading">
+          <div><h3>المنطقة</h3><p>ابدأ بإسنيورت، وأضف مناطق إسطنبول الأخرى تباعاً.</p></div>
+          <button class="secondary-button compact" data-action="fbads-toggle-region-form">${icon("plus")} منطقة جديدة</button>
+        </div>
+        <div class="fbads-region-tabs">
+          ${regions.map(r => `<button class="fbads-region-tab ${r.slug === state.fbadsRegion ? "active" : ""}" data-action="fbads-region" data-slug="${escAttr(r.slug)}">${esc(r.name)}</button>`).join("")}
+        </div>
+        ${state.fbadsRegionFormOpen ? `
+          <div class="fbads-inline-form">
+            <input id="fbads-region-name" placeholder="اسم المنطقة، مثل: بيليكدوزو">
+            <button class="primary-button compact" data-action="fbads-add-region">${icon("check")} إضافة</button>
+          </div>` : ""}
+      </section>
+      <section class="dashboard-card">
+        <div class="card-heading"><div><h3>سعر الكيلومتر الواحد</h3><p>يُستخدم لتقدير تكلفة التوصيل لكل مجمع — قيمة متغيرة تُعدَّل في أي وقت.</p></div></div>
+        <div class="fbads-inline-form">
+          <input id="fbads-rate-input" type="number" min="1" step="1" value="${settings.rate_per_km}" style="width:120px">
+          <span>ل.ت / كم</span>
+          <button class="primary-button compact" data-action="fbads-save-rate">${icon("check")} حفظ</button>
+        </div>
+      </section>
+      <section class="dashboard-card">
+        <div class="card-heading">
+          <div><h3>مجمعات ${esc(regions.find(r => r.slug === state.fbadsRegion)?.name || state.fbadsRegion)}</h3><p>${compounds.length.toLocaleString("ar")} مجمعاً مسجّلاً — أضف المزيد في أي وقت.</p></div>
+          <button class="secondary-button compact" data-action="fbads-toggle-compound-form">${icon("plus")} مجمع جديد</button>
+        </div>
+        ${state.fbadsCompoundFormOpen ? `
+          <div class="fbads-inline-form fbads-compound-form">
+            <input id="fbads-c-name" placeholder="اسم المجمع">
+            <input id="fbads-c-area" placeholder="المنطقة / الحي (اختياري)">
+            <input id="fbads-c-url" dir="ltr" placeholder="رابط خرائط Google">
+            <input id="fbads-c-note" placeholder="ملاحظة (اختياري)">
+            <button class="primary-button compact" data-action="fbads-add-compound">${icon("check")} إضافة</button>
+          </div>` : ""}
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>الاسم</th><th>المنطقة</th><th>الموقع</th><th>ملاحظة</th><th></th></tr></thead>
+            <tbody>${compounds.length ? compounds.map(fbadsCompoundRow).join("") : `<tr><td colspan="5" class="fbads-geostatus">لا توجد مجمعات في هذه المنطقة بعد.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
+      <section class="dashboard-card">
+        <div class="card-heading"><div><h3>محل جديد للاستهداف</h3><p>ضع اسم المحل ورابط موقعه على خرائط Google (أو رابط متجره الإلكتروني)، وستحصل على لوحة تُبيّن البعد عن كل مجمع.</p></div></div>
+        <div class="fbads-inline-form">
+          <input id="fbads-t-name" placeholder="اسم المحل">
+          <input id="fbads-t-input" dir="ltr" placeholder="رابط خرائط Google أو رابط الموقع أو العنوان">
+          <button class="primary-button compact" data-action="fbads-compute-target" ${state.fbadsBusy ? "disabled" : ""}>${state.fbadsBusy ? "جارٍ الحساب…" : `${icon("map")} حساب المسافات`}</button>
+        </div>
+      </section>
+      ${fbadsResultsPanel()}
+      <section class="dashboard-card">
+        <div class="card-heading"><div><h3>سجل المحلات المحسوبة</h3><p>افتح أي محل سابق لمراجعة لوحته من جديد.</p></div></div>
+        ${targets.length ? `<div class="fbads-targets-list">${targets.map(t => `
+          <button class="fbads-target-item ${String(t.id) === String(state.fbadsActiveTargetId) ? "active" : ""}" data-action="fbads-open-target" data-id="${t.id}">
+            <span><strong>${esc(t.name)}</strong><small>${esc(t.resolved_address || "")}</small></span>
+            <small>${new Date(t.updated_at).toLocaleDateString("ar-EG")}</small>
+          </button>`).join("")}</div>` : `<div class="empty-managed">${icon("map")}<p>لم يُحسَب أي محل بعد.</p></div>`}
+      </section>
+    </div>`;
+}
+
+// Google Maps JS visual panel: the target store + every compound, connected by
+// straight lines colour-coded by distance so the geographic spread is obvious
+// at a glance (an actual driving route per compound would mean one Directions
+// API call each — the table above already gives the real driving distance).
+let fbadsMap = null;
+let fbadsMapEl = null;   // the DOM node fbadsMap is actually attached to
+let fbadsMapOverlays = [];
+function fbadsClearMapOverlays() {
+  fbadsMapOverlays.forEach(o => { try { o.setMap(null); } catch {} });
+  fbadsMapOverlays = [];
+}
+async function initFbAdsMap() {
+  const mapEl = document.getElementById("fbads-map");
+  const data = state.fbadsActiveTarget;
+  if (!mapEl || !data || data === "error") return;
+  // render() rebuilds app.innerHTML from scratch on every state change (e.g.
+  // typing in the max-km field), so #fbads-map is a BRAND NEW node each time —
+  // reusing fbadsMap without checking the node changed leaves the new,
+  // visible div empty while the map silently keeps painting into the old,
+  // detached one. Only skip work when it's truly the same live node.
+  const sig = `${data.target.id}:${data.distances.length}:${state.fbadsMaxKm}`;
+  if (state._fbadsMapSig === sig && fbadsMap && fbadsMapEl === mapEl) return;
+  state._fbadsMapSig = sig;
+  try { await ensureGoogleMaps(); } catch {
+    mapEl.innerHTML = `<div class="addr2-map-fallback">تعذّر تحميل خرائط Google — تحقّق من مفتاح GOOGLE_MAPS_API_KEY</div>`;
+    return;
+  }
+  if (!document.getElementById("fbads-map")) return;
+  const { target, distances } = data;
+  if (!fbadsMap || fbadsMapEl !== mapEl) {
+    fbadsMap = new google.maps.Map(mapEl, { center: { lat: target.lat, lng: target.lng }, zoom: 13, gestureHandling: "greedy" });
+    fbadsMapEl = mapEl;
+  } else {
+    fbadsClearMapOverlays();
+  }
+  fbadsMapOverlays.push(new google.maps.Marker({
+    map: fbadsMap, position: { lat: target.lat, lng: target.lng }, title: target.name,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#e11d48", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 }
+  }));
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend({ lat: target.lat, lng: target.lng });
+  distances.forEach(r => {
+    const c = r.fbads_compounds;
+    if (!c || c.lat == null) return;
+    const km = r.driving_km ?? r.direct_km;
+    const color = km > state.fbadsMaxKm ? "#dc2626" : km <= 3 ? "#16a34a" : "#d97706";
+    const point = { lat: c.lat, lng: c.lng };
+    bounds.extend(point);
+    fbadsMapOverlays.push(new google.maps.Marker({
+      map: fbadsMap, position: point, title: `${c.name} — ${formatDistance(km)}`,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 1.5 }
+    }));
+    fbadsMapOverlays.push(new google.maps.Polyline({
+      map: fbadsMap, path: [{ lat: target.lat, lng: target.lng }, point],
+      strokeColor: color, strokeOpacity: 0.6, strokeWeight: 2
+    }));
+  });
+  fbadsMap.fitBounds(bounds, 40);
+}
+
 // ─────────────────────────── AI Management tab ───────────────────────────
 // Central admin section for the AI department (spec: "قسم الذكاء الصناعي").
 // Talks to /api/ai which uses the service-role key + lib/ai-gateway. API keys
@@ -6808,8 +7225,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -7517,6 +7934,9 @@ function render() {
   }
   if (route === "admin" && state.adminTab === "marketing" && state.adminKey && state.adminMarketing == null) {
     setTimeout(loadMarketingReport, 0);
+  }
+  if (route === "admin" && state.adminTab === "fbads" && state.adminKey && state.fbadsActiveTarget && state.fbadsActiveTarget !== "error") {
+    setTimeout(initFbAdsMap, 0);
   }
   if (route === "merchant" && state.merchantTab === "analytics" && ((state.merchantPwAuth && state.merchantPwAuth.token) || state.adminKey) && state.merchantAnalytics == null) {
     setTimeout(loadMerchantReport, 0);
@@ -9426,8 +9846,26 @@ document.addEventListener("click", event => {
     if (target.dataset.tab !== "campaigns") stopCampaignPoll();
     if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
     if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
+    if (target.dataset.tab === "fbads" && state.fbadsCompounds == null) loadFbAdsBootstrap();
+    if (target.dataset.tab !== "fbads") { fbadsMap = null; fbadsMapEl = null; state._fbadsMapSig = null; }
     render();
   }
+  // ── Facebook ads targeting actions ──
+  if (action === "fbads-region") { fbadsSwitchRegion(target.dataset.slug); }
+  if (action === "fbads-toggle-region-form") { state.fbadsRegionFormOpen = !state.fbadsRegionFormOpen; render(); }
+  if (action === "fbads-add-region") fbadsAddRegion();
+  if (action === "fbads-save-rate") fbadsSaveRate();
+  if (action === "fbads-toggle-compound-form") { state.fbadsCompoundFormOpen = !state.fbadsCompoundFormOpen; render(); }
+  if (action === "fbads-add-compound") fbadsAddCompound();
+  if (action === "fbads-edit-compound") { state.fbadsEditingCompoundId = Number(target.dataset.id); render(); }
+  if (action === "fbads-cancel-edit-compound") { state.fbadsEditingCompoundId = null; render(); }
+  if (action === "fbads-save-compound") fbadsSaveCompoundEdit(Number(target.dataset.id));
+  if (action === "fbads-delete-compound") fbadsDeleteCompound(Number(target.dataset.id));
+  if (action === "fbads-compute-target") fbadsComputeTarget();
+  if (action === "fbads-recompute") fbadsRecomputeActive();
+  if (action === "fbads-open-target") loadFbAdsTargetDetail(Number(target.dataset.id));
+  if (action === "fbads-delete-target") fbadsDeleteTarget(Number(target.dataset.id));
+  if (action === "fbads-export-csv") fbadsExportCsv();
   if (action === "marketing-range") {
     state.adminMarketingFilter = state.adminMarketingFilter || { range: 30, store: "all" };
     state.adminMarketingFilter.range = Number(target.dataset.days) || 30;
@@ -10195,6 +10633,10 @@ document.addEventListener("input", event => {
     document.querySelectorAll(".complaint-list article").forEach(row => {
       row.style.display = !q || normalizeAr(row.textContent).includes(q) ? "" : "none";
     });
+  }
+  if (event.target.id === "fbads-max-km-input") {
+    const v = Number(event.target.value);
+    if (Number.isFinite(v) && v > 0) { state.fbadsMaxKm = v; render(); }
   }
   if (event.target.id === "admin-customer-search") {
     const q = normalizeAr(event.target.value.trim());
