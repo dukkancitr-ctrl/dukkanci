@@ -9,6 +9,7 @@
 // Domain comes from NEXT_PUBLIC_SITE_URL (never hardcoded).
 const { STORE_SLUGS } = require("../store-slugs.js");
 const { CATEGORY_SLUGS } = require("../category-slugs.js");
+const { resolveStoreSlug } = require("../lib/store-slug.js");
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
@@ -63,14 +64,14 @@ async function sitemapStores(res) {
   const { url, key } = db();
   let rows = [];
   try {
-    const r = await fetch(`${url}/rest/v1/stores?select=id,created_at&open=eq.true&order=id`, {
+    const r = await fetch(`${url}/rest/v1/stores?select=id,name,slug,created_at&open=eq.true&or=(approval_status.is.null,approval_status.eq.approved)&order=id`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` }
     });
     if (r.ok) rows = await r.json();
   } catch (e) { /* empty sitemap on failure */ }
 
   const urls = rows.map(s => {
-    const slug = STORE_SLUGS[s.id] || s.id;
+    const slug = resolveStoreSlug(s, STORE_SLUGS);
     const lastmod = (s.created_at || "").slice(0, 10) || undefined;
     return `  <url><loc>${esc(SITE)}/store/${esc(slug)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<changefreq>weekly</changefreq><priority>0.8</priority></url>`;
   });

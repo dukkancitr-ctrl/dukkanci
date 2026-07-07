@@ -7609,10 +7609,42 @@ tr:last-child td {
 
 .cover-uploader {
   height: 200px;
-  margin-bottom: 22px;
+  margin-bottom: 10px;
   border-radius: 13px;
   overflow: hidden;
   position: relative;
+  background: var(--cream);
+}
+
+.cover-uploader-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.upload-tile.compact {
+  padding: 8px 14px;
+  flex: 0 0 auto;
+}
+
+.variant-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.variant-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.variant-row input {
+  min-height: 40px;
 }
 
 .cover-uploader img {
@@ -8111,6 +8143,30 @@ tr:last-child td {
   gap: 7px;
   font-size: 13px;
   margin-bottom: 9px;
+}
+.order-customer-note {
+  margin-bottom: 16px;
+  padding: 12px 13px;
+  border: 1px solid #f0c36d;
+  background: #fff8e8;
+  border-radius: 12px;
+}
+.order-customer-note strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.order-customer-note strong .icon {
+  width: 15px;
+  height: 15px;
+}
+.order-customer-note p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 .order-items-title .icon {
   width: 17px;

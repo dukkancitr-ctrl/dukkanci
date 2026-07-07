@@ -1280,6 +1280,45 @@ module.exports = async (req, res) => {
     // that has a phone but no credential row yet. Passwords live in
     // store_credentials (RLS denies anon) and are returned ONLY through this
     // admin-gated endpoint — never to the public anon client.
+    if (q.action === "admin-customers") {
+      if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
+      // Every registered account, even ones that never ordered — profiles has
+      // self-only RLS so the admin browser session can't read it directly; this
+      // service-role endpoint is the only place that directory can be assembled.
+      const { url, key } = sb();
+      let authUsers = [];
+      try {
+        const r = await fetch(`${url}/auth/v1/admin/users?per_page=1000`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+        if (r.ok) { const j = await r.json().catch(() => null); authUsers = (j && j.users) || []; }
+      } catch (e) { /* GoTrue admin API unreachable — return profiles-only below */ }
+      const profileRows = await sbGet("profiles?select=id,full_name,phone,created_at") || [];
+      const profileById = new Map(profileRows.map(p => [p.id, p]));
+      const orderRows = await sbGet("orders?select=customer_id,total&customer_id=not.is.null") || [];
+      const orderStats = new Map();
+      orderRows.forEach(o => {
+        if (!o.customer_id) return;
+        const s = orderStats.get(o.customer_id) || { count: 0, total: 0 };
+        s.count += 1; s.total += Number(o.total) || 0;
+        orderStats.set(o.customer_id, s);
+      });
+      const list = authUsers.map(u => {
+        const p = profileById.get(u.id);
+        const stats = orderStats.get(u.id) || { count: 0, total: 0 };
+        return {
+          id: u.id,
+          name: (p && p.full_name) || (u.user_metadata && u.user_metadata.full_name) || "",
+          email: u.email || "",
+          phone: (p && p.phone) || u.phone || "",
+          provider: (u.app_metadata && u.app_metadata.provider) || "email",
+          createdAt: u.created_at || "",
+          lastActiveAt: u.last_sign_in_at || u.created_at || "",
+          orderCount: stats.count,
+          totalSpent: stats.total
+        };
+      });
+      return res.status(200).json({ customers: list, serviceRole: !!env("SUPABASE_SERVICE_ROLE_KEY") });
+    }
+
     if (q.action === "store-creds") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
       const storeRows = await sbGet("stores?select=id,name,phone,email,subscription_active&order=id") || [];
@@ -1950,6 +1989,22 @@ module.exports = async (req, res) => {
       }
     }
     return res.status(200).json({ ok: true, id, push, whatsapp });
+  }
+
+  // Called once, right after a merchant self-registers via the public "join"
+  // form: writes the SAME password they just chose (Supabase Auth) into
+  // store_credentials, so the admin-issued phone+password login mode (which
+  // checks store_credentials, not Supabase Auth) works with that same password
+  // instead of silently diverging into a separate auto-generated one.
+  if (pq.action === "sync-owner-credentials") {
+    const storeId = Number(body.storeId);
+    if (!storeId || !(await verifySupabaseStoreOwner(req, storeId))) return res.status(403).json({ error: "unauthorized" });
+    const phone = String(body.phone || "").trim();
+    const password = String(body.password || "").trim();
+    if (!phone || !password || password.length < 6) return res.status(400).json({ error: "invalid" });
+    const username = phoneKey(phone) || phone;
+    const w = await sbWrite("POST", "store_credentials?on_conflict=store_id", [{ store_id: storeId, username, password }], "resolution=merge-duplicates,return=minimal");
+    return res.status(200).json({ ok: !!w.ok });
   }
 
   // Admin: save editable site content (e.g. the subscription plan) into the
