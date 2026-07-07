@@ -2439,12 +2439,32 @@ function homeCategoriesOrdered() {
 function storeCategoryNames() {
   return categoriesList().map(c => c.name).filter(Boolean);
 }
-// All product categories for a given store, deduplicated + sorted,
-// plus any extra categories the admin/owner added (persisted in site_settings).
+// Baseline category taxonomy for every "سوبر ماركت" store, taken from قاضي
+// ماركت باشاك شهير (store 19) — the platform's most established, most
+// thoroughly categorized supermarket. New/imported supermarket stores get
+// this full list available automatically instead of an empty category bar,
+// so products (including ones imported from مخزن الصور المشترك) always have
+// a consistent, ready-made set of categories to file into. Excludes
+// "عروض قاضي ماركت" — that one's store-branded, not a generic category.
+const SUPERMARKET_BASELINE_CATEGORIES = [
+  "الفطور والأجبان والألبان وحبوب الفطور", "تسالي", "البهارات والتوابل",
+  "الصلصات والشوربات والمخللات", "العناية بالمرأة", "المجمدات", "منظفات عامة",
+  "المناديل", "العناية بالشعر", "منظفات غسيل الملابس", "مستلزمات الحلويات",
+  "العناية بالطفل", "أدوات منزلية", "البقوليات والمكرونة", "المخبوزات والمعجنات",
+  "العناية بالجسم", "العناية بالأسنان", "المياه والمشروبات الباردة والساخنة",
+  "صابون + صابون سائل لليدين", "المكسرات النيئة", "منظفات الجلي",
+  "مستلزمات الحيوانات", "العسل جميع الأنواع", "العناية بالرجال",
+  "الخضار والفواكه", "أدوات تنظيف", "السمنة والزيوت", "الرحلات ومستلزمات الشوي",
+  "غذائيات منوعة", "التمور والفواكه المجففة", "اللحوم والدجاج والسمك"
+];
+// All product categories for a given store, deduplicated + sorted, plus any
+// extra categories the admin/owner added (persisted in site_settings), plus
+// the shared supermarket baseline above for any "سوبر ماركت" store.
 function storeProductCategories(storeId) {
   const fromProducts = [...new Set(allProducts.filter(p => p.storeId === storeId).map(p => p.category).filter(Boolean))];
   const extra = ((state.siteSettings.storeExtraCategories || {})[String(storeId)] || []);
-  const all = [...new Set([...fromProducts, ...extra])];
+  const baseline = isSupermarketStore(getStore(storeId)) ? SUPERMARKET_BASELINE_CATEGORIES : [];
+  const all = [...new Set([...fromProducts, ...extra, ...baseline])];
   return all.sort((a, b) => a.localeCompare(b, "ar"));
 }
 function saveStoreExtraCategory(storeId, catName) {
