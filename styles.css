@@ -7180,7 +7180,7 @@ tr:last-child td {
 .catalog-import-card .input-label { gap: 2px; font-size: 11px; }
 .catalog-import-card .ci-price-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 6px;
 }
 .catalog-import-card--done {

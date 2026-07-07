@@ -4401,8 +4401,8 @@ function openCatalogImportModal() {
         <img src="${escAttr(item.image)}" alt="${escAttr(item.canonicalName)}" loading="lazy">
         <label class="input-label"><span>اسم المنتج</span><input class="ci-name" value="${escAttr(item.canonicalName)}"></label>
         <div class="ci-price-row">
-          <label class="input-label"><span>السعر (اختياري)</span><input class="ci-price" type="number" min="0" step="1" inputmode="numeric" placeholder="بلا سعر الآن"></label>
-          <label class="input-label"><span>سعر العرض (اختياري)</span><input class="ci-old-price" type="number" min="0" step="1" inputmode="numeric" placeholder="اختياري"></label>
+          <label class="input-label"><span>السعر</span><input class="ci-price" type="number" min="0" step="1" inputmode="numeric" placeholder="بلا سعر الآن"></label>
+          <label class="input-label"><span>سعر العرض</span><input class="ci-old-price" type="number" min="0" step="1" inputmode="numeric" placeholder="اختياري"></label>
         </div>
         <label class="input-label"><span>الوحدة</span><input class="ci-unit" value="${escAttr(item.unit || "")}"></label>
         <button type="button" class="primary-button compact full" data-action="import-catalog-item" data-catalog-id="${item.id}">${icon("plus")} إضافة لمتجري</button>
