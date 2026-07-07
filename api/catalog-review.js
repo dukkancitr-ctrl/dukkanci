@@ -9,6 +9,13 @@
 //   GET  ?action=list&status=approved|rejected|all
 //   POST ?action=review     { id, decision: "approve"|"reject", canonicalName?, category?, unit?, note? }
 //   POST ?action=bulk-review { ids: number[], decision: "approve"|"reject" }
+//   POST ?action=enhance     { id }   → run THIS ONE item through the paid AI
+//     cleanup pipeline (background/marks removal + zoom standardization) on
+//     demand. scripts/build-shared-catalog.js deliberately uploads raw,
+//     un-enhanced photos (enhanced = false) so nothing is auto-processed —
+//     a reviewer decides per item whether it's worth spending OpenAI credits
+//     on before approving (a raw photo can also be approved as-is if it's
+//     already clean).
 //
 // "reject" does NOT delete the row (keeps the audit trail / avoids
 // re-ingesting the same rejected item next run) — it just leaves
@@ -18,6 +25,7 @@
 // session, or x-admin-key === ADMIN_PASSWORD for scripts/cron).
 
 const crypto = require("crypto");
+const { processCatalogImage } = require("../lib/catalog-image-pipeline");
 
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const env = k => (process.env[k] || "").trim();
@@ -97,6 +105,42 @@ module.exports = async (req, res) => {
     const r = await sbFetch(`catalog_products?id=eq.${Number(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
     if (!r.ok) return res.status(r.status).json({ error: await r.text() });
     return res.status(200).json({ ok: true });
+  }
+
+  if (req.method === "POST" && action === "enhance") {
+    const { id } = req.body || {};
+    if (!id) return res.status(400).json({ error: "id required" });
+    const getR = await sbFetch(`catalog_products?id=eq.${Number(id)}&select=*`);
+    const rows = await getR.json().catch(() => []);
+    const row = Array.isArray(rows) && rows[0];
+    if (!row) return res.status(404).json({ error: "not found" });
+
+    let processed;
+    try {
+      const imgRes = await fetch(row.image, { signal: AbortSignal.timeout(15000) });
+      if (!imgRes.ok) throw new Error(`could not download current image (${imgRes.status})`);
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      const mimeType = (imgRes.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+      processed = await processCatalogImage({ buffer, mimeType, name: row.canonical_name });
+    } catch (e) {
+      return res.status(502).json({ error: String(e.message || e) });
+    }
+
+    const { url: baseUrl, key } = sb();
+    const filename = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}.jpg`;
+    const up = await fetch(`${baseUrl}/storage/v1/object/catalog-images/${encodeURIComponent(filename)}`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "image/jpeg", "x-upsert": "true" },
+      body: processed.buffer
+    });
+    if (!up.ok) return res.status(up.status).json({ error: await up.text() });
+    const publicUrl = `https://www.dukkanci.com.tr/media/catalog-images/${encodeURIComponent(filename)}`;
+
+    const patch = { image: publicUrl, enhanced: true, updated_at: new Date().toISOString() };
+    if (processed.brandCheckNote) patch.review_note = processed.brandCheckNote;
+    const patchR = await sbFetch(`catalog_products?id=eq.${Number(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+    if (!patchR.ok) return res.status(patchR.status).json({ error: await patchR.text() });
+    return res.status(200).json({ ok: true, image: publicUrl, brandCheckNote: processed.brandCheckNote || null });
   }
 
   if (req.method === "POST" && action === "bulk-review") {

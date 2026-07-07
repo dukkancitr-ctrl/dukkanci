@@ -6974,6 +6974,70 @@ tr:last-child td {
   pointer-events: none;
 }
 
+/* ── Admin review queue for the shared image bank ── */
+.catalog-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.catalog-review-card {
+  position: relative;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface, #fff);
+}
+.catalog-review-card.is-selected {
+  border-color: var(--green-800, #1d7a4c);
+  box-shadow: 0 0 0 1px var(--green-800, #1d7a4c);
+}
+.catalog-review-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e5e7eb);
+}
+.catalog-review-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+.catalog-review-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+.catalog-review-note {
+  font-size: 11px;
+  background: #fff8e6;
+  border: 1px solid #f0deA6;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 0;
+}
+.catalog-review-actions {
+  display: flex;
+  gap: 8px;
+}
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: #eef7f1;
+  border: 1px solid var(--green-800, #1d7a4c);
+  border-radius: var(--radius-sm);
+}
+.catalog-review-enhanced-badge {
+  align-self: flex-start;
+}
+
 .offer-card-actions {
   display: flex;
   gap: 8px;
