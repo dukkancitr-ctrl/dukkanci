@@ -3365,6 +3365,7 @@ function dashboardSidebar(type, active) {
     ["messages", "whatsapp", "المحادثات"],
     ["campaigns", "megaphone", "الحملات"],
     ["media", "image", "مكتبة الصور"],
+    ["catalog", "star", "مخزن الصور المشترك"],
     ["complaints", "megaphone", "الشكاوى"],
     ["coupons", "megaphone", "الكوبونات"],
     ["delivery", "bike", "التوصيل"],
@@ -4404,6 +4405,128 @@ async function importCatalogItem(catalogId, cardEl) {
   if (btn) { btn.disabled = true; btn.innerHTML = `${icon("check")} أُضيف`; }
   cardEl.classList.add("catalog-import-card--done");
   showToast(`تمت إضافة "${name}" إلى متجرك`, "success");
+}
+
+// ── Shared supermarket image bank — admin review queue ──────────────────
+// Every row scripts/build-shared-catalog.js (or api/catalog-process-image.js)
+// ingests starts life invisible to every store (approved=false). This is the
+// human checkpoint: nothing here can be auto-approved — the reviewer looks at
+// each processed photo and confirms it carries no store-specific trademark,
+// logo, watermark, or price sticker before it can reach other merchants.
+async function catalogReviewApi(action, { method = "GET", params = {}, body = null } = {}) {
+  const qs = new URLSearchParams({ action, ...params }).toString();
+  const opts = { method, headers: { "x-admin-token": state.adminKey || "" } };
+  if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(`/api/catalog-review?${qs}`, opts);
+  if (res.status === 403) { lockAdmin(); throw new Error("unauthorized"); }
+  if (!res.ok) throw new Error(`request failed (${res.status})`);
+  return res.json().catch(() => ({}));
+}
+
+function loadAdminCatalog(status) {
+  state._adminCatalogLoading = true;
+  const req = status === "pending" ? catalogReviewApi("pending") : catalogReviewApi("list", { params: { status } });
+  req
+    .then(data => { state._adminCatalog = Array.isArray(data.items) ? data.items : []; })
+    .catch(() => { state._adminCatalog = []; })
+    .finally(() => { state._adminCatalogLoading = false; render(); });
+}
+
+function adminCatalog() {
+  const status = state._adminCatalogStatus || "pending";
+  if (state._adminCatalog == null && !state._adminCatalogLoading) loadAdminCatalog(status);
+  const list = state._adminCatalog;
+  const selected = state._adminCatalogSelected || (state._adminCatalogSelected = new Set());
+  const chip = (key, label) => `<button type="button" class="cat-chip ${status === key ? "active" : ""}" data-action="admin-catalog-status" data-status="${key}">${label}</button>`;
+  const cards = (list || []).map(it => {
+    const isSel = selected.has(it.id);
+    const searchBlob = normalizeAr([it.canonical_name, it.category || "", ...(it.keywords || [])].join(" "));
+    return `
+      <article class="catalog-review-card ${isSel ? "is-selected" : ""}" data-catalog-id="${it.id}" data-search="${escAttr(searchBlob)}">
+        <label class="catalog-review-check"><input type="checkbox" ${isSel ? "checked" : ""} data-action="admin-catalog-select" data-id="${it.id}"><span></span></label>
+        <span class="status-pill ${it.enhanced ? "open" : "gray"} catalog-review-enhanced-badge">${it.enhanced ? "محسّنة بالذكاء الاصطناعي" : "صورة خام — غير محسّنة"}</span>
+        <img src="${escAttr(it.image)}" alt="${escAttr(it.canonical_name)}" loading="lazy">
+        <label class="input-label"><span>الاسم</span><input class="acr-name" value="${escAttr(it.canonical_name)}"></label>
+        <small class="catalog-review-meta">${esc(it.category || "بلا تصنيف")} · ${(it.contributor_store_ids || []).length || 1} متجر ساهم بها${it.usage_count ? ` · تُستخدم في ${it.usage_count} متجر` : ""}</small>
+        ${it.review_note ? `<p class="catalog-review-note">${icon("stars")} ${esc(it.review_note)}</p>` : ""}
+        ${status === "pending"
+          ? `<div class="catalog-review-actions">
+              ${it.enhanced ? "" : `<button type="button" class="secondary-button compact" data-action="admin-catalog-enhance" data-id="${it.id}">${icon("stars")} تحسين بالذكاء الاصطناعي</button>`}
+              <button type="button" class="primary-button compact" data-action="admin-catalog-approve" data-id="${it.id}">${icon("check")} اعتماد</button>
+              <button type="button" class="secondary-button compact" data-action="admin-catalog-reject" data-id="${it.id}">${icon("close")} رفض</button>
+            </div>`
+          : `<span class="status-pill ${it.approved ? "open" : "closed"}">${it.approved ? "معتمد" : "مرفوض"}</span>`}
+      </article>`;
+  }).join("");
+  const selCount = selected.size;
+  return `
+    <div class="review-note images-safety">${icon("shield")} <span><strong>لا يظهر أي عنصر لبقية المتاجر إلا بعد اعتمادك هنا.</strong><small>الصور تُرفع خاماً بلا معالجة تلقائية — اضغط «تحسين بالذكاء الاصطناعي» فقط للعناصر التي تستحقها (تُزيل الخلفية وأي علامة متجر وتوحّد الزووم)، أو اعتمد الصورة كما هي إن كانت نظيفة أصلاً. تأكد دائماً أن الصورة خالية من أي علامة أو شعار أو ملصق سعر خاص بمتجر بعينه قبل الاعتماد.</small></span></div>
+    <div class="dashboard-toolbar">
+      <div class="dashboard-search">${icon("search")}<input id="admin-catalog-search" placeholder="ابحث في مخزن الصور"></div>
+      <span class="toolbar-count">${(list || []).length.toLocaleString("ar")} عنصر</span>
+      <button class="secondary-button compact" data-action="reload-admin-catalog">${icon("download")} تحديث</button>
+    </div>
+    <div class="product-cat-filter">
+      ${chip("pending", "قيد المراجعة")}
+      ${chip("approved", "معتمدة")}
+      ${chip("rejected", "مرفوضة")}
+      ${chip("all", "الكل")}
+    </div>
+    ${selCount ? `
+    <div class="bulk-action-bar">
+      <span>${selCount.toLocaleString("ar")} محدد</span>
+      <button type="button" class="primary-button compact" data-action="admin-catalog-bulk-approve">${icon("check")} اعتماد المحدد</button>
+      <button type="button" class="secondary-button compact" data-action="admin-catalog-bulk-reject">${icon("close")} رفض المحدد</button>
+      <button type="button" class="table-action" data-action="admin-catalog-clear-selection">إلغاء التحديد</button>
+    </div>` : ""}
+    <section class="dashboard-card">
+      ${list == null
+        ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ التحميل…</p></div>`
+        : (list.length ? `<div class="catalog-review-grid">${cards}</div>` : `<div class="empty-managed">${icon("box")}<p>${status === "pending" ? "لا توجد عناصر جديدة بانتظار المراجعة." : "لا توجد عناصر مطابقة."}</p></div>`)}
+    </section>`;
+}
+
+// On-demand, per-item AI cleanup (background/marks removal + zoom
+// standardization) — costs OpenAI credits, so it's only ever triggered
+// explicitly by the reviewer clicking "تحسين بالذكاء الاصطناعي", never
+// automatically. See api/catalog-review.js?action=enhance.
+async function enhanceCatalogItem(id, cardEl) {
+  const btn = cardEl && cardEl.querySelector('[data-action="admin-catalog-enhance"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = `${icon("stars")} جارٍ التحسين…`; }
+  try {
+    const data = await catalogReviewApi("enhance", { method: "POST", body: { id } });
+    const item = (state._adminCatalog || []).find(it => it.id === id);
+    if (item) { item.image = data.image; item.enhanced = true; if (data.brandCheckNote) item.review_note = data.brandCheckNote; }
+    showToast("تم تحسين الصورة بالذكاء الاصطناعي", "success");
+    render();
+  } catch (e) {
+    showToast("تعذّر تحسين الصورة: " + e.message, "error");
+    if (btn) { btn.disabled = false; btn.innerHTML = `${icon("stars")} تحسين بالذكاء الاصطناعي`; }
+  }
+}
+
+async function reviewCatalogItem(id, decision, cardEl) {
+  const nameInput = cardEl && cardEl.querySelector(".acr-name");
+  const canonicalName = nameInput ? nameInput.value.trim() : "";
+  try {
+    await catalogReviewApi("review", { method: "POST", body: { id, decision, canonicalName: canonicalName || undefined } });
+    state._adminCatalog = (state._adminCatalog || []).filter(it => it.id !== id);
+    if (state._adminCatalogSelected) state._adminCatalogSelected.delete(id);
+    showToast(decision === "approve" ? "تم اعتماد العنصر — سيظهر الآن لمتاجر السوبر ماركت الأخرى" : "تم رفض العنصر", "success");
+    render();
+  } catch (e) { showToast("تعذّر تنفيذ العملية: " + e.message, "error"); }
+}
+
+async function bulkReviewCatalog(decision) {
+  const ids = [...(state._adminCatalogSelected || [])];
+  if (!ids.length) return;
+  try {
+    await catalogReviewApi("bulk-review", { method: "POST", body: { ids, decision } });
+    state._adminCatalog = (state._adminCatalog || []).filter(it => !ids.includes(it.id));
+    state._adminCatalogSelected = new Set();
+    showToast(`${decision === "approve" ? "تم اعتماد" : "تم رفض"} ${ids.length.toLocaleString("ar")} عنصراً`, "success");
+    render();
+  } catch (e) { showToast("تعذّر تنفيذ العملية: " + e.message, "error"); }
 }
 
 // Arabic label for a coupon's type/value ("خصم 10%", "خصم 50 ل.ت", "توصيل مجاني").
@@ -7417,8 +7540,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -10336,6 +10459,24 @@ document.addEventListener("click", event => {
   }
   if (action === "content-section") { state.adminContentSection = target.dataset.section; render(); }
   if (action === "content-back") { state.adminContentSection = null; render(); }
+  // ── Shared supermarket image bank — admin review queue ──
+  if (action === "admin-catalog-status") {
+    state._adminCatalogStatus = target.dataset.status;
+    state._adminCatalog = null;
+    state._adminCatalogSelected = new Set();
+    render();
+  }
+  if (action === "reload-admin-catalog") { state._adminCatalog = null; render(); }
+  if (action === "admin-catalog-clear-selection") { state._adminCatalogSelected = new Set(); render(); }
+  if (action === "admin-catalog-enhance") {
+    enhanceCatalogItem(Number(target.dataset.id), target.closest(".catalog-review-card"));
+  }
+  if (action === "admin-catalog-approve" || action === "admin-catalog-reject") {
+    const id = Number(target.dataset.id);
+    reviewCatalogItem(id, action === "admin-catalog-approve" ? "approve" : "reject", target.closest(".catalog-review-card"));
+  }
+  if (action === "admin-catalog-bulk-approve") bulkReviewCatalog("approve");
+  if (action === "admin-catalog-bulk-reject") bulkReviewCatalog("reject");
   // ── AI Management ──
   if (action === "ai-refresh") { state.adminAI = null; state._adminAITestReply = undefined; loadAdminAI(); }
   if (action === "ai-edit-provider") { state._adminAIEdit = target.dataset.id; render(); }
@@ -10756,6 +10897,12 @@ document.addEventListener("change", event => {
     saveContentSetting("hiddenProducts", { ids: [...ids] });   // persists (admin) + re-renders
     showToast(ids.has(id) ? "أُخفي المنتج من المتجر" : "أصبح المنتج معروضاً", "success");
   }
+  if (event.target.dataset.action === "admin-catalog-select") {
+    const id = Number(event.target.dataset.id);
+    const sel = state._adminCatalogSelected || (state._adminCatalogSelected = new Set());
+    if (event.target.checked) sel.add(id); else sel.delete(id);
+    render();
+  }
   if (event.target.id === "admin-product-store") {
     state.adminProductStoreId = Number(event.target.value);
     state.adminProductSearch = "";
@@ -10920,6 +11067,13 @@ document.addEventListener("input", event => {
   if (event.target.id === "catalog-import-search") {
     const q = normalizeAr(event.target.value.trim());
     document.querySelectorAll(".catalog-import-card").forEach(card => {
+      const match = !q || (card.dataset.search || "").includes(q);
+      card.style.display = match ? "" : "none";
+    });
+  }
+  if (event.target.id === "admin-catalog-search") {
+    const q = normalizeAr(event.target.value.trim());
+    document.querySelectorAll(".catalog-review-card").forEach(card => {
       const match = !q || (card.dataset.search || "").includes(q);
       card.style.display = match ? "" : "none";
     });
