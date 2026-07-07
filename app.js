@@ -117,6 +117,10 @@ function storeAllowsNoImage(storeId) { return ALLOW_NO_IMAGE_STORES.has(Number(s
 // the management panels (merchant + admin) read `allProducts` instead, so they still see and manage
 // EVERY product — including ones without an image (shown there as "بانتظار صورة / غير معروض").
 let HIDDEN_PRODUCTS = new Set();
+// Admin-curated picks for the homepage "الأكثر طلباً اليوم" section (ids loaded from
+// site_settings.mostOrdered). We don't have real sales-ranking data yet, so this is a
+// manual admin selection — see mostOrderedProducts() for the fallback when it's empty.
+let MOST_ORDERED_PRODUCTS = new Set();
 function isShownOnStore(p) {
   return p.available !== false && !HIDDEN_PRODUCTS.has(p.id) && (!isPlaceholderImage(p.image) || storeAllowsNoImage(p.storeId));
 }
@@ -1207,6 +1211,7 @@ async function loadSiteSettings() {
     }
     // Admin force-hidden product ids -> re-derive the storefront list (panels use allProducts).
     HIDDEN_PRODUCTS = new Set((((map.hiddenProducts && map.hiddenProducts.ids) || [])).map(Number));
+    MOST_ORDERED_PRODUCTS = new Set((((map.mostOrdered && map.mostOrdered.ids) || [])).map(Number));
     if (allProducts.length) { const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p)); }
     render();
   } catch (e) { /* keep defaults */ }
@@ -2451,6 +2456,133 @@ function saveStoreExtraCategory(storeId, catName) {
   adminApi("save-settings", { method: "POST", body: { key: "storeExtraCategories", value: map } }).catch(() => showToast("تعذّر الحفظ سحابياً", ""));
 }
 
+// Homepage quick-search chips under the hero search box — each just runs the
+// same search flow as typing + pressing "ابحث" (see action "quick-chip").
+const QUICK_SEARCH_CHIPS = ["دجاج مشوي", "رز", "لحوم", "حلويات", "خضار", "ماركت عربي"];
+
+// A sensible cross-store mix when there's no curated pick: one available,
+// imaged product per approved BRAND (highest-rated stores first) — branches of
+// the same brand are collapsed first so a multi-branch chain doesn't fill the
+// rail with the same product repeated once per branch. Not a sales ranking —
+// just a diverse spotlight.
+function fallbackProductMix(count, excludeIds = []) {
+  const excluded = new Set(excludeIds);
+  const approvedStores = collapseBranchGroups(stores.filter(isStoreApproved))
+    .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
+  const picks = [];
+  for (const store of approvedStores) {
+    if (picks.length >= count) break;
+    const p = products.find(pr => pr.storeId === store.id && pr.available && !excluded.has(pr.id) && !isPlaceholderImage(pr.image));
+    if (p) { picks.push(p); excluded.add(p.id); }
+  }
+  return picks;
+}
+// «الأكثر طلباً اليوم» — admin-curated pick (site_settings.mostOrdered.ids, managed from
+// Products > toggle "الأكثر طلباً"). We don't have real sales-ranking data yet, so this
+// is a manual selection; falls back to a cross-store mix when nothing is picked.
+function mostOrderedProducts() {
+  const picked = products.filter(p => MOST_ORDERED_PRODUCTS.has(p.id) && p.available);
+  if (picked.length) return picked.slice(0, 10);
+  return fallbackProductMix(8);
+}
+// «منتجات مقترحة لك» — a diverse mix from multiple stores, skipping whatever is
+// already shown in "الأكثر طلباً اليوم" just above it.
+function recommendedProducts(excludeIds = []) {
+  return fallbackProductMix(10, excludeIds);
+}
+
+// Product card for the homepage "الأكثر طلباً/مقترحة" rails: adds the store name
+// (the plain productCard omits it since it's normally shown within one store's
+// page) and a labeled add-to-cart button per the conversion-page spec.
+function homeProductCard(product, { badge = false } = {}) {
+  const store = getStore(product.storeId);
+  const isFavorite = state.favorites.includes(`product-${product.id}`);
+  const noImg = isPlaceholderImage(product.image);
+  return `
+    <article class="product-card home-product-card ${!product.available ? "unavailable" : ""}">
+      <button class="product-card__image ${noImg ? "no-image" : ""}" data-action="open-product" data-id="${product.id}">
+        ${noImg ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">`}
+        ${badge ? `<span class="most-ordered-badge">${icon("star")} الأكثر طلباً</span>` : ""}
+        ${!product.available ? `<span class="soldout-overlay">غير متوفر</span>` : ""}
+      </button>
+      <button class="favorite-button product-favorite ${isFavorite ? "active" : ""}" data-action="favorite" data-key="product-${product.id}">
+        ${icon("heart")}
+      </button>
+      <div class="product-card__body">
+        <button class="product-name" data-action="open-product" data-id="${product.id}">${esc(product.name)}</button>
+        <small class="home-product-store">${store ? esc(store.name) : ""}</small>
+        <div class="price-row">
+          <div><strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}</div>
+          <button class="quick-add quick-add--labeled" data-action="quick-add" data-id="${product.id}" ${!product.available ? "disabled" : ""}>${icon("plus")} أضف للسلة</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+// Offer card for the homepage "عروض اليوم" grid — real discounts only (products
+// with an actual oldPrice set by the merchant); CTA opens the product instead
+// of adding straight to cart so shoppers can see the deal detail first.
+function homeOfferCard(product) {
+  const store = getStore(product.storeId);
+  const discount = product.oldPrice ? Math.round((1 - product.price / product.oldPrice) * 100) : 0;
+  return `
+    <article class="home-offer-card">
+      <button class="home-offer-card__image" data-action="open-product" data-id="${product.id}">
+        <img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">
+        ${discount ? `<span class="discount-chip">وفر ${discount}%</span>` : ""}
+      </button>
+      <div class="home-offer-card__body">
+        <small>${store ? esc(store.name) : ""}</small>
+        <strong>${esc(product.name)}</strong>
+        <div class="price-row">
+          <div><strong>${money(product.price)}</strong>${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}</div>
+        </div>
+        <button class="secondary-button compact" data-action="open-product" data-id="${product.id}">اطلب الآن ${icon("arrowLeft")}</button>
+      </div>
+    </article>
+  `;
+}
+
+// Store card for the homepage "متاجر قريبة منك الآن" section: the standard
+// storeCard() plus the minimum order, a cash-on-delivery note, and an explicit
+// order CTA — the extra proof points the conversion-page spec calls for.
+function nearbyStoreCard(store) {
+  const isFavorite = state.favorites.includes(`store-${store.id}`);
+  const open = isStoreOpenNow(store);
+  return `
+    <article class="store-card nearby-store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
+      <button class="store-card__image" data-action="open-store" data-id="${store.id}">
+        <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
+        <span class="status-badge ${open ? "open" : "closed"}">${open ? "مفتوح" : "مغلق الآن"}</span>
+        ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
+        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
+      </button>
+      <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
+        ${icon("heart")}
+      </button>
+      <div class="store-card__body">
+        <button class="store-title-row" data-action="open-store" data-id="${store.id}">
+          ${storeAvatar(store)}
+          <span><strong>${esc(store.name)}</strong><small>${esc(store.category)}</small></span>
+        </button>
+        <div class="store-rating">
+          ${store.newStore ? `${icon("store")} <strong>متجر جديد</strong><span>موثق البيانات</span>` : `${icon("star")} <strong>${store.rating}</strong><span>(${store.reviews} تقييم)</span>`}
+        </div>
+        <div class="store-meta">
+          ${etaChip(store, { withDistanceFallback: true })}
+          <span>${icon("bike")} ${deliveryPriceLabel(store)}</span>
+        </div>
+        <div class="nearby-store-extra">
+          <span>${icon("bag")} حد أدنى ${money(store.minOrder)}</span>
+          <span>${icon("shield")} الدفع عند الاستلام</span>
+        </div>
+        <button class="primary-button full compact" data-action="open-store" data-id="${store.id}">اطلب الآن ${icon("arrowLeft")}</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderHome() {
   // For brands with several branches, surface the branch nearest the visitor's
   // location (from geolocation) instead of a fixed "main" branch — on desktop and
@@ -2458,9 +2590,14 @@ function renderHome() {
   // branch until the browser location is known.
   let featuredStores = collapseBranchGroups(stores.filter(store => store.featured && isStoreApproved(store)));
   // When the visitor's location is known, show the nearest featured stores first
-  // so "متاجر مميزة بالقرب منك" is literally true.
+  // so "متاجر قريبة منك الآن" is literally true.
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
-  const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 4);
+  const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 8);
+  const mostOrdered = mostOrderedProducts();
+  const recommended = recommendedProducts(mostOrdered.map(p => p.id));
+  // Real, not fabricated — a plain count of currently-open approved stores.
+  // No fake order counts / "last order" strings: we don't have that data yet.
+  const openStoresCount = stores.filter(s => isStoreApproved(s) && isStoreOpenNow(s)).length;
   const HT = (state.siteSettings && state.siteSettings.heroTexts) || {};
   const ht = {
     eyebrow: HT.eyebrow || "كل ما تحتاجه من دكاكين حيك",
@@ -2497,8 +2634,8 @@ function renderHome() {
           <span class="h2-eyebrow"><span class="h2-pulse"></span> ${escAttr(HT.eyebrow || "سوق الحي بين يديك — تجربة أوضح من واتساب")}</span>
           <div class="h2-slides" id="hero2-slides">
             <article class="h2-slide active">
-              <h1>اطلب من <span class="h2-grad">متاجر حيك</span><br>بطلب واحد بسيط</h1>
-              <p class="h2-lead">مطاعم، سوبرماركت، ملاحم، حلويات وقهوة في مكان واحد. اختر المتجر القريب، راجع السعر، وأرسل طلبك بثقة.</p>
+              <h1>كل ما تحتاجه من <span class="h2-grad">متاجر منطقتك</span><br>اطلب الآن وادفع عند الاستلام</h1>
+              <p class="h2-lead">مطاعم، ماركت، حلويات، لحوم، خضار — توصيل لباب بيتك في إسطنبول.</p>
             </article>
             <article class="h2-slide">
               <h1>أسعار واضحة<br><span class="h2-grad">بدون عمولة</span> على المنتجات</h1>
@@ -2516,15 +2653,19 @@ function renderHome() {
 
           <div class="hero-search">
             ${icon("search")}
-            <input id="hero-search" type="search" placeholder="ابحث عن منتج أو متجر..." value="${escAttr(state.search)}">
+            <input id="hero-search" type="search" placeholder="ابحث عن شاورما، رز، لحمة، حلويات، سوبرماركت..." value="${escAttr(state.search)}">
             <button type="button" class="search-clear" data-action="clear-search" aria-label="مسح البحث" title="مسح">${icon("close")}</button>
             ${voiceSearchButton("hero")}
             <button data-action="run-search">ابحث</button>
           </div>
 
+          <div class="search-chips" aria-label="بحث سريع">
+            ${QUICK_SEARCH_CHIPS.map(term => `<button type="button" class="search-chip" data-action="quick-chip" data-term="${escAttr(term)}">${esc(term)}</button>`).join("")}
+          </div>
+
           <div class="h2-cta-row">
-            <a class="h2-cta-main" href="/stores" data-route="stores">ابدأ الطلب الآن ←</a>
-            <a class="h2-cta-second" href="/offers" data-route="offers">شاهد العروض</a>
+            <a class="h2-cta-main" href="/stores" data-route="stores">ابدأ التسوق الآن ←</a>
+            <a class="h2-cta-second" href="#nearby-stores">تصفح المتاجر القريبة</a>
           </div>
 
           <div class="h2-dots" id="hero2-dots" aria-label="تبديل الرسائل">
@@ -2594,6 +2735,49 @@ function renderHome() {
       </div>
     </section>
 
+    <section class="section nearby-section" id="nearby-stores">
+      <div class="container">
+        <div class="section-heading">
+          <div><span class="section-kicker">اختيارات يحبها الجيران</span><h2>متاجر قريبة منك الآن</h2></div>
+          <a href="#stores" data-route="stores">استكشف الكل ${icon("arrowLeft")}</a>
+        </div>
+        ${openStoresCount ? `<div class="live-activity-pill"><span class="live-dot"></span> متاجر مفتوحة الآن: ${openStoresCount.toLocaleString("ar")}</div>` : ""}
+        <div class="store-grid">${featuredStores.map(nearbyStoreCard).join("")}</div>
+      </div>
+    </section>
+
+    ${mostOrdered.length ? `
+    <section class="section most-ordered-section">
+      <div class="container">
+        <div class="section-heading">
+          <div><span class="section-kicker">تجربة مضمونة</span><h2>الأكثر طلباً اليوم</h2></div>
+        </div>
+        <div class="product-grid">${mostOrdered.map(p => homeProductCard(p, { badge: true })).join("")}</div>
+      </div>
+    </section>` : ""}
+
+    <section class="section offers-section">
+      <div class="container">
+        <div class="offers-banner">
+          <div class="offers-banner__copy">
+            <span class="eyebrow light"><span></span> ${escAttr(hb.eyebrow)}</span>
+            <h2>عروض اليوم</h2>
+            <p>${escAttr(hb.subtitle)}</p>
+            <a ${bAttrs} class="light-button">${escAttr(hb.button)} ${icon("arrowLeft")}</a>
+          </div>
+          <div class="offer-products">
+            ${hb.image ? `<a ${bAttrs} class="offers-banner__image" style="display:block;width:100%;border-radius:18px;overflow:hidden"><img src="${escAttr(hb.image)}" alt="${escAttr(hb.title)}" style="width:100%;display:block;object-fit:cover"></a>` : offerProducts.slice(0, 2).map(product => `
+              <button class="mini-offer-card" data-action="open-product" data-id="${product.id}">
+                <img src="${product.image}" alt="${product.name}">
+                <span><small>عرض اليوم</small><strong>${product.name}</strong><b>${money(product.price)}</b></span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+        ${offerProducts.length ? `<div class="product-grid home-offer-grid">${offerProducts.map(homeOfferCard).join("")}</div>` : ""}
+      </div>
+    </section>
+
     <section class="section categories-section">
       <div class="container">
         <div class="section-heading">
@@ -2606,33 +2790,26 @@ function renderHome() {
       </div>
     </section>
 
-    <section class="section featured-section">
+    ${recommended.length ? `
+    <section class="section recommended-section">
       <div class="container">
         <div class="section-heading">
-          <div><span class="section-kicker">اختيارات يحبها الجيران</span><h2>متاجر مميزة بالقرب منك</h2></div>
-          <a href="#stores" data-route="stores">استكشف الكل ${icon("arrowLeft")}</a>
+          <div><span class="section-kicker">مختارات متنوعة</span><h2>منتجات مقترحة لك</h2></div>
         </div>
-        <div class="store-grid">${featuredStores.map(storeCard).join("")}</div>
+        <div class="product-grid">${recommended.map(p => homeProductCard(p)).join("")}</div>
       </div>
-    </section>
+    </section>` : ""}
 
-    <section class="section offers-section">
+    <section class="section confidence-section">
       <div class="container">
-        <div class="offers-banner">
-          <div class="offers-banner__copy">
-            <span class="eyebrow light"><span></span> ${escAttr(hb.eyebrow)}</span>
-            <h2>${escAttr(hb.title)}</h2>
-            <p>${escAttr(hb.subtitle)}</p>
-            <a ${bAttrs} class="light-button">${escAttr(hb.button)} ${icon("arrowLeft")}</a>
-          </div>
-          <div class="offer-products">
-            ${hb.image ? `<a ${bAttrs} class="offers-banner__image" style="display:block;width:100%;border-radius:18px;overflow:hidden"><img src="${escAttr(hb.image)}" alt="${escAttr(hb.title)}" style="width:100%;display:block;object-fit:cover"></a>` : offerProducts.slice(0, 2).map(product => `
-              <button class="mini-offer-card" data-action="open-product" data-id="${product.id}">
-                <img src="${product.image}" alt="${product.name}">
-                <span><small>عرض اليوم</small><strong>${product.name}</strong><b>${money(product.price)}</b></span>
-              </button>
-            `).join("")}
-          </div>
+        <div class="section-heading centered">
+          <div><span class="section-kicker">ثقة من أول طلب</span><h2>اطلب بثقة</h2></div>
+        </div>
+        <div class="confidence-grid">
+          <article>${icon("shield")}<h3>الدفع عند الاستلام</h3><p>لا حاجة لبطاقة أو دفع مسبق — تدفع عند وصول طلبك.</p></article>
+          <article>${icon("whatsapp")}<h3>تأكيد الطلب عبر واتساب</h3><p>يصلك تأكيد فوري بتفاصيل طلبك فور إرساله.</p></article>
+          <article>${icon("headset")}<h3>دعم مباشر عند الحاجة</h3><p>فريقنا جاهز لمساعدتك في أي استفسار حول طلبك.</p></article>
+          <article>${icon("store")}<h3>متاجر محلية موثوقة</h3><p>كل متجر على المنصة من حيّك ويخضع للتقييم المستمر.</p></article>
         </div>
       </div>
     </section>
@@ -2646,6 +2823,18 @@ function renderHome() {
           <article><span class="step-number">١</span><div class="step-icon">${icon("store")}</div><h3>اختر متجرك</h3><p>تصفح المتاجر الموثوقة القريبة منك واختر ما يناسبك.</p></article>
           <article><span class="step-number">٢</span><div class="step-icon">${icon("bag")}</div><h3>جهّز سلتك</h3><p>أضف المنتجات وحدد الكميات وخيارات التجهيز بسهولة.</p></article>
           <article><span class="step-number">٣</span><div class="step-icon">${icon("bike")}</div><h3>استلم طلبك</h3><p>تابع حالة الطلب عبر واتساب حتى يصل إلى بابك.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section whatsapp-assist-section">
+      <div class="container">
+        <div class="whatsapp-assist">
+          <div class="whatsapp-assist__copy">
+            <h2>تحتاج مساعدة؟ اطلب عبر واتساب</h2>
+            <p>فريقنا يساعدك في اختيار المتجر المناسب وإتمام طلبك خلال دقائق.</p>
+          </div>
+          <a class="whatsapp-button" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("مرحباً، أحتاج مساعدة في طلب من دكانجي")}" target="_blank" rel="noopener">${icon("whatsapp")} تواصل معنا عبر واتساب</a>
         </div>
       </div>
     </section>
@@ -6733,7 +6922,10 @@ function adminProducts() {
         <strong>${money(p.price)}${p.oldPrice ? ` <s class="managed-old-price">${money(p.oldPrice)}</s>` : ""}</strong>
         <label class="toggle" title="${canShow ? "إظهار/إخفاء من المتجر" : "أضف صورة ليظهر المنتج"}"><input type="checkbox" ${(!forced && canShow) ? "checked" : ""} ${canShow ? "" : "disabled"} data-action="admin-toggle-hide" data-id="${p.id}"><span></span><small>${forced ? "مخفي" : "ظاهر"}</small></label>
         <span class="status-pill ${vis[0]}">${vis[1]}</span>
-        <div class="managed-product-actions"><button class="table-action" data-action="edit-product" data-id="${p.id}" title="تعديل الاسم والسعر">${icon("edit")}</button></div>
+        <div class="managed-product-actions">
+          <button class="table-action ${MOST_ORDERED_PRODUCTS.has(p.id) ? "active" : ""}" data-action="toggle-most-ordered" data-id="${p.id}" title="إظهار في «الأكثر طلباً اليوم» على الرئيسية">${icon("star")}</button>
+          <button class="table-action" data-action="edit-product" data-id="${p.id}" title="تعديل الاسم والسعر">${icon("edit")}</button>
+        </div>
       </article>`;
   }).join("");
   return `
@@ -9621,6 +9813,14 @@ document.addEventListener("click", event => {
     const slug = (typeof CATEGORY_TEXT_TO_SLUG !== "undefined") && CATEGORY_TEXT_TO_SLUG[catName];
     navigate(slug ? `category/${slug}` : "stores");
   }
+  if (action === "toggle-most-ordered") {
+    const id = Number(target.dataset.id);
+    const ids = new Set([...MOST_ORDERED_PRODUCTS]);
+    if (ids.has(id)) ids.delete(id); else ids.add(id);
+    MOST_ORDERED_PRODUCTS = ids;
+    saveContentSetting("mostOrdered", { ids: [...ids] });
+    showToast(ids.has(id) ? "أُضيف إلى «الأكثر طلباً اليوم»" : "أُزيل من «الأكثر طلباً اليوم»", "success");
+  }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
   if (action === "offers-filter") { state.offersCategory = target.dataset.category; render(); }
   if (action === "admin-cat-filter") {
@@ -9661,6 +9861,12 @@ document.addEventListener("click", event => {
   }
   if (action === "run-search") {
     state.search = document.getElementById("hero-search").value.trim();
+    state.storeFilter = "الكل";
+    if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
+    navigate("stores");
+  }
+  if (action === "quick-chip") {
+    state.search = target.dataset.term || target.textContent.trim();
     state.storeFilter = "الكل";
     if (state.search) window.DUKKANCI_TRACKING?.track("search", { search_term: state.search });
     navigate("stores");
