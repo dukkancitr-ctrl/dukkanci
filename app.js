@@ -7679,6 +7679,16 @@ function renderCheckout() {
   if (window.DUKKANCI_INTEGRATIONS && !window.DUKKANCI_INTEGRATIONS.loaded) {
     window.DUKKANCI_INTEGRATIONS.load().then(() => { if (state.route === "checkout") render(); });
   }
+  // The cart persists in localStorage independently of the live catalog — if a
+  // product was deleted/hidden after being added, drop it here instead of
+  // crashing the whole checkout page on the stale reference.
+  const liveCart = state.cart.filter(item => getProduct(item.productId));
+  if (liveCart.length !== state.cart.length) {
+    state.cart = liveCart;
+    saveState();
+    updateCartBadges();
+    showToast("تمت إزالة منتج لم يعد متوفراً من سلتك", "");
+  }
   if (!state.cart.length) return `<section class="section empty-page">${renderEmpty("سلتك فارغة", "أضف بعض المنتجات أولاً لتتمكن من إكمال الطلب.", "تصفح المتاجر", "stores")}</section>`;
   const store = getStore(state.cart[0].storeId);
   const defaultAddress = getDefaultAddress();
@@ -8350,6 +8360,11 @@ function render() {
 }
 
 function renderCart() {
+  // Same stale-reference guard as renderCheckout: a product can be
+  // deleted/hidden after being added, and the cart persists past that in
+  // localStorage — drop it here instead of crashing the drawer.
+  const liveCart = state.cart.filter(item => getProduct(item.productId));
+  if (liveCart.length !== state.cart.length) { state.cart = liveCart; saveState(); updateCartBadges(); }
   const totals = cartTotals(getDefaultAddress()?.id);
   if (!state.cart.length) {
     cartDrawer.innerHTML = `<div class="drawer-head"><div><h2>سلة التسوق</h2><span>0 منتجات</span></div><button data-action="close-drawers">${icon("close")}</button></div>${renderEmpty("سلتك تنتظر اختياراتك", "تصفح متاجر الحي وأضف ما تحتاجه بسهولة.", "تصفح المتاجر", "stores")}`;
