@@ -445,12 +445,36 @@ function dashboardDate() {
 
 // Slug helpers: URLs use /store/<english-slug> (see store-slugs.js), but numeric
 // /store/<id> still resolves for backward compatibility.
+// Fixed canonical origin for anything that leaves the browser (share text,
+// invite/QR links, feed URLs sent to third parties) — location.origin must NOT
+// be used for these, or a *.vercel.app preview/deploy leaks into customer-facing
+// links. Browser-redirect flows (OAuth, email confirm) still correctly use
+// location.origin — they must return to whatever origin the user is actually on.
+const SITE_ORIGIN = "https://www.dukkanci.com.tr";
 const SLUG_MAP = (typeof STORE_SLUGS !== "undefined") ? STORE_SLUGS : {};
 const SLUG_TO_ID = (typeof STORE_SLUG_TO_ID !== "undefined") ? STORE_SLUG_TO_ID : {};
 
-// The URL segment for a store: its English slug if defined, else the numeric id.
+// ASCII-only slugify: keeps Latin letters/digits, drops everything else (incl.
+// Arabic — a mechanical transliteration reads worse than an id suffix). Callers
+// append the store id so the result is always unique even when the name has no
+// Latin characters at all (falls back to just "store-<id>").
+function slugify(str) {
+  const base = String(str || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "store";
+}
+function autoStoreSlug(name, id) {
+  return `${slugify(name)}-${id}`;
+}
+
+// The URL segment for a store: an admin-set DB slug, else the legacy static
+// map (store-slugs.js), else an auto-generated slug — never a bare numeric id
+// once the store has a name, so a new store never launches with an ugly /store/<id> URL.
 function storeParam(store) {
-  return (store && SLUG_MAP[store.id]) || (store && store.id) || "";
+  if (!store) return "";
+  return store.slug || SLUG_MAP[store.id] || (store.name ? autoStoreSlug(store.name, store.id) : store.id) || "";
 }
 
 // Rule guard: every VISIBLE store MUST have a clean Latin slug in store-slugs.js — a
@@ -472,7 +496,10 @@ function warnUnslugged() {
 function getStore(id) {
   if (typeof id === "string" && !/^\d+$/.test(id)) {
     const mapped = SLUG_TO_ID[id];
-    return mapped != null ? stores.find(store => store.id === mapped) : undefined;
+    if (mapped != null) return stores.find(store => store.id === mapped);
+    // Not in the legacy static map — try an admin-set DB slug, then the same
+    // auto-generated slug storeParam() would produce for this store.
+    return stores.find(store => store.slug === id || (store.name && autoStoreSlug(store.name, store.id) === id));
   }
   return stores.find(store => store.id === Number(id));
 }
@@ -560,7 +587,7 @@ function mapDbStore(r) {
     ? r.name.split(" - ").pop().trim()
     : undefined;
   return {
-    id: r.id, name: r.name, category: r.category, image: r.image, coverImage: r.cover_image, branchName,
+    id: r.id, name: r.name, slug: r.slug, category: r.category, image: r.image, coverImage: r.cover_image, branchName,
     logoImage: r.logo_image, logo: r.logo, rating: r.rating, reviews: r.reviews, newStore: r.new_store,
     delivery: r.delivery, minOrder: r.min_order, time: r.time, distance: r.distance,
     freeDeliveryThreshold: r.free_delivery_threshold,
@@ -581,6 +608,7 @@ function mapDbProduct(r) {
     price: Number(r.price), oldPrice: r.old_price != null ? Number(r.old_price) : undefined,
     priceOnRequest: r.price_on_request, unit: r.unit, category: r.category, available: r.available,
     featured: r.featured, description: r.description, imageFit: r.image_fit, options: r.options || [],
+    addons: r.addons || [],
     // Traceability link back to the shared supermarket image bank ("مخزن الصور
     // المشترك") this product was imported from, if any — see catalog_products.
     catalogProductId: r.catalog_product_id ?? null
@@ -592,6 +620,7 @@ function toDbProduct(p) {
     price: p.price ?? 0, old_price: p.oldPrice ?? null, price_on_request: !!p.priceOnRequest,
     unit: p.unit ?? null, category: p.category ?? null, available: p.available !== false, featured: !!p.featured,
     description: p.description ?? null, image_fit: p.imageFit ?? null, options: p.options ?? [],
+    addons: p.addons ?? [],
     catalog_product_id: p.catalogProductId ?? null
   };
 }
@@ -699,7 +728,7 @@ function notifyGoogleIndex(path) {
   try {
     fetch("/api/notify-google", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: location.origin + path })
+      body: JSON.stringify({ url: SITE_ORIGIN + path })
     }).catch(() => {});
   } catch (e) { /* ignore */ }
 }
@@ -746,7 +775,7 @@ function productSaveErrorMessage(result) {
 
 function toDbStore(s) {
   return {
-    id: s.id, name: s.name, category: s.category, image: s.image, cover_image: s.coverImage,
+    id: s.id, name: s.name, slug: s.slug || null, category: s.category, image: s.image, cover_image: s.coverImage,
     logo_image: s.logoImage, logo: s.logo, rating: s.rating, reviews: s.reviews, new_store: !!s.newStore,
     delivery: s.delivery, min_order: s.minOrder, time: s.time, distance: s.distance,
     lat: s.location?.lat ?? null, lng: s.location?.lng ?? null, map_url: s.mapUrl, open: s.open !== false,
@@ -775,6 +804,23 @@ async function pushStoreCloud(store) {
     if (r.ok) notifyGoogleIndex(`/store/${storeParam(store)}`);
     else { const e = await r.json().catch(() => ({})); console.warn("store cloud save:", e.error || r.status); }
   } catch (e) { console.warn("store cloud save:", e.message); }
+}
+// Right after a merchant self-registers, write the SAME password they just chose
+// (Supabase Auth) into store_credentials too, so the admin-issued phone+password
+// login mode — which checks store_credentials, not Supabase Auth — doesn't end up
+// requiring a different, auto-generated password than the one the owner set.
+async function syncOwnerCredentials(storeId, phone, password) {
+  if (!phone || !password) return;
+  try {
+    const { data } = await window.supabaseClient.auth.getSession();
+    const tok = data && data.session && data.session.access_token;
+    if (!tok) return;
+    await fetch(`/api/notify-order?action=sync-owner-credentials&storeId=${storeId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-sb-token": tok },
+      body: JSON.stringify({ storeId, phone, password })
+    });
+  } catch (e) { console.warn("owner credentials sync:", e.message); }
 }
 function deleteProductCloud(id) {
   const numId = Number(id);
@@ -2015,7 +2061,7 @@ function renderReferral() {
   const data = state.referral;
   if (!data) { loadReferralData(); return `<div class="account-empty">${icon("megaphone")}<p>جارٍ التحميل…</p></div>`; }
   const code = data.code || "—";
-  const shareText = `اطلب من متاجر حيّك عبر دكانجي واستخدم كود دعوتي ${code} لتحصل على رصيد! ${location.origin}`;
+  const shareText = `اطلب من متاجر حيّك عبر دكانجي واستخدم كود دعوتي ${code} لتحصل على رصيد! ${SITE_ORIGIN}`;
   return `
     <div class="referral-card">
       <div class="referral-balance"><small>رصيدك الحالي</small><strong>${money(data.balance || 0)}</strong></div>
@@ -2110,7 +2156,7 @@ function renderGroupOrder(token) {
   const pct = target > 0 ? Math.min(100, Math.round(total / target * 100)) : 0;
   const closed = g.status !== "open";
   const reached = target > 0 && total >= target;
-  const link = location.origin + "/group/" + token;
+  const link = SITE_ORIGIN + "/group/" + token;
   const parts = Array.isArray(g.participants) ? g.participants : [];
   return wrap(`
     <div class="group-order-card">
@@ -2864,7 +2910,7 @@ function renderStorePage(id) {
                 <span>${store.newStore ? `${icon("check")} <b>متجر جديد موثق</b>` : `${icon("star")} <b>${store.rating}</b> (${store.reviews} تقييم)`}</span>
                 ${etaChip(store)}
                 <span>${icon("bike")} توصيل ${deliveryPriceLabel(store)}</span>
-                <span>${icon("pin")} ${store.distance} كم</span>
+                ${branchDistanceKm(store) != null ? `<span>${icon("pin")} ${formatDistance(branchDistanceKm(store))}</span>` : `<span>${icon("pin")} حدّد موقعك لمعرفة المسافة</span>`}
               </div>
             </div>
           </div>
@@ -3209,7 +3255,7 @@ function statCard(iconName, label, value, trend, tone) {
 // link is the store's public slug URL (storeParam) on the current origin.
 function merchantShare() {
   const store = getMerchantStore();
-  const url = location.origin + "/store/" + storeParam(store);
+  const url = SITE_ORIGIN + "/store/" + storeParam(store);
   const msg = `تسوّق من ${store.name} على دكانجي واطلب أونلاين 👇\n${url}`;
   const waShare = "https://wa.me/?text=" + encodeURIComponent(msg);
   const fbShare = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(url);
@@ -3862,7 +3908,7 @@ function merchantCatalog() {
   const list = allProducts.filter(p => p.storeId === store.id);
   const groups = { ready: [], no_image: [], embedded_image: [], no_price: [] };
   list.forEach(p => groups[catalogReadiness(p)].push(p));
-  const feedUrl = `${location.origin}/api/notify-order?action=meta-feed&storeId=${store.id}`;
+  const feedUrl = `${SITE_ORIGIN}/api/notify-order?action=meta-feed&storeId=${store.id}`;
   const nameList = (arr) => arr.length
     ? `<ul class="report-name-list">${arr.slice(0, 6).map(p => `<li>${esc(p.name)}</li>`).join("")}${arr.length > 6 ? `<li class="more">…و${(arr.length - 6).toLocaleString("ar")} منتجاً آخر</li>` : ""}</ul>`
     : "";
@@ -4434,12 +4480,17 @@ function merchantStore() {
       <div class="card-heading"><div><h3>بيانات المتجر</h3><p>المعلومات الظاهرة للعملاء في صفحة متجرك</p></div>
         <label class="delivery-toggle"><input type="checkbox" name="storeOpen" ${store.open !== false ? "checked" : ""}><span></span><b>${store.open !== false ? "المتجر مفتوح" : "المتجر مغلق"}</b></label>
       </div>
-      <div class="cover-uploader"><img src="${store.coverImage || store.image}" alt=""></div>
+      <div class="cover-uploader" id="store-cover-preview"><img src="${store.coverImage || store.image}" alt=""></div>
+      <input type="hidden" name="coverImage" value="${escAttr(store.coverImage || store.image || "")}">
+      <div class="cover-uploader-actions">
+        <label class="upload-tile compact">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="store-cover-file" accept="image/jpeg,image/png,image/webp" hidden></label>
+        <button type="button" class="secondary-button compact" data-action="clear-store-cover">${icon("close")} إزالة الصورة</button>
+      </div>
       <div class="form-grid">
         <label><span>اسم المتجر</span><input name="storeName" required value="${escAttr(store.name || "")}"><small class="field-hint">يظهر في عنوان التبويب هكذا: «دكانجي - ${escAttr(store.name || "")}»</small></label>
+        <label><span>رابط المتجر (slug)</span><input name="storeSlug" dir="ltr" placeholder="pasa-pizzeria" value="${escAttr(store.slug || "")}"><small class="field-hint">dukkanci.com.tr/store/${escAttr(storeParam(store))}${store.slug ? "" : " — رابط تلقائي؛ يمكنك تعيين رابط أوضح هنا"}</small></label>
         <label><span>التصنيف</span><select name="category">${[...new Set([store.category, ...storeCategoryNames(), ...stores.map(s => s.category)])].filter(Boolean).map(c => `<option ${c === store.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
         <label class="wide"><span>وصف قصير</span><textarea name="description">${escAttr(store.description || "")}</textarea></label>
-        <label class="wide"><span>رابط صورة الواجهة</span><input name="coverImage" dir="ltr" placeholder="/assets/... أو https://..." value="${escAttr(store.coverImage || store.image || "")}"></label>
         <label class="wide"><span>العنوان</span><input name="address" value="${escAttr(store.address || "")}"></label>
         <label><span>رقم واتساب الطلبات</span><input name="phone" dir="ltr" value="${escAttr(store.phone || "")}"></label>
         <label><span>أوقات العمل</span><input name="hours" value="${escAttr(store.hours || "")}"></label>
@@ -5151,11 +5202,25 @@ function aggregateCustomers(storeId) {
 }
 
 function adminCustomers() {
+  if (state.adminCustomerDirectory === undefined) { state.adminCustomerDirectory = null; loadAdminCustomerDirectory(); }
   const customers = aggregateCustomers();
-  if (!customers.length) {
+  const directory = Array.isArray(state.adminCustomerDirectory) ? state.adminCustomerDirectory : [];
+  // Registered accounts (incl. Google-login sign-ups) that never placed an order —
+  // match by phone against the order-derived rows so a registered customer who DID
+  // order collapses into their existing row instead of appearing twice.
+  const orderedPhones = new Set(customers.map(c => c.phone).filter(Boolean));
+  const visitors = directory
+    .filter(d => !d.orderCount && !(d.phone && orderedPhones.has(customerPhoneDigits({ customerPhone: d.phone }))))
+    .map(d => ({
+      key: "u:" + d.id, name: d.name || "بدون اسم", phone: customerPhoneDigits({ customerPhone: d.phone }) || d.phone || "",
+      total: 0, count: 0, stores: new Set(), firstAt: Date.parse(d.createdAt) || 0, lastAt: Date.parse(d.lastActiveAt) || 0,
+      lastTime: "", address: "", visitor: true, provider: d.provider === "google" ? "Google" : "بريد إلكتروني", email: d.email
+    }));
+  const all = [...customers, ...visitors].sort((a, b) => b.lastAt - a.lastAt);
+  if (!all.length) {
     return `
       <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input placeholder="ابحث بالاسم أو رقم الهاتف"></div></div>
-      <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد. ستظهر بيانات كل عميل (الاسم، الهاتف، طلباته وإنفاقه) تلقائياً بمجرد ورود أول طلب.</p></div></section>`;
+      <section class="dashboard-card"><div class="empty-managed">${icon("users")}<p>لا يوجد عملاء بعد. ستظهر بيانات كل عميل (الاسم، الهاتف، طلباته وإنفاقه) تلقائياً بمجرد التسجيل أو ورود أول طلب.</p></div></section>`;
   }
   const totalOrders = customers.reduce((s, c) => s + c.count, 0);
   const totalRevenue = customers.reduce((s, c) => s + c.total, 0);
@@ -5163,27 +5228,28 @@ function adminCustomers() {
   const fmtDate = ms => { try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(ms)); } catch (e) { return ""; } };
   return `
     <div class="stats-grid admin-stats">
-      ${statCard("users", "إجمالي العملاء", customers.length.toLocaleString("ar"), repeat ? `${repeat.toLocaleString("ar")} عميل متكرّر` : "من واقع الطلبات", "blue")}
-      ${statCard("receipt", "إجمالي الطلبات", totalOrders.toLocaleString("ar"), `بمعدل ${(totalOrders / customers.length).toLocaleString("ar", { maximumFractionDigits: 1 })} لكل عميل`, "green")}
+      ${statCard("users", "إجمالي العملاء", all.length.toLocaleString("ar"), repeat ? `${repeat.toLocaleString("ar")} عميل متكرّر` : "من واقع الطلبات والتسجيل", "blue")}
+      ${statCard("receipt", "إجمالي الطلبات", totalOrders.toLocaleString("ar"), `بمعدل ${(totalOrders / customers.length).toLocaleString("ar", { maximumFractionDigits: 1 })} لكل عميل طلب`, "green")}
       ${statCard("wallet", "إجمالي الإنفاق", money(totalRevenue), "على مستوى المنصة", "orange")}
     </div>
     <div class="dashboard-toolbar"><div class="dashboard-search">${icon("search")}<input id="admin-customer-search" placeholder="ابحث بالاسم أو رقم الهاتف"></div><div class="toolbar-actions"><button class="secondary-button compact" data-action="export-csv" data-kind="customers">${icon("download")} تصدير</button></div></div>
     <section class="dashboard-card customers-table-card">
       <div class="table-wrap">
         <table class="admin-table">
-          <thead><tr><th>العميل</th><th>الهاتف</th><th>الطلبات</th><th>إجمالي الإنفاق</th><th>المتاجر</th><th>آخر طلب</th><th></th></tr></thead>
+          <thead><tr><th>العميل</th><th>الهاتف</th><th>الحالة</th><th>الطلبات</th><th>إجمالي الإنفاق</th><th>المتاجر</th><th>آخر نشاط</th><th></th></tr></thead>
           <tbody>
-            ${customers.map(c => `
+            ${all.map(c => `
               <tr>
-                <td><strong>${esc(c.name)}</strong>${c.address ? `<small class="cust-addr">${esc(c.address)}</small>` : ""}</td>
+                <td><strong>${esc(c.name)}</strong>${c.email ? `<small class="cust-addr">${esc(c.email)}</small>` : (c.address ? `<small class="cust-addr">${esc(c.address)}</small>` : "")}</td>
                 <td>${c.phone ? `<code dir="ltr">${esc(c.phone)}</code>` : `<span class="creds-muted">—</span>`}</td>
+                <td>${c.visitor ? `<span class="status-pill gray">زائر مسجّل (${esc(c.provider)})</span>` : `<span class="status-pill green">عميل</span>`}</td>
                 <td>${c.count.toLocaleString("ar")}</td>
                 <td><strong>${money(c.total)}</strong></td>
                 <td>${c.stores.size.toLocaleString("ar")}</td>
                 <td>${c.lastAt ? fmtDate(c.lastAt) : esc(c.lastTime)}</td>
                 <td class="creds-actions">
                   ${c.phone ? `<a class="table-action" href="https://wa.me/${c.phone}" target="_blank" rel="noopener" title="مراسلة عبر واتساب">${icon("whatsapp")}</a>` : ""}
-                  <button class="table-action" data-action="view-customer" data-key="${escAttr(c.key)}" title="عرض ملف العميل وطلباته">${icon("eye")}</button>
+                  ${c.visitor ? "" : `<button class="table-action" data-action="view-customer" data-key="${escAttr(c.key)}" title="عرض ملف العميل وطلباته">${icon("eye")}</button>`}
                 </td>
               </tr>`).join("")}
           </tbody>
@@ -5354,6 +5420,18 @@ async function loadAdminCreds() {
 
 function adminIntegrations() {
   return merchantIntegrations();
+}
+
+// Every registered account (incl. Google-login sign-ups that never ordered),
+// loaded lazily once per admin session since it needs the service-role endpoint.
+async function loadAdminCustomerDirectory() {
+  try {
+    const data = await adminApi("admin-customers");
+    state.adminCustomerDirectory = Array.isArray(data.customers) ? data.customers : [];
+  } catch (e) {
+    state.adminCustomerDirectory = "error";
+  }
+  render();
 }
 
 // ───────────────── "استهداف فيسبوك" — Facebook ads geo-targeting ─────────────────
@@ -7272,6 +7350,13 @@ function renderDeliveryQuoteDetails(store, quote, status = "") {
 }
 
 function renderCheckout() {
+  // Feature flags (incl. the coupon field below) load async from Supabase and can
+  // still be mid-flight the first time a fast/returning visitor reaches checkout
+  // (persisted cart + slower mobile network). Re-render once they land instead of
+  // leaving the coupon field permanently missing for that page load.
+  if (window.DUKKANCI_INTEGRATIONS && !window.DUKKANCI_INTEGRATIONS.loaded) {
+    window.DUKKANCI_INTEGRATIONS.load().then(() => { if (state.route === "checkout") render(); });
+  }
   if (!state.cart.length) return `<section class="section empty-page">${renderEmpty("سلتك فارغة", "أضف بعض المنتجات أولاً لتتمكن من إكمال الطلب.", "تصفح المتاجر", "stores")}</section>`;
   const store = getStore(state.cart[0].storeId);
   const defaultAddress = getDefaultAddress();
@@ -7789,8 +7874,7 @@ const HERO_SEARCH_HINTS = [
   "مندي لحم",
   "كنافة نابلسية",
   "قهوة تركية",
-  "وافل بلجيكي",
-  "بديل تريتس"
+  "وافل بلجيكي"
 ];
 function setupHeroSearchTyper() {
   const input = document.getElementById("hero-search");
@@ -7957,7 +8041,7 @@ function renderCart() {
       const product = getProduct(item.productId);
       return `<article class="cart-item"><img src="${product.image}" alt="${product.name}"><div class="cart-item__info"><strong>${product.name}</strong><small>${item.optionsText || product.unit}</small><b>${money(item.finalPrice)}</b><div class="quantity-control"><button data-action="cart-minus" data-index="${index}">${item.quantity === 1 ? icon("trash") : icon("minus")}</button><span>${item.quantity}</span><button data-action="cart-plus" data-index="${index}">${icon("plus")}</button></div></div></article>`;
     }).join("")}</div>
-    <div class="cart-note"><label for="cart-note">ملاحظات للمتجر</label><textarea id="cart-note" placeholder="مثال: يرجى اختيار حبات ناضجة..."></textarea></div>
+    <div class="cart-note"><label for="cart-note">ملاحظات للمتجر</label><textarea id="cart-note" placeholder="مثال: يرجى اختيار حبات ناضجة...">${escAttr(state.cartNote || "")}</textarea></div>
     <div class="cart-footer">
       <div class="cart-price-line"><span>المجموع الفرعي</span><strong>${money(totals.subtotal)}</strong></div>
       ${totals.discount > 0 ? `<div class="cart-price-line cart-discount"><span>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</span><strong>−${money(totals.discount)}</strong></div>` : ""}
@@ -8224,6 +8308,9 @@ function openProductModal(id) {
         ${product.options.map((option, optionIndex) => `
           <fieldset class="option-group"><legend>${option.name}</legend><div>${option.values.map((value, valueIndex) => `<label><input type="radio" name="option-${optionIndex}" value="${valueIndex}" ${valueIndex === 0 ? "checked" : ""}><span>${value}${option.extra[valueIndex] ? `<small>${option.extra[valueIndex] > 0 ? "+" : ""}${money(option.extra[valueIndex])}</small>` : ""}</span></label>`).join("")}</div></fieldset>
         `).join("")}
+        ${(product.addons || []).length ? `
+        <fieldset class="option-group addon-group"><legend>إضافات (اختياري)</legend><div>${product.addons.map((addon, addonIndex) => `<label><input type="checkbox" name="addon-${addonIndex}"><span>${esc(addon.name)}${addon.price ? `<small>+${money(addon.price)}</small>` : ""}</span></label>`).join("")}</div></fieldset>
+        ` : ""}
         <label class="product-notes"><span>ملاحظات خاصة</span><textarea name="notes" placeholder="اكتب أي تفاصيل تهم المتجر..."></textarea></label>
         <div class="product-add-row">
           ${product.priceOnRequest ? `
@@ -8249,6 +8336,9 @@ function updateProductModalPrice() {
   product.options.forEach((option, index) => {
     const selected = form.querySelector(`input[name="option-${index}"]:checked`);
     price += option.extra[Number(selected?.value || 0)] || 0;
+  });
+  (product.addons || []).forEach((addon, index) => {
+    if (form.querySelector(`input[name="addon-${index}"]`)?.checked) price += Number(addon.price) || 0;
   });
   document.getElementById("modal-total").textContent = money(price * quantity);
 }
@@ -8672,7 +8762,7 @@ function isProfileComplete() {
   return state.customerAddresses.some(a => a.structured?.bina && a.structured?.daire);
 }
 
-function openProfileSetupModal(pendingProductId, qty, opts, notes) {
+function openProfileSetupModal(pendingProductId, qty, opts, notes, addons) {
   const p = state.customerProfile || {};
   const existingAddr = state.customerAddresses[0] || {};
   const sf = existingAddr.structured || {};
@@ -8697,7 +8787,7 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
     <span class="section-kicker">خطوة واحدة قبل الطلب</span>
     <h2>أكمل بياناتك</h2>
     <p class="modal-sub">نحتاج اسمك ورقمك وعنوانك لإيصال الطلب إليك.</p>
-    <form id="profile-setup-form" class="modal-form" data-pid="${pendingProductId || ""}" data-qty="${qty || 1}" data-opts="${escAttr(JSON.stringify(opts || []))}" data-notes="${escAttr(notes || "")}">
+    <form id="profile-setup-form" class="modal-form" data-pid="${pendingProductId || ""}" data-qty="${qty || 1}" data-opts="${escAttr(JSON.stringify(opts || []))}" data-notes="${escAttr(notes || "")}" data-addons="${escAttr(JSON.stringify(addons || []))}">
       <div class="form-grid">
         <label><span>الاسم الكامل <i class="req">*</i></span><input name="name" required value="${escAttr(p.name || "")}" placeholder="الاسم الكامل"></label>
         <label><span>رقم الواتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" required dir="ltr" value="${escAttr(p.phone || "")}" placeholder="+90 555 000 00 00"></label>
@@ -8731,12 +8821,12 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes) {
   `, "profile-setup-modal");
 }
 
-function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
+function addToCart(productId, quantity = 1, optionSelections = [], notes = "", addonSelections = []) {
   const product = getProduct(productId);
   if (!product.available) return;
   if (product.priceOnRequest) { showToast("هذا المنتج بسعر عند الطلب — تواصل عبر واتساب"); return; }
   // Gate: require complete profile + address before allowing cart
-  if (!isProfileComplete()) { openProfileSetupModal(productId, quantity, optionSelections, notes); return; }
+  if (!isProfileComplete()) { openProfileSetupModal(productId, quantity, optionSelections, notes, addonSelections); return; }
   // Subscription gate: a store whose subscription lapsed stays visible but cannot
   // take new orders (subscription_active=false set by the Whop webhook / cron).
   const productStore = getStore(product.storeId);
@@ -8765,10 +8855,17 @@ function addToCart(productId, quantity = 1, optionSelections = [], notes = "") {
     extra += option.extra[selectedIndex] || 0;
     optionLabels.push(option.values[selectedIndex]);
   });
-  const key = `${product.id}-${optionSelections.join("-")}-${notes}`;
+  const addonLabels = [];
+  (product.addons || []).forEach((addon, index) => {
+    if (!addonSelections.includes(index)) return;
+    extra += Number(addon.price) || 0;
+    addonLabels.push(`+${esc(addon.name)}`);
+  });
+  const sortedAddons = [...addonSelections].sort((a, b) => a - b);
+  const key = `${product.id}-${optionSelections.join("-")}-${sortedAddons.join(",")}-${notes}`;
   const existing = state.cart.find(item => item.key === key);
   if (existing) existing.quantity += quantity;
-  else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: optionLabels.join("، "), optionSelections: [...optionSelections], notes });
+  else state.cart.push({ key, productId: product.id, storeId: product.storeId, quantity, finalPrice: product.price + extra, optionsText: [...optionLabels, ...addonLabels].join("، "), optionSelections: [...optionSelections], addonSelections: sortedAddons, notes });
   saveState();
   updateCartBadges();
   window.DUKKANCI_TRACKING?.track("AddToCart", { ids: [product.id], value: (product.price + extra) * quantity, product_id: product.id, store_id: product.storeId });
@@ -8916,7 +9013,7 @@ function createStoreFromJoinData(data) {
   }
   const newId = Math.max(0, ...stores.map(s => Number(s.id) || 0)) + 1;
   const store = {
-    id: newId, name: data.name, category: data.category, ownerName: data.owner,
+    id: newId, name: data.name, slug: autoStoreSlug(data.name, newId), category: data.category, ownerName: data.owner,
     logo: data.name.charAt(0) || "م", image: "/assets/photos/store-market.jpg", coverImage: "/assets/photos/store-market.jpg",
     logoImage: data.logoDataUrl || "", rating: 0, reviews: 0, newStore: true, delivery: 35, minOrder: 0,
     time: "", distance: 0, location: undefined, mapUrl: "", open: true, featured: false,
@@ -8929,6 +9026,7 @@ function createStoreFromJoinData(data) {
   stores.push(store);
   pushStoreCloud(store);
   bindStoreToUser(newId); // link ownership so RLS lets this merchant manage it
+  if (data.password) syncOwnerCredentials(newId, data.phoneRaw || data.phoneDigits, data.password);
   state.deliverySettings[newId] = { mode: "fixed", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 60 };
   state.merchantStores = [...(state.merchantStores || []), store];
   state._merchantResolved = true;
@@ -9001,6 +9099,10 @@ async function submitJoinForm(form) {
   const password = (f.get("password") || "").toString();
   if (!isValidEmail(email)) { if (errEl) { errEl.textContent = "أدخل بريداً إلكترونياً صحيحاً لإنشاء حسابك."; errEl.hidden = false; } form.querySelector('[name="email"]')?.focus(); return; }
   if (!password || password.length < 6) { if (errEl) { errEl.textContent = "اختر كلمة مرور من ٦ أحرف على الأقل."; errEl.hidden = false; } form.querySelector('[name="password"]')?.focus(); return; }
+  // Carried through to createStoreFromJoinData so the SAME password also lands in
+  // store_credentials (see syncOwnerCredentials) — otherwise the admin-issued
+  // phone+password login mode ends up checking a different, auto-generated one.
+  fields.password = password;
   stashPendingJoin(fields);
   const result = await signUpWithEmail(email, password, fields.owner ? { full_name: fields.owner } : {}, {
     errEl, btn, onConfirmNeeded: openCheckEmailModal
@@ -9032,6 +9134,7 @@ function openOrderManager(orderId) {
       <strong class="order-items-title">${icon("box")} تفاصيل الطلب (${items.reduce((s, i) => s + (i.qty || 1), 0) || order.items})</strong>
       ${items.length ? `<ul class="order-items-list">${items.map(i => `<li><span class="oi-qty">${(i.qty || 1).toLocaleString("ar")}×</span><span class="oi-name">${escAttr(i.name)}${i.options ? `<small>${escAttr(i.options)}</small>` : ""}${i.notes ? `<small class="oi-note">${icon("edit")} ${escAttr(i.notes)}</small>` : ""}</span><b>${money(i.price)}</b></li>`).join("")}</ul>` : `<p class="order-items-empty">تفاصيل الأصناف غير متوفرة لهذا الطلب.</p>`}
     </div>
+    ${order.notes ? `<div class="order-customer-note"><strong>${icon("edit")} ملاحظة العميل</strong><p>${escAttr(order.notes)}</p></div>` : ""}
     <label class="input-label"><span>تحديث حالة الطلب</span><select id="order-status-select">${statuses.map(status => `<option ${status === order.status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
     <label class="input-label"><span>ملاحظة للعميل (اختياري)</span><textarea id="order-status-note" placeholder="اكتب رسالة قصيرة تظهر للعميل..."></textarea></label>
     <button class="primary-button full" data-action="save-order-status" data-id="${order.id}">${icon("check")} حفظ التحديث</button>
@@ -9084,9 +9187,29 @@ function openProductForm(id, defaultCategory) {
     : (state.route === "admin" && state.adminProductStoreId ? getStore(state.adminProductStoreId) : getMerchantStore());
   const cats = storeProductCategories(store.id);
   const presetCat = editing ? editing.category : (defaultCategory || state.merchantProductCategory || state.adminProductCategory || cats[0] || "");
-  const optText = (editing && editing.options && editing.options[0] && editing.options[0].values)
-    ? editing.options[0].values.map((v, i) => `${v} | ${editing.options[0].extra?.[i] || 0}`).join("\n")
-    : "";
+  // Merchant-facing variant rows show the FULL price per weight/size (never a
+  // price delta — that math confused store owners). Internally still stored as
+  // {name, values[], extra[]} with extra = delta from the base price, so
+  // existing products and the customer-facing render code don't change at all.
+  const basePriceForVariants = editing ? Number(editing.price) || 0 : 0;
+  const variantRows = (editing && editing.options && editing.options[0] && editing.options[0].values)
+    ? editing.options[0].values.map((v, i) => ({ name: v, price: basePriceForVariants + (editing.options[0].extra?.[i] || 0) }))
+    : [];
+  const variantRowHtml = (row = { name: "", price: "" }) => `
+    <div class="variant-row">
+      <input name="variantName" placeholder="مثال: 1 كغ أو كبير" value="${escAttr(row.name)}">
+      <input name="variantPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="السعر الكامل (ل.ت)" value="${row.price === "" ? "" : row.price}">
+      <button type="button" class="table-action danger" data-action="remove-variant-row" title="حذف هذا الوزن/الحجم">${icon("close")}</button>
+    </div>`;
+  // Add-ons are optional, multi-select extras (e.g. "extra cheese") — distinct
+  // from variants above, which are a required single-choice group (size/weight).
+  const addonRows = editing && Array.isArray(editing.addons) ? editing.addons : [];
+  const addonRowHtml = (row = { name: "", price: "" }) => `
+    <div class="variant-row">
+      <input name="addonName" placeholder="مثال: جبنة إضافية" value="${escAttr(row.name)}">
+      <input name="addonPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="السعر الإضافي (ل.ت)" value="${row.price === "" ? "" : row.price}">
+      <button type="button" class="table-action danger" data-action="remove-addon-row" title="حذف هذه الإضافة">${icon("close")}</button>
+    </div>`;
   const hasImg = editing && editing.image && !isPlaceholderImage(editing.image);
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
@@ -9111,7 +9234,18 @@ function openProductForm(id, defaultCategory) {
             <option value="__new__">＋ إضافة تصنيف جديد...</option>
           </select>
         </label>
-        <label class="input-label wide"><span>الأحجام والخيارات (اختياري)</span><textarea name="optionLines" rows="3" placeholder="سطر لكل خيار بالصيغة: الاسم | فرق السعر&#10;مثال:&#10;وسط | 0&#10;كبير | 70">${escAttr(optText)}</textarea><small class="field-hint">اتركه فارغاً إن لم يكن للمنتج أحجام. السعر أعلاه هو سعر الخيار الأول.</small></label>
+        <div class="input-label wide">
+          <span>الأوزان/الأحجام المختلفة (اختياري)</span>
+          <div id="variant-rows" class="variant-rows">${variantRows.map(variantRowHtml).join("")}</div>
+          <button type="button" class="secondary-button compact" data-action="add-variant-row">${icon("plus")} إضافة وزن/حجم آخر</button>
+          <small class="field-hint">اتركه فارغاً إن كان للمنتج سعر واحد. لكل وزن/حجم أدخل اسمه والسعر الكامل الخاص به (وليس فرق السعر).</small>
+        </div>
+        <div class="input-label wide">
+          <span>إضافات اختيارية (اختياري)</span>
+          <div id="addon-rows" class="variant-rows">${addonRows.map(addonRowHtml).join("")}</div>
+          <button type="button" class="secondary-button compact" data-action="add-addon-row">${icon("plus")} إضافة إضافة (مثل: صوص إضافي)</button>
+          <small class="field-hint">إضافات يختارها العميل قبل إضافة المنتج للسلة (مثل صوص إضافي أو جبنة زيادة) — كل إضافة تُضاف لسعر المنتج عند اختيارها.</small>
+        </div>
         <div class="input-label wide image-input-group">
           <span>صورة المنتج</span>
           <div class="image-upload-row">
@@ -9471,7 +9605,7 @@ document.addEventListener("click", event => {
   if (action === "open-product") openProductModal(target.dataset.id);
   if (action === "quick-add") {
     const product = getProduct(target.dataset.id);
-    product.options.length ? openProductModal(product.id) : addToCart(product.id);
+    (product.options.length || (product.addons || []).length) ? openProductModal(product.id) : addToCart(product.id);
   }
   if (action === "favorite") {
     const key = target.dataset.key;
@@ -9657,6 +9791,38 @@ document.addEventListener("click", event => {
     if (preview) preview.innerHTML = icon("box");
     target.remove();
   }
+  if (action === "clear-store-cover") {
+    const form = target.closest("form");
+    const preview = document.getElementById("store-cover-preview");
+    if (form && form.elements.coverImage) form.elements.coverImage.value = "";
+    if (preview) preview.innerHTML = "";
+  }
+  if (action === "add-variant-row") {
+    const rows = document.getElementById("variant-rows");
+    if (rows) {
+      rows.insertAdjacentHTML("beforeend", `
+        <div class="variant-row">
+          <input name="variantName" placeholder="مثال: 1 كغ أو كبير">
+          <input name="variantPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="السعر الكامل (ل.ت)">
+          <button type="button" class="table-action danger" data-action="remove-variant-row" title="حذف هذا الوزن/الحجم">${icon("close")}</button>
+        </div>`);
+      rows.lastElementChild.querySelector('input[name="variantName"]').focus();
+    }
+  }
+  if (action === "remove-variant-row") target.closest(".variant-row")?.remove();
+  if (action === "add-addon-row") {
+    const rows = document.getElementById("addon-rows");
+    if (rows) {
+      rows.insertAdjacentHTML("beforeend", `
+        <div class="variant-row">
+          <input name="addonName" placeholder="مثال: جبنة إضافية">
+          <input name="addonPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="السعر الإضافي (ل.ت)">
+          <button type="button" class="table-action danger" data-action="remove-addon-row" title="حذف هذه الإضافة">${icon("close")}</button>
+        </div>`);
+      rows.lastElementChild.querySelector('input[name="addonName"]').focus();
+    }
+  }
+  if (action === "remove-addon-row") target.closest(".variant-row")?.remove();
   if (action === "ai-enhance-image") {
     const form = target.closest("form");
     if (!form) return;
@@ -10109,7 +10275,7 @@ document.addEventListener("click", event => {
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
   if (action === "copy-creds") {
     const u = target.dataset.username, p = target.dataset.password, n = target.dataset.name;
-    const text = `متجر: ${n}\nاسم المستخدم: ${u}\nكلمة المرور: ${p}\nرابط الدخول: ${location.origin}/merchant`;
+    const text = `متجر: ${n}\nاسم المستخدم: ${u}\nكلمة المرور: ${p}\nرابط الدخول: ${SITE_ORIGIN}/merchant`;
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => showToast("تم نسخ بيانات الدخول", "success")).catch(() => showToast("تعذّر النسخ", "error"));
     else showToast("النسخ غير مدعوم في هذا المتصفح", "error");
   }
@@ -10290,7 +10456,7 @@ document.addEventListener("click", event => {
   if (action === "scroll-products") document.getElementById("store-products")?.scrollIntoView({ behavior: "smooth" });
   if (action === "share-store") {
     const store = getStore(target.dataset.id);
-    const shareUrl = location.origin + location.pathname;
+    const shareUrl = SITE_ORIGIN + "/store/" + storeParam(store);
     const shareText = `${store.name} على دكانجي`;
     if (navigator.share) {
       navigator.share({ title: shareText, url: shareUrl }).catch(() => {});
@@ -10570,6 +10736,18 @@ document.addEventListener("change", event => {
     const items = categoriesList().map(c => ({ ...c }));
     if (items[i]) { items[i].hidden = !event.target.checked; saveContentSetting("categories", { items }); }
   }
+  if (event.target.id === "store-cover-file") {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const form = event.target.closest("form");
+    const preview = document.getElementById("store-cover-preview");
+    if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
+    readImageFileResized(file, 1280, 0.82).then(dataUrl => {
+      const input = form.querySelector('[name="coverImage"]'); if (input) input.value = dataUrl;
+      if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      showToast(`تم اختيار "${file.name}"`, "success");
+    }).catch(() => { if (preview) preview.innerHTML = ""; showToast("تعذّر رفع الصورة، جرّب صورة أخرى", ""); });
+  }
   if (event.target.id === "category-image-file") {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -10608,6 +10786,10 @@ document.addEventListener("change", event => {
 });
 
 document.addEventListener("input", event => {
+  if (event.target.id === "cart-note") {
+    state.cartNote = event.target.value;
+    return;
+  }
   if (event.target.id === "merchant-order-search") {
     state.merchantOrderSearch = event.target.value;
     const q = normalizeAr(event.target.value.trim());
@@ -11038,9 +11220,10 @@ document.addEventListener("submit", async event => {
     const product = getProduct(event.target.dataset.id);
     if (product.priceOnRequest) return;
     const selections = product.options.map((_, index) => Number(event.target.querySelector(`input[name="option-${index}"]:checked`)?.value || 0));
+    const addonSelections = (product.addons || []).map((_, index) => index).filter(index => event.target.querySelector(`input[name="addon-${index}"]`)?.checked);
     const quantity = Number(document.getElementById("modal-quantity").textContent);
     const notes = event.target.elements.notes?.value || "";
-    closeModal(); addToCart(product.id, quantity, selections, notes);
+    closeModal(); addToCart(product.id, quantity, selections, notes, addonSelections);
   }
   if (event.target.id === "merchant-product-form") {
     const f = event.target;
@@ -11051,26 +11234,36 @@ document.addEventListener("submit", async event => {
     const restoreSubmit = () => {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
     };
-    // Parse optional size/option lines ("الاسم | فرق السعر") into one option group.
+    // Variant rows show the FULL price per weight/size; stored internally as a
+    // delta from the base price (unchanged storage shape — see openProductForm).
+    const basePrice = Math.max(0, Math.round(Number(f.price.value) || 0));
     let options = [];
-    const optLines = (f.optionLines?.value || "").trim();
-    if (optLines) {
+    const variantNames = Array.from(f.querySelectorAll('[name="variantName"]')).map(el => el.value.trim());
+    const variantPrices = Array.from(f.querySelectorAll('[name="variantPrice"]')).map(el => el.value);
+    if (variantNames.some(Boolean)) {
       const values = [], extra = [];
-      optLines.split("\n").map(l => l.trim()).filter(Boolean).forEach(line => {
-        const [label, p] = line.split("|").map(x => (x || "").trim());
-        if (label) { values.push(label); extra.push(Math.max(0, Math.round(Number(p) || 0))); }
+      variantNames.forEach((name, i) => {
+        if (!name) return;
+        const price = Math.max(0, Math.round(Number(variantPrices[i]) || 0));
+        values.push(name); extra.push(Math.max(0, price - basePrice));
       });
       if (values.length > 1) options = [{ name: "الحجم", values, extra }];
     }
+    const addonNames = Array.from(f.querySelectorAll('[name="addonName"]')).map(el => el.value.trim());
+    const addonPrices = Array.from(f.querySelectorAll('[name="addonPrice"]')).map(el => el.value);
+    const addons = addonNames
+      .map((name, i) => ({ name, price: Math.max(0, Math.round(Number(addonPrices[i]) || 0)) }))
+      .filter(a => a.name);
     const data = {
       name: f.name.value.trim(),
-      price: Math.max(0, Math.round(Number(f.price.value) || 0)),
+      price: basePrice,
       unit: f.unit.value.trim(),
       category: f.category.value.trim() || "منتجات",
       image: (f.imageData.value || f.image.value.trim()) || "/assets/photos/store-market.jpg",
       description: f.description.value.trim(),
       available: f.available.checked,
-      options
+      options,
+      addons
     };
     if (!data.name) { restoreSubmit(); showToast("يرجى إدخال اسم المنتج"); return; }
     if (f.dataset.id) {
@@ -11232,7 +11425,7 @@ document.addEventListener("submit", async event => {
       address: isPickup ? "" : (addrObj?.address || ""),
       addressDetails: isPickup ? "" : (addrObj?.details || ""),
       lineItems,
-      notes: "",
+      notes: (state.cartNote || "").trim(),
       substitution: els.substitution?.value || "",
       payment: ({ cash: "نقداً عند التسليم", card: "بطاقة عند التسليم (POS مع المندوب)", bank: "تحويل بنكي" })[els.payment?.value] || "نقداً عند التسليم",
       scheduleDay: els.day?.value || "",
@@ -11265,6 +11458,7 @@ document.addEventListener("submit", async event => {
       }
       window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
       state.cart = [];
+      state.cartNote = "";
       state.coupon = null;
       state.useCredit = false;
       state.deliveryQuote = null;
@@ -11357,7 +11551,8 @@ document.addEventListener("submit", async event => {
     const qty = Number(event.target.dataset.qty) || 1;
     const opts = JSON.parse(event.target.dataset.opts || "[]");
     const notes = event.target.dataset.notes || "";
-    if (pid) addToCart(pid, qty, opts, notes);
+    const addons = JSON.parse(event.target.dataset.addons || "[]");
+    if (pid) addToCart(pid, qty, opts, notes, addons);
     return;
   }
   if (event.target.id === "customer-address-form") {
@@ -11420,8 +11615,9 @@ document.addEventListener("submit", async event => {
       store.bankDetails = (form.get("bankDetails") || "").toString().trim();
       store.minOrder = Math.max(0, Number(form.get("minOrder")) || 0);
       store.open = form.get("storeOpen") === "on";
-      const cover = (form.get("coverImage") || "").toString().trim();
-      if (cover) store.coverImage = cover;
+      store.coverImage = (form.get("coverImage") || "").toString().trim();
+      const rawSlug = (form.get("storeSlug") || "").toString().trim();
+      if (rawSlug) store.slug = slugify(rawSlug);
       pushStoreCloud(store);
     }
     const ratePerKm = Math.min(40, Math.max(10, Number(form.get("ratePerKm")) || 15));
@@ -11780,3 +11976,19 @@ render();
 initCatalog();
 initAuth();
 initUserLocation();
+
+// Keep the storefront in sync with admin/store-owner edits without a full realtime
+// subscription: re-pull the catalog whenever a backgrounded tab regains focus
+// (its snapshot is likely stale) and on a slow background interval for long-lived
+// tabs, so a hidden/edited store doesn't linger from an earlier page-load snapshot.
+let lastCatalogRefreshAt = Date.now();
+async function refreshCatalogIfStale() {
+  if (Date.now() - lastCatalogRefreshAt < 60000) return;
+  lastCatalogRefreshAt = Date.now();
+  const ok = await loadCatalogFromSupabase();
+  if (ok) render();
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshCatalogIfStale();
+});
+setInterval(refreshCatalogIfStale, 5 * 60 * 1000);

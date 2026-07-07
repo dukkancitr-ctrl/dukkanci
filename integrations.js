@@ -16,6 +16,7 @@
   const injected = {};
   const I = {
     settings: {},
+    loaded: false,
     enabled(key) { const s = this.settings[key]; return s && s.is_enabled && s.setting_value; },
     val(key) { const s = this.settings[key]; return s ? s.setting_value : ""; },
   };
@@ -43,6 +44,7 @@
         if (!error && data) {
           this.settings = {};
           data.forEach(r => { this.settings[r.setting_key] = { setting_value: r.setting_value || "", is_enabled: !!r.is_enabled }; });
+          this.loaded = true;
           return this.settings;
         }
         // Table absent (not provisioned here): stop querying it on future loads.
@@ -50,6 +52,7 @@
       }
     } catch (e) { /* table may not exist yet — fall through */ }
     this.settings = localSettings();
+    this.loaded = true;
     return this.settings;
   };
 

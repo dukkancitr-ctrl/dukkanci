@@ -3,6 +3,7 @@
 // product links so Google discovers and crawls each product. The SPA hydrates
 // over this and keeps the live tab in sync during in-app navigation.
 const { STORE_SLUGS, STORE_SLUG_TO_ID } = require("../store-slugs.js");
+const { resolveStoreSlug } = require("../lib/store-slug.js");
 // Origin to fetch the static shell from. Defaults to the SAME host serving this
 // request (no dependency on any fixed/old domain); override with SSR_SHELL_ORIGIN.
 const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
@@ -28,9 +29,14 @@ async function sbGet(path) {
 }
 
 module.exports = async (req, res) => {
-  // The :id segment may be a numeric id (legacy) or an English slug.
+  // The :id segment may be a numeric id (legacy), a static store-slugs.js
+  // entry, or an admin-set/auto-generated DB slug (not in that static map).
   const raw = req.query && req.query.id != null ? String(req.query.id) : "";
-  const id = /^\d+$/.test(raw) ? Number(raw) : (STORE_SLUG_TO_ID[raw] || 0);
+  let id = /^\d+$/.test(raw) ? Number(raw) : (STORE_SLUG_TO_ID[raw] || 0);
+  if (!id && raw) {
+    const bySlug = await sbGet(`stores?slug=eq.${encodeURIComponent(raw)}&select=id&limit=1`);
+    if (bySlug && bySlug[0]) id = bySlug[0].id;
+  }
   let html = "";
   try {
     const shellOrigin = SHELL_ENV || `https://${req.headers.host || ""}`;
@@ -43,8 +49,9 @@ module.exports = async (req, res) => {
 
   let store = null, products = [];
   if (id) {
-    const rows = await sbGet(`stores?id=eq.${id}&select=name,description,image,cover_image,address,phone,lat,lng,category&limit=1`);
+    const rows = await sbGet(`stores?id=eq.${id}&select=name,slug,description,image,cover_image,address,phone,lat,lng,category,approval_status&limit=1`);
     store = rows && rows[0];
+    if (store && store.approval_status && store.approval_status !== "approved") store = null;
     if (store) {
       const p = await sbGet(`products?store_id=eq.${id}&select=name,slug&available=eq.true&slug=not.is.null&order=id&limit=300`);
       products = p || [];
@@ -52,7 +59,7 @@ module.exports = async (req, res) => {
   }
 
   if (store && store.name) {
-    const slug = STORE_SLUGS[id] || id;
+    const slug = resolveStoreSlug({ id, name: store.name, slug: store.slug }, STORE_SLUGS);
     const title = `دكانجي - ${store.name}`;
     const desc = (store.description || "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.").slice(0, 200);
     let img = store.cover_image || store.image || "/assets/dukkanci-app-icon-512.png";
@@ -89,6 +96,9 @@ module.exports = async (req, res) => {
       .replace(/(<meta\s+name="twitter:card"\s+content="[^"]*">)/, `$1\n    <link rel="canonical" href="${C}">`)
       .replace(/<\/head>/, `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`)
       .replace('<main id="app" tabindex="-1"></main>', `<main id="app" tabindex="-1">${body}</main>`);
+  } else {
+    // Unknown, hidden, or not-yet-approved store: no SEO metadata, keep it out of the index.
+    html = html.replace(/<\/head>/, `  <meta name="robots" content="noindex">\n</head>`);
   }
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");

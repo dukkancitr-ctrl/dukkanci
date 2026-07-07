@@ -4,6 +4,7 @@
 // product sitemap; this page is the categorical entry point.
 const { STORE_SLUGS } = require("../store-slugs.js");
 const { CATEGORY_SLUGS } = require("../category-slugs.js");
+const { resolveStoreSlug } = require("../lib/store-slug.js");
 // Origin for the static shell — same host as the request by default; override with SSR_SHELL_ORIGIN.
 const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
@@ -46,7 +47,7 @@ module.exports = async (req, res) => {
     return res.status(404).send(html);
   }
 
-  const stores = (await sbGet(`stores?category=eq.${encodeURIComponent(catText)}&select=id,name&open=eq.true&order=id`)) || [];
+  const stores = (await sbGet(`stores?category=eq.${encodeURIComponent(catText)}&select=id,name,slug&open=eq.true&or=(approval_status.is.null,approval_status.eq.approved)&order=id`)) || [];
   let products = [];
   if (stores.length) {
     const ids = stores.map(s => s.id).join(",");
@@ -58,7 +59,7 @@ module.exports = async (req, res) => {
   const canonical = `${SITE}/category/${slug}`;
   const T = esc(title), D = esc(desc), C = esc(canonical);
 
-  const storeLinks = stores.map(s => `<li><a href="/store/${esc(STORE_SLUGS[s.id] || s.id)}">${esc(s.name)}</a></li>`).join("");
+  const storeLinks = stores.map(s => `<li><a href="/store/${esc(resolveStoreSlug(s, STORE_SLUGS))}">${esc(s.name)}</a></li>`).join("");
   const productLinks = products.map(p => `<li><a href="/product/${esc(p.slug)}">${esc(p.name)}</a></li>`).join("");
   const body = `<section class="ssr-category"><h1>${esc(catText)}</h1><p>${esc(desc)}</p>`
     + (storeLinks ? `<h2>المتاجر</h2><ul>${storeLinks}</ul>` : "")
