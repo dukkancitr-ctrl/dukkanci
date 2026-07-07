@@ -4357,7 +4357,12 @@ async function loadSharedCatalog() {
   if (!sb) return [];
   state._sharedCatalogLoading = true;
   try {
-    const { data, error } = await sb.from("catalog_products").select("*").order("canonical_name");
+    // Explicit column list — matches the anon/authenticated column-level GRANT
+    // (see migrations/20260707_catalog_products_hide_source_store.sql). Never
+    // request source_store_id/contributor_store_ids/source_image here: a
+    // merchant importing from the bank must never learn which competitor
+    // store's photo they're reusing.
+    const { data, error } = await sb.from("catalog_products").select("id,canonical_name,category,subcategory,unit,image,keywords,usage_count").order("canonical_name");
     if (error) { console.warn("shared catalog load:", error.message); state._sharedCatalog = []; return []; }
     state._sharedCatalog = (data || []).map(mapDbCatalogProduct);
     return state._sharedCatalog;
@@ -4497,9 +4502,11 @@ function adminCatalog() {
         ${it.review_note ? `<p class="catalog-review-note">${icon("stars")} ${esc(it.review_note)}</p>` : ""}
         ${status === "pending"
           ? `<div class="catalog-review-actions">
-              ${it.enhanced ? "" : `<button type="button" class="secondary-button compact" data-action="admin-catalog-enhance" data-id="${it.id}">${icon("stars")} تحسين بالذكاء الاصطناعي</button>`}
-              <button type="button" class="primary-button compact" data-action="admin-catalog-approve" data-id="${it.id}">${icon("check")} اعتماد</button>
-              <button type="button" class="secondary-button compact" data-action="admin-catalog-reject" data-id="${it.id}">${icon("close")} رفض</button>
+              ${it.enhanced ? "" : `<button type="button" class="secondary-button compact full" data-action="admin-catalog-enhance" data-id="${it.id}">${icon("stars")} تحسين بالذكاء الاصطناعي</button>`}
+              <div class="catalog-review-decision-row">
+                <button type="button" class="primary-button compact" data-action="admin-catalog-approve" data-id="${it.id}">${icon("check")} اعتماد</button>
+                <button type="button" class="secondary-button compact" data-action="admin-catalog-reject" data-id="${it.id}">${icon("close")} رفض</button>
+              </div>
             </div>`
           : `<span class="status-pill ${it.approved ? "open" : "closed"}">${it.approved ? "معتمد" : "مرفوض"}</span>`}
       </article>`;

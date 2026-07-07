@@ -7236,7 +7236,22 @@ tr:last-child td {
 }
 .catalog-review-actions {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+}
+.catalog-review-decision-row {
+  display: flex;
+  gap: 6px;
+}
+.catalog-review-actions .primary-button.compact,
+.catalog-review-actions .secondary-button.compact {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.catalog-review-decision-row > button {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .bulk-action-bar {
   display: flex;
