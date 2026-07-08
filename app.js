@@ -8661,9 +8661,9 @@ function openProductModal(id) {
         <h2>${esc(product.name)}</h2>
         <div class="product-status"><span class="${product.available ? "available" : "not-available"}">${product.available ? "متوفر" : "غير متوفر"}</span><span>${icon("star")} 4.8 (42 تقييماً)</span></div>
         <p>${esc(product.description)}</p>
-        <div class="modal-price">${product.priceOnRequest ? `<strong>السعر عند الطلب</strong>` : `<strong>${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${product.oldPrice ? `<del>${money(product.oldPrice)}</del>` : ""}`}</div>
+        <div class="modal-price">${product.priceOnRequest ? `<strong>السعر عند الطلب</strong>` : `<strong id="modal-unit-price">${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${(!product.options.length && product.oldPrice) ? `<del>${money(product.oldPrice)}</del>` : ""}`}</div>
         ${product.options.map((option, optionIndex) => `
-          <fieldset class="option-group"><legend>${option.name}</legend><div>${option.values.map((value, valueIndex) => `<label><input type="radio" name="option-${optionIndex}" value="${valueIndex}" ${valueIndex === 0 ? "checked" : ""}><span>${value}${option.extra[valueIndex] ? `<small>${option.extra[valueIndex] > 0 ? "+" : ""}${money(option.extra[valueIndex])}</small>` : ""}</span></label>`).join("")}</div></fieldset>
+          <fieldset class="option-group"><legend>${option.name}</legend><div>${option.values.map((value, valueIndex) => `<label><input type="radio" name="option-${optionIndex}" value="${valueIndex}" ${valueIndex === 0 ? "checked" : ""}><span>${value}<small>${money(product.price + (option.extra[valueIndex] || 0))}</small></span></label>`).join("")}</div></fieldset>
         `).join("")}
         ${(product.addons || []).length ? `
         <fieldset class="option-group addon-group"><legend>إضافات (اختياري)</legend><div>${product.addons.map((addon, addonIndex) => `<label><input type="checkbox" name="addon-${addonIndex}"><span>${esc(addon.name)}${addon.price ? `<small>+${money(addon.price)}</small>` : ""}</span></label>`).join("")}</div></fieldset>
@@ -8697,6 +8697,8 @@ function updateProductModalPrice() {
   (product.addons || []).forEach((addon, index) => {
     if (form.querySelector(`input[name="addon-${index}"]`)?.checked) price += Number(addon.price) || 0;
   });
+  const unitPriceEl = document.getElementById("modal-unit-price");
+  if (unitPriceEl) unitPriceEl.textContent = money(price);
   document.getElementById("modal-total").textContent = money(price * quantity);
 }
 
@@ -11652,7 +11654,7 @@ document.addEventListener("submit", async event => {
       variantNames.forEach((name, i) => {
         if (!name) return;
         const price = Math.max(0, Math.round(Number(variantPrices[i]) || 0));
-        values.push(name); extra.push(Math.max(0, price - basePrice));
+        values.push(name); extra.push(price - basePrice);
       });
       if (values.length > 1) options = [{ name: "الحجم", values, extra }];
     }
