@@ -278,9 +278,11 @@ function cfg() {
     tplStore: env("WHATSAPP_TEMPLATE_STORE"),
     tplCustomer: env("WHATSAPP_TEMPLATE_CUSTOMER"),
     tplStatus: env("WHATSAPP_TEMPLATE_STATUS") || "order_status_update",
-    // Platform admin's own WhatsApp — gets a copy of every new order regardless
-    // of whether the store has a working number. Override via env if it changes.
-    adminPhone: env("WHATSAPP_ADMIN_PHONE") || "905551000630",
+    // Admin recipients — get a copy of every new order regardless of whether the
+    // store has a working number. NOT the platform's own sending number: WhatsApp
+    // Cloud API cannot deliver a message from a number to itself, so this must be
+    // a separate personal number. Comma-separated; override via env if they change.
+    adminPhones: (env("WHATSAPP_ADMIN_PHONES") || "905533333362,905528000220").split(",").map(s => s.trim()).filter(Boolean),
     secret: env("NOTIFY_SECRET")
   };
 }
@@ -2216,7 +2218,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, order: order.id, push, whatsapp: { skipped: true, reason: "whatsapp not configured" } });
   }
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
-  const adminTo = toE164(c.adminPhone, c.cc);
+  const adminTos = c.adminPhones.map(p => toE164(p, c.cc)).filter(Boolean);
   const custTo = toE164(order.customerPhone, c.cc);
   const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
   const results = {};
@@ -2234,18 +2236,23 @@ module.exports = async (req, res) => {
     results.store = { skipped: true, reason: "store has no whatsapp/phone" };
   }
 
-  // 2) Notify the PLATFORM ADMIN — always, independent of the store's own
+  // 2) Notify the PLATFORM ADMINS — always, independent of the store's own
   // number/delivery so an admin copy never depends on that store's contact
   // info being correct. Same approved template (no store-name placeholder
   // exists in it), so the store name is folded into the customer-name slot —
-  // the admin gets every store's orders on one number and needs to tell them apart.
-  if (adminTo) {
+  // admins get every store's orders on their number and need to tell them apart.
+  // Sent to each configured admin number in turn (never the platform's own
+  // sending number — WhatsApp Cloud API can't deliver a message to itself).
+  if (adminTos.length) {
     const adminText = `🛒 [${storeName}] ` + storeAlertText;
     const adminParams = [...storeAlertParams];
     adminParams[1] = `${storeName} — ${order.customer}`;
-    results.admin = await sendWhatsapp(c, adminTo, { template: c.tplStore, params: adminParams, text: adminText });
+    results.admin = [];
+    for (const to of adminTos) {
+      results.admin.push({ to, ...(await sendWhatsapp(c, to, { template: c.tplStore, params: adminParams, text: adminText })) });
+    }
   } else {
-    results.admin = { skipped: true, reason: "admin phone not configured" };
+    results.admin = { skipped: true, reason: "no admin phones configured" };
   }
 
   // 3) Acknowledge to the CUSTOMER.
@@ -2261,8 +2268,9 @@ module.exports = async (req, res) => {
   // failure (bad number, Meta rate-limit, template rejected) leaves no trace
   // anywhere and looks identical to "it worked".
   try {
+    const adminOk = Array.isArray(results.admin) ? results.admin.every(r => r.ok) : !!(results.admin && results.admin.ok);
     await logAudit(order.storeId, "system", "order_notify", "order", order.id, null, {
-      store: !!(results.store && results.store.ok), admin: !!(results.admin && results.admin.ok), customer: !!(results.customer && results.customer.ok)
+      store: !!(results.store && results.store.ok), admin: adminOk, customer: !!(results.customer && results.customer.ok)
     });
   } catch (e) {}
 
