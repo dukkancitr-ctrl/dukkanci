@@ -871,7 +871,7 @@ function deleteProductCloud(id) {
 // The orders table has fixed columns + a flexible delivery_details jsonb. We pack
 // every field the merchant needs to FULFILL the order (phone, address, the actual
 // line items, notes) into delivery_details so no schema migration is required.
-function pushOrderCloud(order) {
+function pushOrderCloud(order, opts = {}) {
   // Admin and phone+password merchant sessions have no Supabase Auth (auth.uid() is null),
   // so the RLS UPDATE policy blocks them. Route status updates through the backend API
   // (service-role key) for these sessions. New customer orders always use the anon client
@@ -918,6 +918,28 @@ function pushOrderCloud(order) {
   }
   // Campaign attribution (first/last source + UTM + landing) — for "which ad drove this order".
   if (order.attribution) payload.attribution = order.attribution;
+  // New-order creation races the browser closing/backgrounding right after checkout
+  // (mobile customers routinely background the tab as soon as the success modal
+  // shows) — that can abort an in-flight fetch before it reaches the server, so the
+  // order silently never saves. keepalive keeps THIS request alive past that point.
+  // Not applied to the shared supabase-js client globally: bulk writes elsewhere
+  // (e.g. product catalog saves) can exceed the browser's ~64KB keepalive body quota
+  // and would throw. A direct PostgREST call is safe here — the "guest insert" RLS
+  // policy allows this INSERT with just the anon key regardless of session.
+  if (opts.keepalive && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+    fetch(`${window.SUPABASE_URL}/rest/v1/orders?on_conflict=id`, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: window.SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${window.SUPABASE_ANON_KEY}`,
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify(payload)
+    }).catch(e => console.warn("order cloud save:", e.message));
+    return;
+  }
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
 }
 // Fire-and-forget WhatsApp notification through the platform number: alerts the
@@ -926,8 +948,12 @@ function pushOrderCloud(order) {
 // so this is safe to call always and never blocks the order flow.
 function notifyOrderWhatsapp(order) {
   try {
+    // keepalive: the browser can otherwise abort this request if the customer
+    // backgrounds/closes the tab right after checkout (very common on mobile
+    // right after the success modal appears) — killing every notification copy.
     fetch("/api/notify-order", {
       method: "POST",
+      keepalive: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: order.id, storeId: order.storeId, customer: order.customer,
@@ -11978,7 +12004,7 @@ document.addEventListener("submit", async event => {
       try { newOrder.attribution = window.DUKKANCI_TRACKING?.getAttribution() || null; } catch (e) {}
       state.myOrders.unshift(newOrder);
       state.orders.unshift(newOrder);
-      pushOrderCloud(newOrder);
+      pushOrderCloud(newOrder, { keepalive: true });
       notifyOrderWhatsapp(newOrder);
       // Feature 2: record the coupon redemption server-side (enforces usage limits).
       if (isFeatureOn("feature_conversion_drivers") && state.coupon) {
