@@ -1220,7 +1220,11 @@ async function loadSiteSettings() {
   const sb = window.supabaseClient;
   if (!sb) return;
   try {
-    const { data, error } = await sb.from("site_settings").select("key,value");
+    // Same Cloudflare edge-cache-by-URL issue as loadCatalogFromSupabase: this query's
+    // URL never changes, so a merchant's zone/setting edit can stay invisible to other
+    // visitors until the cached response expires. Vary the URL every load to bust it.
+    const cb = Date.now();
+    const { data, error } = await sb.from("site_settings").select("key,value").neq("key", "__cb" + cb);
     if (error || !Array.isArray(data)) return;
     const map = {};
     data.forEach(r => { map[r.key] = r.value; });
@@ -12057,6 +12061,13 @@ document.addEventListener("submit", async event => {
       store.coverImage = (form.get("coverImage") || "").toString().trim();
       const rawSlug = (form.get("storeSlug") || "").toString().trim();
       if (rawSlug) store.slug = slugify(rawSlug);
+      // Distance-based delivery is priced from store.location for every customer, so the
+      // pin edited here must reach it (and Supabase via pushStoreCloud) — previously it was
+      // only written to the merchant's own localStorage-only state.storeLocations, so a
+      // corrected pin never reached real customers' distance calculations.
+      const storeLat = Number(form.get("storeLat"));
+      const storeLng = Number(form.get("storeLng"));
+      if (Number.isFinite(storeLat) && Number.isFinite(storeLng)) store.location = { lat: storeLat, lng: storeLng };
       pushStoreCloud(store);
     }
     const ratePerKm = Math.min(40, Math.max(10, Number(form.get("ratePerKm")) || 15));
@@ -12076,10 +12087,6 @@ document.addEventListener("submit", async event => {
       namedZones: zones
     };
     saveNamedZonesCloud(storeId, zones);
-    state.storeLocations[storeId] = {
-      lat: Number(form.get("storeLat")),
-      lng: Number(form.get("storeLng"))
-    };
     state.deliveryQuote = null;
     saveState();
     render();

@@ -21,8 +21,8 @@ const pasapizzeriaStore = {
  "time": "40 - 70 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 41.0779648,
-  "lng": 28.8882688
+  "lat": 41.0362173,
+  "lng": 28.6773202
  },
  "mapUrl": "https://maps.app.goo.gl/V22e2F46PMaurqNX7",
  "open": true,
