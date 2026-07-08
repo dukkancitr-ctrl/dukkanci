@@ -5939,7 +5939,8 @@ p.success-note.order-closed-note {
   flex-direction: column;
 }
 
-.form-grid label.wide {
+.form-grid label.wide,
+.form-grid .wide {
   grid-column: 1 / -1;
 }
 

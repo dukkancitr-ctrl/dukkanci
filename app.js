@@ -9568,6 +9568,11 @@ function openProductForm(id, defaultCategory) {
       <button type="button" class="table-action danger" data-action="remove-addon-row" title="حذف هذه الإضافة">${icon("close")}</button>
     </div>`;
   const hasImg = editing && editing.image && !isPlaceholderImage(editing.image);
+  // An existing uploaded image is a huge base64 data URI — showing that raw
+  // text in the URL field is unreadable noise, so keep it in the hidden
+  // imageData carrier (already visible via the thumbnail above) and leave the
+  // URL field for pasted links only.
+  const editingImageIsData = hasImg && /^data:/.test(editing.image);
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${store.name}</span>
@@ -9600,7 +9605,7 @@ function openProductForm(id, defaultCategory) {
         <div class="input-label wide">
           <span>إضافات اختيارية (اختياري)</span>
           <div id="addon-rows" class="variant-rows">${addonRows.map(addonRowHtml).join("")}</div>
-          <button type="button" class="secondary-button compact" data-action="add-addon-row">${icon("plus")} إضافة إضافة (مثل: صوص إضافي)</button>
+          <button type="button" class="secondary-button compact" data-action="add-addon-row">${icon("plus")} إضافة خيار جديد (مثل: صوص إضافي)</button>
           <small class="field-hint">إضافات يختارها العميل قبل إضافة المنتج للسلة (مثل صوص إضافي أو جبنة زيادة) — كل إضافة تُضاف لسعر المنتج عند اختيارها.</small>
         </div>
         <div class="input-label wide image-input-group">
@@ -9612,11 +9617,11 @@ function openProductForm(id, defaultCategory) {
             </div>
             <div class="image-upload-controls">
               <label class="upload-tile">${icon("upload")}<span>رفع صورة جديدة</span><input type="file" id="product-image-file" accept="image/*" hidden></label>
-              <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing ? escAttr(editing.image) : ""}" dir="ltr">
+              <input name="image" placeholder="أو الصق رابط صورة (https://...)" value="${editing && !editingImageIsData ? escAttr(editing.image) : ""}" dir="ltr">
               <button type="button" class="ai-enhance-btn" data-action="ai-enhance-image">${icon("stars")} تحسين الصورة بالذكاء الاصطناعي</button>
             </div>
           </div>
-          <input type="hidden" name="imageData">
+          <input type="hidden" name="imageData" value="${editingImageIsData ? escAttr(editing.image) : ""}">
           <small class="field-hint ai-enhance-hint">ارفع الصورة أولاً ثم اضغط «تحسين» — يُزيل الخلفية ويُحسّن الجودة تلقائياً.</small>
         </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
