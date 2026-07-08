@@ -700,6 +700,30 @@ async function hydratePageData() {
   if (!sb) return;
   const { route, id } = parseRoute();
   const cb = Date.now();
+  // A store added straight to Supabase (no bundled fallback entry in the `stores`
+  // array below) is invisible to getStore() until the full ~7600-product catalog
+  // load finishes, so its deep-link renders "not found" on every hard refresh in
+  // the meantime. Fetch that one store row (+ its products) directly instead of
+  // waiting on the full load.
+  if (route === "store" && id != null && !getStore(id)) {
+    const rowKey = "store-row:" + id;
+    if (_hydratedKeys.has(rowKey)) return;
+    _hydratedKeys.add(rowKey);
+    try {
+      const numId = /^\d+$/.test(String(id)) ? Number(id) : (SLUG_TO_ID[id] || null);
+      const { data: rows } = numId != null
+        ? await sb.from("stores").select("*").eq("id", numId).gt("id", -cb)
+        : await sb.from("stores").select("*").eq("slug", id).gt("id", -cb);
+      const row = rows && rows[0];
+      if (row) {
+        if (!stores.some(s => s.id === row.id)) stores.push(mapDbStore(row));
+        const { data: prodRows } = await sb.from("products").select("*").eq("store_id", row.id).gt("id", -cb);
+        _mergeProducts(prodRows);
+      }
+    } catch (e) { /* the background full load will fill this in */ }
+    render();
+    return;
+  }
   let key, needed, run;
   if (route === "store" && id != null) {
     const sid = Number(id) || (getStore(id) || {}).id;
@@ -3069,7 +3093,15 @@ function renderOffers() {
 
 function renderStorePage(id) {
   const store = getStore(id);
-  if (!store) return renderNotFound();
+  if (!store) {
+    // Still waiting on the targeted store-row fetch (see hydratePageData) — show a
+    // brief loading state instead of flashing "not found" for a store that does
+    // exist but isn't in the bundled fallback list yet.
+    if (window.supabaseClient && !_hydratedKeys.has("store-row:" + id)) {
+      return `<section class="section empty-page">${renderEmpty("جاري تحميل المتجر...", "لحظات ونعرض لك المتجر.")}</section>`;
+    }
+    return renderNotFound();
+  }
   // view_store — deduped per store so re-renders don't double-count.
   window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
   if (!store.newStore) ensureReviewEligibility(store.id); // fire-and-forget; re-renders once resolved
