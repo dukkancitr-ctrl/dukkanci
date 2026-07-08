@@ -278,6 +278,9 @@ function cfg() {
     tplStore: env("WHATSAPP_TEMPLATE_STORE"),
     tplCustomer: env("WHATSAPP_TEMPLATE_CUSTOMER"),
     tplStatus: env("WHATSAPP_TEMPLATE_STATUS") || "order_status_update",
+    // Platform admin's own WhatsApp — gets a copy of every new order regardless
+    // of whether the store has a working number. Override via env if it changes.
+    adminPhone: env("WHATSAPP_ADMIN_PHONE") || "905551000630",
     secret: env("NOTIFY_SECRET")
   };
 }
@@ -2213,23 +2216,39 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, order: order.id, push, whatsapp: { skipped: true, reason: "whatsapp not configured" } });
   }
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
+  const adminTo = toE164(c.adminPhone, c.cc);
   const custTo = toE164(order.customerPhone, c.cc);
   const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
   const results = {};
 
+  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentAr}`
+    + (order.address ? `\nالعنوان: ${order.address}` : "")
+    + (order.payment ? `\nالدفع: ${order.payment}` : "")
+    + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
+  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentAr, itemsLine(order.lineItems) || "-"];
+
   // 1) Notify the STORE.
   if (storeTo) {
-    const text = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentAr}`
-      + (order.address ? `\nالعنوان: ${order.address}` : "")
-      + (order.payment ? `\nالدفع: ${order.payment}` : "")
-      + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
-    const params = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentAr, itemsLine(order.lineItems) || "-"];
-    results.store = await sendWhatsapp(c, storeTo, { template: c.tplStore, params, text });
+    results.store = await sendWhatsapp(c, storeTo, { template: c.tplStore, params: storeAlertParams, text: storeAlertText });
   } else {
     results.store = { skipped: true, reason: "store has no whatsapp/phone" };
   }
 
-  // 2) Acknowledge to the CUSTOMER.
+  // 2) Notify the PLATFORM ADMIN — always, independent of the store's own
+  // number/delivery so an admin copy never depends on that store's contact
+  // info being correct. Same approved template (no store-name placeholder
+  // exists in it), so the store name is folded into the customer-name slot —
+  // the admin gets every store's orders on one number and needs to tell them apart.
+  if (adminTo) {
+    const adminText = `🛒 [${storeName}] ` + storeAlertText;
+    const adminParams = [...storeAlertParams];
+    adminParams[1] = `${storeName} — ${order.customer}`;
+    results.admin = await sendWhatsapp(c, adminTo, { template: c.tplStore, params: adminParams, text: adminText });
+  } else {
+    results.admin = { skipped: true, reason: "admin phone not configured" };
+  }
+
+  // 3) Acknowledge to the CUSTOMER.
   if (custTo) {
     const text = `✅ تم استلام طلبك على دكانجي\n\nرقم الطلب: ${order.id}\nالمتجر: ${storeName}\nالإجمالي: ${money(order.total)}\n\nسنعلمك فور تأكيد المتجر لطلبك. شكراً لاستخدامك دكانجي 🛍️`;
     const params = [String(order.id), storeName, money(order.total)];
@@ -2237,6 +2256,15 @@ module.exports = async (req, res) => {
   } else {
     results.customer = { skipped: true, reason: "no customer phone" };
   }
+
+  // Record which recipients actually got a copy — otherwise a silent send
+  // failure (bad number, Meta rate-limit, template rejected) leaves no trace
+  // anywhere and looks identical to "it worked".
+  try {
+    await logAudit(order.storeId, "system", "order_notify", "order", order.id, null, {
+      store: !!(results.store && results.store.ok), admin: !!(results.admin && results.admin.ok), customer: !!(results.customer && results.customer.ok)
+    });
+  } catch (e) {}
 
   return res.status(200).json({ ok: true, order: order.id, results, push });
 };
