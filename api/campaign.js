@@ -192,6 +192,23 @@ async function upsertContacts(phones, groupName) {
   return inserted;
 }
 
+// ─── Opt-out / exclusion list ────────────────────────────────────────────────
+
+async function upsertOptouts(phones, reason) {
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < phones.length; i += CHUNK) {
+    const rows = phones.slice(i, i + CHUNK).map(phone => ({
+      phone, reason: reason || null
+    }));
+    // ON CONFLICT (phone): keep the row but refresh the reason if a new one is given
+    const r = await sbWrite("POST", "wa_optout", rows,
+      "resolution=merge-duplicates,return=minimal");
+    if (r.ok) inserted += rows.length;
+  }
+  return inserted;
+}
+
 // Return each group_name with its contact count.
 // PostgREST caps a single response at db-max-rows (1000 by default), so a plain
 // select drops groups whose rows fall past the first page once the contact list
@@ -350,9 +367,21 @@ async function sendBatch(campaignId) {
   const params = Array.isArray(campaign.template_params) ? campaign.template_params : [];
   let sent = 0, failed = 0;
 
+  // Safety net: a number can be added to the exclusion list AFTER a campaign was
+  // built, so re-check right before sending — never let an opted-out phone through,
+  // regardless of when it was excluded relative to this campaign's build step.
+  const optouts = await sbGet("wa_optout?select=phone") || [];
+  const optoutSet = new Set(optouts.map(o => String(o.phone)));
+
   // Send messages; natural API latency (~300ms each) gives sufficient pacing
   // without artificial sleep — at BATCH_SIZE=8 this is well under 10s
   for (const r of pending) {
+    if (optoutSet.has(r.phone)) {
+      await sbWrite("PATCH", `wa_campaign_recipients?id=eq.${encodeURIComponent(r.id)}`,
+        { status: "failed", error: "مستبعد — الرقم ضمن قائمة الاستبعاد" }, "return=minimal");
+      failed++;
+      continue;
+    }
     const result = await sendTemplateMsg(r.phone, campaign.template_name, campaign.template_lang || "ar", params, campaign.button_url_param ?? undefined, campaign.header_image_url || null);
     const update = result.ok
       ? { status: "sent", sent_at: new Date().toISOString() }
@@ -415,6 +444,10 @@ module.exports = async (req, res) => {
     if (action === "contacts-groups") {
       const groups = await getContactGroups();
       return res.json({ ok: true, groups });
+    }
+    if (action === "optout-list") {
+      const rows = await sbGet("wa_optout?select=phone,reason,created_at&order=created_at.desc&limit=2000");
+      return res.json({ ok: true, optouts: rows || [], total: (rows || []).length });
     }
     if (action === "template-inspect") {
       const { template_name } = req.query;
@@ -579,6 +612,41 @@ module.exports = async (req, res) => {
       const { group_name } = body;
       if (!group_name) return res.status(400).json({ error: "group_name required" });
       await sbWrite("DELETE", `wa_contacts?group_name=eq.${encodeURIComponent(group_name)}`, undefined, "return=minimal");
+      return res.json({ ok: true });
+    }
+
+    // Add phones to the exclusion list — any number here is skipped by every
+    // send operation (build-time filter + send-time safety net), whether it came
+    // from uploaded contacts, all_customers, or no_order_30d.
+    if (action === "optout-add") {
+      const { phones: rawPhones, text: rawText, reason } = body;
+      const cc = env("WHATSAPP_DEFAULT_COUNTRY_CODE") || "90";
+      let phones = [];
+      if (Array.isArray(rawPhones)) {
+        phones = rawPhones.map(p => toE164(String(p), cc)).filter(Boolean);
+        const seen = new Set(); phones = phones.filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
+      } else if (rawText) {
+        phones = parsePhoneList(rawText, cc);
+      }
+      if (!phones.length) return res.status(400).json({ error: "لا أرقام صالحة في القائمة" });
+      await upsertOptouts(phones, reason);
+      const total = await sbGet("wa_optout?select=phone&limit=10000");
+      return res.json({ ok: true, added: phones.length, total: (total || []).length });
+    }
+
+    // Remove a single phone from the exclusion list
+    if (action === "optout-remove") {
+      const { phone } = body;
+      if (!phone) return res.status(400).json({ error: "phone required" });
+      const cc = env("WHATSAPP_DEFAULT_COUNTRY_CODE") || "90";
+      const p = toE164(phone, cc);
+      await sbWrite("DELETE", `wa_optout?phone=eq.${encodeURIComponent(p)}`, undefined, "return=minimal");
+      return res.json({ ok: true });
+    }
+
+    // Clear the entire exclusion list
+    if (action === "optout-clear") {
+      await sbWrite("DELETE", "wa_optout?phone=not.is.null", undefined, "return=minimal");
       return res.json({ ok: true });
     }
 

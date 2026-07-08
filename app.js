@@ -7247,9 +7247,11 @@ function adminCampaigns() {
 
   const showForm     = state.adminCampaignForm === "open";
   const showContacts = state.adminCampaignForm === "contacts";
+  const showOptouts  = state.adminCampaignForm === "optouts";
   const camps    = state.adminCampaigns;
   const contacts = state.adminContacts || null;
   const groups   = (contacts && contacts.groups) || [];
+  const optouts  = state.adminOptouts || null;
 
   const audienceLabel = (t, g) => {
     if (t === "wa_contacts") return g ? `مجموعة: ${g}` : "كل الأرقام المرفوعة";
@@ -7276,6 +7278,7 @@ function adminCampaigns() {
     <div class="dashboard-toolbar campaign-toolbar">
       <button class="primary-button compact" data-action="campaign-new">${icon("megaphone")} حملة جديدة</button>
       <button class="secondary-button compact ${showContacts ? "is-active" : ""}" data-action="contacts-panel">${icon("users")} إدارة الأرقام المرفوعة${contacts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${contacts.total.toLocaleString("ar")}</b>` : ""}</button>
+      <button class="secondary-button compact ${showOptouts ? "is-active" : ""}" data-action="optouts-panel">${icon("shield")} الأرقام المستبعدة${optouts ? ` <b class="nav-badge" style="position:static;margin-right:4px">${optouts.total.toLocaleString("ar")}</b>` : ""}</button>
     </div>
 
     ${showContacts ? `
@@ -7314,6 +7317,48 @@ function adminCampaigns() {
           <button class="primary-button" data-action="contacts-upload">${icon("users")} رفع وحفظ</button>
           ${contacts && contacts.total ? `<button class="danger-button" data-action="contacts-clear">حذف الكل</button>` : ""}
           <button class="secondary-button" data-action="contacts-panel-close">إغلاق</button>
+        </div>
+      </div>
+    </section>
+    ` : ""}
+
+    ${showOptouts ? `
+    <section class="dashboard-card campaign-form-card">
+      <div class="card-heading">
+        <div><h3>${icon("shield")} الأرقام المستبعدة من الإرسال</h3><p>أي رقم هنا يُستبعد تلقائياً من كل الحملات — بغض النظر عن مصدره (أرقام مرفوعة، عملاء المنصة، غير النشطين)</p></div>
+        ${optouts ? `<span class="count-chip">${optouts.total.toLocaleString("ar")} رقم</span>` : ""}
+      </div>
+
+      ${optouts && optouts.optouts.length ? `
+      <div class="contacts-groups-list">
+        <p class="groups-heading">${icon("shield")} الأرقام المستبعدة حالياً</p>
+        <div class="campaigns-table-wrap"><table class="admin-table campaigns-table">
+          <thead><tr><th>الرقم</th><th>السبب</th><th>تاريخ الإضافة</th><th></th></tr></thead>
+          <tbody>
+            ${optouts.optouts.map(o => `<tr>
+              <td dir="ltr"><code>${esc(o.phone)}</code></td>
+              <td><small>${esc(o.reason || "—")}</small></td>
+              <td><small>${new Date(o.created_at).toLocaleDateString("ar")}</small></td>
+              <td><button class="danger-button compact" data-action="optout-remove" data-phone="${escAttr(o.phone)}" title="إلغاء الاستبعاد">${icon("trash")}</button></td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>
+      </div>` : optouts ? `<p class="muted-hint">لا أرقام مستبعدة بعد.</p>` : ""}
+
+      <div class="contacts-upload-area">
+        <p class="upload-heading">${icon("shield")} استبعاد أرقام جديدة</p>
+        <label>
+          الصق الأرقام هنا <small>(رقم لكل سطر أو مفصولة بفواصل — أي تنسيق يُقبَل)</small>
+          <textarea id="optout-textarea" rows="5" dir="ltr" placeholder="0501234567&#10;+90 532 111 22 33&#10;905001112233&#10;..."></textarea>
+        </label>
+        <label>
+          السبب <small>(اختياري — مثال: طلب العميل، شكوى، رقم غير صحيح)</small>
+          <input id="optout-reason" placeholder="السبب" maxlength="120">
+        </label>
+        <div class="form-actions">
+          <button class="primary-button" data-action="optout-add">${icon("shield")} استبعاد</button>
+          ${optouts && optouts.total ? `<button class="danger-button" data-action="optout-clear">حذف الكل</button>` : ""}
+          <button class="secondary-button" data-action="optouts-panel-close">إغلاق</button>
         </div>
       </div>
     </section>
@@ -7440,6 +7485,7 @@ function adminCampaigns() {
         <li>${icon("shield")} الحد اليومي <strong>2000 رسالة</strong> — الحملات الطويلة تُستأنف تلقائياً في اليوم التالي.</li>
         <li>${icon("megaphone")} القالب يجب أن يكون <strong>Approved – Marketing</strong> في Meta Business Manager.</li>
         <li>${icon("whatsapp")} إذا رفض Meta الرسالة تأكد من صحة اسم القالب واللغة وعدد المتغيرات {{1}} {{2}}.</li>
+        <li>${icon("shield")} أضف أي رقم إلى <strong>الأرقام المستبعدة</strong> لتجاوزه تلقائياً في كل الحملات الحالية والقادمة.</li>
       </ul>
     </section>
   `;
@@ -7458,6 +7504,14 @@ async function loadContacts() {
     };
     render();
   } catch (e) { state.adminContacts = { total: 0, preview: [], groups: [] }; render(); }
+}
+
+async function loadOptouts() {
+  try {
+    const data = await campaignApi("optout-list");
+    state.adminOptouts = { total: data.total || 0, optouts: data.optouts || [] };
+    render();
+  } catch (e) { state.adminOptouts = { total: 0, optouts: [] }; render(); }
 }
 
 // Campaign send loop: fires send-batch, then schedules the NEXT batch ONLY AFTER
@@ -10683,6 +10737,41 @@ document.addEventListener("click", event => {
     if (!confirm("حذف جميع الأرقام المرفوعة من كل المجموعات نهائياً؟")) return;
     campaignApi("contacts-clear", { method: "POST", body: {} })
       .then(() => { state.adminContacts = null; loadContacts(); showToast("تم حذف جميع الأرقام", ""); });
+  }
+  // ── Opt-out / exclusion panel ──
+  if (action === "optouts-panel") {
+    state.adminCampaignForm = "optouts";
+    if (!state.adminOptouts) loadOptouts();
+    render();
+  }
+  if (action === "optouts-panel-close") { state.adminCampaignForm = null; render(); }
+  if (action === "optout-add") {
+    const text   = document.getElementById("optout-textarea")?.value || "";
+    const reason = document.getElementById("optout-reason")?.value.trim() || "";
+    if (!text.trim()) { showToast("الرجاء لصق أرقام الهاتف أولاً", "error"); return; }
+    showToast("جارٍ استبعاد الأرقام...", "");
+    campaignApi("optout-add", { method: "POST", body: { text, reason } })
+      .then(data => {
+        if (!data.ok) { showToast("تعذّر استبعاد الأرقام", "error"); return; }
+        state.adminOptouts = null;
+        loadOptouts();
+        showToast(`تم استبعاد ${(data.added || 0).toLocaleString("ar")} رقم`, "success");
+        const ta = document.getElementById("optout-textarea");
+        const rs = document.getElementById("optout-reason");
+        if (ta) ta.value = "";
+        if (rs) rs.value = "";
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "optout-remove") {
+    const phone = target.dataset.phone;
+    if (!confirm(`إلغاء استبعاد الرقم "${phone}"؟`)) return;
+    campaignApi("optout-remove", { method: "POST", body: { phone } })
+      .then(() => { state.adminOptouts = null; loadOptouts(); showToast("تم إلغاء الاستبعاد", ""); });
+  }
+  if (action === "optout-clear") {
+    if (!confirm("حذف جميع الأرقام المستبعدة نهائياً؟")) return;
+    campaignApi("optout-clear", { method: "POST", body: {} })
+      .then(() => { state.adminOptouts = null; loadOptouts(); showToast("تم حذف جميع الأرقام المستبعدة", ""); });
   }
   if (action === "reload-creds") { state.adminCreds = null; render(); loadAdminCreds(); }
   if (action === "copy-creds") {
