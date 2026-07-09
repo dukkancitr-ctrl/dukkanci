@@ -2121,16 +2121,30 @@ module.exports = async (req, res) => {
     let authed = adminOk({ headers: req.headers, query: pq });
     if (!authed) authed = merchantOk(req, storeId);
     if (!authed) authed = await verifySupabaseStoreOwner(req, storeId);
+    let newOwnerUserId = null; // set only for the "brand-new self-join store" path below
     if (!authed) {
       const existing = await sbGet(`stores?id=eq.${storeId}&select=id&limit=1`);
       if (!existing || !existing.length) {
         const token = String(req.headers["x-sb-token"] || "").trim();
-        if (token) { const u = await goTrueUser(token); authed = !!(u && u.id); }
+        if (token) {
+          const u = await goTrueUser(token);
+          if (u && u.id) { authed = true; newOwnerUserId = u.id; }
+        }
       }
     }
     if (!authed) return res.status(403).json({ error: "unauthorized" });
     const r = await sbWrite("POST", "stores?on_conflict=id", row, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    // A newly self-joined merchant has no store_users row yet, and RLS has no
+    // policy letting the client insert its own link (only "self read" + an
+    // admin-only manage policy) — the client's own bindStoreToUser() call right
+    // after this was silently RLS-rejected, leaving the merchant unable to write
+    // to their own new store. Link it here with the service-role key instead
+    // (storeId is confirmed brand-new above, so there's no existing link to race).
+    if (newOwnerUserId) {
+      const link = await sbWrite("POST", "store_users", { user_id: newOwnerUserId, store_id: storeId, role: "owner" }, "return=minimal");
+      if (!link.ok) console.warn("store_users auto-link:", link.rows || link.error);
+    }
     return res.status(200).json({ ok: true });
   }
 

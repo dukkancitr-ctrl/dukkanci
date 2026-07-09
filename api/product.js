@@ -3,6 +3,7 @@
 // seller) — so Google indexes each product with real content in the source.
 // The SPA hydrates over this and renders the live product view.
 const { STORE_SLUGS } = require("../store-slugs.js");
+const { resolveStoreSlug } = require("../lib/store-slug.js");
 // Origin for the static shell — same host as the request by default; override with SSR_SHELL_ORIGIN.
 const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, ""); // public canonical
@@ -44,13 +45,17 @@ module.exports = async (req, res) => {
     const rows = await sbGet(`products?${filter}&select=id,name,price,price_on_request,store_id,available,image,description,category,slug&limit=1`);
     product = rows && rows[0];
     if (product && product.store_id) {
-      const s = await sbGet(`stores?id=eq.${product.store_id}&select=name,address&limit=1`);
+      const s = await sbGet(`stores?id=eq.${product.store_id}&select=name,slug,address,approval_status&limit=1`);
       store = s && s[0];
+      // A product's own store might not be approved yet (pending review) — the
+      // store page itself already noindexes in that case (api/store.js), so the
+      // product page must match instead of leaking an unvetted listing to Google.
+      if (store && store.approval_status && store.approval_status !== "approved") store = null;
     }
   }
 
-  // Not found or inactive → 404 + noindex so Google drops it.
-  if (!product || product.available === false) {
+  // Not found, inactive, or belongs to an unapproved store → 404 + noindex so Google drops it.
+  if (!product || product.available === false || !store) {
     html = html.replace(/<\/head>/, `  <meta name="robots" content="noindex">\n</head>`);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(404).send(html);
@@ -67,7 +72,7 @@ module.exports = async (req, res) => {
   } catch (e) { /* synonyms are optional */ }
 
   const storeName = store && store.name ? store.name : "دكانجي";
-  const storeSlug = STORE_SLUGS[product.store_id] || product.store_id;
+  const storeSlug = resolveStoreSlug({ id: product.store_id, name: storeName, slug: store && store.slug }, STORE_SLUGS);
   const title = `${product.name} — ${storeName} | دكانجي`;
   const desc = (product.description || `${product.name} من ${storeName} على دكانجي.`).slice(0, 200);
   let img = product.image || "/assets/dukkanci-app-icon-512.png";

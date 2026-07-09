@@ -1785,9 +1785,20 @@ function normalizeDeliveryFee(rawFee) {
 function estimateDeliveryQuote(store, address) {
   const settings = getDeliverySettings(store.id);
   if (settings.namedZones?.length && address) {
-    const addrText = [address.label, address.address, address.details].join(" ").toLowerCase();
-    const zone = settings.namedZones.find(z => z.match.some(k => addrText.includes(k.toLowerCase())));
-    if (zone) return { storeId: store.id, addressId: address.id, fee: zone.fee, provider: "zone", zoneLabel: zone.label, estimatedMinutes: settings.prepMinutes, exceedsMaxDistance: false };
+    // "tr" locale casing so Turkish İ/I fold correctly (plain toLowerCase() turns
+    // "İ" into a dotted combining form that never matches a plain "i" keyword).
+    const addrText = [address.label, address.address, address.details].join(" ").toLocaleLowerCase("tr");
+    // Pick the LONGEST matching keyword across all zones (not the first configured
+    // zone) so a more specific zone (e.g. "esenyurt merkez") always wins over a
+    // broader one ("esenyurt") regardless of the admin's zone ordering.
+    let bestZone = null, bestLen = -1;
+    for (const z of settings.namedZones) {
+      for (const k of z.match) {
+        const needle = String(k || "").toLocaleLowerCase("tr");
+        if (needle && addrText.includes(needle) && needle.length > bestLen) { bestZone = z; bestLen = needle.length; }
+      }
+    }
+    if (bestZone) return { storeId: store.id, addressId: address.id, fee: bestZone.fee, provider: "zone", zoneLabel: bestZone.label, estimatedMinutes: settings.prepMinutes, exceedsMaxDistance: false };
   }
   if (settings.mode === "distance" && (!address || address.lat == null || address.lng == null)) return null;
   if (settings.mode !== "distance") {
@@ -8897,8 +8908,14 @@ async function requestDeliveryQuote() {
   const store = getStore(state.cart[0].storeId);
   const settings = getDeliverySettings(store.id);
   const address = getCheckoutAddress(form.elements.address.value);
-  if (settings.mode !== "distance" || !address?.lat || !address?.lng) {
-    state.deliveryQuote = settings.mode === "distance" ? null : estimateDeliveryQuote(store, address);
+  // Named zones always win over distance mode — same precedence estimateDeliveryQuote()
+  // already applies for the price PREVIEW shown before checkout (store/cart page). Without
+  // this check here too, a store with an active/leftover named zone would show one fee in
+  // the preview and silently charge the distance-computed fee instead at actual checkout.
+  const previewQuote = estimateDeliveryQuote(store, address);
+  const usesZone = previewQuote && previewQuote.provider === "zone";
+  if (settings.mode !== "distance" || usesZone || !address?.lat || !address?.lng) {
+    state.deliveryQuote = previewQuote;
     updateCheckoutPricing();
     return;
   }
@@ -9601,10 +9618,14 @@ function openJoinSuccessModal(store) {
 // yet, creates an email+password account first and resumes store creation after
 // authentication (no dead-end). Reads the optional logo file inline.
 async function submitJoinForm(form) {
-  const fields = readJoinStoreFields(form);
-  if (!fields) return; // validation already surfaced the error + focused the field
-  const errEl = document.getElementById("join-error");
   const btn = form.querySelector('button[type="submit"]');
+  // Disabled up front (setBtnBusy is nest-safe — signUpWithEmail() below also
+  // calls it and shares the same restore label) so a rapid double-submit can't
+  // race the async logo-resize step or fire createStoreFromJoinData() twice.
+  const restore = setBtnBusy(btn, "جارٍ الإنشاء...");
+  const fields = readJoinStoreFields(form);
+  if (!fields) { restore(); return; } // validation already surfaced the error + focused the field
+  const errEl = document.getElementById("join-error");
   // Optional logo → downscaled data URL (kept small for storage).
   const logoFile = form.querySelector('input[name="logo"]')?.files?.[0];
   if (logoFile) {
@@ -9617,8 +9638,8 @@ async function submitJoinForm(form) {
   const f = new FormData(form);
   const email = (f.get("email") || "").toString().trim();
   const password = (f.get("password") || "").toString();
-  if (!isValidEmail(email)) { if (errEl) { errEl.textContent = "أدخل بريداً إلكترونياً صحيحاً لإنشاء حسابك."; errEl.hidden = false; } form.querySelector('[name="email"]')?.focus(); return; }
-  if (!password || password.length < 6) { if (errEl) { errEl.textContent = "اختر كلمة مرور من ٦ أحرف على الأقل."; errEl.hidden = false; } form.querySelector('[name="password"]')?.focus(); return; }
+  if (!isValidEmail(email)) { restore(); if (errEl) { errEl.textContent = "أدخل بريداً إلكترونياً صحيحاً لإنشاء حسابك."; errEl.hidden = false; } form.querySelector('[name="email"]')?.focus(); return; }
+  if (!password || password.length < 6) { restore(); if (errEl) { errEl.textContent = "اختر كلمة مرور من ٦ أحرف على الأقل."; errEl.hidden = false; } form.querySelector('[name="password"]')?.focus(); return; }
   // Carried through to createStoreFromJoinData so the SAME password also lands in
   // store_credentials (see syncOwnerCredentials) — otherwise the admin-issued
   // phone+password login mode ends up checking a different, auto-generated one.
