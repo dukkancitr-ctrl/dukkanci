@@ -2083,13 +2083,14 @@ img {
   }
 
   .footer-grid {
-    grid-template-columns: 1fr;
-    gap: 32px;
+    grid-template-columns: 1fr 1fr;
+    gap: 26px 18px;
     padding: 36px 0;
     text-align: center;
   }
 
   .footer-brand {
+    grid-column: 1 / -1;
     align-items: center;
     text-align: center;
   }
@@ -2105,6 +2106,31 @@ img {
 
   .footer-grid > div:not(.footer-brand) {
     align-items: center;
+  }
+
+  .footer-apps {
+    grid-column: 1 / -1;
+  }
+
+  .footer-grid > .footer-col:not(.footer-apps) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+  }
+
+  .footer-grid h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  .footer-grid > .footer-col:not(.footer-apps) h3 {
+    grid-column: 1 / -1;
+  }
+
+  .footer-col a {
+    margin: 0;
+    width: auto;
+    font-size: 12.5px;
   }
 
   .footer-store-badges {
