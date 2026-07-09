@@ -20,8 +20,8 @@ const bludanStore = {
  "time": "35 - 60 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 41.058304,
-  "lng": 28.852224
+  "lat": 41.1190121,
+  "lng": 28.7720278
  },
  "mapUrl": "https://maps.app.goo.gl/3RfeQvWnEYc8aCHf7",
  "open": true,

@@ -17,10 +17,10 @@ const orangeStore = {
  "time": "30 - 55 دقيقة",
  "distance": 12,
  "location": {
-  "lat": 41.024084,
-  "lng": 28.644626
+  "lat": 41.0192504,
+  "lng": 28.6468143
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.024084,28.644626",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0192504,28.6468143",
  "open": true,
  "featured": true,
  "hasOffer": false,

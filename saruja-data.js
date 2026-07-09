@@ -19,8 +19,8 @@ const sarujaStore = {
  "time": "45 - 75 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 41.0320896,
-  "lng": 28.8391168
+  "lat": 41.0997176,
+  "lng": 28.7892466
  },
  "mapUrl": "https://maps.app.goo.gl/xUub6uPk3vvGysSu9",
  "open": true,

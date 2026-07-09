@@ -19,8 +19,8 @@ const biryaniStore = {
  "time": "45 - 75 دقيقة",
  "distance": 0,
  "location": {
-  "lat": 41.0714111,
-  "lng": 28.9800192
+  "lat": 41.0162568,
+  "lng": 28.9760813
  },
  "mapUrl": "https://maps.app.goo.gl/MThrE87csQiVq8UQA",
  "open": true,
