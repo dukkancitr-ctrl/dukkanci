@@ -1605,19 +1605,21 @@ async function sendOrderOtpRequest(phone) {
   } catch (e) { return { ok: false, soft: true }; }
 }
 
-// Gate order placement behind a WhatsApp OTP. If delivery isn't operational yet
-// (soft fail) or the network is down, fall through and place the order so a real
-// customer is never blocked; once the OTP template is live it enforces automatically.
+// Gate order placement behind a WhatsApp OTP. The server now hard-blocks
+// (r.soft:false) whenever WhatsApp is configured — no confirmed number, no
+// order — so this only falls through unverified when WhatsApp isn't set up at
+// all server-side, the ORDER_OTP_ALLOW_SOFT kill switch is on, or this fetch
+// itself fails (the customer's own network is down, which would also break the
+// order write right after).
 async function startCheckoutOtp(phone, displayPhone, onVerified) {
   // Set AUTH_FLAGS.checkoutOtp = false to bypass this gate and place orders directly
-  // (e.g. if WhatsApp delivery needs to be disabled again). Currently on: a failed/soft
-  // OTP send below still falls through to onVerified() so a real customer is never blocked.
+  // (e.g. if WhatsApp delivery needs to be disabled again).
   if (!AUTH_FLAGS.checkoutOtp) { onVerified(); return; }
   pendingOtpCommit = onVerified;
   showToast("جارٍ إرسال رمز التحقق إلى واتساب…");
   const r = await sendOrderOtpRequest(phone);
   if (r && r.ok) { openOrderOtpModal(phone, displayPhone); return; }
-  if (!r || r.soft) { pendingOtpCommit = null; onVerified(); return; } // fail-open → never block a real order
+  if (!r || r.soft) { pendingOtpCommit = null; onVerified(); return; } // only when WhatsApp itself is unavailable
   pendingOtpCommit = null;
   if (r.reason === "too_soon") showToast(`انتظر ${r.retryInSec || 30} ثانية ثم أعد المحاولة`);
   else if (r.reason === "rate_limited") showToast("تجاوزت عدد محاولات الإرسال، حاول لاحقاً");

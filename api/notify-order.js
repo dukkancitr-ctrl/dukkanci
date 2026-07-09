@@ -1583,10 +1583,11 @@ module.exports = async (req, res) => {
 
   // Checkout phone verification — STEP 1: generate a 6-digit code and WhatsApp it
   // to the customer. Public endpoint, rate-limited per phone (>=60s apart, <=5/hr).
-  // Fails SOFT (soft:true) when WhatsApp OTP delivery isn't operational yet (no
-  // approved template), so the client can fall back and never block a real order.
-  // Set ORDER_OTP_STRICT=1 (once the template is live) to instead block on send
-  // failures (forces a reachable WhatsApp number).
+  // HARD BLOCKS on send failure by default (soft:false) — no confirmed WhatsApp
+  // number, no order, so fake/junk orders can never get through. Set
+  // ORDER_OTP_ALLOW_SOFT=1 as a kill switch if WhatsApp delivery ever breaks
+  // again (falls back to letting the order through unverified rather than taking
+  // checkout down entirely).
   if (pq.action === "send-order-otp") {
     const phone = toE164(body && body.phone || "", c.cc);
     if (!phone || phone.length < 11) return res.status(400).json({ ok: false, reason: "bad_phone" });
@@ -1611,8 +1612,11 @@ module.exports = async (req, res) => {
     }, "resolution=merge-duplicates,return=minimal");
     const sent = await sendOtpWhatsapp(c, phone, code);
     if (!sent.ok) {
-      const strict = env("ORDER_OTP_STRICT") === "1" && c.token && c.phoneId;
-      return res.status(200).json({ ok: false, soft: !strict, reason: strict ? "send_failed" : "delivery_unavailable" });
+      // Soft (never blocks) only when WhatsApp isn't configured at all, or the
+      // ORDER_OTP_ALLOW_SOFT kill switch is set. Otherwise a send failure now
+      // hard-blocks the order — see the comment above this action.
+      const soft = !c.token || !c.phoneId || env("ORDER_OTP_ALLOW_SOFT") === "1";
+      return res.status(200).json({ ok: false, soft, reason: soft ? "delivery_unavailable" : "send_failed" });
     }
     return res.status(200).json({ ok: true });
   }
