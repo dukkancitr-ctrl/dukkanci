@@ -829,6 +829,34 @@ async function retrieveKnowledge(query) {
   } catch (e) { return ""; }
 }
 
+// Re-prices an order's line items from the real `products` table (never the
+// client-submitted per-item price) and flags it when the submitted total is
+// far below what those real prices add up to. Returns null when nothing looks
+// wrong or when it can't tell (missing products, empty cart) — always fails
+// closed toward "not suspicious" so this can never hold up a real order.
+async function checkOrderPriceSanity(order) {
+  try {
+    const items = Array.isArray(order.lineItems) ? order.lineItems : [];
+    const ids = [...new Set(items.map(i => Number(i.productId)).filter(Boolean))];
+    if (!ids.length) return null;
+    const rows = await sbGet(`products?id=in.(${ids.join(",")})&select=id,price`);
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const priceById = new Map(rows.map(r => [Number(r.id), Number(r.price) || 0]));
+    let expectedSubtotal = 0;
+    for (const it of items) {
+      const real = priceById.get(Number(it.productId));
+      if (real == null) continue; // product not found/mismatched — skip rather than guess
+      expectedSubtotal += real * (Number(it.qty) || 1);
+    }
+    if (expectedSubtotal <= 0) return null;
+    const total = Number(order.total) || 0;
+    // Delivery only ever ADDS to total, so ignoring it keeps this a safe floor
+    // check; 30% leaves generous room for any real coupon/credit stacking.
+    if (total < expectedSubtotal * 0.3) return { expectedSubtotal, total };
+    return null;
+  } catch (e) { return null; }
+}
+
 // Throttle the paid AI path per WhatsApp sender: more than 20 inbound messages
 // from the same number in the last hour skips the embedding+completion calls
 // (the quiet greet/away fallback still applies). Fails open on any DB error —
@@ -2218,6 +2246,16 @@ module.exports = async (req, res) => {
   const order = normalizeOrder(body);
   if (!order.id || !order.storeId) return res.status(400).json({ error: "order id/storeId required" });
 
+  // Fraud/mispricing detection (alert-only, never blocks): order totals are
+  // fully client-computed (checkout writes straight to Supabase with the anon
+  // key), so a tampered client could submit any total. Re-price the order's
+  // line items from the real, current products table server-side and flag the
+  // admin copy below if the submitted total looks implausibly low — an admin
+  // can then hold/cancel the order before it's prepared. This uses each real
+  // product's base price as a floor (variant/addon surcharges aren't modeled,
+  // so it only ever under-flags, never false-flags a legitimately priced order).
+  const priceFlag = await checkOrderPriceSanity(order);
+
   // Authoritative store contact + name from the DB — never trust the client for
   // WHERE messages go.
   const rows = await sbGet(`stores?id=eq.${encodeURIComponent(order.storeId)}&select=name,phone,whatsapp&limit=1`);
@@ -2263,9 +2301,12 @@ module.exports = async (req, res) => {
   // Sent to each configured admin number in turn (never the platform's own
   // sending number — WhatsApp Cloud API can't deliver a message to itself).
   if (adminTos.length) {
-    const adminText = `🛒 [${storeName}] ` + storeAlertText;
+    const flagNote = priceFlag
+      ? `⚠️ تنبيه سعر مشبوه: الإجمالي المُرسَل (${money(priceFlag.total)}) أقل بكثير من السعر الفعلي للمنتجات (${money(priceFlag.expectedSubtotal)}). تحقّق قبل تجهيز الطلب.\n\n`
+      : "";
+    const adminText = flagNote + `🛒 [${storeName}] ` + storeAlertText;
     const adminParams = [...storeAlertParams];
-    adminParams[1] = `${storeName} — ${order.customer}`;
+    adminParams[1] = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
     results.admin = [];
     for (const to of adminTos) {
       results.admin.push({ to, ...(await sendWhatsapp(c, to, { template: c.tplStore, params: adminParams, text: adminText })) });
