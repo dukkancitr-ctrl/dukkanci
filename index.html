@@ -179,15 +179,18 @@
           <div class="container">
             <div class="footer-subscribe__inner">
               <div class="footer-subscribe__text">
-                <h3>اشترك لتصلك آخر العروض</h3>
-                <p>أرسل رقمك لاستلام التحديثات والعروض مباشرة على واتساب.</p>
+                <span class="footer-subscribe__badge"><span class="icon-slot" data-icon="whatsapp"></span></span>
+                <div>
+                  <h3>اشترك لتصلك آخر العروض</h3>
+                  <p>أرسل رقمك لاستلام التحديثات والعروض مباشرة على واتساب.</p>
+                </div>
               </div>
               <form id="footer-subscribe-form" class="footer-subscribe__form" novalidate>
                 <div class="footer-subscribe__field">
-                  <span class="icon-slot" data-icon="phone"></span>
-                  <input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="رقم الواتساب — 5XX XXX XX XX" aria-label="رقم الواتساب" required>
+                  <span class="footer-subscribe__prefix">+90</span>
+                  <input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="5XX XXX XX XX" aria-label="رقم الواتساب" required>
+                  <button type="submit" class="footer-subscribe__btn">اشترك</button>
                 </div>
-                <button type="submit" class="footer-subscribe__btn">اشترك</button>
               </form>
             </div>
             <p class="footer-subscribe__status" role="status" aria-live="polite" hidden></p>
