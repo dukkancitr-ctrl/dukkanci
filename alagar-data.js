@@ -1,6 +1,9 @@
 // Generated from the official Ala Gardoner (الأغر شاورما) menu site http://menu.alagardoner.com on 2026-06-15.
 // 5 branches in Istanbul sharing one menu (30 items). Each branch is its own store with its own WhatsApp number.
-// Coordinates geocoded (street-level, OpenStreetMap) on 2026-06-15; mapUrl is a precise coordinate pin.
+// Coordinates: all 5 branches re-geocoded via Google (2026-07-09). Branches 27-30 are exact
+// rooftop/street-number matches to each branch's own address. Branch 26 (Kayaşehir) sits on
+// Adnan Menderes Bulvarı (street-level match) — Google couldn't resolve the exact Park Mavera 1
+// compound block, so this is an approximation, not a rooftop pin.
 const alagarBranches = [
  {
   "id": 26,
@@ -20,10 +23,10 @@ const alagarBranches = [
   "time": "40 - 70 دقيقة",
   "distance": 14,
   "location": {
-   "lat": 41.123853,
-   "lng": 28.772243
+   "lat": 41.120329,
+   "lng": 28.7738028
   },
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.123853,28.772243",
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.120329,28.7738028",
   "open": true,
   "featured": true,
   "hasOffer": false,
@@ -64,10 +67,10 @@ const alagarBranches = [
   "time": "30 - 55 دقيقة",
   "distance": 16,
   "location": {
-   "lat": 41.034901,
-   "lng": 28.678696
+   "lat": 41.0350166,
+   "lng": 28.6786176
   },
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.034901,28.678696",
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0350166,28.6786176",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -108,10 +111,10 @@ const alagarBranches = [
   "time": "30 - 55 دقيقة",
   "distance": 17,
   "location": {
-   "lat": 41.024084,
-   "lng": 28.644626
+   "lat": 41.0192504,
+   "lng": 28.6468143
   },
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.024084,28.644626",
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0192504,28.6468143",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -152,10 +155,10 @@ const alagarBranches = [
   "time": "35 - 60 دقيقة",
   "distance": 6,
   "location": {
-   "lat": 41.019002,
-   "lng": 28.946256
+   "lat": 41.0176922,
+   "lng": 28.9435793
   },
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.019002,28.946256",
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0176922,28.9435793",
   "open": true,
   "featured": false,
   "hasOffer": false,
@@ -196,10 +199,10 @@ const alagarBranches = [
   "time": "35 - 60 دقيقة",
   "distance": 9,
   "location": {
-   "lat": 40.992854,
-   "lng": 28.844323
+   "lat": 40.9928581,
+   "lng": 28.8442556
   },
-  "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.992854,28.844323",
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=40.9928581,28.8442556",
   "open": true,
   "featured": false,
   "hasOffer": false,
