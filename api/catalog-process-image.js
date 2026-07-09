@@ -55,7 +55,11 @@ function adminOk(req) {
   const tok = (req.headers["x-admin-token"] || req.headers["x-admin-key"] || "");
   if (tok && verifyAdminToken(tok)) return true;
   const pw = env("ADMIN_PASSWORD");
-  return !!pw && (req.headers["x-admin-key"] || "") === pw;
+  if (!pw) return false;
+  const got = req.headers["x-admin-key"] || "";
+  const a = Buffer.from(got);
+  const b = Buffer.from(pw);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function sb() {

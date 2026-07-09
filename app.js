@@ -752,10 +752,20 @@ async function hydratePageData() {
 // No-ops on the server when credentials aren't configured.
 function notifyGoogleIndex(path) {
   try {
-    fetch("/api/notify-google", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    const withAuth = headers["x-admin-token"] || headers["x-merchant-token"] || !window.supabaseClient
+      ? Promise.resolve(headers)
+      : window.supabaseClient.auth.getSession().then(({ data }) => {
+          const tok = data && data.session && data.session.access_token;
+          if (tok) headers["x-sb-token"] = tok;
+          return headers;
+        }).catch(() => headers);
+    withAuth.then(headers => fetch("/api/notify-google", {
+      method: "POST", headers,
       body: JSON.stringify({ url: SITE_ORIGIN + path })
-    }).catch(() => {});
+    })).catch(() => {});
   } catch (e) { /* ignore */ }
 }
 
@@ -827,9 +837,11 @@ async function pushStoreCloud(store) {
     const r = await fetch("/api/notify-order?action=save-store", {
       method: "POST", headers, body: JSON.stringify({ store: toDbStore(store) })
     });
-    if (r.ok) notifyGoogleIndex(`/store/${storeParam(store)}`);
-    else { const e = await r.json().catch(() => ({})); console.warn("store cloud save:", e.error || r.status); }
-  } catch (e) { console.warn("store cloud save:", e.message); }
+    if (r.ok) { notifyGoogleIndex(`/store/${storeParam(store)}`); return true; }
+    const e = await r.json().catch(() => ({}));
+    console.warn("store cloud save:", e.error || r.status);
+    return false;
+  } catch (e) { console.warn("store cloud save:", e.message); return false; }
 }
 // Right after a merchant self-registers, write the SAME password they just chose
 // (Supabase Auth) into store_credentials too, so the admin-issued phone+password
@@ -858,15 +870,23 @@ function deleteProductCloud(id) {
     if (state.adminKey) headers["x-admin-token"] = state.adminKey;
     if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
     const store = getMerchantStore();
-    fetch("/api/notify-order?action=delete-product", {
+    // Returns a Promise<boolean> so deleteProduct() can confirm the row is
+    // actually gone server-side before removing it from the merchant's UI.
+    return fetch("/api/notify-order?action=delete-product", {
       method: "POST",
       headers,
       body: JSON.stringify({ id: numId, storeId: store ? store.id : undefined })
-    }).then(r => { if (!r.ok) r.json().then(e => console.warn("product delete:", e.error)).catch(() => {}); });
-    return;
+    }).then(r => {
+      if (!r.ok) { r.json().then(e => console.warn("product delete:", e.error)).catch(() => {}); return false; }
+      return true;
+    }).catch(e => { console.warn("product delete:", e.message); return false; });
   }
   const sb = window.supabaseClient;
-  if (sb) sb.from("products").delete().eq("id", numId).then(({ error }) => { if (error) console.warn("product delete:", error.message); });
+  if (!sb) return Promise.resolve(true);
+  return sb.from("products").delete().eq("id", numId).then(({ error }) => {
+    if (error) { console.warn("product delete:", error.message); return false; }
+    return true;
+  });
 }
 // The orders table has fixed columns + a flexible delivery_details jsonb. We pack
 // every field the merchant needs to FULFILL the order (phone, address, the actual
@@ -880,11 +900,14 @@ function pushOrderCloud(order, opts = {}) {
     const headers = { "Content-Type": "application/json" };
     if (state.adminKey) headers["x-admin-token"] = state.adminKey;
     if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
-    fetch("/api/notify-order?action=update-order", {
+    // Returns a Promise<boolean> (never rejects) so callers that need to confirm the
+    // write actually landed (e.g. save-order-status) can await it; fire-and-forget
+    // callers are unaffected since they don't consume the return value.
+    return fetch("/api/notify-order?action=update-order", {
       method: "POST", headers,
       body: JSON.stringify({ id: order.id, storeId: order.storeId, status: order.status, items: order.items })
-    }).catch(e => console.warn("order cloud update:", e.message));
-    return;
+    }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return true; })
+      .catch(e => { console.warn("order cloud update:", e.message); return false; });
   }
   // Anon (customer placing new order) or Supabase-authenticated merchant
   const sb = window.supabaseClient;
@@ -3220,7 +3243,7 @@ function renderStorePage(id) {
                   return `
                   <button class="${branch.id === store.id ? "active" : ""}" data-action="open-store" data-id="${branch.id}">
                     <img src="${branch.coverImage || branch.image}" alt="">
-                    <span><strong>${branch.branchName}${isNearest ? ` <em class="branch-near-tag">${icon("pin")} الأقرب إليك</em>` : ""}</strong><small>${km != null ? `${formatDistance(km)} · ` : ""}${branch.phone}</small></span>
+                    <span><strong>${branch.branchName}${isNearest ? ` <em class="branch-near-tag">${icon("pin")} الأقرب إليك</em>` : ""}</strong><small>${km != null ? `${formatDistance(km)} · ` : ""}<span dir="ltr">${branch.phone}</span></small></span>
                     ${branch.id === store.id ? `<b>${icon("check")} الفرع الحالي</b>` : icon("arrowLeft")}
                   </button>`;
                 }).join("")}
@@ -3678,7 +3701,17 @@ async function openImageEnhance(id) {
   }
   const body = before.startsWith("data:") ? { imageData: before, name: p.name } : { imageUrl: absoluteImageUrl(before), name: p.name };
   try {
-    const r = await fetch("/api/enhance-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    if (!headers["x-admin-token"] && !headers["x-merchant-token"] && window.supabaseClient) {
+      try {
+        const { data } = await window.supabaseClient.auth.getSession();
+        const tok = data && data.session && data.session.access_token;
+        if (tok) headers["x-sb-token"] = tok;
+      } catch (e) {}
+    }
+    const r = await fetch("/api/enhance-image", { method: "POST", headers, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
     if (r.status === 503) return showEnhanceError("خدمة التحسين غير مُفعّلة حالياً. تواصل مع إدارة دكانجي لتفعيلها.");
     if (!r.ok || !data.url) return showEnhanceError(data.error || "تعذّر تحسين الصورة. جرّب صورة أوضح.");
@@ -4319,7 +4352,7 @@ function renderOrdersTable(orders, context) {
         <thead><tr><th>رقم الطلب</th><th>العميل</th><th>المنتجات</th><th>الإجمالي</th><th>الحالة</th><th>الوقت</th><th></th></tr></thead>
         <tbody>${orders.map(order => `
           <tr>
-            <td><strong>${order.id}</strong></td><td>${order.customer}</td><td>${order.items} منتجات</td><td><strong>${money(order.total)}</strong></td>
+            <td><strong dir="ltr">${order.id}</strong></td><td>${order.customer}</td><td>${order.items} منتجات</td><td><strong>${money(order.total)}</strong></td>
             <td><span class="status-pill ${statusClass(order.status)}">${order.status}</span></td><td>${order.time}</td>
             <td><button class="table-action" data-action="${context === "merchant" ? "manage-order" : "view-order"}" data-id="${order.id}">${icon("dots")}</button></td>
           </tr>`).join("")}</tbody>
@@ -9597,7 +9630,7 @@ function openOrderManager(orderId) {
   const items = Array.isArray(order.lineItems) ? order.lineItems : [];
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
-    <span class="section-kicker">الطلب ${order.id}</span><h2>إدارة الطلب</h2>
+    <span class="section-kicker">الطلب <span dir="ltr">${order.id}</span></span><h2>إدارة الطلب</h2>
     <div class="order-manager-summary"><span><small>العميل</small><strong>${escAttr(order.customer)}</strong></span><span><small>الإجمالي</small><strong>${money(order.total)}</strong></span><span><small>النوع</small><strong>${isDelivery ? "توصيل" : "استلام"}</strong></span></div>
     <div class="order-contact">
       ${order.payment ? `<div class="order-contact__row order-contact__row--payment">${icon("wallet")}<span><strong>طريقة الدفع:</strong> ${escAttr(order.payment)}</span></div>${/تحويل بنكي/.test(order.payment) ? `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>أرسل رقم الحساب للعميل وأكّد استلام الحوالة قبل تجهيز الطلب.</span></div>` : ""}${/بطاقة/.test(order.payment) ? `<div class="order-contact__row order-contact__row--muted">${icon("info")}<span>جهّز جهاز نقاط البيع (POS) مع المندوب لتحصيل المبلغ عند التسليم.</span></div>` : ""}` : ""}
@@ -9767,16 +9800,28 @@ function deleteProduct(id) {
   const product = getProduct(numId);
   if (!product) { closeModal(); return; }
   const name = product.name;
-  const productIndex = products.findIndex(p => p.id === numId);
-  if (productIndex >= 0) products.splice(productIndex, 1);
-  const allIndex = allProducts.findIndex(p => p.id === numId);
-  if (allIndex >= 0) allProducts.splice(allIndex, 1);
-  refreshPublishedProducts();
-  deleteProductLocal(numId);
-  deleteProductCloud(numId);
-  closeModal();
-  render();
-  showToast(`تم حذف "${name}"`, "success");
+  const btn = document.querySelector('[data-action="confirm-delete-product"]');
+  const btnLabel = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = "جارٍ الحذف..."; }
+  // Wait for the server-side delete to actually succeed before touching local
+  // state/UI — otherwise a failed request would still make the product vanish
+  // from the merchant's dashboard while it stays live and orderable for customers.
+  Promise.resolve(deleteProductCloud(numId)).then(ok => {
+    if (ok === false) {
+      if (btn) { btn.disabled = false; btn.innerHTML = btnLabel; }
+      showToast("تعذّر حذف المنتج من الخادم، تحقّق من الاتصال وحاول مجدداً");
+      return;
+    }
+    const productIndex = products.findIndex(p => p.id === numId);
+    if (productIndex >= 0) products.splice(productIndex, 1);
+    const allIndex = allProducts.findIndex(p => p.id === numId);
+    if (allIndex >= 0) allProducts.splice(allIndex, 1);
+    refreshPublishedProducts();
+    deleteProductLocal(numId);
+    closeModal();
+    render();
+    showToast(`تم حذف "${name}"`, "success");
+  });
 }
 
 function openOfferForm() {
@@ -10329,11 +10374,21 @@ document.addEventListener("click", event => {
     target.disabled = true;
     target.innerHTML = `⏳ جارٍ التحسين...`;
     const body = imageData ? { imageData, name: productName } : { imageUrl, name: productName };
-    fetch("/api/enhance-image", {
+    const enhanceHeaders = { "Content-Type": "application/json" };
+    if (state.adminKey) enhanceHeaders["x-admin-token"] = state.adminKey;
+    if (state.merchantPwAuth && state.merchantPwAuth.token) enhanceHeaders["x-merchant-token"] = state.merchantPwAuth.token;
+    const withEnhanceAuth = enhanceHeaders["x-admin-token"] || enhanceHeaders["x-merchant-token"] || !window.supabaseClient
+      ? Promise.resolve(enhanceHeaders)
+      : window.supabaseClient.auth.getSession().then(({ data }) => {
+          const tok = data && data.session && data.session.access_token;
+          if (tok) enhanceHeaders["x-sb-token"] = tok;
+          return enhanceHeaders;
+        }).catch(() => enhanceHeaders);
+    withEnhanceAuth.then(headers => fetch("/api/enhance-image", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body)
-    })
+    }))
       .then(r => r.json())
       .then(data => {
         if (data.url) {
@@ -10987,12 +11042,21 @@ document.addEventListener("click", event => {
     const prevStatus = order.status;
     const newStatus = document.getElementById("order-status-select").value;
     const note = (document.getElementById("order-status-note")?.value || "").trim();
+    const btnLabel = target.innerHTML;
+    target.disabled = true; target.innerHTML = "جارٍ الحفظ...";
     order.status = newStatus;
-    pushOrderCloud(order);
-    // Tell the customer on real status changes (skip the initial states they were
-    // already acked for at checkout).
-    if (newStatus !== prevStatus && !["طلب جديد", "بانتظار الدفع"].includes(newStatus)) notifyOrderStatusWhatsapp(order, note);
-    saveState(); closeModal(); render(); showToast("تم تحديث حالة الطلب وإشعار العميل", "success");
+    Promise.resolve(pushOrderCloud(order)).then(ok => {
+      if (ok === false) {
+        order.status = prevStatus;
+        target.disabled = false; target.innerHTML = btnLabel;
+        showToast("تعذّر حفظ الحالة، تحقّق من الاتصال وحاول مجدداً");
+        return;
+      }
+      // Tell the customer on real status changes (skip the initial states they were
+      // already acked for at checkout).
+      if (newStatus !== prevStatus && !["طلب جديد", "بانتظار الدفع"].includes(newStatus)) notifyOrderStatusWhatsapp(order, note);
+      saveState(); closeModal(); render(); showToast("تم تحديث حالة الطلب وإشعار العميل", "success");
+    });
   }
   if (action === "approve-store" || action === "reject-store") {
     target.closest("article").remove();
@@ -12167,6 +12231,9 @@ document.addEventListener("submit", async event => {
     const form = new FormData(event.target);
     const storeId = Number(event.target.dataset.storeId);
     const store = getStore(storeId);
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ الحفظ..."; }
     if (store) {
       const newName = (form.get("storeName") || "").toString().trim();
       if (!newName) { showToast("يرجى إدخال اسم المتجر"); return; }
@@ -12190,7 +12257,12 @@ document.addEventListener("submit", async event => {
       const storeLat = Number(form.get("storeLat"));
       const storeLng = Number(form.get("storeLng"));
       if (Number.isFinite(storeLat) && Number.isFinite(storeLng)) store.location = { lat: storeLat, lng: storeLng };
-      pushStoreCloud(store);
+      const storeSaved = await pushStoreCloud(store);
+      if (!storeSaved) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+        showToast("تعذّر حفظ بيانات المتجر، تحقّق من الاتصال وحاول مجدداً");
+        return;
+      }
     }
     const ratePerKm = Math.min(40, Math.max(10, Number(form.get("ratePerKm")) || 15));
     const zones = [];
@@ -12212,6 +12284,7 @@ document.addEventListener("submit", async event => {
     state.deliveryQuote = null;
     saveState();
     render();
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
     showToast("تم حفظ بيانات المتجر وإعدادات التوصيل", "success");
   }
   if (event.target.id === "customer-complaint-form") {

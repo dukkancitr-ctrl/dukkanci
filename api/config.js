@@ -6,7 +6,10 @@
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const PUB_KEY = "sb_publishable_pqIMANpqqnXLYeR7Pvdvcw_a3cLK1Uc";
 module.exports = (request, response) => {
-  response.setHeader("Cache-Control", "no-store");
+  // Same short public cache as api/maps-key.js / api/sitemap.js — this payload
+  // only changes on redeploy (env-derived), so no-store was needlessly forcing
+  // a fresh request on the critical startup path for every page load.
+  response.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
   const url = process.env.SUPABASE_URL || PUB_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY || PUB_KEY;
   // Public Whop checkout link for the store subscription (used by the merchant

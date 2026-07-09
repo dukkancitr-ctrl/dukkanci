@@ -6,8 +6,54 @@
 // pages; for general pages, the sitemaps are the primary signal. Daily quota ~200.
 const crypto = require("crypto");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
+const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
+const env = k => (process.env[k] || "").trim();
 
 const b64url = buf => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+// Auth: the daily Google Indexing quota is only ~200 requests, so this must not
+// be callable anonymously (an attacker could exhaust it with garbage same-site
+// URLs and starve real product/store updates from getting indexed that day).
+// Same signed-session-or-Supabase-session model as api/enhance-image.js.
+function adminSecret() { return env("ADMIN_SESSION_SECRET") || env("ADMIN_PASSWORD"); }
+function verifySignedSession(token) {
+  const secret = adminSecret();
+  if (!secret) return false;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return false;
+  let payload;
+  try { payload = Buffer.from(parts[0], "base64url").toString("utf8"); } catch (e) { return false; }
+  const expect = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const a = Buffer.from(parts[1]);
+  const b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  const m = /exp=(\d+)/.exec(payload);
+  return !!m && Date.now() < Number(m[1]);
+}
+async function hasSupabaseSession(req) {
+  const token = String(req.headers["x-sb-token"] || "").trim();
+  if (!token) return false;
+  try {
+    const r = await fetch(`${PUB_URL}/auth/v1/user`, {
+      headers: { apikey: env("SUPABASE_ANON_KEY"), Authorization: `Bearer ${token}` }
+    });
+    if (!r.ok) return false;
+    const user = await r.json().catch(() => null);
+    return !!(user && user.id);
+  } catch (e) { return false; }
+}
+async function sessionOk(req) {
+  const tok = req.headers["x-admin-token"] || req.headers["x-merchant-token"] || "";
+  if (tok && verifySignedSession(tok)) return true;
+  const pw = env("ADMIN_PASSWORD");
+  const rawKey = req.headers["x-admin-key"] || "";
+  if (pw && rawKey) {
+    const a = Buffer.from(String(rawKey));
+    const b = Buffer.from(pw);
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  }
+  return hasSupabaseSession(req);
+}
 
 // Vercel env values for PEM keys are a footgun: they may be wrapped in quotes,
 // single-escaped (\n) or double-escaped (\\n). Normalize all of these to a real
@@ -49,6 +95,7 @@ module.exports = async (req, res) => {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
+  if (!(await sessionOk(req))) return res.status(401).json({ error: "unauthorized" });
 
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
   let url = body.url;
