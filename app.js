@@ -2544,8 +2544,8 @@ function productCard(product) {
   `;
 }
 
-// Homepage category tiles ("ماذا تحتاج اليوم؟"). Editable via Content >
-// التصنيفات (show/hide + reorder); the chosen order/hidden set lives in
+// Homepage category tiles ("ماذا تحتاج اليوم؟"). Editable via the admin
+// «التصنيفات» section (add/edit/delete/hide/reorder); the chosen list lives in
 // site_settings.categories. Falls back to all six in default order.
 const HOME_CATEGORIES = [
   ["سوبر ماركت", "/assets/photos/store-market.jpg", "كل احتياجات البيت"],
@@ -2577,11 +2577,15 @@ function homeCategoriesOrdered() {
   return categoriesList().filter(c => !c.hidden);
 }
 // Store category NAMES sourced from the same admin-managed list as the homepage
-// tiles, so a category added in Content > التصنيفات (e.g. «خضار وفواكه») shows up
-// everywhere a store category is offered — the join form and the stores filter —
-// not only on the homepage. Falls back to the HOME_CATEGORIES defaults.
+// tiles, so a category added in the admin «التصنيفات» section (e.g. «خضار
+// وفواكه») shows up everywhere a store category is offered — the join form and
+// the stores filter — not only on the homepage. Falls back to the
+// HOME_CATEGORIES defaults. Hidden categories are excluded here too, so hiding
+// a category also removes it from the store-filter chips and the merchant
+// join form (existing stores keep whatever category they already have — see
+// the store-edit dropdown, which always includes the store's current value).
 function storeCategoryNames() {
-  return categoriesList().map(c => c.name).filter(Boolean);
+  return categoriesList().filter(c => !c.hidden).map(c => c.name).filter(Boolean);
 }
 // Baseline category taxonomy for every "سوبر ماركت" store, taken from قاضي
 // ماركت باشاك شهير (store 19) — the platform's most established, most
@@ -3577,6 +3581,7 @@ function dashboardSidebar(type, active) {
   const adminItems = [
     ["overview", "chart", "نظرة عامة"],
     ["stores", "store", "المتاجر"],
+    ["categories", "filter", "التصنيفات"],
     ["products", "box", "المنتجات"],
     ["customers", "users", "العملاء"],
     ["orders", "receipt", "الطلبات"],
@@ -6693,7 +6698,6 @@ function adminAI() {
 function adminContent() {
   if (state.adminContentSection === "featured") return adminContentFeatured();
   if (state.adminContentSection === "plans") return adminContentPlans();
-  if (state.adminContentSection === "categories") return adminContentCategories();
   if (state.adminContentSection === "banners") return adminContentForm("banner");
   if (state.adminContentSection === "offers-hero") return adminContentDailyDeal();
   if (state.adminContentSection === "texts") return adminContentForm("hero");
@@ -6702,7 +6706,6 @@ function adminContent() {
   const cards = [
     ["banners", "megaphone", "بنرات الصفحة الرئيسية", "تعديل نصوص بنر العروض في الرئيسية", true],
     ["offers-hero", "percent", "عرض اليوم", "صورة هيرو صفحة العروض مربوطة بمنتج", true],
-    ["categories", "filter", "التصنيفات", "ترتيب وإخفاء تصنيفات الرئيسية", true],
     ["featured", "star", "المتاجر المميزة", "اختيار المتاجر الظاهرة في الرئيسية", true],
     ["plans", "wallet", "الخطط والأسعار", "إدارة أسعار الاشتراكات والمزايا", true],
     ["texts", "edit", "النصوص الرئيسية", "تعديل نصوص الهيرو في الصفحة الرئيسية", true],
@@ -6848,17 +6851,23 @@ function adminContentDailyDeal() {
       </form>
     </section>`;
 }
-// Content > التصنيفات: show/hide + reorder the homepage category tiles.
-function adminContentCategories() {
+// Admin > التصنيفات: dedicated top-level section to add/edit/delete/hide +
+// reorder store categories. One list drives three places at once: the
+// homepage tiles ("ماذا تحتاج اليوم؟"), the stores filter chips, and the
+// merchant category picker (see categoriesList()/storeCategoryNames()).
+// Persisted as one JSON blob at site_settings.categories.items.
+function adminCategoriesSection() {
   const items = categoriesList();
+  const visibleCount = items.filter(c => !c.hidden).length;
   return `
-    <button class="text-button" data-action="content-back">${icon("arrowLeft")} رجوع لإدارة المحتوى</button>
+    <div class="dashboard-toolbar"><p class="creds-summary">${items.length} تصنيف — ${visibleCount} ظاهر، ${items.length - visibleCount} مخفي</p><div class="toolbar-actions"><button class="primary-button compact" data-action="cat-add">${icon("plus")} إضافة تصنيف</button></div></div>
     <section class="dashboard-card">
-      <div class="card-heading"><div><h3>تصنيفات الصفحة الرئيسية</h3><p>أضِف أو احذف تصنيفاً، عدّل اسمه أو صورته، أظهِره/أخفِه، ورتّبه — كما يظهر في «ماذا تحتاج اليوم؟».</p></div>
-        <button class="primary-button compact" data-action="cat-add">${icon("plus")} إضافة تصنيف</button></div>
-      <div class="admin-store-list">${items.length ? items.map((c, i) => `<article>
+      <div class="card-heading"><div><h3>تصنيفات المتاجر</h3><p>أضِف أو احذف تصنيفاً، عدّل اسمه أو صورته، أظهِره/أخفِه، ورتّبه. إخفاء تصنيف يزيله من الرئيسية وفلتر المتاجر ونموذج انضمام التجار، دون أن يغيّر تصنيف أي متجر مسجَّل عليه أصلاً.</p></div></div>
+      <div class="admin-store-list">${items.length ? items.map((c, i) => {
+        const usage = stores.filter(s => s.category === c.name).length;
+        return `<article>
         <span class="avatar-mini">${c.image ? `<img src="${escAttr(c.image)}" alt="">` : icon("box")}</span>
-        <div style="flex:1 1 auto;min-width:0"><strong>${escAttr(c.name || "")}</strong><small>${escAttr(c.caption || "")}</small></div>
+        <div style="flex:1 1 auto;min-width:0"><strong>${escAttr(c.name || "")}</strong><small>${escAttr(c.caption || "")}${c.caption ? " · " : ""}${usage ? `${usage} متجر` : "لا متاجر"}</small></div>
         <span style="display:flex;gap:.25rem;align-items:center;flex-wrap:wrap">
           <button class="table-action" data-action="cat-move" data-index="${i}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="تحريك لأعلى">▲</button>
           <button class="table-action" data-action="cat-move" data-index="${i}" data-dir="down" ${i === items.length - 1 ? "disabled" : ""} aria-label="تحريك لأسفل">▼</button>
@@ -6866,7 +6875,8 @@ function adminContentCategories() {
           <button class="table-action danger" data-action="cat-delete" data-index="${i}" aria-label="حذف">${icon("trash")}</button>
           <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="toggle-category" data-index="${i}" ${c.hidden ? "" : "checked"}><b>${c.hidden ? "مخفي" : "ظاهر"}</b></label>
         </span>
-      </article>`).join("") : `<div class="empty-managed">${icon("filter")}<p>لا توجد تصنيفات بعد. اضغط «إضافة تصنيف».</p></div>`}</div>
+      </article>`;
+      }).join("") : `<div class="empty-managed">${icon("filter")}<p>لا توجد تصنيفات بعد. اضغط «إضافة تصنيف».</p></div>`}</div>
     </section>`;
 }
 // Add/edit a single homepage category (name, caption, image upload).
@@ -7865,8 +7875,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -11060,8 +11070,26 @@ document.addEventListener("click", event => {
   if (action === "cat-edit") openCategoryEditModal(Number(target.dataset.index));
   if (action === "cat-delete") {
     const i = Number(target.dataset.index);
+    const cat = categoriesList()[i];
+    if (!cat) return;
+    const usage = stores.filter(s => s.category === cat.name).length;
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <div class="conflict-modal-icon">${icon("trash")}</div><h2>حذف «${esc(cat.name)}»؟</h2>
+      <p>${usage ? `${usage} متجر مسجَّل حالياً على هذا التصنيف — سيبقى تصنيف كل متجر كما هو، لكنه لن يظهر ضمن أي تصنيف في الفلاتر أو نموذج الانضمام بعد الحذف.` : "لا يوجد أي متجر مسجَّل على هذا التصنيف حالياً."}</p>
+      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="danger-button" data-action="cat-confirm-delete" data-index="${i}">حذف نهائياً</button></div>
+    `, "confirm-modal");
+  }
+  if (action === "cat-confirm-delete") {
+    const i = Number(target.dataset.index);
     const items = categoriesList().map(c => ({ ...c }));
-    if (items[i] && confirm(`حذف التصنيف "${items[i].name}"؟`)) { items.splice(i, 1); saveContentSetting("categories", { items }); showToast("تم حذف التصنيف", "success"); }
+    if (items[i]) {
+      const name = items[i].name;
+      items.splice(i, 1);
+      closeModal();
+      saveContentSetting("categories", { items });
+      showToast(`تم حذف تصنيف «${name}»`, "success");
+    }
   }
   if (action === "content-image-remove") {
     const form = target.closest("form");
