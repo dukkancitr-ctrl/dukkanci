@@ -1,5 +1,6 @@
 // Saves integration settings (GA4, Meta Pixel, TikTok…) to Supabase using the
 // service-role key so RLS doesn't block writes. Protected by ADMIN_PASSWORD.
+const crypto = require("crypto");
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 
 module.exports = async (req, res) => {
@@ -12,7 +13,9 @@ module.exports = async (req, res) => {
 
   // verify admin password header
   const authHeader = (req.headers["x-admin-password"] || "").trim();
-  if (!adminPassword || authHeader !== adminPassword) {
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(adminPassword);
+  if (!adminPassword || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return res.status(401).json({ error: "unauthorized" });
   }
 

@@ -49,8 +49,11 @@ function adminOk(req) {
   if (tok) return verifyAdminToken(tok);
   // also accept raw password in x-admin-key for simpler cron callers
   const pw = env("ADMIN_PASSWORD");
+  if (!pw) return false;
   const rawKey = (req.headers && req.headers["x-admin-key"]) || "";
-  return pw && rawKey === pw;
+  const a = Buffer.from(rawKey);
+  const b = Buffer.from(pw);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 // ─── Supabase helpers ────────────────────────────────────────────────────────

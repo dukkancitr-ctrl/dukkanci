@@ -1586,8 +1586,9 @@ async function sendOrderOtpRequest(phone) {
 // (soft fail) or the network is down, fall through and place the order so a real
 // customer is never blocked; once the OTP template is live it enforces automatically.
 async function startCheckoutOtp(phone, displayPhone, onVerified) {
-  // OTP verification is disabled until the WhatsApp/SMS service is live. Place the
-  // order directly. Flip AUTH_FLAGS.checkoutOtp to re-enable the gate.
+  // Set AUTH_FLAGS.checkoutOtp = false to bypass this gate and place orders directly
+  // (e.g. if WhatsApp delivery needs to be disabled again). Currently on: a failed/soft
+  // OTP send below still falls through to onVerified() so a real customer is never blocked.
   if (!AUTH_FLAGS.checkoutOtp) { onVerified(); return; }
   pendingOtpCommit = onVerified;
   showToast("جارٍ إرسال رمز التحقق إلى واتساب…");
@@ -9607,6 +9608,7 @@ function openOrderManager(orderId) {
       <strong class="order-items-title">${icon("box")} تفاصيل الطلب (${items.reduce((s, i) => s + (i.qty || 1), 0) || order.items})</strong>
       ${items.length ? `<ul class="order-items-list">${items.map(i => `<li><span class="oi-qty">${(i.qty || 1).toLocaleString("ar")}×</span><span class="oi-name">${escAttr(i.name)}${i.options ? `<small>${escAttr(i.options)}</small>` : ""}${i.notes ? `<small class="oi-note">${icon("edit")} ${escAttr(i.notes)}</small>` : ""}</span><b>${money(i.price)}</b></li>`).join("")}</ul>` : `<p class="order-items-empty">تفاصيل الأصناف غير متوفرة لهذا الطلب.</p>`}
     </div>
+    ${order.substitution ? `<div class="order-customer-note"><strong>${icon("info")} سياسة البدائل</strong><p>${escAttr(order.substitution)}</p></div>` : ""}
     ${order.notes ? `<div class="order-customer-note"><strong>${icon("edit")} ملاحظة العميل</strong><p>${escAttr(order.notes)}</p></div>` : ""}
     <label class="input-label"><span>تحديث حالة الطلب</span><select id="order-status-select">${statuses.map(status => `<option ${status === order.status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
     <label class="input-label"><span>ملاحظة للعميل (اختياري)</span><textarea id="order-status-note" placeholder="اكتب رسالة قصيرة تظهر للعميل..."></textarea></label>
@@ -11938,6 +11940,7 @@ document.addEventListener("submit", async event => {
     closeModal(); render(); showToast("تم تفعيل العرض ويظهر الآن في المتجر", "success");
   }
   if (event.target.id === "checkout-form") {
+    if (!state.cart.length) return;
     const els = event.target.elements;
     const isPickup = els.fulfillment.value === "pickup";
     // Contact info is required so the merchant can actually reach the customer.
@@ -12038,8 +12041,12 @@ document.addEventListener("submit", async event => {
     // Anti-fraud: a number must be confirmed via a WhatsApp OTP once before its first
     // order goes through. Already-verified numbers skip straight to placing the order.
     const verifyPhone = normalizePhone(contactPhone);
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.innerHTML : "";
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ إرسال الطلب..."; }
     if (state.verifiedPhone === verifyPhone) commitOrder();
-    else startCheckoutOtp(verifyPhone, contactPhone, commitOrder);
+    else await startCheckoutOtp(verifyPhone, contactPhone, commitOrder);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
   }
   if (event.target.id === "email-auth-form") {
     submitEmailAuth(event.target);

@@ -95,7 +95,7 @@ module.exports = async (request, response) => {
 
   const origin = { lat: Number(body.origin.lat), lng: Number(body.origin.lng) };
   const destination = { lat: Number(body.destination.lat), lng: Number(body.destination.lng) };
-  const ratePerKm = Math.min(20, Math.max(10, Number(body.ratePerKm) || 15));
+  const ratePerKm = Math.min(40, Math.max(10, Number(body.ratePerKm) || 15));
   const maxRoundTripKm = Math.min(200, Math.max(5, Number(body.maxRoundTripKm) || 60));
 
   try {
