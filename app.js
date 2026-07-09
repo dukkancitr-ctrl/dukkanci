@@ -1682,7 +1682,16 @@ async function resendOrderOtp(phone) {
 // still renders with a sane delivery estimate instead of crashing the store page.
 const DEFAULT_DELIVERY_SETTINGS = { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 };
 function getDeliverySettings(storeId) {
-  return state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)] || DEFAULT_DELIVERY_SETTINGS;
+  const settings = state.deliverySettings[Number(storeId)] || initialDeliverySettings[Number(storeId)] || DEFAULT_DELIVERY_SETTINGS;
+  // Distance mode needs a store lat/lng to price anything. Stores added directly
+  // (e.g. via a raw Supabase insert) can end up with no coordinates and no explicit
+  // delivery settings, defaulting to DEFAULT_DELIVERY_SETTINGS's "distance" mode —
+  // that leaves the quote permanently null, showing a ٠ fee and disabling checkout.
+  // Fall back to a fixed fee so the customer is never stuck.
+  if (settings.mode === "distance" && !getStoreLocation(storeId)?.lat) {
+    return { ...settings, mode: "fixed", fixedFee: settings.fixedFee || DEFAULT_DELIVERY_SETTINGS.fixedFee };
+  }
+  return settings;
 }
 
 function getStoreLocation(storeId) {
