@@ -657,6 +657,28 @@ async function loadCatalogFromSupabase() {
   } catch (e) { console.warn("Supabase load failed:", e.message); return false; }
 }
 
+// A store added straight to Supabase (no bundled fallback entry in the `stores`
+// array above) is otherwise invisible everywhere — home, category pages, search,
+// not just its own deep-link — until the full ~7600-product catalog load above
+// finishes. That load is deliberately deferred (see initCatalog), so such a store
+// randomly seems to "appear and disappear" depending on how fast the visitor's
+// connection is and whether they load the page again before it finishes. Fetch
+// just the `stores` table (small, no products) right away and merge in any DB
+// row not yet in the bundled list, so it's visible on first paint everywhere.
+async function loadStoresOnly() {
+  const sb = window.supabaseClient;
+  if (!sb) return false;
+  try {
+    const cb = Date.now(); // vary the URL to dodge Cloudflare's edge cache
+    const { data: st, error } = await sb.from("stores").select("*").order("id").gt("id", -cb);
+    if (error || !st || !st.length) return false;
+    let added = 0;
+    st.forEach(r => { if (!stores.some(s => s.id === r.id)) { stores.push(mapDbStore(r)); added++; } });
+    if (added) warnUnslugged();
+    return added > 0;
+  } catch (e) { console.warn("Supabase stores load failed:", e.message); return false; }
+}
+
 // Dialect synonyms for on-site search: product_id → normalized alt-name string.
 // Loaded once after the catalog; getMatchingProducts folds it into the search
 // haystack so a query in any dialect («رقي» / «karpuz» / «بطاطس») still finds the
@@ -1249,10 +1271,15 @@ async function initCatalog() {
   // Reflect feature flags (integration_settings) on first paint once they finish
   // loading — integrations.js fetches them async, so re-render when they're ready.
   Promise.resolve(window.DUKKANCI_INTEGRATIONS && window.DUKKANCI_INTEGRATIONS.load()).then(() => render()).catch(() => {});
+  // Merge any Supabase-only stores (added directly to the DB with no bundled
+  // fallback entry) into the list right away — don't make them wait on the
+  // deferred, heavy product load below just to become visible.
+  loadStoresOnly().then(added => { if (added) render(); });
   // Defer the heavy full-catalog load (~7600 products) so /store, /product and
   // /offers deep-links hydrate just their own rows first (hydratePageData) and
   // render fast, instead of competing with the full load for bandwidth. Stores
-  // come from bundled data meanwhile, so home/stores stay populated.
+  // come from bundled data (now topped up by loadStoresOnly above) meanwhile,
+  // so home/stores stay populated.
   await new Promise(r => setTimeout(r, 1800));
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
