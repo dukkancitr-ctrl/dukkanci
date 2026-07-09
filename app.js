@@ -2324,9 +2324,9 @@ function storeAvatar(store, extraClass = "") {
 
 function categoryCard(name, image, caption) {
   return `
-    <button class="category-card" data-action="category" data-category="${name}">
-      <span class="category-card__icon"><img src="${image}" alt=""></span>
-      <span><strong>${name}</strong><small>${caption}</small></span>
+    <button class="category-card" data-action="category" data-category="${escAttr(name)}">
+      <span class="category-card__icon"><img src="${escAttr(image)}" alt=""></span>
+      <span><strong>${escAttr(name)}</strong><small>${escAttr(caption)}</small></span>
       ${icon("arrowLeft", "arrow")}
     </button>
   `;
@@ -6680,12 +6680,16 @@ function adminContentPlans() {
 // site is unchanged until something is actually edited.
 const CONTENT_SECTIONS = {
   hero: {
+    // Only "eyebrow" is actually read by the Hero V2 markup (app.js's homePage(),
+    // ~line 2739) — the rotating 4-slide redesign hardcodes each slide's own
+    // headline/lead text per-slide, so a single titleTop/titleEm/subtitle no
+    // longer maps onto anything. Those 3 fields used to save successfully while
+    // silently doing nothing on the storefront; removed rather than leave a
+    // false "it saved" toast with no visible effect. Making the hero headline
+    // editable again would need per-slide fields wired into those 4 slides.
     title: "نصوص الصفحة الرئيسية (الهيرو)", key: "heroTexts",
     fields: [
-      { name: "eyebrow", label: "النص العلوي الصغير", def: "كل ما تحتاجه من دكاكين حيك" },
-      { name: "titleTop", label: "العنوان — السطر الأول", def: "سوق الحي" },
-      { name: "titleEm", label: "العنوان — الكلمة المميّزة", def: "بين يديك" },
-      { name: "subtitle", label: "الوصف", def: "اطلب خضارك الطازجة، حلوياتك المفضلة واحتياجات البيت من متاجر تعرفها وتثق بها.", area: true }
+      { name: "eyebrow", label: "النص العلوي الصغير", def: "كل ما تحتاجه من دكاكين حيك" }
     ]
   },
   banner: {
@@ -11342,10 +11346,22 @@ document.addEventListener("change", event => {
   if (event.target.dataset.action === "toggle-featured") {
     const store = getStore(event.target.dataset.id);
     if (store) {
-      store.featured = event.target.checked;
-      pushStoreCloud(store);
-      showToast(`${store.name}: ${store.featured ? "أصبح مميّزاً على الرئيسية" : "أُزيل من المميّزة"}`, "success");
-      render();
+      const checkbox = event.target;
+      const prevVal = store.featured;
+      const newVal = checkbox.checked;
+      store.featured = newVal;
+      checkbox.disabled = true;
+      pushStoreCloud(store).then(ok => {
+        checkbox.disabled = false;
+        if (!ok) {
+          store.featured = prevVal;
+          checkbox.checked = prevVal;
+          showToast("تعذّر حفظ التغيير، تحقّق من الاتصال وحاول مجدداً");
+          return;
+        }
+        showToast(`${store.name}: ${newVal ? "أصبح مميّزاً على الرئيسية" : "أُزيل من المميّزة"}`, "success");
+        render();
+      });
     }
   }
   if (event.target.dataset.action === "toggle-category") {

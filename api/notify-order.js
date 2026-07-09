@@ -829,6 +829,18 @@ async function retrieveKnowledge(query) {
   } catch (e) { return ""; }
 }
 
+// Throttle the paid AI path per WhatsApp sender: more than 20 inbound messages
+// from the same number in the last hour skips the embedding+completion calls
+// (the quiet greet/away fallback still applies). Fails open on any DB error —
+// a rate-limiter must never be the reason a real customer's message is dropped.
+async function aiReplyThrottled(wa_id) {
+  try {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&direction=eq.in&created_at=gte.${encodeURIComponent(since)}&select=id&limit=50`);
+    return Array.isArray(rows) && rows.length > 20;
+  } catch (e) { return false; }
+}
+
 async function aiReply(text, wa_id, timestamp) {
   // Routed through the AI Gateway: the active provider/model for the
   // whatsapp_autoreply feature is read from ai_feature_config. If no provider is
@@ -905,10 +917,17 @@ async function ingestWebhook(body) {
           if (reply) {
             try { await sendAutoReply(m.from, reply); } catch (e) {}     // command / ice breaker → static
           } else {
+            // The static ice-breaker path above is free; only the branch below hits a
+            // paid OpenAI call per message, so throttle just this one — otherwise a
+            // single WhatsApp number (or a handful of burner SIMs) can rack up an
+            // unbounded embedding+completion bill with a message flood.
             let ai = null;
-            try { ai = await aiReply(d.body, m.from, m.timestamp); } catch (e) {}  // free text → AI
+            const throttled = await aiReplyThrottled(m.from);
+            if (!throttled) {
+              try { ai = await aiReply(d.body, m.from, m.timestamp); } catch (e) {}  // free text → AI
+            }
             if (ai) { try { await sendAutoReply(m.from, ai); } catch (e) {} }
-            else { try { await maybeGreetOrAway(m.from, m.timestamp); } catch (e) {} }  // fallback
+            else { try { await maybeGreetOrAway(m.from, m.timestamp); } catch (e) {} }  // fallback (also covers throttled case — quiet, not alarming)
           }
         }
       }
