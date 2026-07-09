@@ -2264,6 +2264,44 @@ module.exports = async (req, res) => {
   const order = normalizeOrder(body);
   if (!order.id || !order.storeId) return res.status(400).json({ error: "order id/storeId required" });
 
+  // Authoritative order write. The checkout page ALSO writes the order straight to
+  // Supabase from the browser (pushOrderCloud) with the anon key — but that request
+  // races the customer backgrounding/closing the tab right after the success screen
+  // appears, and its keepalive path silently swallows any non-network failure. This
+  // request (the WhatsApp/notification call) has proven far more reliable in the
+  // wild, so we upsert the full order row here too, service-role, same-origin, no
+  // RLS involved. on_conflict=id + merge-duplicates makes this idempotent with
+  // whatever pushOrderCloud already saved (or will save) for the same order id.
+  try {
+    const b = body || {};
+    const ddPhone = order.customerPhone || "";
+    const orderRow = {
+      id: order.id, store_id: Number(order.storeId), customer: order.customer || "",
+      total: order.total, status: b.status || "طلب جديد", time: b.time || "الآن",
+      items: Number(b.items) || (Array.isArray(order.lineItems) ? order.lineItems.length : 0),
+      delivery_details: {
+        quote: b.deliveryQuote ?? null,
+        phone: ddPhone,
+        phoneKey: ddPhone.replace(/\D/g, ""),
+        fulfillment: order.fulfillment || "delivery",
+        address: order.address || "",
+        addressDetails: b.addressDetails || "",
+        lineItems: order.lineItems || [],
+        notes: b.notes || "",
+        substitution: b.substitution || "",
+        payment: order.payment || "",
+        scheduleDay: b.scheduleDay || "",
+        scheduleTime: b.scheduleTime || "",
+        closedWhenOrdered: !!b.closedWhenOrdered,
+        createdAt: b.createdAt || ""
+      }
+    };
+    if (b.customerId) { orderRow.customer_id = b.customerId; orderRow.customer_phone = ddPhone; }
+    if (b.attribution) orderRow.attribution = b.attribution;
+    const saved = await sbWrite("POST", "orders?on_conflict=id", orderRow, "resolution=merge-duplicates,return=minimal");
+    if (!saved.ok) console.warn("[order-save] failed for " + order.id + ": " + saved.status + " " + JSON.stringify(saved.rows || saved.error));
+  } catch (e) { try { console.warn("[order-save] error for " + order.id + ": " + e.message); } catch (_) {} }
+
   // Fraud/mispricing detection (alert-only, never blocks): order totals are
   // fully client-computed (checkout writes straight to Supabase with the anon
   // key), so a tampered client could submit any total. Re-price the order's

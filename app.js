@@ -971,6 +971,11 @@ function pushOrderCloud(order, opts = {}) {
   // (e.g. product catalog saves) can exceed the browser's ~64KB keepalive body quota
   // and would throw. A direct PostgREST call is safe here — the "guest insert" RLS
   // policy allows this INSERT with just the anon key regardless of session.
+  // NOTE: this is now a best-effort SECONDARY save — notifyOrderWhatsapp's request
+  // to /api/notify-order (same-origin, service-role) is the authoritative write, since
+  // this cross-origin call has proven to silently vanish under the exact backgrounding
+  // scenario above on some mobile browsers. Kept as a redundant fast-path when it works;
+  // upsert on_conflict=id makes running both saves harmless.
   if (opts.keepalive && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
     fetch(`${window.SUPABASE_URL}/rest/v1/orders?on_conflict=id`, {
       method: "POST",
@@ -982,7 +987,8 @@ function pushOrderCloud(order, opts = {}) {
         Prefer: "resolution=merge-duplicates,return=minimal"
       },
       body: JSON.stringify(payload)
-    }).catch(e => console.warn("order cloud save:", e.message));
+    }).then(r => { if (!r.ok) console.warn("order cloud save: HTTP " + r.status); })
+      .catch(e => console.warn("order cloud save:", e.message));
     return;
   }
   sb.from("orders").upsert(payload, { onConflict: "id" }).then(({ error }) => { if (error) console.warn("order cloud save:", error.message); });
@@ -991,6 +997,11 @@ function pushOrderCloud(order, opts = {}) {
 // store of the new order and sends the customer a confirmation. The serverless
 // endpoint no-ops until the WhatsApp number is configured (see api/notify-order.js),
 // so this is safe to call always and never blocks the order flow.
+// This same request is also the platform's AUTHORITATIVE save of the order into
+// Supabase (see api/notify-order.js) — it's a same-origin, service-role write, far
+// more reliable than pushOrderCloud's direct cross-origin insert, so every field
+// the merchant needs to fulfill the order must be included here too, not just the
+// fields needed for the WhatsApp message text.
 function notifyOrderWhatsapp(order) {
   try {
     // keepalive: the browser can otherwise abort this request if the customer
@@ -1004,7 +1015,14 @@ function notifyOrderWhatsapp(order) {
         id: order.id, storeId: order.storeId, customer: order.customer,
         customerPhone: order.customerPhone, total: order.total,
         fulfillment: order.fulfillment, address: order.address,
-        payment: order.payment, lineItems: order.lineItems
+        payment: order.payment, lineItems: order.lineItems,
+        status: order.status, time: order.time, items: order.items,
+        addressDetails: order.addressDetails, notes: order.notes,
+        substitution: order.substitution, scheduleDay: order.scheduleDay,
+        scheduleTime: order.scheduleTime, closedWhenOrdered: order.closedWhenOrdered,
+        createdAt: order.createdAt, deliveryQuote: order.deliveryDetails,
+        customerId: (isFeatureOn("feature_customer_accounts") && state.user) ? state.user.id : undefined,
+        attribution: order.attribution
       })
     }).catch(() => {});
   } catch (e) { /* notifications must never break checkout */ }
@@ -2537,7 +2555,8 @@ const HOME_CATEGORIES = [
   ["مكسرات وبهارات", "/assets/photos/store-spices.jpg", "نكهات من كل مكان"],
   ["بن ومكسرات", "/assets/photos/store-coffee.jpg", "أجود أنواع البنّ والقهوة"],
   ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"],
-  ["مواد غذائية متخصصة", "/assets/photos/store-specialty-food.jpg", "عسل طبيعي ومنتجات النحل"]
+  ["مواد غذائية متخصصة", "/assets/photos/store-specialty-food.jpg", "عسل طبيعي ومنتجات النحل"],
+  ["مطابخ منزلية", "/assets/photos/store-home-kitchen-placeholder.svg", "أدوات ومستلزمات المطبخ"]
 ];
 // The editable homepage categories. From site_settings.categories.items when
 // set (admin add/delete/edit), else built from the HOME_CATEGORIES defaults
@@ -8912,7 +8931,7 @@ function updateCheckoutPricing(status = "") {
   const store = getStore(state.cart[0]?.storeId);
   const totals = cartTotals(address.value);
   const delivery = pickup ? 0 : totals.delivery;
-  document.getElementById("checkout-delivery-fee").textContent = pickup ? "مجاناً" : (totals.freeDelivery ? "مجاني 🎉" : money(delivery));
+  document.getElementById("checkout-delivery-fee").textContent = pickup ? "مجاناً" : (totals.quote?.exceedsMaxDistance ? "خارج النطاق" : (totals.freeDelivery ? "مجاني 🎉" : money(delivery)));
   document.getElementById("checkout-final-total").textContent = money(Math.max(0, totals.subtotal + delivery - (totals.discount || 0) - (totals.creditApplied || 0)));
   const calculator = document.getElementById("delivery-calculator");
   if (calculator) {
@@ -9325,7 +9344,10 @@ function isProfileComplete() {
   const p = state.customerProfile;
   if (!p || !p.name || !p.phone) return false;
   // must have at least one address with building + apt numbers (zone or full)
-  return state.customerAddresses.some(a => a.structured?.bina && a.structured?.daire);
+  // AND a resolved delivery point (named zone, or geocoded lat/lng) — an address
+  // saved without coordinates can never produce a distance-based delivery quote,
+  // so it doesn't count as "complete" and the customer is routed back to fix it.
+  return state.customerAddresses.some(a => a.structured?.bina && a.structured?.daire && (a.namedZone || (a.lat != null && a.lng != null)));
 }
 
 function openProfileSetupModal(pendingProductId, qty, opts, notes, addons) {
@@ -12244,7 +12266,18 @@ document.addEventListener("submit", async event => {
       addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
       detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
     }
-    const addressData = { id: Date.now(), label: "المنزل", address: addrParts.join("، "), details: detailParts.join(" "), structured, namedZone, lat: null, lng: null, isDefault: true };
+    // Named zones use a fixed fee (no coordinates needed); a full address needs
+    // geocoded lat/lng or every distance-mode store will fail to quote delivery.
+    let lat = null, lng = null;
+    if (!namedZone && addrParts.length) {
+      const submitBtn = event.target.querySelector('button[type="submit"]');
+      const originalLabel = submitBtn ? submitBtn.innerHTML : "";
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "جارٍ تحديد الموقع..."; }
+      const hits = await googleSearchPlaces(addrParts.join("، "));
+      if (hits.length) { lat = hits[0].lat; lng = hits[0].lng; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalLabel; }
+    }
+    const addressData = { id: Date.now(), label: "المنزل", address: addrParts.join("، "), details: detailParts.join(" "), structured, namedZone, lat, lng, isDefault: true };
     state.customerAddresses = state.customerAddresses.map(a => ({ ...a, isDefault: false }));
     state.customerAddresses.unshift(addressData);
     saveState();
@@ -12267,11 +12300,21 @@ document.addEventListener("submit", async event => {
     // build structured Turkish address fields (auto-filled from the map pin,
     // manually editable via the pencil toggle)
     const structured = { il: (form.get("sf_il")||"").trim() || "إسطنبول", ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
-    const lat = Number(form.get("lat")) || null;
-    const lng = Number(form.get("lng")) || null;
+    let lat = Number(form.get("lat")) || null;
+    let lng = Number(form.get("lng")) || null;
     // The delivery point must exist: either a map pin (fills everything) or a
     // manually-typed mahalle at minimum.
     if (!lat && !structured.mahalle) { showToast("حدّد موقعك على الخريطة أو أدخل الحي يدوياً بزر التعديل"); return; }
+    // Manual pencil-edit path never sets lat/lng from the map — geocode the typed
+    // address so distance-based delivery quotes still work for this address.
+    if (!lat && structured.mahalle) {
+      const submitBtn = event.target.querySelector('button[type="submit"]');
+      const originalLabel = submitBtn ? submitBtn.innerHTML : "";
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "جارٍ تحديد الموقع..."; }
+      const hits = await googleSearchPlaces([structured.sokak, structured.mahalle, structured.ilce, structured.il].filter(Boolean).join("، "));
+      if (hits.length) { lat = hits[0].lat; lng = hits[0].lng; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalLabel; }
+    }
     // compose a readable address string from structured fields
     const note = (form.get("note") || "").trim();
     const addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
