@@ -1,7 +1,8 @@
 // Reverse-geocodes a {lat,lng} into a short Arabic area label ("الحي، المدينة")
 // for the header location pill. Uses the same GOOGLE_MAPS_API_KEY as the
-// delivery-quote route, and falls back to OpenStreetMap (Nominatim) if the
-// key is missing or Google fails. The key never leaves the server.
+// delivery-quote route. Google-only by design (no third-party fallback) — if
+// the key is missing or Google fails, the pill just shows no area label.
+// The key never leaves the server.
 
 function pickComponent(components, types) {
   for (const wanted of types) {
@@ -34,27 +35,6 @@ async function googleReverse(lat, lng) {
   }
 }
 
-async function nominatimReverse(lat, lng) {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar&zoom=14&addressdetails=1`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": "Dukkanci/1.0 (https://dukkanci.vercel.app)" }
-    });
-    if (!res.ok) throw new Error(`Nominatim ${res.status}`);
-    const data = await res.json();
-    const a = data.address || {};
-    const district = a.suburb || a.neighbourhood || a.city_district || a.town || a.county || null;
-    const city = a.province || a.city || a.state || null;
-    const area = [district, city].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join("، ");
-    return area || null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 module.exports = async (request, response) => {
   // Area labels are stable enough to cache briefly at the edge.
   response.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
@@ -66,11 +46,7 @@ module.exports = async (request, response) => {
   }
 
   try {
-    let area = null;
-    try { area = await googleReverse(lat, lng); } catch (e) { console.error("google reverse:", e.message); }
-    if (!area) {
-      try { area = await nominatimReverse(lat, lng); } catch (e) { console.error("nominatim reverse:", e.message); }
-    }
+    const area = await googleReverse(lat, lng);
     return response.status(200).json({ area: area || null, lat, lng });
   } catch (error) {
     console.error("reverse-geocode:", error.message);
