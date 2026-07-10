@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, hallabStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore);
 
 const products = [];
 
@@ -62,7 +62,6 @@ products.push(...orangeProducts);
 products.push(...anasProducts);
 products.push(...yemenmandyProducts);
 products.push(...alfursanProducts);
-products.push(...hallabProducts);
 products.push(...safaProducts);
 products.push(...rodyProducts);
 products.push(...krepchefProducts);
@@ -185,7 +184,6 @@ const initialDeliverySettings = {
   ...anasDeliverySettings,
   ...yemenmandyDeliverySettings,
   ...alfursanDeliverySettings,
-  ...hallabDeliverySettings,
   ...safaDeliverySettings,
   ...rodyDeliverySettings,
   ...krepchefDeliverySettings,
