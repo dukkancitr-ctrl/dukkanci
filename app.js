@@ -597,6 +597,11 @@ function mapDbStore(r) {
     open: r.open, featured: r.featured, hasOffer: r.has_offer, offer: r.offer, priceOnRequest: r.price_on_request,
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
     bankDetails: r.bank_details,
+    // Which checkout payment methods this store accepts — defaults to all
+    // three enabled when unset so existing stores keep today's behavior.
+    paymentMethods: (r.payment_methods && typeof r.payment_methods === "object")
+      ? { cash: r.payment_methods.cash !== false, card: r.payment_methods.card !== false, bank: r.payment_methods.bank !== false }
+      : { cash: true, card: true, bank: true },
     website: r.website, sourceUrl: r.source_url, hours: r.hours, areas: r.areas, fulfillment: r.fulfillment,
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
     branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status,
@@ -613,7 +618,9 @@ function mapDbProduct(r) {
     addons: r.addons || [],
     // Traceability link back to the shared supermarket image bank ("مخزن الصور
     // المشترك") this product was imported from, if any — see catalog_products.
-    catalogProductId: r.catalog_product_id ?? null
+    catalogProductId: r.catalog_product_id ?? null,
+    // Home-kitchen ("مطابخ منزلية") advance-order requirement in hours (0/24/48).
+    advanceHours: Number(r.advance_hours) || 0
   };
 }
 function toDbProduct(p) {
@@ -623,7 +630,8 @@ function toDbProduct(p) {
     unit: p.unit ?? null, category: p.category ?? null, available: p.available !== false, featured: !!p.featured,
     description: p.description ?? null, image_fit: p.imageFit ?? null, options: p.options ?? [],
     addons: p.addons ?? [],
-    catalog_product_id: p.catalogProductId ?? null
+    catalog_product_id: p.catalogProductId ?? null,
+    advance_hours: Number(p.advanceHours) || 0
   };
 }
 async function loadCatalogFromSupabase() {
@@ -839,7 +847,9 @@ function toDbStore(s) {
     lat: s.location?.lat ?? null, lng: s.location?.lng ?? null, map_url: s.mapUrl, open: s.open !== false,
     featured: !!s.featured, has_offer: !!s.hasOffer, offer: s.offer ?? null, price_on_request: !!s.priceOnRequest,
     description: s.description ?? null, address: s.address ?? null, phone: s.phone ?? null, whatsapp: s.whatsapp ?? null,
-    email: s.email ?? null, bank_details: s.bankDetails ?? null, website: s.website ?? null, source_url: s.sourceUrl ?? null, hours: s.hours ?? null,
+    email: s.email ?? null, bank_details: s.bankDetails ?? null,
+    payment_methods: s.paymentMethods ?? { cash: true, card: true, bank: true },
+    website: s.website ?? null, source_url: s.sourceUrl ?? null, hours: s.hours ?? null,
     areas: s.areas ?? [], fulfillment: s.fulfillment ?? null, subscription: s.subscription ?? null,
     order_count: s.orderCount ?? 0, official_store: !!s.officialStore, branch_group: s.branchGroup ?? null, brand_theme: s.brandTheme ?? null
   };
@@ -2586,6 +2596,19 @@ function homeCategoriesOrdered() {
 // the store-edit dropdown, which always includes the store's current value).
 function storeCategoryNames() {
   return categoriesList().filter(c => !c.hidden).map(c => c.name).filter(Boolean);
+}
+// Home-kitchen ("مطابخ منزلية") stores get an extra per-product prep-time
+// field — these small home-based kitchens often need real advance notice
+// (24-48h) to prepare an order, unlike a stocked supermarket/restaurant.
+function isHomeKitchenStore(store) {
+  return /مطابخ|منزلي/.test((store && store.category) || "");
+}
+// Strictest per-product advance-notice requirement across the cart, in hours
+// (0 if none). Shared by renderCheckout (to gate the day/time picker) and the
+// checkout submit handler (to re-validate the actual choice), so the two
+// never drift apart on how the requirement is derived.
+function cartRequiredLeadHours(cart) {
+  return Math.max(0, ...cart.map(item => { const p = getProduct(item.productId); return (p && Number(p.advanceHours)) || 0; }));
 }
 // Baseline category taxonomy for every "سوبر ماركت" store, taken from قاضي
 // ماركت باشاك شهير (store 19) — the platform's most established, most
@@ -5003,6 +5026,15 @@ function merchantStore() {
         <label><span>رسوم التوصيل الثابتة</span><input name="fixedFee" type="number" min="0" value="${deliverySettings.fixedFee}"></label>
         <label><span>الحد الأدنى للطلب (ل.ت)</span><input name="minOrder" type="number" min="0" value="${Number(store.minOrder) || 0}"></label>
         <label class="wide"><span>بيانات الحساب البنكي (للتحويل البنكي)</span><textarea name="bankDetails" placeholder="اسم صاحب الحساب&#10;اسم البنك&#10;IBAN: TR.. .. ..">${escAttr(store.bankDetails || "")}</textarea><small class="field-hint">تظهر هذه البيانات للعميل في صفحة الدفع عند اختياره «تحويل بنكي» لينسخها ويرسل الحوالة. اتركها فارغة إن كنت سترسل رقم الحساب يدوياً.</small></label>
+        <div class="input-label wide">
+          <span>طرق الدفع المقبولة في متجرك</span>
+          <div class="form-check-group">
+            <label class="form-check"><input type="checkbox" name="payCash" ${store.paymentMethods?.cash !== false ? "checked" : ""}><span>نقداً عند التسليم</span></label>
+            <label class="form-check"><input type="checkbox" name="payCard" ${store.paymentMethods?.card !== false ? "checked" : ""}><span>بطاقة عند التسليم (POS مع المندوب)</span></label>
+            <label class="form-check"><input type="checkbox" name="payBank" ${store.paymentMethods?.bank !== false ? "checked" : ""}><span>تحويل بنكي</span></label>
+          </div>
+          <small class="field-hint">اختر طريقة واحدة على الأقل. لن تظهر للعميل عند الدفع إلا الطرق المفعّلة هنا.</small>
+        </div>
       </div>
       <section class="merchant-delivery-settings">
         <div class="merchant-delivery-settings__heading">
@@ -7954,7 +7986,24 @@ function renderCheckout() {
   const profile = state.customerProfile || {};
   const dayFmt = new Intl.DateTimeFormat("ar-EG", { weekday: "long", day: "numeric", month: "long" });
   const today = new Date(), tomorrow = new Date(Date.now() + 86400000);
-  const dayOptions = `<option>اليوم · ${dayFmt.format(today)}</option><option>غداً · ${dayFmt.format(tomorrow)}</option>`;
+  // Home-kitchen products can require the order be placed a set number of
+  // hours ahead (24/48h) — take the strictest requirement across the cart and
+  // block same-day/too-soon scheduling for it. This day-level gate is only an
+  // approximate pre-filter for the UI; the submit handler re-validates the
+  // exact chosen day+time against the real elapsed hours (a "tomorrow" pick
+  // made late in the day can still be less than 24h away).
+  const cartLeadHours = cartRequiredLeadHours(state.cart);
+  const minDayIndex = cartLeadHours >= 48 ? 2 : cartLeadHours >= 24 ? 1 : 0;
+  const dayDates = [today, tomorrow, new Date(Date.now() + 2 * 86400000)];
+  const dayLabels = ["اليوم", "غداً", "بعد غد"];
+  const visibleDays = minDayIndex > 0 ? 3 : 2;
+  const dayOptions = dayDates.slice(0, visibleDays).map((d, i) => {
+    const label = `${dayLabels[i]} · ${dayFmt.format(d)}`;
+    const disabled = i < minDayIndex;
+    return `<option ${disabled ? "disabled" : ""} ${i === minDayIndex ? "selected" : ""}>${label}</option>`;
+  }).join("");
+  const timeOptions = (cartLeadHours > 0 ? [] : ["في أقرب وقت"]).concat(["14:00 - 15:00", "17:00 - 18:00"])
+    .map(t => `<option>${t}</option>`).join("");
   return `
     <section class="page-hero compact checkout-hero"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>إتمام الطلب</strong></div><h1>إتمام طلبك</h1><p>راجع التفاصيل وحدد طريقة الاستلام والدفع.</p></div></section>
     ${!isStoreOpenNow(store) ? `<div class="container"><div class="review-note order-closed-note" style="margin-top:16px">${icon("clock")} <span><strong>المتجر مغلق الآن.</strong><small>يمكنك إتمام طلبك الآن، وسيتم تنفيذه في اليوم التالي عند فتح المتجر.</small></span></div></div>` : ""}
@@ -7978,8 +8027,9 @@ function renderCheckout() {
                 <div id="checkout-address-box">${renderCheckoutAddressBox(selectedAddressId)}</div>
               </div>
               <label><span>اليوم</span><select name="day">${dayOptions}</select></label>
-              <label><span>الوقت</span><select name="time"><option>في أقرب وقت</option><option>14:00 - 15:00</option><option>17:00 - 18:00</option></select></label>
+              <label><span>الوقت</span><select name="time">${timeOptions}</select></label>
             </div>
+            ${cartLeadHours > 0 ? `<div class="review-note">${icon("clock")} <span><strong>بعض منتجات هذا الطلب تحتاج وقت تحضير مسبق (${cartLeadHours} ساعة على الأقل).</strong><small>لهذا تم تعطيل المواعيد الأقرب من ذلك.</small></span></div>` : ""}
             <button type="button" class="location-link" data-action="use-current-location">${icon("pin")} استخدام موقعي الحالي</button>
             <div id="delivery-calculator">${renderDeliveryQuoteDetails(store, totals.quote)}</div>
           </section>
@@ -7992,9 +8042,19 @@ function renderCheckout() {
           <section class="checkout-card">
             <div class="checkout-card__title"><span>٤</span><div><h2>طريقة الدفع</h2><p>اختر طريقة الدفع المناسبة — سيراها المتجر ويجهّزها مع طلبك.</p></div></div>
             <div class="choice-grid three">
-              <label class="choice-card active"><input type="radio" name="payment" value="cash" checked><span>${icon("receipt")}</span><div><strong>نقداً عند التسليم</strong><small>ادفع نقداً عند استلام الطلب</small></div></label>
-              <label class="choice-card"><input type="radio" name="payment" value="card"><span>${icon("wallet")}</span><div><strong>بالبطاقة عند التسليم</strong><small>جهاز نقاط بيع (POS) مع المندوب</small></div></label>
-              <label class="choice-card"><input type="radio" name="payment" value="bank"><span>${icon("shield")}</span><div><strong>تحويل بنكي</strong><small>حوّل المبلغ إلى حساب المتجر</small></div></label>
+              ${(() => {
+                const allMethods = [
+                  { key: "cash", value: "cash", icon: "receipt", title: "نقداً عند التسليم", desc: "ادفع نقداً عند استلام الطلب" },
+                  { key: "card", value: "card", icon: "wallet", title: "بالبطاقة عند التسليم", desc: "جهاز نقاط بيع (POS) مع المندوب" },
+                  { key: "bank", value: "bank", icon: "shield", title: "تحويل بنكي", desc: "حوّل المبلغ إلى حساب المتجر" }
+                ];
+                const enabled = allMethods.filter(m => (store.paymentMethods ? store.paymentMethods[m.key] !== false : true));
+                // Safety net: a store row with all 3 methods explicitly disabled (only reachable
+                // via a direct DB edit, never via the merchant form's own save-guard) must never
+                // leave checkout with zero payment options — fall back to showing all of them.
+                const visible = enabled.length ? enabled : allMethods;
+                return visible.map((m, i) => `<label class="choice-card ${i === 0 ? "active" : ""}"><input type="radio" name="payment" value="${m.value}" ${i === 0 ? "checked" : ""}><span>${icon(m.icon)}</span><div><strong>${m.title}</strong><small>${m.desc}</small></div></label>`).join("");
+              })()}
             </div>
             <div id="bank-transfer-panel" class="bank-transfer-panel" hidden>
               ${store.bankDetails && store.bankDetails.trim()
@@ -9871,6 +9931,15 @@ function openProductForm(id, defaultCategory) {
           <small class="field-hint ai-enhance-hint">ارفع الصورة أولاً ثم اضغط «تحسين» — يُزيل الخلفية ويُحسّن الجودة تلقائياً.</small>
         </div>
         <label class="input-label wide"><span>الوصف</span><textarea name="description" placeholder="وصف مختصر للمنتج">${editing ? escAttr(editing.description || "") : ""}</textarea></label>
+        ${isHomeKitchenStore(store) ? `<label class="input-label wide">
+          <span>وقت التحضير المطلوب</span>
+          <select name="advanceHours">
+            <option value="0" ${!editing || !editing.advanceHours ? "selected" : ""}>بدون — يُحضَّر فوراً</option>
+            <option value="24" ${editing && Number(editing.advanceHours) === 24 ? "selected" : ""}>يتطلب الطلب قبل 24 ساعة على الأقل</option>
+            <option value="48" ${editing && Number(editing.advanceHours) === 48 ? "selected" : ""}>يتطلب الطلب قبل 48 ساعة على الأقل</option>
+          </select>
+          <small class="field-hint">لمنتجات المطبخ المنزلي التي تحتاج تحضيراً مسبقاً — سيُمنع العميل من اختيار موعد تسليم أقرب من هذه المدة.</small>
+        </label>` : ""}
       </div>
       <label class="form-check"><input type="checkbox" name="available" ${!editing || editing.available !== false ? "checked" : ""}><span>متوفر للبيع الآن</span></label>
       <button class="primary-button full" type="submit">${icon(editing ? "check" : "plus")} ${editing ? "حفظ التعديلات" : "إضافة المنتج"}</button>
@@ -12014,6 +12083,11 @@ document.addEventListener("submit", async event => {
       options,
       addons
     };
+    // The advanceHours field only renders for home-kitchen stores — omit the key
+    // entirely (rather than forcing 0) when it's absent, so editing a product from
+    // a context where the field isn't shown (category changed since, admin view,
+    // etc.) never silently wipes an existing prep-time requirement.
+    if (f.advanceHours) data.advanceHours = Math.max(0, Number(f.advanceHours.value) || 0);
     if (!data.name) { restoreSubmit(); showToast("يرجى إدخال اسم المنتج"); return; }
     if (f.dataset.id) {
       const edited = getProduct(f.dataset.id);
@@ -12139,6 +12213,28 @@ document.addEventListener("submit", async event => {
     if (contactPhone.replace(/\D/g, "").length < 10) { showToast("يرجى إدخال رقم واتساب صحيح للتواصل"); els.contactPhone?.focus(); return; }
     if (!els.terms.checked) { showToast("يرجى الموافقة على سياسة الطلب أولاً"); return; }
     if (!isPickup && !els.address.value) { showToast("يرجى اختيار عنوان التوصيل"); return; }
+    // Home-kitchen products can require a minimum advance-notice window. The
+    // render-time day/time picker only approximates this at day granularity —
+    // re-validate here against the ACTUAL elapsed hours between now and the
+    // chosen day+time slot, since e.g. placing the order at 23:00 and picking
+    // "غداً" + the earliest time slot is barely ~15h away, not the full 24h.
+    // Also re-checks in case the <select> was tampered with (UI only disables
+    // too-soon options rather than removing them).
+    const cartLeadHours = cartRequiredLeadHours(state.cart);
+    if (cartLeadHours > 0) {
+      const dayLabels = ["اليوم", "غداً", "بعد غد"];
+      const chosenDayIndex = dayLabels.findIndex(l => (els.day?.value || "").startsWith(l));
+      const slotStartHour = { "14:00 - 15:00": 14, "17:00 - 18:00": 17 }[els.time?.value];
+      const now = new Date();
+      const chosenDay = chosenDayIndex === -1 ? null : new Date(now.getTime() + chosenDayIndex * 86400000);
+      const targetTime = (chosenDay && slotStartHour != null)
+        ? new Date(chosenDay.getFullYear(), chosenDay.getMonth(), chosenDay.getDate(), slotStartHour, 0, 0)
+        : null;
+      if (!targetTime || targetTime.getTime() < now.getTime() + cartLeadHours * 3600000) {
+        showToast(`بعض منتجات طلبك تحتاج وقت تحضير مسبق (${cartLeadHours} ساعة على الأقل) — يرجى اختيار موعد لاحق`);
+        return;
+      }
+    }
     const totals = cartTotals(els.address.value);
     const deliverySettings = getDeliverySettings(state.cart[0].storeId);
     if (!isPickup && deliverySettings.mode === "distance" && (!totals.quote || totals.quote.exceedsMaxDistance)) {
@@ -12391,6 +12487,13 @@ document.addEventListener("submit", async event => {
       store.whatsapp = store.phone;
       store.hours = (form.get("hours") || "").toString().trim();
       store.bankDetails = (form.get("bankDetails") || "").toString().trim();
+      const paymentMethods = { cash: form.get("payCash") === "on", card: form.get("payCard") === "on", bank: form.get("payBank") === "on" };
+      if (!paymentMethods.cash && !paymentMethods.card && !paymentMethods.bank) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
+        showToast("يجب اختيار طريقة دفع واحدة على الأقل");
+        return;
+      }
+      store.paymentMethods = paymentMethods;
       store.minOrder = Math.max(0, Number(form.get("minOrder")) || 0);
       store.open = form.get("storeOpen") === "on";
       store.coverImage = (form.get("coverImage") || "").toString().trim();

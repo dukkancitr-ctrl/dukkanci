@@ -2813,6 +2813,16 @@ img {
   accent-color: var(--green-800);
 }
 
+.form-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+}
+
+.form-check-group .form-check {
+  margin: 6px 0;
+}
+
 .quick-add--wa {
   background: linear-gradient(135deg, #25d366, #1da955);
   text-decoration: none;

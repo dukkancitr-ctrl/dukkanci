@@ -978,7 +978,8 @@ function normalizeOrder(body) {
       id: rec.id, storeId: rec.store_id, customer: rec.customer || "",
       customerPhone: dd.phone || "", total: Number(rec.total) || 0,
       fulfillment: dd.fulfillment || "delivery", address: dd.address || "",
-      payment: dd.payment || "", lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : []
+      payment: dd.payment || "", lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [],
+      scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || ""
     };
   }
   const o = body || {};
@@ -986,7 +987,8 @@ function normalizeOrder(body) {
     id: o.id, storeId: o.storeId, customer: o.customer || "",
     customerPhone: o.customerPhone || "", total: Number(o.total) || 0,
     fulfillment: o.fulfillment || "delivery", address: o.address || "",
-    payment: o.payment || "", lineItems: Array.isArray(o.lineItems) ? o.lineItems : []
+    payment: o.payment || "", lineItems: Array.isArray(o.lineItems) ? o.lineItems : [],
+    scheduleDay: o.scheduleDay || "", scheduleTime: o.scheduleTime || ""
   };
 }
 
@@ -1018,7 +1020,22 @@ async function sendWhatsapp(c, to, { template, params, text }) {
 
 const money = n => `${Number(n || 0).toLocaleString("ar")} ل.ت`;
 // Single line — WhatsApp template parameters reject newlines, tabs, and 4+ spaces.
-const itemsLine = items => (items || []).map(i => `${i.name} ×${i.qty || 1}`).join(" • ");
+// Includes each item's price so the store can see the full breakdown without
+// opening the dashboard (name × qty (unit price)).
+// Caps around 900 chars (well under the 1024 WhatsApp param limit that
+// sendWhatsapp enforces with a blunt slice) and summarizes the remainder
+// instead of letting that slice cut an item off mid-name/mid-price.
+const itemsLine = items => {
+  const parts = (items || []).map(i => `${i.name} ×${i.qty || 1}${i.price != null ? ` (${money(i.price)})` : ""}`);
+  let out = "", shown = 0;
+  for (const part of parts) {
+    const next = out ? `${out} • ${part}` : part;
+    if (next.length > 900 && shown > 0) break;
+    out = next; shown++;
+  }
+  if (shown < parts.length) out += ` • و${parts.length - shown} منتج آخر`;
+  return out;
+};
 
 // Default customer-facing line for each order status, used when the merchant
 // leaves the note blank. Mirrors the statuses in app.js's order manager.
@@ -2334,13 +2351,17 @@ module.exports = async (req, res) => {
   const adminTos = c.adminPhones.map(p => toE164(p, c.cc)).filter(Boolean);
   const custTo = toE164(order.customerPhone, c.cc);
   const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
+  // Fold the requested delivery/pickup time into the same param slot so the
+  // store sees it without opening the dashboard — no new template param needed.
+  const scheduleAr = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
+  const fulfillmentFull = scheduleAr ? `${fulfillmentAr} - ${scheduleAr}` : `${fulfillmentAr} - في أقرب وقت`;
   const results = {};
 
-  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentAr}`
+  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentFull}`
     + (order.address ? `\nالعنوان: ${order.address}` : "")
     + (order.payment ? `\nالدفع: ${order.payment}` : "")
     + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
-  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentAr, itemsLine(order.lineItems) || "-"];
+  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentFull, itemsLine(order.lineItems) || "-"];
 
   // 1) Notify the STORE.
   if (storeTo) {
