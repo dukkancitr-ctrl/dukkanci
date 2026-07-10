@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#e30613">
+    <meta name="description" content="تطبيق دكانجي لأصحاب المتاجر: تابع طلباتك لحظة بلحظة مع صوت تنبيه فوري، وأضف منتجاتك وأدر إعدادات متجرك من موبايلك مباشرة، بدون حاجة لكمبيوتر.">
+    <link rel="manifest" href="/manifest-merchant.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=90">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/dukkanci-app-icon-192.png?v=90">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=90">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="دكانجي تاجر">
+    <link rel="stylesheet" href="/styles.css?v=162">
+    <title>تطبيق دكانجي للتجار — إدارة متجرك من الموبايل</title>
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="دكانجي">
+    <meta property="og:url" content="https://www.dukkanci.com.tr/merchant-app">
+    <meta property="og:title" content="تطبيق دكانجي للتجار">
+    <meta property="og:description" content="تابع طلبات متجرك لحظة بلحظة مع صوت تنبيه فوري، وأضف منتجاتك من موبايلك مباشرة — بدون حاجة لكمبيوتر.">
+    <meta property="og:image" content="https://www.dukkanci.com.tr/assets/dukkanci-app-icon-512.png">
+    <meta property="og:image:secure_url" content="https://www.dukkanci.com.tr/assets/dukkanci-app-icon-512.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta name="robots" content="noindex">
+    <style>
+      .merchant-pwa__logo { width: 68px; height: 68px; border-radius: 18px; object-fit: cover; margin: 0 auto; display: block; }
+      .merchant-pwa__list { list-style: none; margin: 20px 0; padding: 0; text-align: right; display: flex; flex-direction: column; gap: 12px; }
+      .merchant-pwa__list li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--ink); line-height: 1.6; }
+      .merchant-pwa__list li::before { content: "✓"; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #ffe7e5; color: var(--red); font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+      .merchant-pwa__actions { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+      .merchant-pwa__ios { margin-top: 16px; padding: 12px 14px; background: var(--cream-dark); border-radius: 12px; font-size: 12.5px; color: var(--muted); line-height: 1.8; text-align: right; }
+      .merchant-pwa__ios b { color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div class="merchant-auth">
+      <div class="merchant-auth__card">
+        <img class="merchant-pwa__logo" src="/assets/dukkanci-mark.png" alt="دكانجي">
+        <h2>تطبيق دكانجي للتجار</h2>
+        <p>خصّصناه لأصحاب المتاجر فقط، بدون حاجة لكمبيوتر — كل ما يهمك في مكان واحد.</p>
+        <ul class="merchant-pwa__list">
+          <li>متابعة الطلبات الجديدة لحظة بلحظة مع صوت تنبيه فوري</li>
+          <li>إضافة منتجاتك وتعديلها من موبايلك مباشرة</li>
+          <li>حفظ مستمر لإعدادات متجرك (التوصيل، الدفع، ساعات العمل)</li>
+          <li>إشعارات فورية حتى عندما يكون التطبيق مغلقاً</li>
+        </ul>
+        <div class="merchant-pwa__actions">
+          <a class="primary-button large full" href="/merchant">فتح لوحة التاجر</a>
+          <button type="button" id="merchant-pwa-install" class="secondary-button full" hidden>تثبيت التطبيق على الشاشة الرئيسية</button>
+        </div>
+        <p id="merchant-pwa-ios" class="merchant-pwa__ios" hidden>
+          للتثبيت على آيفون: اضغط زر <b>المشاركة</b> أسفل الشاشة في متصفح Safari، ثم اختر <b>«إضافة إلى الشاشة الرئيسية»</b>.
+        </p>
+      </div>
+    </div>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      }
+      (function () {
+        "use strict";
+        var installBtn = document.getElementById("merchant-pwa-install");
+        var iosNote = document.getElementById("merchant-pwa-ios");
+        var deferredPrompt = null;
+        var isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+        var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+        if (!isStandalone && isIOS && iosNote) {
+          iosNote.hidden = false;
+        }
+
+        window.addEventListener("beforeinstallprompt", function (e) {
+          e.preventDefault();
+          deferredPrompt = e;
+          if (installBtn) installBtn.hidden = false;
+        });
+
+        if (installBtn) {
+          installBtn.addEventListener("click", function () {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.finally(function () {
+              deferredPrompt = null;
+              installBtn.hidden = true;
+            });
+          });
+        }
+
+        window.addEventListener("appinstalled", function () {
+          if (installBtn) installBtn.hidden = true;
+        });
+      })();
+    </script>
+  </body>
+</html>

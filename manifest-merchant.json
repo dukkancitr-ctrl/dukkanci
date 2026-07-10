@@ -1,0 +1,18 @@
+{
+  "id": "/merchant",
+  "name": "دكانجي للتجار",
+  "short_name": "دكانجي تاجر",
+  "description": "لوحة تحكم متجرك على دكانجي: تابع طلباتك لحظة بلحظة مع صوت تنبيه فوري، وأضف منتجاتك وأدر إعدادات متجرك من موبايلك مباشرة.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/merchant",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fff9f5",
+  "theme_color": "#e30613",
+  "icons": [
+    { "src": "/assets/dukkanci-app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/dukkanci-app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
