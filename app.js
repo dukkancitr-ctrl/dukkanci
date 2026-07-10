@@ -867,11 +867,32 @@ async function pushStoreCloud(store) {
     const r = await fetch("/api/notify-order?action=save-store", {
       method: "POST", headers, body: JSON.stringify({ store: toDbStore(store) })
     });
-    if (r.ok) { notifyGoogleIndex(`/store/${storeParam(store)}`); return true; }
+    if (r.ok) { notifyGoogleIndex(`/store/${storeParam(store)}`); return { ok: true }; }
     const e = await r.json().catch(() => ({}));
     console.warn("store cloud save:", e.error || r.status);
-    return false;
-  } catch (e) { console.warn("store cloud save:", e.message); return false; }
+    if ((r.status === 401 || r.status === 403) && headers["x-merchant-token"]) handleMerchantSessionExpired();
+    return { ok: false, status: r.status, error: e.error };
+  } catch (e) { console.warn("store cloud save:", e.message); return { ok: false, error: e.message }; }
+}
+// A merchant password-token session (state.merchantPwAuth.token) expires 12h
+// after login server-side (signMerchantToken), but the client never checked
+// for that — only for a token missing entirely — so a merchant who stayed
+// logged in past 12h kept seeing every save silently fail (403) with a
+// misleading "check your connection" message instead of being told to log
+// back in. Call this on any 401/403 from a merchant-token request to clear
+// the stale session and bounce to the login screen with an accurate reason.
+function handleMerchantSessionExpired() {
+  if (!state.merchantPwAuth) return;
+  stopMerchantOrderWatch();
+  state.merchantAuth = null;
+  state.merchantStores = null;
+  state.merchantPwAuth = null;
+  state._merchantResolved = false;
+  state._merchantOrdersFetched = false;
+  localStorage.removeItem("dukkanci-merchant-session");
+  state.merchantLoginMode = "admin";
+  showToast("انتهت صلاحية الجلسة، الرجاء تسجيل الدخول من جديد", "");
+  render();
 }
 // Right after a merchant self-registers, write the SAME password they just chose
 // (Supabase Auth) into store_credentials too, so the admin-issued phone+password
@@ -1270,7 +1291,10 @@ async function loadOrdersFromSupabase(storeId) {
       const r = await fetch(`/api/notify-order?action=store-orders&storeId=${storeId}`, {
         headers: { "x-merchant-token": state.merchantPwAuth.token }
       });
-      if (!r.ok) return false;
+      if (!r.ok) {
+        if (r.status === 401 || r.status === 403) handleMerchantSessionExpired();
+        return false;
+      }
       const json = await r.json().catch(() => ({}));
       if (!Array.isArray(json.orders)) return false;
       const mapped = json.orders.map(mapDbOrder);
@@ -11527,9 +11551,9 @@ document.addEventListener("change", event => {
       const newVal = checkbox.checked;
       store.featured = newVal;
       checkbox.disabled = true;
-      pushStoreCloud(store).then(ok => {
+      pushStoreCloud(store).then(result => {
         checkbox.disabled = false;
-        if (!ok) {
+        if (!result.ok) {
           store.featured = prevVal;
           checkbox.checked = prevVal;
           showToast("تعذّر حفظ التغيير، تحقّق من الاتصال وحاول مجدداً");
@@ -12505,9 +12529,12 @@ document.addEventListener("submit", async event => {
       const storeLng = Number(form.get("storeLng"));
       if (Number.isFinite(storeLat) && Number.isFinite(storeLng)) store.location = { lat: storeLat, lng: storeLng };
       const storeSaved = await pushStoreCloud(store);
-      if (!storeSaved) {
+      if (!storeSaved.ok) {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
-        showToast("تعذّر حفظ بيانات المتجر، تحقّق من الاتصال وحاول مجدداً");
+        // handleMerchantSessionExpired() (called from within pushStoreCloud) already
+        // showed its own toast and bounced to the login screen for 401/403 — don't
+        // pile a misleading "check your connection" toast on top of that.
+        if (storeSaved.status !== 401 && storeSaved.status !== 403) showToast("تعذّر حفظ بيانات المتجر، تحقّق من الاتصال وحاول مجدداً");
         return;
       }
     }
