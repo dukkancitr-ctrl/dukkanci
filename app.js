@@ -1268,6 +1268,18 @@ function formatOrderDate(iso) {
   try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)); }
   catch (e) { return ""; }
 }
+// Split date/time for the orders tables (merchant + admin): the "time" column used to
+// show a static "الآن" snapshot frozen at order creation instead of the real timestamp.
+function formatOrderDateOnly(iso) {
+  if (!iso) return "";
+  try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)); }
+  catch (e) { return ""; }
+}
+function formatOrderTimeOnly(iso) {
+  if (!iso) return "";
+  try { return new Intl.DateTimeFormat("ar-EG", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso)); }
+  catch (e) { return ""; }
+}
 // Merchants must see orders placed from ANY device, so the dashboard reads them
 // back from the cloud (the previous version only pushed, never loaded).
 // RLS on the orders table requires auth.uid(); admin and pw-auth merchant sessions
@@ -4467,11 +4479,13 @@ function renderOrdersTable(orders, context) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>رقم الطلب</th><th>العميل</th><th>المنتجات</th><th>الإجمالي</th><th>الحالة</th><th>الوقت</th><th></th></tr></thead>
+        <thead><tr><th>رقم الطلب</th><th>العميل</th><th>المنتجات</th><th>الإجمالي</th><th>الحالة</th><th>تاريخ الطلب</th><th>ساعة الطلب</th><th></th></tr></thead>
         <tbody>${orders.map(order => `
           <tr>
             <td><strong dir="ltr">${order.id}</strong></td><td>${order.customer}</td><td>${order.items} منتجات</td><td><strong>${money(order.total)}</strong></td>
-            <td><span class="status-pill ${statusClass(order.status)}">${order.status}</span></td><td>${order.time}</td>
+            <td><span class="status-pill ${statusClass(order.status)}">${order.status}</span></td>
+            <td>${formatOrderDateOnly(order.createdAt) || "—"}</td>
+            <td>${formatOrderTimeOnly(order.createdAt) || order.time || "—"}</td>
             <td><button class="table-action" data-action="${context === "merchant" ? "manage-order" : "view-order"}" data-id="${order.id}">${icon("dots")}</button></td>
           </tr>`).join("")}</tbody>
       </table>
@@ -10060,7 +10074,7 @@ function exportCsv(kind) {
   else if (kind === "whatsapp") rows = [["المتجر", "معرّف المتجر", "نقرات واتساب", "زوّار فريدون", "مشاهدات المتجر", "معدل النقر %"],
     ...(((state.adminMarketing || {}).report || {}).whatsapp_by_store || []).map(s =>
       [s.name, s.store_id, s.whatsapp_clicks, s.unique_visitors, s.store_views, s.store_views > 0 ? ((s.whatsapp_clicks / s.store_views) * 100).toFixed(1) : "0"])];
-  else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId)?.name || "-", order.total, order.status])];
+  else rows = [["رقم الطلب", "العميل", "المتجر", "الإجمالي", "الحالة", "تاريخ الطلب", "ساعة الطلب"], ...state.orders.map(order => [order.id, order.customer, getStore(order.storeId)?.name || "-", order.total, order.status, formatOrderDateOnly(order.createdAt), formatOrderTimeOnly(order.createdAt)])];
   const csv = "\uFEFF" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
