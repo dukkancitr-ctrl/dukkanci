@@ -3,7 +3,7 @@ const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css?v=162",
-  "/store-slugs.js?v=81",
+  "/store-slugs.js?v=234",
   "/category-slugs.js?v=81",
   "/supabase-config.js?v=82",
   "/heelal-products.js?v=126",
