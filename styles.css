@@ -1916,6 +1916,17 @@ img {
   line-height: 1.6;
 }
 
+.footer-apps__share-link {
+  margin: 6px 0 0 !important;
+  font-size: 12px !important;
+  color: #8a8b8b !important;
+}
+
+.footer-apps__share-link a {
+  color: #ffb3ad;
+  text-decoration: underline;
+}
+
 .footer-apps .install-button {
   width: 100%;
   min-height: 58px;

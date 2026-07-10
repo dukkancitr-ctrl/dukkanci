@@ -1,8 +1,8 @@
-const CACHE = "dukkanci-v183";
+const CACHE = "dukkanci-v184";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=162",
+  "/styles.css?v=163",
   "/store-slugs.js?v=234",
   "/category-slugs.js?v=81",
   "/supabase-config.js?v=82",
