@@ -5283,8 +5283,8 @@ function merchantLogin() {
     <div class="merchant-auth">
       <form class="merchant-auth__card" id="merchant-pw-form">
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
-        <h2>دخول إدارة دكانجي</h2>
-        <p>سجّل الدخول باسم المستخدم (رقم موبايل متجرك أو بريدك الإلكتروني) وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
+        <h2>أهلاً بكم في شاشة التحكم بالمتاجر</h2>
+        <p>سجّل الدخول برقم موبايل متجرك وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
         <label class="input-label"><span>اسم المستخدم (رقم الموبايل أو البريد)</span><input name="username" type="text" inputmode="email" autocomplete="username" required placeholder="05XX XXX XX XX أو you@example.com" dir="ltr"></label>
         <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
         <p class="auth-error" id="merchant-pw-error" role="alert" hidden></p>
@@ -5429,6 +5429,24 @@ async function bindStoreToUser(storeId) {
   catch (e) { /* store_users not present yet, or already linked */ }
 }
 
+// True once this device has opened the dedicated merchant PWA (merchant-app.html
+// sets this flag). Used to force the phone+password login screen there even when
+// a leftover customer Supabase session exists on the same device/browser.
+function isMerchantPwaContext() {
+  try { if (localStorage.getItem("dk-merchant-app") === "1") return true; } catch (e) {}
+  // Fallback for merchant apps installed before this flag existed: any installed
+  // (standalone) window landing on /merchant behaves the same way — a real app
+  // icon should never silently piggyback on a leftover customer session.
+  try {
+    var standalone = !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    if (!standalone && window.navigator && window.navigator.standalone === true) standalone = true;
+    return standalone;
+  } catch (e) { return false; }
+}
+function hasMerchantGoogleIntent() {
+  try { return localStorage.getItem("dukkanci-merchant-google-intent") === "1"; } catch (e) { return false; }
+}
+
 function renderMerchant(id) {
   // Admin-issued phone+password session: the server already verified the password
   // and active subscription, so resolve straight to the store(s) it logged into —
@@ -5452,7 +5470,12 @@ function renderMerchant(id) {
     }
   } else {
   // Must be authenticated (Supabase session) — no more public phone-number login.
-  if (!state.user) return merchantLogin();
+  // Inside the dedicated merchant PWA, don't silently auto-resolve via a leftover
+  // customer Supabase session on the same device — always show the phone+password
+  // screen first unless the merchant explicitly chose Google/email this visit.
+  const blockedByMerchantPwaGate = isMerchantPwaContext() && state.merchantLoginMode === "admin"
+    && !hasMerchantGoogleIntent() && !state._merchantResolved;
+  if (!state.user || blockedByMerchantPwaGate) return merchantLogin();
   if (!state._merchantResolved) {
     if (!state._merchantResolving) {
       state._merchantResolving = true;
@@ -11374,7 +11397,10 @@ document.addEventListener("click", event => {
   if (action === "merchant-admin-login") { state.merchantLoginMode = "admin"; render(); }
   if (action === "merchant-email-signup") { state.merchantEmailMode = "signup"; render(); }
   if (action === "merchant-email-signin") { state.merchantEmailMode = "signin"; render(); }
-  if (action === "merchant-google") signInWithGoogle();
+  if (action === "merchant-google") {
+    try { localStorage.setItem("dukkanci-merchant-google-intent", "1"); } catch (e) {}
+    signInWithGoogle();
+  }
   if (action === "store-approve") {
     const id = Number(target.dataset.id);
     const status = target.dataset.status;

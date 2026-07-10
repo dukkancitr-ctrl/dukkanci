@@ -57,6 +57,10 @@
       </div>
     </div>
     <script>
+      // Marks this device as "the merchant app" so app.js always shows the
+      // phone+password merchant login screen on /merchant, even if a customer
+      // session already exists in the same browser storage.
+      try { localStorage.setItem("dk-merchant-app", "1"); } catch (e) {}
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js").catch(function () {});
       }
