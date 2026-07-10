@@ -542,8 +542,10 @@ img {
   color: var(--ink);
 }
 
-.hero-search input::placeholder {
-  color: #9ca49f;
+.hero-search input::placeholder,
+.hero-search input::-webkit-input-placeholder {
+  color: #6b7280;
+  opacity: 1;
 }
 
 .hero-search button,
