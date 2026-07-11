@@ -9438,6 +9438,48 @@ function showWelcomeLocationModal() {
   `, "welcome-location-modal");
 }
 
+// Mobile-only "install the app" nudge. Reuses the .welcome-modal look so no new
+// CSS is needed. Shown once per device — never re-shown after the visitor taps
+// either button — and skipped entirely if the site is already running installed
+// (standalone / iOS home-screen) or over a sensitive deep-link.
+function showInstallAppModal() {
+  try { localStorage.setItem("dukkanci-install-prompted", "1"); } catch {}
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="welcome-modal">
+      <div class="welcome-modal__icon">${icon("download")}</div>
+      <h2 class="welcome-modal__title">ثبّت تطبيق دكانجي</h2>
+      <p class="welcome-modal__sub">أضف دكانجي إلى شاشتك الرئيسية لتصفّح أسرع وطلب أسهل، بدون فتح المتصفح كل مرة.</p>
+      <div class="welcome-modal__actions">
+        <button class="primary-button full large" data-action="install-app">${icon("download")} تثبيت التطبيق الآن</button>
+        <button class="text-button" data-action="close-modal">لاحقاً</button>
+      </div>
+    </div>
+  `, "welcome-location-modal");
+}
+
+function isStandaloneDisplay() {
+  let standalone = !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  if (!standalone && window.navigator && window.navigator.standalone === true) standalone = true;
+  return standalone;
+}
+
+// Runs after initUserLocation() so the two modals never fight over the screen:
+// if the location-consent modal is showing (or already handled this visit and
+// left something else open), the install nudge just waits for the next visit.
+function initInstallPrompt() {
+  if (isStandaloneDisplay()) return;
+  if (!window.matchMedia || !window.matchMedia("(max-width: 767px)").matches) return;
+  const route = parseRoute().route;
+  if (route === "admin" || route === "merchant" || route === "checkout") return;
+  const alreadyPrompted = (() => { try { return localStorage.getItem("dukkanci-install-prompted"); } catch { return null; } })();
+  if (alreadyPrompted) return;
+  setTimeout(() => {
+    if (modalRoot.classList.contains("open")) return; // don't interrupt an open modal (e.g. location welcome)
+    showInstallAppModal();
+  }, 3500);
+}
+
 // On every page open: if the location is already authorized, resolve it
 // silently; otherwise greet the visitor once and ask for consent before
 // prompting. Deep-links into admin/merchant/checkout are never interrupted.
@@ -12931,6 +12973,7 @@ render();
 initCatalog();
 initAuth();
 initUserLocation();
+initInstallPrompt();
 
 // Keep the storefront in sync with admin/store-owner edits without a full realtime
 // subscription: re-pull the catalog whenever a backgrounded tab regains focus
