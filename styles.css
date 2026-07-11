@@ -11435,9 +11435,9 @@ tbody tr:hover {
 .search-chip {
   padding: 7px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border: 1px solid rgba(154, 0, 0, 0.16);
+  background: #fff;
+  color: #5b5052;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
@@ -11445,7 +11445,9 @@ tbody tr:hover {
 }
 
 .search-chip:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: #fff1ed;
+  border-color: rgba(154, 0, 0, 0.32);
+  color: #9a0000;
 }
 
 .nearby-store-extra {
