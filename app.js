@@ -9455,7 +9455,7 @@ function showInstallAppModal() {
         <button class="text-button" data-action="close-modal">لاحقاً</button>
       </div>
     </div>
-  `, "welcome-location-modal");
+  `, "install-app-modal");
 }
 
 function isStandaloneDisplay() {

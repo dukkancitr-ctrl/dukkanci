@@ -399,30 +399,30 @@
       css.textContent =
         "#dk-consent{position:fixed;inset:auto 0 0 0;z-index:99999;background:#fff;color:#1a1a1a;" +
         "box-shadow:0 -8px 30px rgba(0,0,0,.18);border-top:3px solid #e30613;direction:rtl;font-family:inherit;" +
-        "padding:18px clamp(14px,4vw,40px);animation:dkUp .3s ease}" +
+        "padding:13px clamp(12px,3vw,32px);animation:dkUp .3s ease}" +
         "@keyframes dkUp{from{transform:translateY(100%)}to{transform:translateY(0)}}" +
-        "#dk-consent .dk-wrap{max-width:1100px;margin:0 auto;display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:space-between}" +
-        "#dk-consent h3{margin:0 0 6px;font-size:1.05rem;font-weight:700}" +
-        "#dk-consent p{margin:0;font-size:.9rem;line-height:1.7;color:#444;max-width:640px}" +
+        "#dk-consent .dk-wrap{max-width:1100px;margin:0 auto;display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between}" +
+        "#dk-consent h3{margin:0 0 4px;font-size:.92rem;font-weight:700}" +
+        "#dk-consent p{margin:0;font-size:.8rem;line-height:1.55;color:#444;max-width:640px}" +
         "#dk-consent a{color:#e30613;text-decoration:underline}" +
-        "#dk-consent .dk-actions{display:flex;gap:10px;flex-wrap:wrap}" +
-        "#dk-consent button{font:inherit;font-weight:700;border-radius:12px;padding:11px 18px;cursor:pointer;border:1px solid transparent}" +
+        "#dk-consent .dk-actions{display:flex;gap:8px;flex-wrap:wrap}" +
+        "#dk-consent button{font:inherit;font-size:.82rem;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;border:1px solid transparent}" +
         "#dk-consent .dk-accept{background:#e30613;color:#fff}" +
         "#dk-consent .dk-reject{background:#f3f3f3;color:#222}" +
         "#dk-consent .dk-custom{background:#fff;color:#222;border-color:#ddd}" +
-        "#dk-consent .dk-panel{flex-basis:100%;margin-top:14px;border-top:1px solid #eee;padding-top:14px;display:none}" +
+        "#dk-consent .dk-panel{flex-basis:100%;margin-top:10px;border-top:1px solid #eee;padding-top:10px;display:none}" +
         "#dk-consent.dk-open .dk-panel{display:block}" +
-        "#dk-consent .dk-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f3f3}" +
-        "#dk-consent .dk-row small{display:block;color:#666;font-size:.82rem;margin-top:3px;max-width:560px}" +
-        "#dk-consent .dk-row b{font-size:.95rem}" +
-        "#dk-consent .dk-switch{position:relative;width:46px;height:26px;flex:0 0 auto}" +
+        "#dk-consent .dk-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f3f3}" +
+        "#dk-consent .dk-row small{display:block;color:#666;font-size:.76rem;margin-top:2px;max-width:560px}" +
+        "#dk-consent .dk-row b{font-size:.86rem}" +
+        "#dk-consent .dk-switch{position:relative;width:42px;height:24px;flex:0 0 auto}" +
         "#dk-consent .dk-switch input{opacity:0;width:0;height:0}" +
-        "#dk-consent .dk-slider{position:absolute;inset:0;background:#ccc;border-radius:26px;transition:.2s;cursor:pointer}" +
-        "#dk-consent .dk-slider:before{content:'';position:absolute;height:20px;width:20px;right:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}" +
+        "#dk-consent .dk-slider{position:absolute;inset:0;background:#ccc;border-radius:24px;transition:.2s;cursor:pointer}" +
+        "#dk-consent .dk-slider:before{content:'';position:absolute;height:18px;width:18px;right:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}" +
         "#dk-consent input:checked+.dk-slider{background:#2e7d32}" +
-        "#dk-consent input:checked+.dk-slider:before{transform:translateX(-20px)}" +
+        "#dk-consent input:checked+.dk-slider:before{transform:translateX(-18px)}" +
         "#dk-consent input:disabled+.dk-slider{background:#9cc79e;cursor:not-allowed}" +
-        "#dk-consent .dk-tag{font-size:.72rem;color:#2e7d32;font-weight:700}" +
+        "#dk-consent .dk-tag{font-size:.7rem;color:#2e7d32;font-weight:700}" +
         "@media(max-width:640px){#dk-consent .dk-actions{width:100%}#dk-consent .dk-actions button{flex:1}}";
       document.head.appendChild(css);
     },

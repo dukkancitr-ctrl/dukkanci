@@ -10390,6 +10390,19 @@ tbody tr:hover {
   width: min(440px, calc(100% - 30px));
   text-align: center;
 }
+.install-app-modal {
+  width: min(360px, calc(100% - 30px));
+  padding: 26px;
+  text-align: center;
+}
+.install-app-modal .welcome-modal__icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+}
+.install-app-modal .welcome-modal__icon .icon { width: 28px; height: 28px; }
+.install-app-modal .welcome-modal__title { font-size: 19px; }
+.install-app-modal .welcome-modal__sub { font-size: 13.5px; }
 .welcome-modal {
   display: flex;
   flex-direction: column;
