@@ -47,6 +47,7 @@
 }
 
 :root {
+  color-scheme: light;
   --font-body: "Alyamama", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
   --font-display: "Alyamama", "Tajawal Display", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
   --brand-red: #ff0000;
@@ -539,12 +540,15 @@ img {
   flex: 1;
   border: 0;
   outline: 0;
-  color: var(--ink);
+  color: var(--ink) !important;
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
 }
 
 .hero-search input::placeholder,
 .hero-search input::-webkit-input-placeholder {
-  color: #6b7280;
+  color: var(--ink) !important;
+  -webkit-text-fill-color: var(--ink);
   opacity: 1;
 }
 
