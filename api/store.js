@@ -64,8 +64,11 @@ module.exports = async (req, res) => {
     const desc = (store.description || "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.").slice(0, 200);
     let img = store.cover_image || store.image || "/assets/dukkanci-app-icon-512.png";
     if (img && !/^https?:\/\//.test(img)) img = SITE + img;
+    const imgType = /\.png(\?|$)/i.test(img) ? "image/png"
+      : /\.webp(\?|$)/i.test(img) ? "image/webp"
+      : "image/jpeg";
     const canonical = `${SITE}/store/${slug}`;
-    const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical);
+    const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical), IT = esc(imgType);
 
     // JSON-LD: a local business / store with address, phone, geo when available.
     const jsonLd = {
@@ -92,7 +95,9 @@ module.exports = async (req, res) => {
       .replace(/(<meta\s+property="og:description"\s+content=")[^"]*(">)/, `$1${D}$2`)
       .replace(/(<meta\s+property="og:image"\s+content=")[^"]*(">)/, `$1${I}$2`)
       .replace(/(<meta\s+property="og:image:secure_url"\s+content=")[^"]*(">)/, `$1${I}$2`)
+      .replace(/(<meta\s+property="og:image:type"\s+content=")[^"]*(">)/, `$1${IT}$2`)
       .replace(/(<meta\s+property="og:url"\s+content=")[^"]*(">)/, `$1${C}$2`)
+      .replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(">)/, `$1${I}$2`)
       .replace(/(<meta\s+name="twitter:card"\s+content="[^"]*">)/, `$1\n    <link rel="canonical" href="${C}">`)
       .replace(/<\/head>/, `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`)
       .replace('<main id="app" tabindex="-1"></main>', `<main id="app" tabindex="-1">${body}</main>`);
