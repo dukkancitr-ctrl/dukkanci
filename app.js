@@ -2443,6 +2443,22 @@ function categoryCard(name, image, caption) {
   `;
 }
 
+// EXPERIMENT (mobile-buy-first-experiment branch): big tappable, photo-led
+// category tile — mobile-only stand-in for the hero, styled after the
+// reference app's home screen (image + bold name + one benefit line, no
+// paragraph copy). Reuses the same category data/click action as
+// categoryCard() above so behavior (filter + navigate to /stores) is
+// identical; only the visual size/prominence differs.
+function shopTile(name, image, caption, big) {
+  return `
+    <button class="shop-tile${big ? " shop-tile--big" : ""}" data-action="category" data-category="${escAttr(name)}" style="background-image:url('${escAttr(image)}')">
+      <span class="shop-tile__scrim"></span>
+      <span class="shop-tile__badge">${icon("bike")} توصيل سريع</span>
+      <span class="shop-tile__text"><strong>${escAttr(name)}</strong><small>${escAttr(caption)}</small></span>
+    </button>
+  `;
+}
+
 // --- Automatic open/closed by working hours -------------------------------
 // Stores carry a free-text `hours` string (e.g. "يومياً من 2:00 ظهراً حتى 1:00
 // منتصف الليل"). We parse it and compare against the store's local time (Turkey
@@ -2960,6 +2976,14 @@ function renderHome() {
       </div>
     </section>
 
+    <section class="section mobile-shop-tiles-section">
+      <div class="container">
+        <div class="shop-tiles-grid">
+          ${homeCategoriesOrdered().map((c, i) => shopTile(c.name, c.image, c.caption, i === 0)).join("")}
+        </div>
+      </div>
+    </section>
+
     <section class="section nearby-section" id="nearby-stores">
       <div class="container">
         <div class="section-heading">
@@ -3115,14 +3139,20 @@ function getMatchingProducts(query, limit = 60) {
   return out;
 }
 
+// "ملاحم" is the homepage/browse grouping label; individual stores may carry a
+// more specific category text (e.g. "ملحمة ومشاوي") that still belongs under
+// it. Shared by getFilteredStores() (the /stores filter pills) and
+// renderCategoryPage() (/category/<slug>) so both pages agree on membership.
+function storeMatchesCategory(store, catText) {
+  return store.category === catText || (catText === "ملاحم" && store.category.includes("ملحم"));
+}
+
 function getFilteredStores() {
   const q = normalizeAr(state.search);
   const terms = q.split(" ").filter(Boolean);
   let result = stores.filter(store => {
     if (!isStoreApproved(store)) return false;
-    const categoryMatch = state.storeFilter === "الكل"
-      || store.category === state.storeFilter
-      || (state.storeFilter === "ملاحم" && store.category.includes("ملحم"));
+    const categoryMatch = state.storeFilter === "الكل" || storeMatchesCategory(store, state.storeFilter);
     const text = normalizeAr(`${store.name} ${store.category} ${store.description}`);
     return categoryMatch && terms.every(t => text.includes(t));
   });
@@ -8509,6 +8539,20 @@ function renderWhyDukkanciPage() {
   `;
 }
 
+// Per-category wording for the merchant-recruitment banner on /category/<slug>
+// (see renderCategoryPage below) — "أعلن عن {noun} هنا" needs a real singular
+// possessive noun, which can't be derived from the plural category label
+// automatically. Falls back to a generic noun for any category not listed here.
+const CATEGORY_MERCHANT_PITCH = {
+  "مطاعم": "مطعمك",
+  "حلويات": "محل حلوياتك",
+  "سوبر ماركت": "سوبر ماركتك",
+  "ملاحم": "ملحمتك",
+  "عصائر": "محل عصائرك",
+  "مكسرات وبهارات": "محلك للمكسرات والبهارات",
+  "مطابخ منزلية": "مطبخك المنزلي"
+};
+
 // Main-category landing page for /category/<slug>: stores in the category + a
 // sample of their products, all as links.
 function renderCategoryPage(slug) {
@@ -8516,14 +8560,24 @@ function renderCategoryPage(slug) {
   if (!catText) {
     return `<section class="section empty-page">${renderEmpty("الفئة غير موجودة", "تصفح كل المتاجر بدلاً من ذلك.", "تصفح المتاجر", "stores")}</section>`;
   }
-  const catStores = collapseBranchGroups(stores.filter(s => s.category === catText && isStoreApproved(s)));
+  const catStores = collapseBranchGroups(stores.filter(s => storeMatchesCategory(s, catText) && isStoreApproved(s)));
   const storeIds = new Set(catStores.map(s => s.id));
   const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
+  const merchantNoun = CATEGORY_MERCHANT_PITCH[catText] || "متجرك";
   return `
     <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="/" data-action="route-home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length ? `${catStores.length} متجر في إسطنبول على دكانجي.` : "قريباً في منطقتك."}</p></div></section>
-    <section class="section"><div class="container">
+    <section class="section category-stores-section"><div class="container">
+      <div class="merchant-cta category-merchant-banner">
+        <div class="merchant-cta__art"><div class="shop-mini">${icon("store")}</div></div>
+        <div class="merchant-cta__copy">
+          <span>لأصحاب المتاجر</span>
+          <h2>أعلن عن ${escAttr(merchantNoun)} هنا</h2>
+          <p>وصل لعملاء أكثر في منطقتك عبر دكانجي.</p>
+        </div>
+        <button class="primary-button dark" data-action="join-merchant">انضم كتاجر ${icon("arrowLeft")}</button>
+      </div>
       ${catStores.length ? `
-        <div class="section-heading small"><h2>المتاجر</h2></div>
+        <div class="section-heading small"><h2>${catText}</h2></div>
         <div class="store-grid">${catStores.map(storeCard).join("")}</div>
         ${catProducts.length ? `<div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div>` : ""}
       ` : renderEmpty("لا توجد متاجر في هذا التصنيف حالياً", "نعمل على إضافة متاجر جديدة قريباً.", "تصفح كل المتاجر", "stores")}

@@ -1504,6 +1504,16 @@ img {
   padding: 67px 0;
 }
 
+/* Fills the dead whitespace a /category/<slug> page used to leave between the
+   hero and the store grid with an actually useful, category-worded merchant
+   pitch instead of empty space. */
+.category-stores-section { padding-top: 0; }
+.category-merchant-banner { margin-bottom: 34px; }
+@media (max-width: 640px) {
+  .category-stores-section { padding-top: 6px; }
+  .category-merchant-banner { margin-bottom: 24px; }
+}
+
 .merchant-cta {
   min-height: 190px;
   padding: 35px 44px;
@@ -11029,6 +11039,81 @@ tbody tr:hover {
   .hero2 .h2-trust-icon .icon { width: 31px; height: 31px; }
   .hero2 .h2-trust-card strong { font-size: 16px; margin-bottom: 4px; }
   .hero2 .h2-trust-card div span { font-size: 13.5px; }
+}
+/* EXPERIMENT (mobile-buy-first-experiment branch, not merged): a mobile visitor
+   opens the site to buy, not to read a pitch. Drop every marketing/explainer
+   block that has no tap-to-buy action of its own — the eyebrow tag, the rotating
+   headline+paragraph slides, the redundant CTA buttons/dots (the search bar
+   right below them already does their job), the repeated trust-card row (same
+   claims already live on every store card as badges), the "3 steps" explainer,
+   the WhatsApp help banner, and the merchant-recruitment block. What's left on
+   the phone: header → search → quick-search chips → nearby stores → best
+   sellers → offers → categories → recommended products — a straight shopping
+   funnel, matching how the reference app (see دكاeeeeنجي.html) leads with big
+   tappable category tiles instead of copy. Desktop is completely untouched. */
+@media (max-width: 640px) {
+  .hero2 .h2-eyebrow,
+  .hero2 .h2-slides,
+  .hero2 .h2-cta-row,
+  .hero2 .h2-dots,
+  .hero2 .h2-trust { display: none; }
+  .hero2 .h2-grid { padding-top: 18px; padding-bottom: 18px; }
+  .hero2 .hero-search { margin: 0 0 6px; }
+  .confidence-section,
+  .steps-section,
+  .whatsapp-assist-section,
+  .merchant-cta-section,
+  .categories-section { display: none; }
+}
+
+/* Big photo-led category tiles — mobile-only stand-in for the hero, replacing
+   the small "ماذا تحتاج اليوم؟" strip (hidden above) with the same category
+   data at real tap-target size, styled after the reference app's tile list. */
+.mobile-shop-tiles-section { display: none; }
+@media (max-width: 640px) {
+  .mobile-shop-tiles-section { display: block; padding: 4px 0 8px; }
+  .shop-tiles-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .shop-tile {
+    position: relative;
+    grid-column: span 2;
+    min-height: 108px;
+    border: none;
+    border-radius: 20px;
+    background-size: cover;
+    background-position: center;
+    background-color: #eee;
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: manipulation;
+    text-align: right;
+    padding: 0;
+  }
+  .shop-tile--big { min-height: 168px; }
+  .shop-tile:not(.shop-tile--big) { grid-column: span 1; min-height: 132px; }
+  .shop-tile__scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(15,10,9,.78) 100%);
+  }
+  .shop-tile__badge {
+    position: absolute; top: 10px; left: 10px;
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(255,255,255,.92); color: var(--green-900);
+    font-size: 10.5px; font-weight: 800;
+    padding: 5px 9px; border-radius: 999px;
+  }
+  .shop-tile__badge .icon { width: 12px; height: 12px; }
+  .shop-tile__text {
+    position: absolute; right: 14px; bottom: 12px; left: 14px;
+    display: flex; flex-direction: column; gap: 2px;
+    color: #fff;
+  }
+  .shop-tile__text strong { font-size: 16.5px; font-weight: 800; text-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .shop-tile--big .shop-tile__text strong { font-size: 19px; }
+  .shop-tile__text small { font-size: 12px; font-weight: 600; opacity: .92; text-shadow: 0 1px 6px rgba(0,0,0,.35); }
 }
 @media (max-width: 560px) {
   .hero2 .h2-grid { padding-top: 18px; }
