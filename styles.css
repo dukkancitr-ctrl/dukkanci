@@ -12531,6 +12531,40 @@ tbody tr:hover {
 .ask-result-card__actions { display: flex; gap: 10px; padding: 18px 20px; }
 .ask-result-card__actions .primary-button { flex: 1; }
 
+.ask-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ask-spin 0.7s linear infinite;
+  vertical-align: -3px;
+}
+@keyframes ask-spin { to { transform: rotate(360deg); } }
+
+.ask-loading-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ask-skeleton-line, .ask-skeleton-block {
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--cream) 25%, var(--line) 50%, var(--cream) 75%);
+  background-size: 200% 100%;
+  animation: ask-shimmer 1.4s ease-in-out infinite;
+}
+.ask-skeleton-line.short { width: 220px; height: 22px; }
+.ask-skeleton-block { height: 76px; }
+@keyframes ask-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @media (max-width: 900px) {
   .ask-form-grid { grid-template-columns: 1fr; }
   .ask-form-col--side { border-inline-start: none; border-top: 1px solid var(--line); padding-inline-start: 0; padding-top: 20px; margin-top: 20px; }

@@ -379,6 +379,7 @@ const state = {
     includeDessert: true,
     includeDrinks: false,
     submitted: false,
+    submitting: false,
     result: null
   }
 };
@@ -9060,18 +9061,31 @@ function askDukkanciScoreProduct(normName, normCat, syn, keywords, weight) {
 // ELIGIBILITY is decided by primaryScore only (see askDukkanciBuildOptions), while totalScore
 // is used to pick which of that store's own items fill out the basket, letting the toggles
 // promote a matching dessert/drink item without being able to smuggle in an unrelated store.
-function askDukkanciScoredCandidates(request) {
-  const primary = askDukkanciKeywords(request.message || "");
+// `intent` is the OPTIONAL result of a server-side AI parse (see submitAskDukkanci /
+// api/ask-dukkanci.js) — a pure classification of the free-text description into keywords /
+// wantsSupplies / preferredCategories. The AI never sees the catalog and never returns a
+// product, price, or store, so a bad or missing intent only ever degrades matching QUALITY,
+// never correctness: with no intent (AI unavailable/timed out) this falls back to exactly the
+// same local keyword heuristic that ran before the AI integration existed.
+function askDukkanciScoredCandidates(request, intent) {
+  const localPrimary = askDukkanciKeywords(request.message || "");
+  const aiKeywords = (intent && Array.isArray(intent.keywords)) ? intent.keywords.map(normalizeAr).filter(Boolean) : [];
+  // Union, not replace — the AI's cleaner fus7a keywords lead matching, but the local
+  // extraction stays as a safety net so a partial/odd AI reply never loses real matches.
+  const primary = aiKeywords.length ? [...new Set([...aiKeywords, ...localPrimary])] : localPrimary;
   const secondary = [
     ...(request.includeDessert ? ASK_DUKKANCI_DESSERT_KEYWORDS : []),
     ...(request.includeDrinks ? ASK_DUKKANCI_DRINK_KEYWORDS : [])
   ].map(normalizeAr);
-  // Only skip supply/ingredient items when the visitor didn't ask for them directly —
-  // "مستلزمات حلويات" in the message itself means they DO want the supplies.
-  const wantsSupplies = primary.some(kw => ASK_DUKKANCI_SUPPLY_MARKERS.includes(kw));
+  // The AI's explicit classification wins when present (it understands "مستلزمات حلويات" vs
+  // "حلويات جاهزة" far better than a fixed keyword list); otherwise fall back to the local
+  // heuristic — only skip supply/ingredient items when the visitor didn't ask for them directly.
+  const wantsSupplies = (intent && typeof intent.wantsSupplies === "boolean")
+    ? intent.wantsSupplies
+    : primary.some(kw => ASK_DUKKANCI_SUPPLY_MARKERS.includes(kw));
 
   const pool = products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
-  if (!primary.length && !secondary.length) return { hasPrimary: false, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
+  if (!primary.length && !secondary.length) return { hasPrimary: false, primary, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
 
   const scored = [];
   for (const p of pool) {
@@ -9084,7 +9098,7 @@ function askDukkanciScoredCandidates(request) {
     if (totalScore > 0) scored.push({ product: p, primaryScore, totalScore });
   }
   scored.sort((a, b) => primary.length ? (b.primaryScore - a.primaryScore) || (b.totalScore - a.totalScore) : b.totalScore - a.totalScore);
-  return { hasPrimary: primary.length > 0, items: scored };
+  return { hasPrimary: primary.length > 0, primary, items: scored };
 }
 
 // How many distinct items to gather from the chosen store into one basket. A larger gathering
@@ -9175,9 +9189,8 @@ function askDukkanciBuildBasket(store, storeCandidates, request) {
 // pick when only one store genuinely qualifies — an earlier version always tried to fill all 3
 // slots with distinct stores, which surfaced an irrelevant, wildly-over-budget "option" just to
 // pad the count. Fewer, honest tiers beats padding with a bad one.
-function askDukkanciBuildOptions(request) {
-  const primary = askDukkanciKeywords(request.message || "");
-  const { hasPrimary, items: scoredCandidates } = askDukkanciScoredCandidates(request);
+function askDukkanciBuildOptions(request, intent) {
+  const { hasPrimary, primary, items: scoredCandidates } = askDukkanciScoredCandidates(request, intent);
   const byStore = new Map(); // storeId -> { store, products, bestScore }, products relevance-sorted
   for (const { product: p, primaryScore } of scoredCandidates) {
     // When the visitor actually described what they want, a store must have at least one item
@@ -9194,17 +9207,19 @@ function askDukkanciBuildOptions(request) {
 
   // A store whose own CATEGORY matches the request (e.g. a "حلويات" shop for a dessert ask, an
   // "عصائر" bar for a drinks ask) is a specialist — its sweets/juice is the actual business, not
-  // a side item tacked onto a "مطاعم" menu. Scoped to a whitelist of categories that sell a
-  // FINISHED, ready-to-consume good — deliberately excludes e.g. "ملحمة" (a butcher selling raw
-  // meat "للمشاوي", for the CUSTOMER to grill at home): a substring match there would wrongly
-  // treat a raw-ingredient shop as "the مشاوي specialist" over restaurants that actually serve a
-  // cooked dish — the same finished-good-vs-supply trap as askDukkanciIsSupplyItem, one level up
-  // at the store-category rather than the product. Exact match (not substring) against the
-  // whitelist so "ملحمة ومشاوي" never accidentally qualifies via a loose "مشاوي" containment.
-  const ASK_DUKKANCI_SPECIALTY_CATEGORIES = ["حلويات", "عصائر", "بن ومكسرات"].map(normalizeAr);
+  // a side item tacked onto a "مطاعم" menu. When the AI intent provides preferredCategories, its
+  // semantic judgment is trusted directly (it already reasoned "مشاوي" → مطاعم not ملحمة, a raw-
+  // meat butcher) — no substring re-check needed. Without it, fall back to a small hardcoded
+  // whitelist of FINISHED, ready-to-consume categories with an exact (not substring) match, so
+  // e.g. "ملحمة ومشاوي" never accidentally qualifies via a loose "مشاوي" containment — the same
+  // finished-good-vs-supply trap as askDukkanciIsSupplyItem, one level up at the store-category.
+  const aiCategories = (intent && Array.isArray(intent.preferredCategories) && intent.preferredCategories.length)
+    ? new Set(intent.preferredCategories.map(normalizeAr))
+    : null;
+  const fallbackCategories = new Set(["حلويات", "عصائر", "بن ومكسرات"].map(normalizeAr));
   const rankedStores = [...byStore.values()].map(entry => {
     const cat = entry.store.category ? normalizeAr(entry.store.category) : "";
-    const isSpecialist = !!(hasPrimary && ASK_DUKKANCI_SPECIALTY_CATEGORIES.includes(cat) && primary.some(kw => cat.includes(kw)));
+    const isSpecialist = !!(hasPrimary && cat && (aiCategories ? aiCategories.has(cat) : (fallbackCategories.has(cat) && primary.some(kw => cat.includes(kw)))));
     return { ...entry, isSpecialist, rankScore: entry.bestScore + (isSpecialist ? 5 : 0) };
   }).sort((a, b) => b.rankScore - a.rankScore);
 
@@ -9253,17 +9268,49 @@ function askDukkanciBuildOptions(request) {
   return { tiers, matchedStoreCount: baskets.length };
 }
 
-function submitAskDukkanci(form) {
+// Server-side AI intent parse (api/ask-dukkanci.js) — classifies the free-text description
+// into keywords/wantsSupplies/preferredCategories ONLY. It never sees the catalog and can never
+// return a product, price, or store, so a slow/unavailable AI degrades match QUALITY, never
+// correctness — on any failure (network error, timeout, malformed reply) this resolves to null
+// and askDukkanciBuildOptions falls straight back to its pre-AI local keyword heuristics.
+async function askDukkanciFetchIntent(message) {
+  if (!message.trim()) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const res = await fetch("/api/ask-dukkanci", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal: ctrl.signal
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data && data.ok && data.intent) ? data.intent : null;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function submitAskDukkanci(form) {
   const message = (form.querySelector("#ask-message")?.value || "").trim();
   const partySize = Math.min(100, Math.max(1, Number(form.querySelector("#ask-partysize")?.value) || 1));
   const budgetTry = Math.max(0, Number(form.querySelector("#ask-budget")?.value) || 0);
-  state.askDukkanci = { ...state.askDukkanci, message, partySize, budgetTry, submitted: true };
+  state.askDukkanci = { ...state.askDukkanci, message, partySize, budgetTry, submitted: true, submitting: true, result: null };
   window.DUKKANCI_TRACKING?.track("ask_dukkanci_submitted", { message_length: message.length, party_size: partySize, budget: budgetTry, include_dessert: state.askDukkanci.includeDessert, include_drinks: state.askDukkanci.includeDrinks });
-  const result = askDukkanciBuildOptions(state.askDukkanci);
-  state.askDukkanci.result = result;
   render();
-  if (result.tiers.length) window.DUKKANCI_TRACKING?.track("ask_dukkanci_result_viewed", { options_count: result.tiers.length, matched_store_count: result.matchedStoreCount });
   setTimeout(() => document.getElementById("ask-dukkanci-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+
+  const intent = await askDukkanciFetchIntent(message);
+  // The visitor may have edited party size/budget/message while the AI call was in flight —
+  // rebuild the request from current state, not the stale local variables above.
+  const result = askDukkanciBuildOptions(state.askDukkanci, intent);
+  state.askDukkanci.result = result;
+  state.askDukkanci.submitting = false;
+  render();
+  if (result.tiers.length) window.DUKKANCI_TRACKING?.track("ask_dukkanci_result_viewed", { options_count: result.tiers.length, matched_store_count: result.matchedStoreCount, ai_intent_used: !!intent });
 }
 
 // A bundle is guaranteed single-store by construction, so this can call the real addToCart()
@@ -9364,7 +9411,9 @@ function renderAskDukkanciPage() {
               <button type="button" class="ask-location-hint" data-action="location">
                 ${icon("pin")} ${address ? `التوصيل إلى: ${esc(address.label || address.address || "عنوانك")}` : "حدّد عنوانك ليكون سعر التوصيل حقيقياً"}
               </button>
-              <button type="submit" class="primary-button full large">جهّز اقتراحي ${icon("arrowLeft")}</button>
+              <button type="submit" class="primary-button full large" ${a.submitting ? "disabled" : ""}>
+                ${a.submitting ? `<span class="ask-spinner"></span> دكانجي يفهم طلبك...` : `جهّز اقتراحي ${icon("arrowLeft")}`}
+              </button>
             </div>
           </div>
         </form>
@@ -9374,10 +9423,16 @@ function renderAskDukkanciPage() {
     ${a.submitted ? `
     <section id="ask-dukkanci-results" class="section ask-results-section">
       <div class="container">
-        ${result && result.tiers.length ? `
+        ${a.submitting ? `
+          <div class="ask-loading-card">
+            <div class="ask-skeleton-line short"></div>
+            <div class="ask-skeleton-block"></div>
+            <div class="ask-skeleton-block"></div>
+          </div>
+        ` : (result && result.tiers.length ? `
           <div class="section-heading"><div><span class="section-kicker">النتيجة</span><h2>وجدنا لك ${result.tiers.length > 1 ? "خيارات مناسبة" : "خياراً مناسباً"}</h2></div></div>
           <div class="ask-results-grid">${result.tiers.map((t, i) => askDukkanciResultCard(t, i === 0)).join("")}</div>
-        ` : renderEmpty("لم نجد اقتراحاً مطابقاً الآن", "جرّب توسيع الوصف، أو تقليل شرط الحلويات/المشروبات، أو رفع الميزانية قليلاً.", "تصفح المتاجر", "stores")}
+        ` : renderEmpty("لم نجد اقتراحاً مطابقاً الآن", "جرّب توسيع الوصف، أو تقليل شرط الحلويات/المشروبات، أو رفع الميزانية قليلاً.", "تصفح المتاجر", "stores"))}
       </div>
     </section>` : ""}
   `;
