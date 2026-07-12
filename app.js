@@ -8973,11 +8973,16 @@ function renderWhyDukkanciPage() {
 // can call the real addToCart() as-is, honoring the platform's one-store-per-cart rule instead
 // of working around it.
 
+// Deliberately spans several catalog categories, not just restaurant meals — the engine
+// searches product name/category across every store type (supermarkets, sweets shops,
+// butchers...), so the prompts should make that obvious instead of implying "meals only".
 const ASK_DUKKANCI_QUICK_PROMPTS = [
   "عندي عزومة 10 أشخاص وبدي غداء اقتصادي مع حلويات",
-  "اقترح وجبة عائلية لـ 6 أشخاص بميزانية معقولة",
-  "بدي مشاوي ومقبلات لـ 12 شخص",
-  "فطور جماعي لـ 8 أشخاص مع مشروبات"
+  "تسالي ومقرمشات للسهرة لـ 5 أشخاص",
+  "حلويات لعزومة خطوبة لـ 50 شخص",
+  "مشروبات وعصائر لحفلة لـ 20 شخص",
+  "لحوم ومشاوي لـ 12 شخص",
+  "خضار وفواكه طازجة للبيت"
 ];
 
 const ASK_DUKKANCI_DESSERT_KEYWORDS = ["حلويات", "حلوى", "كنافة", "بقلاوة", "كيك", "قطايف", "مهلبية"];
@@ -8989,102 +8994,133 @@ function askDukkanciEligibleStore(store) {
   return !!store && isStoreApproved(store) && isStoreOpenNow(store) && store.subscriptionActive !== false;
 }
 
-// getMatchingProducts requires EVERY term to appear in the same product (fine for a short,
-// deliberate search box query) — a free sentence like "بدي مشاوي ومقبلات لـ 12 شخص" has filler
-// words ("بدي", "لـ", "شخص"...) that never appear together in any single product, so an
-// AND-of-everything search would always return zero. Strip filler + numbers and search each
-// remaining meaningful word separately (OR union) instead.
+// Filler words AND event/occasion nouns ("سهرة", "خطوبة", "حفلة"...) — the occasion describes
+// *why* someone is ordering, not *what* to order, so treating them as product keywords only
+// pulls in noise (a product merely named/categorized after the occasion word).
 const ASK_DUKKANCI_STOPWORDS = new Set([
   "بدي", "بدنا", "اريد", "نريد", "اطلب", "اطلع", "حاب", "حابه", "حابين", "عندي", "عايز", "عايزه",
   "لـ", "ل", "من", "في", "على", "مع", "الي", "الى", "عن", "هو", "هي", "هذا", "هذه", "ذلك", "تلك",
   "شخص", "اشخاص", "ناس", "اناس", "ضيف", "ضيوف", "وجبه", "غداء", "عشاء", "فطور", "فطار",
   "طلب", "اقتراح", "اقترح", "افضل", "احسن", "ميزانيه", "معقوله", "اقتصادي", "اقتصاديه",
   "عزومه", "جماعي", "جماعيه", "عائلي", "عائليه", "كام", "كم", "بميزانيه", "ضمن", "حوالي", "تقريبا",
-  "منتج", "منتجات", "موجود", "موجوده", "اطلاقا", "شي", "شيء", "حاجه", "ابغى", "ابي", "بس", "فقط", "او", "ايضا"
+  "منتج", "منتجات", "موجود", "موجوده", "اطلاقا", "شي", "شيء", "حاجه", "ابغى", "ابي", "بس", "فقط", "او", "ايضا",
+  "سهره", "حفله", "مناسبه", "خطوبه", "تجمع", "زواج", "فرح", "ميلاد", "مولود", "بيت", "منزل", "اسبوعيه", "شهريه"
 ]);
 
+// Arabic proclitics (و=and, ل=for/to, ب=with/by, ك=as/like) glue onto the next word with no
+// space ("ومقبلات"، "لعزومة", "بميزانية") — strip a leading one before the stopword/keyword
+// check so e.g. "لعزومة" resolves to the already-stopworded "عزومة" instead of surviving as noise.
 function askDukkanciKeywords(message) {
   const words = normalizeAr(message).split(" ").filter(Boolean);
   const out = new Set();
-  for (const w of words) {
+  for (let w of words) {
     if (/^\d+$/.test(w) || w.length < 2) continue;
-    // Arabic "و" (and) glues onto the next word with no space ("ومقبلات" = و + مقبلات) —
-    // use the stripped form only, the glued original rarely matches anything real.
-    if (w.startsWith("و") && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) { out.add(w.slice(1)); continue; }
-    if (!ASK_DUKKANCI_STOPWORDS.has(w)) out.add(w);
+    if (/^[ولبك]/.test(w) && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(1);
+    if (w.length >= 2 && !ASK_DUKKANCI_STOPWORDS.has(w)) out.add(w);
   }
   return [...out];
 }
 
-// Candidate "main" products for the free-text description, ranked by relevance — not just
-// unioned. A broad word like "مقبلات" matches hundreds of unrelated sides (bread, salad,
-// fruit) while a specific word like "مشاوي" matches a tight, on-topic set; weighting each
-// keyword by 1/matchCount (rarer keyword ⇒ more specific ⇒ higher weight) keeps genuinely
-// on-topic products ranked above incidental hits on a generic secondary term.
-function askDukkanciMainCandidates(queryText) {
-  const keywords = askDukkanciKeywords(queryText || "");
-  if (!keywords.length) return products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
-
-  const scored = new Map(); // productId -> { product, score }
+// Scores one product against a keyword set: a NAME (or dialect-synonym) match is a much
+// stronger relevance signal than a CATEGORY match; `weight` lets a secondary signal (the
+// dessert/drink toggles) nudge results without overwhelming the primary description.
+function askDukkanciScoreProduct(normName, normCat, syn, keywords, weight) {
+  let score = 0;
   for (const kw of keywords) {
-    const matches = getMatchingProducts(kw, 400);
-    if (!matches.length) continue;
-    const weight = 1 / matches.length;
-    for (const p of matches) {
-      if (p.priceOnRequest || !(Number(p.price) > 0)) continue;
-      const entry = scored.get(p.id);
-      if (entry) entry.score += weight; else scored.set(p.id, { product: p, score: weight });
-    }
+    if (normName.includes(kw) || (syn && syn.includes(kw))) score += 3 * weight;
+    else if (normCat.includes(kw)) score += weight;
   }
-  return [...scored.values()].sort((a, b) => b.score - a.score).map(e => e.product);
+  return score;
 }
 
-// Cheapest product in `storeProducts` (already scoped to one store) matching any of `keywords`
-// (tried in order) — used for the optional dessert/drink add-on. Searches only that store's own
-// products (typically dozens, not the ~8-9k catalog getMatchingProducts scans) since this runs
-// per store per bundle — calling the full-catalog search here made building options for a large
-// party with no address filter (many eligible stores × two addon types × several keywords each)
-// take tens of seconds. Returns null (never a fabricated item) when nothing matches.
-function askDukkanciFindAddon(storeProducts, keywords) {
-  for (const kw of keywords) {
-    const nq = normalizeAr(kw);
-    const matches = storeProducts.filter(p => !p.priceOnRequest && Number(p.price) > 0 && normalizeAr(`${p.name} ${p.category}`).includes(nq));
-    if (matches.length) return matches.sort((a, b) => a.price - b.price)[0];
+// Ranks the ENTIRE available catalog against the visitor's description in one pass — not scoped
+// to restaurant meals; matches supermarket/butcher/sweets-shop products just as readily. This
+// only looks at the PRODUCT's own name/category, never the store name — an earlier version
+// reused getMatchingProducts (name+category+STORE NAME), which meant a plain coffee product
+// matched a "حلويات" search purely because it's sold by a store literally named "حلويات
+// السلطان", not because the product itself was a dessert.
+//
+// Tracks primaryScore (matches the visitor's own description) separately from totalScore
+// (+ the low-weight dessert/drink toggle keywords). A pure dessert shop must never anchor a
+// "بدي مشاوي" request just because its total happens to land near the budget — so store
+// ELIGIBILITY is decided by primaryScore only (see askDukkanciBuildOptions), while totalScore
+// is used to pick which of that store's own items fill out the basket, letting the toggles
+// promote a matching dessert/drink item without being able to smuggle in an unrelated store.
+function askDukkanciScoredCandidates(request) {
+  const primary = askDukkanciKeywords(request.message || "");
+  const secondary = [
+    ...(request.includeDessert ? ASK_DUKKANCI_DESSERT_KEYWORDS : []),
+    ...(request.includeDrinks ? ASK_DUKKANCI_DRINK_KEYWORDS : [])
+  ].map(normalizeAr);
+
+  const pool = products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
+  if (!primary.length && !secondary.length) return { hasPrimary: false, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
+
+  const scored = [];
+  for (const p of pool) {
+    const normName = normalizeAr(p.name);
+    const normCat = normalizeAr(p.category || "");
+    const syn = productSynonymIndex.get(p.id) || "";
+    const primaryScore = askDukkanciScoreProduct(normName, normCat, syn, primary, 1);
+    const totalScore = primaryScore + askDukkanciScoreProduct(normName, normCat, syn, secondary, 0.3);
+    if (totalScore > 0) scored.push({ product: p, primaryScore, totalScore });
   }
-  return null;
+  scored.sort((a, b) => primary.length ? (b.primaryScore - a.primaryScore) || (b.totalScore - a.totalScore) : b.totalScore - a.totalScore);
+  return { hasPrimary: primary.length > 0, items: scored };
 }
 
-// No "serves N people" field exists on real products, so quantity is an estimate from the
-// unit: weighed items (كيلو/كغ) scale by weight-per-person, piece/plate items assume a couple
-// of people share one plate/serving. Always shown to the visitor as an estimate they can
-// adjust from the store page before ordering — never presented as an exact fact.
-function askDukkanciQuantity(product, partySize, role) {
-  const unit = String(product.unit || "");
+// How many distinct items to gather from the chosen store into one basket. A larger gathering
+// reads as an assortment (a few kinds of سناكس/حلويات), not one dish repeated — capped modestly
+// so totals stay legible and don't balloon into an unreadable list.
+function askDukkanciBasketSize(partySize) {
+  if (partySize <= 4) return 2;
+  if (partySize <= 15) return 3;
+  return 4;
+}
+
+function askDukkanciBasketMatchesAny(items, keywords) {
+  const nk = keywords.map(normalizeAr);
+  return items.some(it => {
+    const n = normalizeAr(it.product.name), c = normalizeAr(it.product.category || "");
+    return nk.some(kw => n.includes(kw) || c.includes(kw));
+  });
+}
+
+// No "serves N people" field exists on real products, so quantity is an estimate — and a basket
+// now holds several items at once, so each one's SHARE of the party shrinks with basket size
+// (a gentle sqrt taper, not a hard divide, so a 3-item basket doesn't crash to a third each).
+// A high unit price is treated as the strongest signal that the item is already a bulk/tray
+// format (catering trays, whole cakes, family platters...) regardless of what it's literally
+// named — a name-only check missed products like "آسيه" at 1260 ل.ت that are obviously
+// already sized for a crowd. Always shown to the visitor as an estimate they can adjust from
+// the store page — never presented as an exact fact.
+function askDukkanciQuantity(product, partySize, basketSize) {
   const people = Math.max(1, Number(partySize) || 1);
-  if (/كيلو|كغ|kg/i.test(unit)) return Math.max(1, Math.ceil(people * (role === "main" ? 0.3 : 0.15)));
-  const perUnit = role === "main" ? 2 : 3;
-  return Math.max(1, Math.ceil(people / perUnit));
+  const share = people / Math.max(1, Math.sqrt(basketSize || 1));
+  const unit = normalizeAr(product.unit || "");
+  const name = normalizeAr(product.name || "");
+  const price = Number(product.price) || 0;
+  const looksBulky = /صينيه|مشكل|بوفيه|طبق كبير|صحن كبير/.test(unit + " " + name);
+
+  if (price >= 800 || (looksBulky && price >= 300)) return Math.max(1, Math.ceil(share / 20));  // already a big shared tray/platter
+  if (looksBulky || price >= 250) return Math.max(1, Math.ceil(share / 10));                     // sizable but not huge
+  if (/كيلو|كغ|kg/i.test(unit)) return Math.max(1, Math.ceil(share * 0.15));                      // weighed, modest per-person share
+  return Math.max(1, Math.ceil(share / 2));                                                       // small individual piece/serving
 }
 
-// Assemble one single-store bundle around `mainProduct`. Delivery fee is the REAL per-store
-// quote (activeDeliveryQuote — same function the cart/checkout use) when the visitor has a
-// resolvable address; otherwise it falls back to the store's labeled rate (deliveryPriceLabel)
-// and is flagged as an estimate rather than folded into the total as a fabricated number.
-function askDukkanciBuildBundle(store, mainProduct, request) {
-  const items = [{ product: mainProduct, role: "main", quantity: askDukkanciQuantity(mainProduct, request.partySize, "main") }];
-  const missing = [];
-  const storeProducts = (request.includeDessert || request.includeDrinks) ? products.filter(p => p.storeId === store.id) : null;
+// Assemble one single-store basket from `storeCandidates` (already relevance-sorted for this
+// store). Delivery fee is the REAL per-store quote (activeDeliveryQuote — same function the
+// cart/checkout use) when the visitor has a resolvable address; otherwise it falls back to the
+// store's labeled rate (deliveryPriceLabel) and is flagged as an estimate, never folded into the
+// total as a fabricated number.
+function askDukkanciBuildBasket(store, storeCandidates, request) {
+  const basketSize = askDukkanciBasketSize(request.partySize);
+  const chosen = storeCandidates.slice(0, basketSize);
+  const items = chosen.map(product => ({ product, quantity: askDukkanciQuantity(product, request.partySize, chosen.length) }));
 
-  if (request.includeDessert) {
-    const dessert = askDukkanciFindAddon(storeProducts, ASK_DUKKANCI_DESSERT_KEYWORDS);
-    if (dessert) items.push({ product: dessert, role: "dessert", quantity: askDukkanciQuantity(dessert, request.partySize, "dessert") });
-    else missing.push("لا تتوفر حلويات في هذا المتجر حالياً");
-  }
-  if (request.includeDrinks) {
-    const drink = askDukkanciFindAddon(storeProducts, ASK_DUKKANCI_DRINK_KEYWORDS);
-    if (drink) items.push({ product: drink, role: "drink", quantity: askDukkanciQuantity(drink, request.partySize, "drink") });
-    else missing.push("لا تتوفر مشروبات في هذا المتجر حالياً");
-  }
+  const missing = [];
+  if (request.includeDessert && !askDukkanciBasketMatchesAny(items, ASK_DUKKANCI_DESSERT_KEYWORDS)) missing.push("لا تتوفر حلويات مطابقة في هذا المتجر حالياً");
+  if (request.includeDrinks && !askDukkanciBasketMatchesAny(items, ASK_DUKKANCI_DRINK_KEYWORDS)) missing.push("لا تتوفر مشروبات مطابقة في هذا المتجر حالياً");
 
   const subtotal = items.reduce((sum, it) => sum + it.product.price * it.quantity, 0);
   const address = getDefaultAddress();
@@ -9115,50 +9151,60 @@ function askDukkanciBuildBundle(store, mainProduct, request) {
   };
 }
 
-// Builds up to 3 distinct-store options: أفضل قيمة (closest to budget, shown first/featured),
-// الاقتصادي (cheapest), المميز (richest bundle still within a reasonable stretch of budget).
-// Degrades gracefully — fewer matching stores just means fewer tiers, never a fabricated one.
+// Builds up to 3 distinct-store options: أفضل قيمة (closest to budget overall, shown first/
+// featured), الاقتصادي (cheapest among the REMAINING distinct stores), المميز (richest basket,
+// still within a reasonable stretch of budget, among what's left). Never forces a 2nd or 3rd
+// pick when only one store genuinely qualifies — an earlier version always tried to fill all 3
+// slots with distinct stores, which surfaced an irrelevant, wildly-over-budget "option" just to
+// pad the count. Fewer, honest tiers beats padding with a bad one.
 function askDukkanciBuildOptions(request) {
-  const candidates = askDukkanciMainCandidates(request.message);
-  // candidates is already relevance-ranked (most on-topic first) — take each store's FIRST
-  // (best-matching) product as its anchor, not its cheapest, so a rare-word match like a
-  // butcher's "مشاوي" cut outranks an incidental cheap side that only matched a generic word.
-  const byStore = new Map(); // storeId -> best-matching product in that store
-  for (const p of candidates) {
+  const { hasPrimary, items: scoredCandidates } = askDukkanciScoredCandidates(request);
+  const byStore = new Map(); // storeId -> [products], relevance-sorted (preserved from scoredCandidates)
+  for (const { product: p, primaryScore } of scoredCandidates) {
+    // When the visitor actually described what they want, a store must have at least one item
+    // matching THAT description to qualify — a secondary-only hit (e.g. a pure dessert shop
+    // surfaced only by the "include dessert" toggle) can fill out an already-qualified store's
+    // basket, but must never anchor/qualify a store on its own.
+    if (hasPrimary && primaryScore <= 0) continue;
     const store = getStore(p.storeId);
     if (!askDukkanciEligibleStore(store)) continue;
-    if (!byStore.has(store.id)) byStore.set(store.id, p);
+    if (!byStore.has(store.id)) byStore.set(store.id, []);
+    byStore.get(store.id).push(p);
   }
 
-  // When the visitor described what they want, byStore's insertion order IS the relevance
-  // ranking (best match first) — keep only the most on-topic handful of stores before ranking
-  // by price, so budget-fit never promotes an irrelevant cheap item (e.g. a banana that only
-  // matched a generic "sides" keyword) over a pricier but genuinely on-topic match. With no
-  // description at all there's no relevance signal to trim by, so every eligible store stays.
-  const hasKeywords = askDukkanciKeywords(request.message || "").length > 0;
-  const relevancePool = hasKeywords ? [...byStore.entries()].slice(0, 8) : [...byStore.entries()];
+  // With a real description, byStore's insertion order IS the relevance ranking (each store's
+  // own best-matching product decided when it was first seen) — keep a generous but bounded
+  // pool of the most on-topic stores before ranking by price, so budget-fit never promotes an
+  // irrelevant cheap item over a pricier but genuinely on-topic match. With no signal at all
+  // there's nothing to rank by, so every eligible store stays.
+  const hasSignal = hasPrimary || request.includeDessert || request.includeDrinks;
+  const relevancePool = hasSignal ? [...byStore.entries()].slice(0, 15) : [...byStore.entries()];
 
-  const bundles = relevancePool
-    .map(([storeId, mainProduct]) => askDukkanciBuildBundle(getStore(storeId), mainProduct, request))
+  const baskets = relevancePool
+    .map(([storeId, storeCandidates]) => askDukkanciBuildBasket(getStore(storeId), storeCandidates, request))
     .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
     .sort((a, b) => a.total - b.total);
 
-  if (!bundles.length) return { tiers: [], matchedStoreCount: 0 };
+  if (!baskets.length) return { tiers: [], matchedStoreCount: 0 };
 
-  const economy = bundles[0];
-  const byBudgetFit = [...bundles].sort((a, b) => Math.abs(a.total - request.budgetTry) - Math.abs(b.total - request.budgetTry));
-  const balanced = byBudgetFit.find(b => b.storeId !== economy.storeId) || economy;
-  const stretchPool = bundles.filter(b => b.storeId !== economy.storeId && b.storeId !== balanced.storeId);
-  const withinStretch = stretchPool.filter(b => b.total <= request.budgetTry * 1.4);
-  const premium = (withinStretch.length ? withinStretch : stretchPool).at(-1) || null;
+  const byBudgetFit = [...baskets].sort((a, b) => Math.abs(a.total - request.budgetTry) - Math.abs(b.total - request.budgetTry));
+  const used = new Set();
+  const balanced = byBudgetFit[0];
+  used.add(balanced.storeId);
+  const tiers = [{ ...balanced, tier: "balanced", title: "أفضل قيمة", subtitle: "أقرب خيار لميزانيتك من بين الأقرب لطلبك" }];
 
-  const tiers = [
-    { ...balanced, tier: "balanced", title: "أفضل قيمة", subtitle: "توازن بين التنوع والسعر وقرب المتجر منك" },
-    { ...economy, tier: "economy", title: "الخيار الاقتصادي", subtitle: "أقل تكلفة ممكنة ضمن ما هو متاح فعلياً" }
-  ];
+  const economy = baskets.find(b => !used.has(b.storeId));
+  if (economy) {
+    used.add(economy.storeId);
+    tiers.push({ ...economy, tier: "economy", title: "الخيار الاقتصادي", subtitle: "أقل تكلفة ممكنة ضمن ما هو متاح فعلياً" });
+  }
+
+  const remaining = baskets.filter(b => !used.has(b.storeId));
+  const withinStretch = remaining.filter(b => b.total <= request.budgetTry * 1.4);
+  const premium = (withinStretch.length ? withinStretch : remaining).at(-1);
   if (premium) tiers.push({ ...premium, tier: "premium", title: "الخيار المميز", subtitle: "تنوع أكبر وخيار أغنى للضيوف" });
 
-  return { tiers, matchedStoreCount: bundles.length };
+  return { tiers, matchedStoreCount: baskets.length };
 }
 
 function submitAskDukkanci(form) {
