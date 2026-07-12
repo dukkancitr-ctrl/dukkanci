@@ -592,6 +592,13 @@ function mapDbStore(r) {
     delivery: r.delivery, minOrder: r.min_order, time: r.time, distance: r.distance,
     freeDeliveryThreshold: r.free_delivery_threshold,
     location: (r.lat != null && r.lng != null) ? { lat: r.lat, lng: r.lng } : undefined, mapUrl: r.map_url,
+    // تقييمات Google الرسمية (قسم «دليل دكانجي» /dalil) — تُملأ من
+    // scripts/update-google-ratings.js عبر Places API، وليست تقييمات المنصة.
+    googlePlaceId: r.google_place_id || null,
+    googleRating: r.google_rating != null ? Number(r.google_rating) : null,
+    googleReviewsCount: r.google_reviews_count != null ? Number(r.google_reviews_count) : null,
+    googleMapsUrl: r.google_maps_url || null,
+    googleRatingUpdatedAt: r.google_rating_updated_at || null,
     open: r.open, featured: r.featured, hasOffer: r.has_offer, offer: r.offer, priceOnRequest: r.price_on_request,
     description: r.description, address: r.address, phone: r.phone, whatsapp: r.whatsapp, email: r.email,
     bankDetails: r.bank_details,
@@ -8206,7 +8213,7 @@ function setMetaTag(selector, attr, value) {
 
 function updateHead(route, id) {
   const base = "https://www.dukkanci.com.tr";
-  const canonical = base + (location.pathname === "/" ? "/" : location.pathname);
+  let canonical = base + (location.pathname === "/" ? "/" : location.pathname);
   let title = "دكانجي | سوق الحي بين يديك";
   let desc = "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.";
   let image = base + "/assets/dukkanci-app-icon-512.png";
@@ -8233,17 +8240,46 @@ function updateHead(route, id) {
   else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
   else if (route === "join") { title = "انضم كتاجر — أنشئ متجرك | دكانجي"; desc = "أنشئ متجرك على دكانجي وابدأ باستقبال طلبات عملاء حيك في إسطنبول."; }
   else if (route === "why-dukkanci") { title = "لماذا دكانجي؟ اطلب من المتاجر العربية القريبة منك بدون عمولة على المنتجات"; desc = "تعرف على دكانجي، المنصة التي تجمع المتاجر العربية القريبة منك في مكان واحد، مع أسعار واضحة، بدون عمولة إضافية على المنتجات، وتقييمات تساعدك على الطلب بثقة."; }
+  else if (route === "dalil") {
+    if (id === "compare") {
+      title = "مقارنة المتاجر | دليل دكانجي";
+      desc = "قارن حتى 3 متاجر جنباً إلى جنب: تقييم Google وعدد التقييمات والتوصيل والحد الأدنى للطلب — ثم اطلب مباشرة عبر دكانجي.";
+      // صفحة أداة، ليست محتوى للفهرسة — الرابط القياسي يعود للدليل نفسه.
+      canonical = base + "/dalil";
+    } else {
+      dalilStateFromUrl();
+      const d = state.dalil;
+      const catLabel = d.category ? CATEGORY_MAP[d.category] : "";
+      const region = DALIL_REGION_LIST.find(r => r.slug === d.region) || (d.region === DALIL_FALLBACK_REGION.slug ? DALIL_FALLBACK_REGION : null);
+      const regLabel = region ? region.label : "";
+      if (catLabel && regLabel) title = `دليل ${catLabel} في ${regLabel} | دكانجي`;
+      else if (catLabel) title = `دليل ${catLabel} في إسطنبول — الأعلى تقييماً | دكانجي`;
+      else if (regLabel) title = `دليل متاجر ومطاعم ${regLabel} | دكانجي`;
+      else title = "دليل دكانجي — أفضل المطاعم والمتاجر العربية في إسطنبول بتقييمات Google";
+      desc = `تصفّح ${catLabel || "المطاعم والمتاجر العربية"}${regLabel ? ` في ${regLabel}` : " في إسطنبول"} بتقييمات Google الحقيقية وعدد التقييمات: فلترة بالمنطقة والتصنيف، ترتيب بالأعلى تقييماً أو الأقرب، ومقارنة حتى 3 متاجر — واطلب مباشرة عبر دكانجي.`;
+      // الرابط القياسي يحمل فلتري الفهرسة فقط (تصنيف/منطقة) — البحث والفرز
+      // والمفاتيح مجرد حالات عرض لنفس الصفحة.
+      const qs = [d.category ? `category=${d.category}` : "", d.region ? `region=${d.region}` : ""].filter(Boolean).join("&");
+      canonical = base + "/dalil" + (qs ? `?${qs}` : "");
+    }
+  }
   document.title = title;
   setMetaTag('meta[name="description"]', "content", desc);
   setMetaTag('link[rel="canonical"]', "href", canonical);
   // Soft-404 guard: unknown paths fall back to renderHome (and #about/#contact/#faq/
   // #terms render home too), so only mark real content routes indexable — everything
   // else gets noindex so junk URLs aren't indexed as duplicate-home soft-404s.
-  setMetaTag('meta[name="robots"]', "content", ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci"].includes(route) ? "index,follow" : "noindex,follow");
+  // /dalil/compare (وأي مسار فرعي مجهول تحت /dalil) يبقى noindex عمداً.
+  const indexableRoute = ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci", "dalil"].includes(route) && !(route === "dalil" && id);
+  setMetaTag('meta[name="robots"]', "content", indexableRoute ? "index,follow" : "noindex,follow");
   setMetaTag('meta[property="og:title"]', "content", title);
   setMetaTag('meta[property="og:description"]', "content", desc);
   setMetaTag('meta[property="og:image"]', "content", image);
   setMetaTag('meta[property="og:url"]', "content", canonical);
+  // «دليل دكانجي»: ItemList JSON-LD حي يعكس ترتيب الدليل، ويُزال خارج القسم
+  // حتى لا يلوّث بقية الصفحات.
+  if (route === "dalil" && !id) setDalilJsonLd(title);
+  else { const ld = document.getElementById("dalil-jsonld"); if (ld) ld.remove(); }
 }
 
 function getProductBySlug(slugOrId) {
@@ -8273,6 +8309,371 @@ function renderProductPage(slugOrId) {
           <div class="product-page-price"><strong>${priceLine}</strong></div>
           ${store ? `<p class="product-page-store">${storeAvatar(store)} من متجر <a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a></p>` : ""}
           <button class="primary-button large" data-action="open-product" data-id="${product.id}">${icon("bag")} أضف إلى السلة</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+// ═══════════════════ «دليل دكانجي» — /dalil و /dalil/compare ═══════════════════
+// دليل تقييمات مبني على تقييمات Google الرسمية (أعمدة google_* في جدول stores،
+// تُحدَّث عبر scripts/update-google-ratings.js — لا scraping). الترتيب عضوي
+// بالكامل: «مميز» (featured) علامة عرض فقط ولا يرفع ترتيب المتجر أبداً.
+// المناطق من dalil-regions.js (مُحمَّل قبل هذا الملف في index.html).
+const DALIL_REGION_LIST = (typeof DALIL_REGIONS !== "undefined") ? DALIL_REGIONS : [];
+const DALIL_FALLBACK_REGION = (typeof DALIL_REGION_FALLBACK !== "undefined") ? DALIL_REGION_FALLBACK : { slug: "other", label: "مناطق أخرى" };
+const DALIL_SORTS = ["top", "reviews", "near"];
+
+function dalilRegionOf(store) {
+  if (!store || typeof dalilRegionFor !== "function") return DALIL_FALLBACK_REGION;
+  return dalilRegionFor(store.name, store.address);
+}
+
+function dalilDefaults() {
+  return { q: "", category: "", region: "", openNow: false, delivery: false, sort: "top", compare: [] };
+}
+
+// رابط الصفحة هو مصدر الحقيقة لفلاتر الدليل: كل نقرة فلتر تكتب الحالة ثم
+// تزامنها للرابط (dalilSyncUrl)، وكل render يقرأ الرابط — فتبقى الروابط
+// المشارَكة/محرّكات البحث والحالة الداخلية متطابقة دائماً.
+function dalilStateFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const cat = p.get("category") || "";
+  const reg = p.get("region") || "";
+  const sort = p.get("sort") || "";
+  const prev = state.dalil || dalilDefaults();
+  state.dalil = {
+    q: p.get("q") || "",
+    category: (typeof CATEGORY_SLUGS !== "undefined" && CATEGORY_SLUGS[cat]) ? cat : "",
+    region: (DALIL_REGION_LIST.some(r => r.slug === reg) || reg === DALIL_FALLBACK_REGION.slug) ? reg : "",
+    openNow: p.get("open") === "1",
+    delivery: p.get("delivery") === "1",
+    sort: DALIL_SORTS.includes(sort) ? sort : "top",
+    compare: prev.compare || []
+  };
+}
+
+function dalilSyncUrl() {
+  const d = state.dalil || dalilDefaults();
+  const p = new URLSearchParams();
+  if (d.category) p.set("category", d.category);
+  if (d.region) p.set("region", d.region);
+  if (d.q) p.set("q", d.q);
+  if (d.openNow) p.set("open", "1");
+  if (d.delivery) p.set("delivery", "1");
+  if (d.sort && d.sort !== "top") p.set("sort", d.sort);
+  const qs = p.toString();
+  history.replaceState({}, "", "/dalil" + (qs ? `?${qs}` : ""));
+}
+
+// الحد الأدنى لعدد تقييمات Google المؤهِّل لتصدّر «الأعلى تقييماً» — من
+// site_settings.dalil.minGoogleReviewsForTop (قابل للتغيير دون نشر)، واحتياطياً 50.
+function dalilMinReviews() {
+  const v = Number(state.siteSettings && state.siteSettings.dalil && state.siteSettings.dalil.minGoogleReviewsForTop);
+  return Number.isFinite(v) && v > 0 ? v : 50;
+}
+
+function dalilHasDelivery(store) {
+  return !store.fulfillment || String(store.fulfillment).includes("توصيل");
+}
+
+function dalilDirectionsUrl(store) {
+  if (store.location && store.location.lat != null) {
+    const dest = `${store.location.lat},${store.location.lng}`;
+    const pid = store.googlePlaceId ? `&destination_place_id=${encodeURIComponent(store.googlePlaceId)}` : "";
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}${pid}`;
+  }
+  if (store.googleMapsUrl) return store.googleMapsUrl;
+  if (store.mapUrl) return store.mapUrl;
+  return store.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(store.address)}` : "";
+}
+
+// ItemList JSON-LD حي لصفحة الدليل (يُدار من updateHead: يُحدَّث داخل القسم ويُزال خارجه).
+function setDalilJsonLd(pageTitle) {
+  const ranked = stores.filter(isStoreApproved)
+    .slice()
+    .sort((a, b) => (b.googleReviewsCount || 0) - (a.googleReviewsCount || 0))
+    .slice(0, 25);
+  let el = document.getElementById("dalil-jsonld");
+  if (!ranked.length) { if (el) el.remove(); return; }
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: pageTitle || document.title,
+    itemListOrder: "https://schema.org/ItemListOrderDescending",
+    numberOfItems: ranked.length,
+    itemListElement: ranked.map((s, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: s.name,
+      url: `https://www.dukkanci.com.tr/store/${storeParam(s)}`
+    }))
+  };
+  if (!el) {
+    el = document.createElement("script");
+    el.type = "application/ld+json";
+    el.id = "dalil-jsonld";
+    document.head.appendChild(el);
+  }
+  el.textContent = JSON.stringify(data);
+}
+
+function dalilGoogleRow(store) {
+  if (store.googleRating == null) {
+    return `<div class="dalil-google dalil-google--none">لا توجد بيانات تقييم Google لهذا المتجر بعد</div>`;
+  }
+  const count = Number(store.googleReviewsCount || 0);
+  return `
+    <div class="dalil-google">
+      <span class="dalil-google__score">${icon("star")} <strong>${Number(store.googleRating).toFixed(1)}</strong></span>
+      <span class="dalil-google__count">${count.toLocaleString("ar-EG")} تقييم Google</span>
+      ${store.googleRatingUpdatedAt ? `<span class="dalil-google__updated">${icon("calendar")} حُدِّث ${formatOrderDateOnly(store.googleRatingUpdatedAt)}</span>` : ""}
+    </div>`;
+}
+
+function dalilStoreCard(store, productHitIds) {
+  const d = state.dalil || dalilDefaults();
+  const region = dalilRegionOf(store);
+  const inCompare = (d.compare || []).includes(store.id);
+  const open = isStoreOpenNow(store);
+  const directions = dalilDirectionsUrl(store);
+  const km = branchDistanceKm(store);
+  return `
+    <article class="dalil-card${store.featured ? " dalil-card--featured" : ""}">
+      <div class="dalil-card__head">
+        ${storeAvatar(store)}
+        <div class="dalil-card__title">
+          <strong>${esc(store.name)}</strong>
+          <small>${esc(store.category || "")} · ${esc(region.label)}</small>
+        </div>
+        ${store.featured ? `<span class="dalil-featured-badge" title="متجر مميز على دكانجي — لا يؤثر على ترتيب الدليل">مميز</span>` : ""}
+        <span class="status-badge ${open ? "open" : "closed"}">${open ? "مفتوح" : "مغلق"}</span>
+      </div>
+      ${dalilGoogleRow(store)}
+      <div class="dalil-card__meta">
+        ${km != null ? `<span>${icon("pin")} ${formatDistance(km)}</span>` : ""}
+        ${store.time ? `<span>${icon("clock")} ${esc(store.time)}</span>` : ""}
+        <span>${icon("bike")} ${dalilHasDelivery(store) ? "توصيل متاح" : "استلام فقط"}</span>
+        ${productHitIds && productHitIds.has(store.id) ? `<span class="dalil-product-hit">${icon("check")} لديه منتج مطابق لبحثك</span>` : ""}
+      </div>
+      <div class="dalil-card__actions">
+        <a class="primary-button compact" href="/store/${storeParam(store)}">اطلب من المتجر</a>
+        ${directions ? `<a class="secondary-button compact" href="${escAttr(directions)}" target="_blank" rel="noopener">${icon("map")} الاتجاهات</a>` : ""}
+        <button class="secondary-button compact dalil-compare-btn${inCompare ? " active" : ""}" data-action="dalil-compare" data-id="${store.id}">${inCompare ? `${icon("check")} في المقارنة` : "+ قارن"}</button>
+      </div>
+    </article>`;
+}
+
+// فلترة وترتيب الدليل. لا نطوي فروع العلامة الواحدة هنا (بعكس /stores) —
+// لكل فرع مكان Google مستقل بتقييمه الخاص، والدليل يعرض الأماكن لا العلامات.
+function dalilFilteredStores() {
+  const d = state.dalil || dalilDefaults();
+  const q = normalizeAr(d.q);
+  const terms = q.split(" ").filter(Boolean);
+  // البحث باسم المنتج: المتاجر التي تبيع منتجاً مطابقاً تُعرض حتى لو لم يطابق اسمها.
+  const productHitIds = new Set(terms.length ? getMatchingProducts(d.q, 150).map(p => p.storeId) : []);
+
+  const list = stores.filter(store => {
+    if (!isStoreApproved(store)) return false;
+    if (d.category) {
+      const catText = CATEGORY_MAP[d.category];
+      if (!catText || !storeMatchesCategory(store, catText)) return false;
+    }
+    if (d.region && dalilRegionOf(store).slug !== d.region) return false;
+    if (d.openNow && !isStoreOpenNow(store)) return false;
+    if (d.delivery && !dalilHasDelivery(store)) return false;
+    if (terms.length) {
+      const hay = normalizeAr(`${store.name} ${store.category} ${store.description || ""} ${store.address || ""} ${dalilRegionOf(store).label}`);
+      if (!terms.every(t => hay.includes(t)) && !productHitIds.has(store.id)) return false;
+    }
+    return true;
+  });
+
+  // ترتيب عضوي فقط — «مميز» لا يدخل في أي معادلة ترتيب.
+  const gRating = s => (s.googleRating != null ? Number(s.googleRating) : -1);
+  const gCount = s => Number(s.googleReviewsCount || 0);
+  if (d.sort === "reviews") {
+    list.sort((a, b) => gCount(b) - gCount(a) || gRating(b) - gRating(a));
+  } else if (d.sort === "near") {
+    list.sort(compareStoresByDistance);
+  } else {
+    // «الأعلى تقييماً»: من بلغ حد التقييمات الأدنى (dalilMinReviews) يتقدّم دائماً
+    // على من لم يبلغه — فلا يتصدّر متجر بتقييم 5.0 من 3 مراجعات فقط.
+    const minRev = dalilMinReviews();
+    list.sort((a, b) => {
+      const qualA = gCount(a) >= minRev ? 1 : 0;
+      const qualB = gCount(b) >= minRev ? 1 : 0;
+      if (qualA !== qualB) return qualB - qualA;
+      return gRating(b) - gRating(a) || gCount(b) - gCount(a);
+    });
+  }
+  return { list, productHitIds };
+}
+
+function dalilCompareTray() {
+  const d = state.dalil || dalilDefaults();
+  const chosen = (d.compare || []).map(id => getStore(id)).filter(Boolean);
+  if (!chosen.length) return "";
+  return `
+    <div class="dalil-tray" role="region" aria-label="متاجر المقارنة">
+      <div class="dalil-tray__stores">
+        ${chosen.map(s => `<span class="dalil-tray__chip">${esc(s.name)}<button data-action="dalil-compare" data-id="${s.id}" aria-label="إزالة ${escAttr(s.name)} من المقارنة">${icon("close")}</button></span>`).join("")}
+      </div>
+      <div class="dalil-tray__actions">
+        <button class="primary-button compact" data-action="dalil-compare-go" ${chosen.length < 2 ? "disabled" : ""}>قارن الآن (${chosen.length})</button>
+        <button class="secondary-button compact" data-action="dalil-compare-clear">مسح</button>
+      </div>
+    </div>`;
+}
+
+function renderDalilPage(sub) {
+  if (sub === "compare") return renderDalilComparePage();
+  // مسار فرعي مجهول (/dalil/xyz): طبّع الرابط للدليل الرئيسي واعرضه.
+  if (sub) history.replaceState({}, "", "/dalil");
+  if (!state.dalil) dalilStateFromUrl();
+  const d = state.dalil;
+  const approved = stores.filter(isStoreApproved);
+
+  // عدّادات الفلاتر تُحسب على كامل الدليل (لا تتأثر ببقية الفلاتر النشطة).
+  const regionCounts = {};
+  approved.forEach(s => { const r = dalilRegionOf(s); regionCounts[r.slug] = (regionCounts[r.slug] || 0) + 1; });
+  const regionChips = DALIL_REGION_LIST.filter(r => regionCounts[r.slug])
+    .concat(regionCounts[DALIL_FALLBACK_REGION.slug] ? [DALIL_FALLBACK_REGION] : []);
+  const categoryChips = Object.entries(CATEGORY_MAP)
+    .map(([slug, text]) => ({ slug, text, count: approved.filter(s => storeMatchesCategory(s, text)).length }))
+    .filter(c => c.count);
+
+  const { list, productHitIds } = dalilFilteredStores();
+  const minRev = dalilMinReviews();
+  const ratedCount = approved.filter(s => s.googleRating != null).length;
+
+  return `
+    <section class="page-hero compact dalil-hero">
+      <div class="container">
+        <span class="section-kicker">تقييمات Google الحقيقية</span>
+        <h1>دليل دكانجي</h1>
+        <p>كل المطاعم والمتاجر العربية في إسطنبول بتقييماتها الفعلية على Google — قارن، اختر، واطلب مباشرة.</p>
+        <div class="listing-search">
+          ${icon("search")}
+          <input id="dalil-search" type="search" placeholder="ابحث باسم مطعم، منتج، أو منطقة..." value="${escAttr(d.q)}">
+          <button type="button" class="search-clear" data-action="dalil-clear-search" aria-label="مسح البحث" title="مسح">${icon("close")}</button>
+          <button data-action="dalil-run-search">بحث</button>
+        </div>
+      </div>
+    </section>
+    <section class="section listing-section dalil-section">
+      <div class="container">
+        <div class="dalil-pills-row">
+          <span class="dalil-pills-label">${icon("pin")} المنطقة</span>
+          <div class="dalil-pills">
+            <button class="${!d.region ? "active" : ""}" data-action="dalil-region" data-slug="">الكل</button>
+            ${regionChips.map(r => `<button class="${d.region === r.slug ? "active" : ""}" data-action="dalil-region" data-slug="${r.slug}">${esc(r.label)} <i>${regionCounts[r.slug]}</i></button>`).join("")}
+          </div>
+        </div>
+        <div class="dalil-pills-row">
+          <span class="dalil-pills-label">${icon("filter")} التصنيف</span>
+          <div class="dalil-pills">
+            <button class="${!d.category ? "active" : ""}" data-action="dalil-category" data-slug="">الكل</button>
+            ${categoryChips.map(c => `<button class="${d.category === c.slug ? "active" : ""}" data-action="dalil-category" data-slug="${c.slug}">${esc(c.text)} <i>${c.count}</i></button>`).join("")}
+          </div>
+        </div>
+        <div class="dalil-toolbar">
+          <div class="dalil-toggles">
+            <button class="dalil-toggle ${d.openNow ? "active" : ""}" data-action="dalil-toggle" data-key="openNow">${icon("clock")} مفتوح الآن</button>
+            <button class="dalil-toggle ${d.delivery ? "active" : ""}" data-action="dalil-toggle" data-key="delivery">${icon("bike")} التوصيل متاح</button>
+          </div>
+          <label class="sort-select">
+            ${icon("filter")}
+            <select id="dalil-sort" aria-label="ترتيب الدليل">
+              <option value="top" ${d.sort === "top" ? "selected" : ""}>الأعلى تقييماً (Google)</option>
+              <option value="reviews" ${d.sort === "reviews" ? "selected" : ""}>الأكثر تقييمات Google</option>
+              <option value="near" ${d.sort === "near" ? "selected" : ""}>الأقرب إليّ</option>
+            </select>
+          </label>
+        </div>
+        ${d.sort === "top" ? `<p class="dalil-note">${icon("shield")} حتى لا يتصدّر متجرٌ بعدد تقييمات قليل جداً، يتقدّم في الترتيب من لديه ${minRev} تقييم Google فأكثر.</p>` : ""}
+        ${d.sort === "near" && !state.userLocation ? `<div class="dalil-locate-banner">${icon("pin")} <span>للترتيب حسب الأقرب إليك فعلياً، حدّد موقعك أولاً.</span><button class="secondary-button compact" data-action="location">تحديد موقعي</button></div>` : ""}
+        <div class="result-summary"><strong>${list.length}</strong><span>${list.length === 1 ? "نتيجة" : "نتيجة"} في الدليل${ratedCount ? ` · ${ratedCount} متجراً بتقييم Google موثّق` : ""}</span></div>
+        ${list.length
+          ? `<div class="dalil-grid">${list.map(s => dalilStoreCard(s, productHitIds)).join("")}</div>`
+          : renderEmpty("لا توجد نتائج مطابقة", "جرّب كلمة أبسط، أو أزل بعض الفلاتر.", "عرض كل الدليل", "dalil")}
+        <div class="dalil-foot-links">
+          <a href="/stores">تصفّح كل المتاجر</a>
+          <a href="/offers">أحدث العروض</a>
+          <a href="/merchants">أضف متجرك إلى الدليل</a>
+        </div>
+      </div>
+    </section>
+    ${dalilCompareTray()}
+  `;
+}
+
+function renderDalilComparePage() {
+  const p = new URLSearchParams(location.search);
+  const ids = (p.get("ids") || "").split(",").map(Number).filter(Boolean).slice(0, 3);
+  const chosen = ids.map(id => getStore(id)).filter(s => s && isStoreApproved(s));
+  // مزامنة عربة المقارنة مع الرابط (الرابط قابل للمشاركة مباشرة).
+  if (!state.dalil) dalilStateFromUrl();
+  state.dalil.compare = chosen.map(s => s.id);
+
+  if (chosen.length < 2) {
+    return `<section class="section empty-page">${renderEmpty("اختر متجرين على الأقل للمقارنة", "عد إلى الدليل واختر حتى 3 متاجر بزر «قارن».", "العودة إلى الدليل", "dalil")}</section>`;
+  }
+
+  const rows = [
+    ["تقييم Google", s => s.googleRating != null ? `<strong class="dalil-cmp-score">${icon("star")} ${Number(s.googleRating).toFixed(1)}</strong>` : "—"],
+    ["عدد تقييمات Google", s => s.googleReviewsCount != null ? `${Number(s.googleReviewsCount).toLocaleString("ar-EG")} تقييم` : "—"],
+    ["آخر تحديث للتقييم", s => s.googleRatingUpdatedAt ? formatOrderDateOnly(s.googleRatingUpdatedAt) : "—"],
+    ["التصنيف", s => esc(s.category || "—")],
+    ["المنطقة", s => esc(dalilRegionOf(s).label)],
+    ["الحالة الآن", s => isStoreOpenNow(s) ? `<span class="dalil-cmp-open">مفتوح</span>` : `<span class="dalil-cmp-closed">مغلق</span>`],
+    ["التوصيل", s => dalilHasDelivery(s) ? "متاح ✅" : "استلام فقط"],
+    ["رسوم التوصيل", s => deliveryPriceLabel(s)],
+    ["أقل قيمة للطلب", s => s.minOrder ? money(s.minOrder) : "—"],
+    ["زمن التجهيز والتوصيل", s => esc(s.time || "—")]
+  ];
+  if (state.userLocation) {
+    rows.push(["المسافة عنك", s => { const km = branchDistanceKm(s); return km != null ? formatDistance(km) : "—"; }]);
+  }
+  rows.push(["ساعات العمل", s => esc(s.hours || "—")]);
+
+  return `
+    <section class="page-hero compact">
+      <div class="container">
+        <div class="breadcrumbs"><a href="/dalil">دليل دكانجي</a><span>/</span><strong>مقارنة المتاجر</strong></div>
+        <h1>مقارنة ${chosen.length === 2 ? "متجرين" : `${chosen.length} متاجر`}</h1>
+        <p>مقارنة جنباً إلى جنب حسب تقييمات Google والتوصيل — «مميز» علامة عرض ولا يؤثر على المقارنة.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="container">
+        <div class="dalil-compare-wrap">
+          <table class="dalil-compare-table">
+            <thead>
+              <tr>
+                <th class="dalil-cmp-label" aria-hidden="true"></th>
+                ${chosen.map(s => `
+                  <th>
+                    <div class="dalil-cmp-store">
+                      ${storeAvatar(s)}
+                      <strong>${esc(s.name)}</strong>
+                      ${s.featured ? `<span class="dalil-featured-badge">مميز</span>` : ""}
+                      <div class="dalil-cmp-store__actions">
+                        <a class="primary-button compact" href="/store/${storeParam(s)}">اطلب الآن</a>
+                        ${dalilDirectionsUrl(s) ? `<a class="secondary-button compact" href="${escAttr(dalilDirectionsUrl(s))}" target="_blank" rel="noopener">${icon("map")} الاتجاهات</a>` : ""}
+                        <button class="secondary-button compact" data-action="dalil-compare-remove" data-id="${s.id}">${icon("close")} إزالة</button>
+                      </div>
+                    </div>
+                  </th>`).join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(([label, cell]) => `<tr><th class="dalil-cmp-label">${label}</th>${chosen.map(s => `<td>${cell(s)}</td>`).join("")}</tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+        <div class="dalil-foot-links">
+          <a href="/dalil">${icon("arrowLeft")} العودة إلى الدليل</a>
         </div>
       </div>
     </section>
@@ -8718,7 +9119,8 @@ function render() {
     contact: renderContactPage,
     faq: renderFaqPage,
     terms: renderTermsPage,
-    "why-dukkanci": renderWhyDukkanciPage
+    "why-dukkanci": renderWhyDukkanciPage,
+    dalil: () => renderDalilPage(id)
   };
   // Preserve an in-progress text field across this re-render. The async boot
   // data-refreshes (site-settings, integrations, and the ~7600-product catalog
@@ -10421,7 +10823,7 @@ document.addEventListener("click", event => {
   if (!href || a.target === "_blank" || /^(https?:|tel:|mailto:|wa\.me)/i.test(href)) return;
   if (href.startsWith("#")) {
     const routeName = href.replace(/^#/, "") || "home";
-    const knownRoutes = new Set(["home", "join", "stores", "offers", "store", "product", "category", "orders", "merchant", "admin", "checkout", "about", "contact", "faq", "terms"]);
+    const knownRoutes = new Set(["home", "join", "stores", "offers", "store", "product", "category", "orders", "merchant", "admin", "checkout", "about", "contact", "faq", "terms", "dalil"]);
     if (!knownRoutes.has(routeName)) return; // let browser handle unknown hashes (footer links, anchors)
     event.preventDefault(); navigate(routeName); return;
   }
@@ -10537,6 +10939,67 @@ document.addEventListener("click", event => {
     setTimeout(() => (document.getElementById("stores-search") || document.getElementById("hero-search"))?.focus(), 0);
   }
   if (action === "voice-search") startVoiceSearch(target);
+  // ─── «دليل دكانجي» (/dalil) ───
+  if (action === "dalil-region") {
+    if (!state.dalil) dalilStateFromUrl();
+    const slug = target.dataset.slug || "";
+    state.dalil.region = state.dalil.region === slug ? "" : slug;
+    dalilSyncUrl(); render();
+  }
+  if (action === "dalil-category") {
+    if (!state.dalil) dalilStateFromUrl();
+    const slug = target.dataset.slug || "";
+    state.dalil.category = state.dalil.category === slug ? "" : slug;
+    dalilSyncUrl(); render();
+  }
+  if (action === "dalil-toggle") {
+    if (!state.dalil) dalilStateFromUrl();
+    const key = target.dataset.key;
+    if (key === "openNow" || key === "delivery") { state.dalil[key] = !state.dalil[key]; dalilSyncUrl(); render(); }
+  }
+  if (action === "dalil-run-search") {
+    if (!state.dalil) dalilStateFromUrl();
+    state.dalil.q = (document.getElementById("dalil-search")?.value || "").trim();
+    if (state.dalil.q) window.DUKKANCI_TRACKING?.track("search", { search_term: state.dalil.q, search_context: "dalil" });
+    dalilSyncUrl(); render();
+  }
+  if (action === "dalil-clear-search") {
+    if (!state.dalil) dalilStateFromUrl();
+    state.dalil.q = "";
+    const input = document.getElementById("dalil-search");
+    if (input) input.value = "";
+    dalilSyncUrl(); render();
+    setTimeout(() => document.getElementById("dalil-search")?.focus(), 0);
+  }
+  if (action === "dalil-compare") {
+    if (!state.dalil) dalilStateFromUrl();
+    const id = Number(target.dataset.id);
+    const chosen = state.dalil.compare || [];
+    if (chosen.includes(id)) state.dalil.compare = chosen.filter(x => x !== id);
+    else if (chosen.length >= 3) { showToast("يمكن مقارنة 3 متاجر كحد أقصى — أزل متجراً أولاً", "error"); return; }
+    else state.dalil.compare = [...chosen, id];
+    // على صفحة المقارنة نفسها تُحدَّث ids في الرابط؛ في الدليل يكفي إعادة الرسم.
+    if (parseRoute().id === "compare") {
+      if (state.dalil.compare.length >= 2) { history.replaceState({}, "", `/dalil/compare?ids=${state.dalil.compare.join(",")}`); render(); }
+      else navigate("/dalil");
+    } else render();
+  }
+  if (action === "dalil-compare-remove") {
+    if (!state.dalil) dalilStateFromUrl();
+    const id = Number(target.dataset.id);
+    state.dalil.compare = (state.dalil.compare || []).filter(x => x !== id);
+    if (state.dalil.compare.length >= 2) { history.replaceState({}, "", `/dalil/compare?ids=${state.dalil.compare.join(",")}`); render(); }
+    else navigate("/dalil");
+  }
+  if (action === "dalil-compare-go") {
+    const ids = ((state.dalil && state.dalil.compare) || []).slice(0, 3);
+    if (ids.length >= 2) navigate(`/dalil/compare?ids=${ids.join(",")}`);
+    else showToast("اختر متجرين على الأقل للمقارنة", "error");
+  }
+  if (action === "dalil-compare-clear") {
+    if (state.dalil) state.dalil.compare = [];
+    render();
+  }
   if (action === "apply-coupon") applyCouponCode(document.getElementById("coupon-input")?.value, target);
   if (action === "remove-coupon") removeCoupon();
   if (action === "apply-referral") applyReferralCode(document.getElementById("referral-input")?.value, target);
@@ -11546,6 +12009,14 @@ document.addEventListener("keydown", event => {
     state.search = event.target.value.trim();
     render();
     setTimeout(() => document.getElementById("stores-search")?.focus(), 0);
+  } else if (event.target.id === "dalil-search") {
+    event.preventDefault();
+    if (!state.dalil) dalilStateFromUrl();
+    state.dalil.q = event.target.value.trim();
+    if (state.dalil.q) window.DUKKANCI_TRACKING?.track("search", { search_term: state.dalil.q, search_context: "dalil" });
+    dalilSyncUrl();
+    render();
+    setTimeout(() => document.getElementById("dalil-search")?.focus(), 0);
   } else if (event.target.id === "syn-add-input") {
     event.preventDefault();
     synAddTerm(event.target.value);
@@ -11573,6 +12044,12 @@ document.addEventListener("change", event => {
     if (groupLabel) groupLabel.style.display = isContacts ? "" : "none";
   }
   if (event.target.id === "store-sort") { state.storeSort = event.target.value; render(); }
+  if (event.target.id === "dalil-sort") {
+    if (!state.dalil) dalilStateFromUrl();
+    state.dalil.sort = event.target.value;
+    dalilSyncUrl();
+    render();
+  }
   if (event.target.id === "admin-order-store") { state.adminOrderStore = event.target.value; render(); }
   if (event.target.id === "merchant-store-switch") {
     state.merchantStoreId = Number(event.target.value);
