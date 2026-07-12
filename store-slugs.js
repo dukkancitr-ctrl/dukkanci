@@ -88,7 +88,8 @@ const STORE_SLUGS = {
   67: "bab-alyemen-restaurant",
   83: "beyazit-peynir-market",
   84: "domani",
-  85: "karkousha-farfousha-sweets"
+  85: "karkousha-farfousha-sweets",
+  86: "alnoor-falafel-restaurant"
 };
 
 // Reverse: slug -> id.
