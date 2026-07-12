@@ -9045,6 +9045,21 @@ function askDukkanciIsSupplyItem(normName, normCat) {
   return /خاص\s?ب|خاصه\s?ب/.test(normName);
 }
 
+// Same finished-good-vs-raw-ingredient trap, for meat specifically: a "ملحمة" (butcher) sells
+// RAW cuts by weight for the customer to cook at home — not a dish ready to serve at a
+// gathering. Nothing marks these as "مستلزمات" (they ARE the butcher's real, sellable product),
+// so askDukkanciIsSupplyItem never catches them; without this, a request like "عزومة ... لحم"
+// could surface raw "لحم غنم" from a butcher as if it were food ready to serve guests. A
+// COOKED marker on the same product (e.g. "لحم مشوي", "مشكل مشاوي") means it's an actual
+// prepared dish (typically a restaurant's grill), so that's never excluded.
+const ASK_DUKKANCI_RAW_MEAT_MARKERS = ["لحم", "لحوم", "لحمة", "دواجن", "ذبائح", "ملحمة"];
+const ASK_DUKKANCI_COOKED_MARKERS = ["مشوي", "مشاوي", "مطبوخ", "جاهز", "مقلي", "طبق", "وجبة", "مشكل", "مقدد", "مدخن"];
+function askDukkanciIsRawMeat(normName, normCat) {
+  const text = normName + " " + normCat;
+  if (!ASK_DUKKANCI_RAW_MEAT_MARKERS.some(m => text.includes(m))) return false;
+  return !ASK_DUKKANCI_COOKED_MARKERS.some(m => text.includes(m));
+}
+
 // Scores one product against a keyword set: a NAME (or dialect-synonym) match is a much
 // stronger relevance signal than a CATEGORY match; `weight` lets a secondary signal (the
 // dessert/drink toggles) nudge results without overwhelming the primary description.
@@ -9094,20 +9109,20 @@ function askDukkanciScoredCandidates(request, intent) {
     : primary.some(kw => ASK_DUKKANCI_SUPPLY_MARKERS.includes(kw));
 
   const pool = products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
-  if (!primary.length && !secondary.length) return { hasPrimary: false, primary, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
+  if (!primary.length && !secondary.length) return { hasPrimary: false, primary, wantsSupplies, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
 
   const scored = [];
   for (const p of pool) {
     const normName = normalizeAr(p.name);
     const normCat = normalizeAr(p.category || "");
-    if (!wantsSupplies && askDukkanciIsSupplyItem(normName, normCat)) continue;
+    if (!wantsSupplies && (askDukkanciIsSupplyItem(normName, normCat) || askDukkanciIsRawMeat(normName, normCat))) continue;
     const syn = productSynonymIndex.get(p.id) || "";
     const primaryScore = askDukkanciScoreProduct(normName, normCat, syn, primary, 1);
     const totalScore = primaryScore + askDukkanciScoreProduct(normName, normCat, syn, secondary, 0.3);
     if (totalScore > 0) scored.push({ product: p, primaryScore, totalScore });
   }
   scored.sort((a, b) => primary.length ? (b.primaryScore - a.primaryScore) || (b.totalScore - a.totalScore) : b.totalScore - a.totalScore);
-  return { hasPrimary: primary.length > 0, primary, items: scored };
+  return { hasPrimary: primary.length > 0, primary, wantsSupplies, items: scored };
 }
 
 // How many distinct items to gather from the chosen store into one basket. A larger gathering
@@ -9172,7 +9187,10 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
     if (chosen.length && chosen.every(isAddOnItem)) {
       const mainItem = products
         .filter(p => p.storeId === store.id && p.available !== false && !p.priceOnRequest && Number(p.price) > 0)
-        .filter(p => !isAddOnItem(p) && !askDukkanciIsSupplyItem(normalizeAr(p.name), normalizeAr(p.category || "")))
+        .filter(p => {
+          const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
+          return !isAddOnItem(p) && !askDukkanciIsSupplyItem(n, c) && (opts.wantsSupplies || !askDukkanciIsRawMeat(n, c));
+        })
         .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0))[0];
       if (mainItem) chosen = [mainItem, ...chosen].slice(0, basketSize);
     }
@@ -9220,7 +9238,7 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
 // slots with distinct stores, which surfaced an irrelevant, wildly-over-budget "option" just to
 // pad the count. Fewer, honest tiers beats padding with a bad one.
 function askDukkanciBuildOptions(request, intent) {
-  const { hasPrimary, primary, items: scoredCandidates } = askDukkanciScoredCandidates(request, intent);
+  const { hasPrimary, primary, wantsSupplies, items: scoredCandidates } = askDukkanciScoredCandidates(request, intent);
   const byStore = new Map(); // storeId -> { store, products, bestScore }, products relevance-sorted
   for (const { product: p, primaryScore } of scoredCandidates) {
     // When the visitor actually described what they want, a store must have at least one item
@@ -9277,7 +9295,7 @@ function askDukkanciBuildOptions(request, intent) {
   const relevancePool = hasSignal ? rankedPool.slice(0, 15) : rankedPool;
 
   const baskets = relevancePool
-    .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request, { hasMealIntent }))
+    .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request, { hasMealIntent, wantsSupplies }))
     .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
     .sort((a, b) => a.total - b.total);
 
