@@ -119,6 +119,9 @@ let HIDDEN_PRODUCTS = new Set();
 // site_settings.mostOrdered). We don't have real sales-ranking data yet, so this is a
 // manual admin selection — see mostOrderedProducts() for the fallback when it's empty.
 let MOST_ORDERED_PRODUCTS = new Set();
+// True once a visitor has added an «اسأل دكانجي» bundle to the cart this session — read at
+// checkout completion to fire ask_dukkanci_checkout_completed, then cleared.
+let askDukkanciCartOrigin = false;
 function isShownOnStore(p) {
   return p.available !== false && !HIDDEN_PRODUCTS.has(p.id) && (!isPlaceholderImage(p.image) || storeAllowsNoImage(p.storeId));
 }
@@ -364,7 +367,18 @@ const state = {
   fbadsBusy: false,
   fbadsError: null,
   user: null,
-  deferredInstall: null
+  deferredInstall: null,
+  // «اسأل دكانجي» — smart order-bundle assistant. Session-only (no persistence
+  // needed across visits); result is null until the visitor submits the form.
+  askDukkanci: {
+    message: "",
+    partySize: 6,
+    budgetTry: 1000,
+    includeDessert: true,
+    includeDrinks: false,
+    submitted: false,
+    result: null
+  }
 };
 
 // Demo seller accounts (front-end only — for trying the merchant dashboard).
@@ -2999,6 +3013,16 @@ function renderHome() {
         </div>
         ${openStoresCount ? `<div class="live-activity-pill"><span class="live-dot"></span> متاجر مفتوحة الآن: ${openStoresCount.toLocaleString("ar")}</div>` : ""}
         <div class="store-grid">${featuredStores.map(nearbyStoreCard).join("")}</div>
+      </div>
+    </section>
+
+    <section class="section ask-dukkanci-cta-section">
+      <div class="container">
+        <a class="ask-dukkanci-cta" href="/ask-dukkanci" data-route="ask-dukkanci">
+          <span class="ask-dukkanci-cta__icon">${icon("stars")}</span>
+          <span class="ask-dukkanci-cta__copy"><strong>مش عارف تطلب ايه؟ اسأل دكانجي</strong><span>قل لنا عدد الأشخاص وميزانيتك، ونرتب لك اقتراح طلب متكامل خلال ثوانٍ</span></span>
+          <span class="ask-dukkanci-cta__go">${icon("arrowLeft")}</span>
+        </a>
       </div>
     </section>
 
@@ -8240,6 +8264,7 @@ function updateHead(route, id) {
   else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
   else if (route === "join") { title = "انضم كتاجر — أنشئ متجرك | دكانجي"; desc = "أنشئ متجرك على دكانجي وابدأ باستقبال طلبات عملاء حيك في إسطنبول."; }
   else if (route === "why-dukkanci") { title = "لماذا دكانجي؟ اطلب من المتاجر العربية القريبة منك بدون عمولة على المنتجات"; desc = "تعرف على دكانجي، المنصة التي تجمع المتاجر العربية القريبة منك في مكان واحد، مع أسعار واضحة، بدون عمولة إضافية على المنتجات، وتقييمات تساعدك على الطلب بثقة."; }
+  else if (route === "ask-dukkanci") { title = "اسأل دكانجي — مساعد اختيار الطلب | دكانجي"; desc = "قل لنا عدد الأشخاص وميزانيتك، ودكانجي يرتب لك اقتراح طلب متكامل من متجر حقيقي بسعر وتوصيل حقيقيين."; }
   else if (route === "dalil") {
     if (id === "compare") {
       title = "مقارنة المتاجر | دليل دكانجي";
@@ -8270,7 +8295,7 @@ function updateHead(route, id) {
   // #terms render home too), so only mark real content routes indexable — everything
   // else gets noindex so junk URLs aren't indexed as duplicate-home soft-404s.
   // /dalil/compare (وأي مسار فرعي مجهول تحت /dalil) يبقى noindex عمداً.
-  const indexableRoute = ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci", "dalil"].includes(route) && !(route === "dalil" && id);
+  const indexableRoute = ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci", "ask-dukkanci", "dalil"].includes(route) && !(route === "dalil" && id);
   setMetaTag('meta[name="robots"]', "content", indexableRoute ? "index,follow" : "noindex,follow");
   setMetaTag('meta[property="og:title"]', "content", title);
   setMetaTag('meta[property="og:description"]', "content", desc);
@@ -8940,6 +8965,332 @@ function renderWhyDukkanciPage() {
   `;
 }
 
+// ═══════════════════════ «اسأل دكانجي» — smart order-bundle assistant ═══════════════════════
+// Route: /ask-dukkanci. Builds a ready-to-order bundle (main + optional dessert/drink) from
+// عدد الأشخاص + الميزانية + وصف حر، using ONLY the real, already-loaded `products`/`stores`
+// catalog (applyPublishingRules already dropped unavailable/hidden/duplicate items) — never
+// invented products or prices. Every bundle stays inside a SINGLE store so "أضف إلى السلة"
+// can call the real addToCart() as-is, honoring the platform's one-store-per-cart rule instead
+// of working around it.
+
+const ASK_DUKKANCI_QUICK_PROMPTS = [
+  "عندي عزومة 10 أشخاص وبدي غداء اقتصادي مع حلويات",
+  "اقترح وجبة عائلية لـ 6 أشخاص بميزانية معقولة",
+  "بدي مشاوي ومقبلات لـ 12 شخص",
+  "فطور جماعي لـ 8 أشخاص مع مشروبات"
+];
+
+const ASK_DUKKANCI_DESSERT_KEYWORDS = ["حلويات", "حلوى", "كنافة", "بقلاوة", "كيك", "قطايف", "مهلبية"];
+const ASK_DUKKANCI_DRINK_KEYWORDS = ["مشروبات", "عصير", "مشروب", "كولا", "ماء", "شاي", "قهوة"];
+
+// Every store this feature may recommend from: approved + open right now + accepting orders
+// (subscription active) — the exact same gates the rest of the storefront already enforces.
+function askDukkanciEligibleStore(store) {
+  return !!store && isStoreApproved(store) && isStoreOpenNow(store) && store.subscriptionActive !== false;
+}
+
+// getMatchingProducts requires EVERY term to appear in the same product (fine for a short,
+// deliberate search box query) — a free sentence like "بدي مشاوي ومقبلات لـ 12 شخص" has filler
+// words ("بدي", "لـ", "شخص"...) that never appear together in any single product, so an
+// AND-of-everything search would always return zero. Strip filler + numbers and search each
+// remaining meaningful word separately (OR union) instead.
+const ASK_DUKKANCI_STOPWORDS = new Set([
+  "بدي", "بدنا", "اريد", "نريد", "اطلب", "اطلع", "حاب", "حابه", "حابين", "عندي", "عايز", "عايزه",
+  "لـ", "ل", "من", "في", "على", "مع", "الي", "الى", "عن", "هو", "هي", "هذا", "هذه", "ذلك", "تلك",
+  "شخص", "اشخاص", "ناس", "اناس", "ضيف", "ضيوف", "وجبه", "غداء", "عشاء", "فطور", "فطار",
+  "طلب", "اقتراح", "اقترح", "افضل", "احسن", "ميزانيه", "معقوله", "اقتصادي", "اقتصاديه",
+  "عزومه", "جماعي", "جماعيه", "عائلي", "عائليه", "كام", "كم", "بميزانيه", "ضمن", "حوالي", "تقريبا",
+  "منتج", "منتجات", "موجود", "موجوده", "اطلاقا", "شي", "شيء", "حاجه", "ابغى", "ابي", "بس", "فقط", "او", "ايضا"
+]);
+
+function askDukkanciKeywords(message) {
+  const words = normalizeAr(message).split(" ").filter(Boolean);
+  const out = new Set();
+  for (const w of words) {
+    if (/^\d+$/.test(w) || w.length < 2) continue;
+    // Arabic "و" (and) glues onto the next word with no space ("ومقبلات" = و + مقبلات) —
+    // use the stripped form only, the glued original rarely matches anything real.
+    if (w.startsWith("و") && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) { out.add(w.slice(1)); continue; }
+    if (!ASK_DUKKANCI_STOPWORDS.has(w)) out.add(w);
+  }
+  return [...out];
+}
+
+// Candidate "main" products for the free-text description, ranked by relevance — not just
+// unioned. A broad word like "مقبلات" matches hundreds of unrelated sides (bread, salad,
+// fruit) while a specific word like "مشاوي" matches a tight, on-topic set; weighting each
+// keyword by 1/matchCount (rarer keyword ⇒ more specific ⇒ higher weight) keeps genuinely
+// on-topic products ranked above incidental hits on a generic secondary term.
+function askDukkanciMainCandidates(queryText) {
+  const keywords = askDukkanciKeywords(queryText || "");
+  if (!keywords.length) return products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
+
+  const scored = new Map(); // productId -> { product, score }
+  for (const kw of keywords) {
+    const matches = getMatchingProducts(kw, 400);
+    if (!matches.length) continue;
+    const weight = 1 / matches.length;
+    for (const p of matches) {
+      if (p.priceOnRequest || !(Number(p.price) > 0)) continue;
+      const entry = scored.get(p.id);
+      if (entry) entry.score += weight; else scored.set(p.id, { product: p, score: weight });
+    }
+  }
+  return [...scored.values()].sort((a, b) => b.score - a.score).map(e => e.product);
+}
+
+// Cheapest product in `storeProducts` (already scoped to one store) matching any of `keywords`
+// (tried in order) — used for the optional dessert/drink add-on. Searches only that store's own
+// products (typically dozens, not the ~8-9k catalog getMatchingProducts scans) since this runs
+// per store per bundle — calling the full-catalog search here made building options for a large
+// party with no address filter (many eligible stores × two addon types × several keywords each)
+// take tens of seconds. Returns null (never a fabricated item) when nothing matches.
+function askDukkanciFindAddon(storeProducts, keywords) {
+  for (const kw of keywords) {
+    const nq = normalizeAr(kw);
+    const matches = storeProducts.filter(p => !p.priceOnRequest && Number(p.price) > 0 && normalizeAr(`${p.name} ${p.category}`).includes(nq));
+    if (matches.length) return matches.sort((a, b) => a.price - b.price)[0];
+  }
+  return null;
+}
+
+// No "serves N people" field exists on real products, so quantity is an estimate from the
+// unit: weighed items (كيلو/كغ) scale by weight-per-person, piece/plate items assume a couple
+// of people share one plate/serving. Always shown to the visitor as an estimate they can
+// adjust from the store page before ordering — never presented as an exact fact.
+function askDukkanciQuantity(product, partySize, role) {
+  const unit = String(product.unit || "");
+  const people = Math.max(1, Number(partySize) || 1);
+  if (/كيلو|كغ|kg/i.test(unit)) return Math.max(1, Math.ceil(people * (role === "main" ? 0.3 : 0.15)));
+  const perUnit = role === "main" ? 2 : 3;
+  return Math.max(1, Math.ceil(people / perUnit));
+}
+
+// Assemble one single-store bundle around `mainProduct`. Delivery fee is the REAL per-store
+// quote (activeDeliveryQuote — same function the cart/checkout use) when the visitor has a
+// resolvable address; otherwise it falls back to the store's labeled rate (deliveryPriceLabel)
+// and is flagged as an estimate rather than folded into the total as a fabricated number.
+function askDukkanciBuildBundle(store, mainProduct, request) {
+  const items = [{ product: mainProduct, role: "main", quantity: askDukkanciQuantity(mainProduct, request.partySize, "main") }];
+  const missing = [];
+  const storeProducts = (request.includeDessert || request.includeDrinks) ? products.filter(p => p.storeId === store.id) : null;
+
+  if (request.includeDessert) {
+    const dessert = askDukkanciFindAddon(storeProducts, ASK_DUKKANCI_DESSERT_KEYWORDS);
+    if (dessert) items.push({ product: dessert, role: "dessert", quantity: askDukkanciQuantity(dessert, request.partySize, "dessert") });
+    else missing.push("لا تتوفر حلويات في هذا المتجر حالياً");
+  }
+  if (request.includeDrinks) {
+    const drink = askDukkanciFindAddon(storeProducts, ASK_DUKKANCI_DRINK_KEYWORDS);
+    if (drink) items.push({ product: drink, role: "drink", quantity: askDukkanciQuantity(drink, request.partySize, "drink") });
+    else missing.push("لا تتوفر مشروبات في هذا المتجر حالياً");
+  }
+
+  const subtotal = items.reduce((sum, it) => sum + it.product.price * it.quantity, 0);
+  const address = getDefaultAddress();
+  const quote = activeDeliveryQuote(store, address);
+  const deliveryFee = quote ? quote.fee : 0;
+  const deliveryIsEstimate = !quote;
+  const deliveryLabel = quote ? money(quote.fee) : `${deliveryPriceLabel(store)} (تقديري)`;
+  const total = subtotal + deliveryFee;
+  const prepMinutes = Math.round((getDeliverySettings(store.id).prepMinutes || 25) + (quote?.routeMinutes || 15));
+
+  const overBudget = total > request.budgetTry;
+  const budgetLine = overBudget
+    ? `يتجاوز ميزانيتك بـ ${money(total - request.budgetTry)}`
+    : `ضمن ميزانيتك بفارق ${money(request.budgetTry - total)}`;
+  const reasons = [
+    `الكمية محسوبة لتناسب ${request.partySize} ${request.partySize === 1 ? "شخص" : "أشخاص"} تقريباً — عدّلها من صفحة المتجر عند الحاجة`,
+    budgetLine,
+    ...missing
+  ];
+
+  return {
+    storeId: store.id, store, items, subtotal,
+    deliveryFee, deliveryIsEstimate, deliveryLabel, total,
+    perPerson: Math.round(total / Math.max(1, request.partySize)),
+    prepMinutes, reasons, overBudget, budgetLine,
+    exceedsMaxDistance: !!quote?.exceedsMaxDistance,
+    belowMinOrder: subtotal < (Number(store.minOrder) || 0)
+  };
+}
+
+// Builds up to 3 distinct-store options: أفضل قيمة (closest to budget, shown first/featured),
+// الاقتصادي (cheapest), المميز (richest bundle still within a reasonable stretch of budget).
+// Degrades gracefully — fewer matching stores just means fewer tiers, never a fabricated one.
+function askDukkanciBuildOptions(request) {
+  const candidates = askDukkanciMainCandidates(request.message);
+  // candidates is already relevance-ranked (most on-topic first) — take each store's FIRST
+  // (best-matching) product as its anchor, not its cheapest, so a rare-word match like a
+  // butcher's "مشاوي" cut outranks an incidental cheap side that only matched a generic word.
+  const byStore = new Map(); // storeId -> best-matching product in that store
+  for (const p of candidates) {
+    const store = getStore(p.storeId);
+    if (!askDukkanciEligibleStore(store)) continue;
+    if (!byStore.has(store.id)) byStore.set(store.id, p);
+  }
+
+  // When the visitor described what they want, byStore's insertion order IS the relevance
+  // ranking (best match first) — keep only the most on-topic handful of stores before ranking
+  // by price, so budget-fit never promotes an irrelevant cheap item (e.g. a banana that only
+  // matched a generic "sides" keyword) over a pricier but genuinely on-topic match. With no
+  // description at all there's no relevance signal to trim by, so every eligible store stays.
+  const hasKeywords = askDukkanciKeywords(request.message || "").length > 0;
+  const relevancePool = hasKeywords ? [...byStore.entries()].slice(0, 8) : [...byStore.entries()];
+
+  const bundles = relevancePool
+    .map(([storeId, mainProduct]) => askDukkanciBuildBundle(getStore(storeId), mainProduct, request))
+    .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
+    .sort((a, b) => a.total - b.total);
+
+  if (!bundles.length) return { tiers: [], matchedStoreCount: 0 };
+
+  const economy = bundles[0];
+  const byBudgetFit = [...bundles].sort((a, b) => Math.abs(a.total - request.budgetTry) - Math.abs(b.total - request.budgetTry));
+  const balanced = byBudgetFit.find(b => b.storeId !== economy.storeId) || economy;
+  const stretchPool = bundles.filter(b => b.storeId !== economy.storeId && b.storeId !== balanced.storeId);
+  const withinStretch = stretchPool.filter(b => b.total <= request.budgetTry * 1.4);
+  const premium = (withinStretch.length ? withinStretch : stretchPool).at(-1) || null;
+
+  const tiers = [
+    { ...balanced, tier: "balanced", title: "أفضل قيمة", subtitle: "توازن بين التنوع والسعر وقرب المتجر منك" },
+    { ...economy, tier: "economy", title: "الخيار الاقتصادي", subtitle: "أقل تكلفة ممكنة ضمن ما هو متاح فعلياً" }
+  ];
+  if (premium) tiers.push({ ...premium, tier: "premium", title: "الخيار المميز", subtitle: "تنوع أكبر وخيار أغنى للضيوف" });
+
+  return { tiers, matchedStoreCount: bundles.length };
+}
+
+function submitAskDukkanci(form) {
+  const message = (form.querySelector("#ask-message")?.value || "").trim();
+  const partySize = Math.min(100, Math.max(1, Number(form.querySelector("#ask-partysize")?.value) || 1));
+  const budgetTry = Math.max(0, Number(form.querySelector("#ask-budget")?.value) || 0);
+  state.askDukkanci = { ...state.askDukkanci, message, partySize, budgetTry, submitted: true };
+  window.DUKKANCI_TRACKING?.track("ask_dukkanci_submitted", { message_length: message.length, party_size: partySize, budget: budgetTry, include_dessert: state.askDukkanci.includeDessert, include_drinks: state.askDukkanci.includeDrinks });
+  const result = askDukkanciBuildOptions(state.askDukkanci);
+  state.askDukkanci.result = result;
+  render();
+  if (result.tiers.length) window.DUKKANCI_TRACKING?.track("ask_dukkanci_result_viewed", { options_count: result.tiers.length, matched_store_count: result.matchedStoreCount });
+  setTimeout(() => document.getElementById("ask-dukkanci-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+}
+
+// A bundle is guaranteed single-store by construction, so this can call the real addToCart()
+// directly for every line — no cross-store conflict is possible, and the single-store-cart
+// rule is honored rather than worked around.
+function askDukkanciAddBundleToCart(tier) {
+  const result = state.askDukkanci.result;
+  const bundle = result && result.tiers.find(t => t.tier === tier);
+  if (!bundle) return;
+  // addToCart() silently redirects to the profile-setup modal (name/phone/address) instead of
+  // adding when the profile is incomplete — that modal only resumes a single pending product,
+  // not a whole bundle. Surface that honestly up front instead of looping addToCart() (which
+  // would just reopen the same modal once per item) and claiming success when nothing was added.
+  if (!isProfileComplete()) {
+    const first = bundle.items[0];
+    openProfileSetupModal(first.product.id, first.quantity);
+    showToast("أكمل بياناتك أولاً، ثم أعد الضغط على «أضف الباقة إلى السلة»");
+    return;
+  }
+  bundle.items.forEach(it => addToCart(it.product.id, it.quantity));
+  askDukkanciCartOrigin = true;
+  window.DUKKANCI_TRACKING?.track("ask_dukkanci_bundle_added", { tier, store_id: bundle.storeId, value: bundle.total, items_count: bundle.items.length });
+  showToast("تمت إضافة الباقة إلى السلة", "success");
+  openCart();
+}
+
+function askDukkanciItemRow(it) {
+  return `<div class="ask-item-row">
+    <div class="ask-item-row__img"><img src="${it.product.image}" alt="${escAttr(it.product.name)}" loading="lazy"></div>
+    <div class="ask-item-row__body"><strong>${esc(it.product.name)}</strong><small>${esc(it.product.storeName || "")}${it.product.storeName ? " · " : ""}الكمية ${it.quantity}${it.product.unit ? ` ${esc(it.product.unit)}` : ""}</small></div>
+    <div class="ask-item-row__price">${money(it.product.price * it.quantity)}</div>
+  </div>`;
+}
+
+function askDukkanciResultCard(bundle, featured = false) {
+  return `<article class="ask-result-card ${featured ? "featured" : ""}">
+    <div class="ask-result-card__head">
+      <div>
+        ${featured ? `<span class="ask-badge">اقتراح دكانجي</span>` : ""}
+        <span class="ask-badge muted">${esc(bundle.store.name)}</span>
+        <h3>${esc(bundle.title)}</h3>
+        <p>${esc(bundle.subtitle)}</p>
+      </div>
+      <div class="ask-result-card__price"><strong>${money(bundle.total)}</strong><small>${money(bundle.perPerson)} للشخص</small></div>
+    </div>
+    <div class="ask-result-card__items">${bundle.items.map(it => askDukkanciItemRow({ ...it, product: { ...it.product, storeName: bundle.store.name } })).join("")}</div>
+    <div class="ask-stat-grid">
+      <div class="ask-stat">${icon("wallet")}<span>الميزانية</span><strong class="${bundle.overBudget ? "over" : "under"}">${esc(bundle.budgetLine)}</strong></div>
+      <div class="ask-stat">${icon("clock")}<span>الوقت المتوقع</span><strong>${bundle.prepMinutes} دقيقة</strong></div>
+      <div class="ask-stat">${icon("bike")}<span>التوصيل${bundle.deliveryIsEstimate ? " (تقديري)" : ""}</span><strong>${bundle.deliveryLabel}</strong></div>
+    </div>
+    <ul class="ask-reasons">${bundle.reasons.map(r => `<li>${icon("check")} <span>${esc(r)}</span></li>`).join("")}</ul>
+    <div class="ask-result-card__actions">
+      <button type="button" class="primary-button full" data-action="ask-dukkanci-add-bundle" data-tier="${bundle.tier}">${icon("bag")} أضف الباقة إلى السلة</button>
+      <a class="secondary-button" href="/store/${storeParam(bundle.store)}" data-action="open-store" data-id="${bundle.store.id}">عرض المتجر</a>
+    </div>
+  </article>`;
+}
+
+function renderAskDukkanciPage() {
+  const a = state.askDukkanci;
+  const address = getDefaultAddress();
+  const result = a.result;
+  const budgetPerPerson = Math.round((a.budgetTry || 0) / Math.max(1, a.partySize || 1));
+
+  return `
+    <section class="page-hero compact ask-hero">
+      <div class="container">
+        <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>اسأل دكانجي</strong></div>
+        <span class="ask-hero__eyebrow">${icon("stars")} مساعدك لاختيار الطلب</span>
+        <h1>اسأل دكانجي</h1>
+        <p>قل لنا عدد الأشخاص وميزانيتك، ونرتب لك اقتراحاً متكاملاً من متجر واحد فعلي — بسعر وتوصيل حقيقيين.</p>
+      </div>
+    </section>
+
+    <section class="section ask-form-section">
+      <div class="container">
+        <form id="ask-dukkanci-form" class="ask-form-card">
+          <div class="ask-form-grid">
+            <div class="ask-form-col">
+              <label class="input-label"><span>احكِ لنا ماذا تحتاج</span>
+                <textarea id="ask-message" rows="4" maxlength="700" placeholder="مثال: عندي عزومة 10 أشخاص وأريد غداء اقتصادياً مع حلويات...">${escAttr(a.message)}</textarea>
+              </label>
+              <div class="ask-quick-prompts">
+                ${ASK_DUKKANCI_QUICK_PROMPTS.map(p => `<button type="button" class="ask-quick-prompt" data-action="ask-dukkanci-quick-prompt" data-prompt="${escAttr(p)}">${esc(p)}</button>`).join("")}
+              </div>
+            </div>
+            <div class="ask-form-col ask-form-col--side">
+              <div class="ask-field-grid">
+                <label class="input-label"><span>${icon("users")} عدد الأشخاص</span><input id="ask-partysize" type="number" min="1" max="100" value="${a.partySize}"></label>
+                <label class="input-label"><span>${icon("wallet")} الميزانية (ل.ت)</span><input id="ask-budget" type="number" min="0" step="50" value="${a.budgetTry}"></label>
+              </div>
+              <p class="ask-budget-hint">ميزانيتك تعادل تقريباً <strong>${money(budgetPerPerson)}</strong> للشخص.</p>
+              <div class="ask-toggle-row">
+                <button type="button" class="cat-chip ${a.includeDessert ? "active" : ""}" data-action="ask-dukkanci-toggle-dessert">${icon("check")} أضف حلويات</button>
+                <button type="button" class="cat-chip ${a.includeDrinks ? "active" : ""}" data-action="ask-dukkanci-toggle-drinks">${icon("check")} أضف مشروبات</button>
+              </div>
+              <button type="button" class="ask-location-hint" data-action="location">
+                ${icon("pin")} ${address ? `التوصيل إلى: ${esc(address.label || address.address || "عنوانك")}` : "حدّد عنوانك ليكون سعر التوصيل حقيقياً"}
+              </button>
+              <button type="submit" class="primary-button full large">جهّز اقتراحي ${icon("arrowLeft")}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    ${a.submitted ? `
+    <section id="ask-dukkanci-results" class="section ask-results-section">
+      <div class="container">
+        ${result && result.tiers.length ? `
+          <div class="section-heading"><div><span class="section-kicker">النتيجة</span><h2>وجدنا لك ${result.tiers.length > 1 ? "خيارات مناسبة" : "خياراً مناسباً"}</h2></div></div>
+          <div class="ask-results-grid">${result.tiers.map((t, i) => askDukkanciResultCard(t, i === 0)).join("")}</div>
+        ` : renderEmpty("لم نجد اقتراحاً مطابقاً الآن", "جرّب توسيع الوصف، أو تقليل شرط الحلويات/المشروبات، أو رفع الميزانية قليلاً.", "تصفح المتاجر", "stores")}
+      </div>
+    </section>` : ""}
+  `;
+}
+
 // Per-category wording for the merchant-recruitment banner on /category/<slug>
 // (see renderCategoryPage below) — "أعلن عن {noun} هنا" needs a real singular
 // possessive noun, which can't be derived from the plural category label
@@ -9122,6 +9473,7 @@ function render() {
     faq: renderFaqPage,
     terms: renderTermsPage,
     "why-dukkanci": renderWhyDukkanciPage,
+    "ask-dukkanci": renderAskDukkanciPage,
     dalil: () => renderDalilPage(id)
   };
   // Preserve an in-progress text field across this re-render. The async boot
@@ -9165,6 +9517,7 @@ function render() {
     // Entering "طلباتي" → refresh order statuses from the cloud (once per visit, so
     // the re-render below doesn't loop since navKey stays the same).
     if (route === "orders") setTimeout(refreshMyOrdersFromCloud, 0);
+    if (route === "ask-dukkanci") window.DUKKANCI_TRACKING?.track("ask_dukkanci_opened", {});
   }
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
   if (route === "join") setTimeout(openJoinModal, 0);
@@ -10840,6 +11193,10 @@ document.addEventListener("click", event => {
   if (!target) return;
   const action = target.dataset.action;
   if (action === "open-cart") openCart();
+  if (action === "ask-dukkanci-quick-prompt") { state.askDukkanci.message = target.dataset.prompt; render(); }
+  if (action === "ask-dukkanci-toggle-dessert") { state.askDukkanci.includeDessert = !state.askDukkanci.includeDessert; render(); }
+  if (action === "ask-dukkanci-toggle-drinks") { state.askDukkanci.includeDrinks = !state.askDukkanci.includeDrinks; render(); }
+  if (action === "ask-dukkanci-add-bundle") askDukkanciAddBundleToCart(target.dataset.tier);
   if (action === "close-drawers") closeDrawers();
   if (action === "close-modal") closeModal();
   if (action === "open-store") {
@@ -12238,6 +12595,9 @@ document.addEventListener("input", event => {
     state.cartNote = event.target.value;
     return;
   }
+  if (event.target.id === "ask-message") { state.askDukkanci.message = event.target.value; return; }
+  if (event.target.id === "ask-partysize") { state.askDukkanci.partySize = Number(event.target.value) || 1; return; }
+  if (event.target.id === "ask-budget") { state.askDukkanci.budgetTry = Number(event.target.value) || 0; return; }
   if (event.target.id === "merchant-order-search") {
     state.merchantOrderSearch = event.target.value;
     const q = normalizeAr(event.target.value.trim());
@@ -12433,6 +12793,7 @@ async function submitFooterSubscribe(form) {
 document.addEventListener("submit", async event => {
   event.preventDefault();
   if (event.target.id === "footer-subscribe-form") { submitFooterSubscribe(event.target); return; }
+  if (event.target.id === "ask-dukkanci-form") { submitAskDukkanci(event.target); return; }
   if (event.target.id === "group-create-form") { submitCreateGroup(event.target); return; }
   if (event.target.id === "group-join-form") { submitJoinGroup(event.target); return; }
   if (event.target.id === "store-review-form") {
@@ -12940,6 +13301,10 @@ document.addEventListener("submit", async event => {
         settleReferralAndCredit(newOrder.id, orderCredit);
       }
       window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
+      if (askDukkanciCartOrigin) {
+        window.DUKKANCI_TRACKING?.track("ask_dukkanci_checkout_completed", { order_id: newOrder.id, value: finalTotal, store_id: storeId });
+        askDukkanciCartOrigin = false;
+      }
       state.cart = [];
       state.cartNote = "";
       state.coupon = null;
