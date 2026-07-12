@@ -87,7 +87,7 @@ const STORE_SLUGS = {
   80: "golden-mix-coffee",
   67: "bab-alyemen-restaurant",
   83: "beyazit-peynir-market",
-  84: "zamzam-market",
+  84: "domani",
   85: "karkousha-farfousha-sweets"
 };
 
