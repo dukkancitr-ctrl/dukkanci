@@ -8992,6 +8992,13 @@ const ASK_DUKKANCI_QUICK_PROMPTS = [
 
 const ASK_DUKKANCI_DESSERT_KEYWORDS = ["حلويات", "حلوى", "كنافة", "بقلاوة", "كيك", "قطايف", "مهلبية"];
 const ASK_DUKKANCI_DRINK_KEYWORDS = ["مشروبات", "عصير", "مشروب", "كولا", "ماء", "شاي", "قهوة"];
+// Explicit "I want a MEAL" words. When one of these appears in the raw message alongside a
+// specialty word (e.g. "غداء اقتصادي مع حلويات"), the request is compound — a main dish PLUS an
+// add-on — not a pure specialty ask. Checked directly against the message text (not the
+// AI/local keyword bag) so this guard holds even if the AI misreads the compound request as
+// pure-dessert, matching the deterministic "AI can only degrade quality, never correctness"
+// contract the rest of this feature relies on.
+const ASK_DUKKANCI_MEAL_KEYWORDS = ["غداء", "غدا", "عشاء", "عشا", "فطور", "وجبة", "وجبه", "اكل", "طعام", "اكله", "غدائي", "عشائي"];
 
 // Every store this feature may recommend from: approved + open right now + accepting orders
 // (subscription active) — the exact same gates the rest of the storefront already enforces.
@@ -9147,9 +9154,30 @@ function askDukkanciQuantity(product, partySize, basketSize) {
 // cart/checkout use) when the visitor has a resolvable address; otherwise it falls back to the
 // store's labeled rate (deliveryPriceLabel) and is flagged as an estimate, never folded into the
 // total as a fabricated number.
-function askDukkanciBuildBasket(store, storeCandidates, request) {
+function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
   const basketSize = askDukkanciBasketSize(request.partySize);
-  const chosen = storeCandidates.slice(0, basketSize);
+  let chosen = storeCandidates.slice(0, basketSize);
+
+  // Compound request (e.g. "غداء اقتصادي مع حلويات"): storeCandidates only ever contains items
+  // that matched a keyword, and generic meal words like "غداء" never match a specific product —
+  // so a store can qualify (and fill its whole basket) purely on dessert/drink matches, silently
+  // dropping the actual meal. When that happens, swap in one of the store's own real main items
+  // (not a dessert/drink/supply) so the "غداء" the visitor asked for is actually represented.
+  if (opts && opts.hasMealIntent) {
+    const isAddOnItem = p => {
+      const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
+      return ASK_DUKKANCI_DESSERT_KEYWORDS.some(k => n.includes(k) || c.includes(k)) ||
+        ASK_DUKKANCI_DRINK_KEYWORDS.some(k => n.includes(k) || c.includes(k));
+    };
+    if (chosen.length && chosen.every(isAddOnItem)) {
+      const mainItem = products
+        .filter(p => p.storeId === store.id && p.available !== false && !p.priceOnRequest && Number(p.price) > 0)
+        .filter(p => !isAddOnItem(p) && !askDukkanciIsSupplyItem(normalizeAr(p.name), normalizeAr(p.category || "")))
+        .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0))[0];
+      if (mainItem) chosen = [mainItem, ...chosen].slice(0, basketSize);
+    }
+  }
+
   const items = chosen.map(product => ({ product, quantity: askDukkanciQuantity(product, request.partySize, chosen.length) }));
 
   const missing = [];
@@ -9232,8 +9260,13 @@ function askDukkanciBuildOptions(request, intent) {
   // version of the same item is a side dish, not its actual business, so it shouldn't compete
   // on price with the shop that specializes in it. Falls back to the full pool when no
   // specialist exists at all (e.g. "مشاوي", which genuinely lives at restaurants).
+  // Except when the message ALSO explicitly asks for a meal (e.g. "غداء اقتصادي مع حلويات") —
+  // that's a compound request (main dish + add-on), not a pure specialty ask, and restricting to
+  // specialists there would silently drop the meal the visitor actually asked for first. See
+  // ASK_DUKKANCI_MEAL_KEYWORDS above.
+  const hasMealIntent = ASK_DUKKANCI_MEAL_KEYWORDS.some(kw => normalizeAr(request.message || "").includes(kw));
   const specialists = rankedStores.filter(s => s.isSpecialist);
-  const rankedPool = (hasPrimary && specialists.length) ? specialists : rankedStores;
+  const rankedPool = (hasPrimary && specialists.length && !hasMealIntent) ? specialists : rankedStores;
 
   // With a real description, this ranking IS the relevance order (best match, specialist-
   // boosted, first) — keep a generous but bounded pool of the most on-topic stores before
@@ -9244,7 +9277,7 @@ function askDukkanciBuildOptions(request, intent) {
   const relevancePool = hasSignal ? rankedPool.slice(0, 15) : rankedPool;
 
   const baskets = relevancePool
-    .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request))
+    .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request, { hasMealIntent }))
     .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
     .sort((a, b) => a.total - b.total);
 
