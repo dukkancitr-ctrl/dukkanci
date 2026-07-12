@@ -9021,6 +9021,18 @@ function askDukkanciKeywords(message) {
   return [...out];
 }
 
+// A request for "حلويات"/"مشاوي"/etc. means the finished, ready-to-eat item by default — not
+// the raw supplies/tools for MAKING or SERVING one (باقي فستق "مستلزمات الحلويات" = sugar/
+// cream/flavoring, not an actual pastry; "أدوات شواء" = grill tongs, not a grilled dish). This
+// is a general pattern, not dessert-specific, so it's checked generically for every request:
+// a supply-category or "خاص بـ/خاصة بـ" ("dedicated FOR [making] X") product only surfaces when
+// the visitor's OWN words explicitly ask for supplies/ingredients/tools.
+const ASK_DUKKANCI_SUPPLY_MARKERS = ["مستلزمات", "مكونات", "خامات", "لوازم", "ادوات", "قوالب"];
+function askDukkanciIsSupplyItem(normName, normCat) {
+  if (ASK_DUKKANCI_SUPPLY_MARKERS.some(m => normCat.includes(m))) return true;
+  return /خاص\s?ب|خاصه\s?ب/.test(normName);
+}
+
 // Scores one product against a keyword set: a NAME (or dialect-synonym) match is a much
 // stronger relevance signal than a CATEGORY match; `weight` lets a secondary signal (the
 // dessert/drink toggles) nudge results without overwhelming the primary description.
@@ -9052,6 +9064,9 @@ function askDukkanciScoredCandidates(request) {
     ...(request.includeDessert ? ASK_DUKKANCI_DESSERT_KEYWORDS : []),
     ...(request.includeDrinks ? ASK_DUKKANCI_DRINK_KEYWORDS : [])
   ].map(normalizeAr);
+  // Only skip supply/ingredient items when the visitor didn't ask for them directly —
+  // "مستلزمات حلويات" in the message itself means they DO want the supplies.
+  const wantsSupplies = primary.some(kw => ASK_DUKKANCI_SUPPLY_MARKERS.includes(kw));
 
   const pool = products.filter(p => p.available !== false && !p.priceOnRequest && Number(p.price) > 0);
   if (!primary.length && !secondary.length) return { hasPrimary: false, items: pool.map(p => ({ product: p, primaryScore: 0, totalScore: 0 })) };
@@ -9060,6 +9075,7 @@ function askDukkanciScoredCandidates(request) {
   for (const p of pool) {
     const normName = normalizeAr(p.name);
     const normCat = normalizeAr(p.category || "");
+    if (!wantsSupplies && askDukkanciIsSupplyItem(normName, normCat)) continue;
     const syn = productSynonymIndex.get(p.id) || "";
     const primaryScore = askDukkanciScoreProduct(normName, normCat, syn, primary, 1);
     const totalScore = primaryScore + askDukkanciScoreProduct(normName, normCat, syn, secondary, 0.3);
