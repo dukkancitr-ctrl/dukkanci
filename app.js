@@ -394,7 +394,13 @@ const state = {
     includeDrinks: false,
     submitted: false,
     submitting: false,
-    result: null
+    result: null,
+    // Chat transcript: [{role:'user'|'assistant', text}], oldest first. The assistant only ever
+    // asks clarifying questions here (grounded in the real category/store list) or signals it's
+    // ready — it never proposes a product/store, so this stays purely conversational.
+    messages: [],
+    awaitingReply: false,
+    lastIntent: null
   }
 };
 
@@ -9109,9 +9115,11 @@ function askDukkanciScoredCandidates(request, intent) {
   // Union, not replace — the AI's cleaner fus7a keywords lead matching, but the local
   // extraction stays as a safety net so a partial/odd AI reply never loses real matches.
   const primary = aiKeywords.length ? [...new Set([...aiKeywords, ...localPrimary])] : localPrimary;
+  const aiSecondaryKeywords = (intent && Array.isArray(intent.secondaryKeywords)) ? intent.secondaryKeywords.map(normalizeAr).filter(Boolean) : [];
   const secondary = [
     ...(request.includeDessert ? ASK_DUKKANCI_DESSERT_KEYWORDS : []),
-    ...(request.includeDrinks ? ASK_DUKKANCI_DRINK_KEYWORDS : [])
+    ...(request.includeDrinks ? ASK_DUKKANCI_DRINK_KEYWORDS : []),
+    ...aiSecondaryKeywords
   ].map(normalizeAr);
   // The AI's explicit classification wins when present (it understands "مستلزمات حلويات" vs
   // "حلويات جاهزة" far better than a fixed keyword list); otherwise fall back to the local
@@ -9141,9 +9149,9 @@ function askDukkanciScoredCandidates(request, intent) {
 // reads as an assortment (a few kinds of سناكس/حلويات), not one dish repeated — capped modestly
 // so totals stay legible and don't balloon into an unreadable list.
 function askDukkanciBasketSize(partySize) {
-  if (partySize <= 4) return 2;
-  if (partySize <= 15) return 3;
-  return 4;
+  if (partySize <= 4) return 3;
+  if (partySize <= 15) return 4;
+  return 5;
 }
 
 function askDukkanciBasketMatchesAny(items, keywords) {
@@ -9304,7 +9312,10 @@ function askDukkanciBuildOptions(request, intent) {
   // genuinely on-topic match. With no signal at all there's nothing to rank by, so every
   // eligible store stays.
   const hasSignal = hasPrimary || request.includeDessert || request.includeDrinks;
-  const relevancePool = hasSignal ? rankedPool.slice(0, 15) : rankedPool;
+  // Widened from 15 → 30: the visitor asked for as many real options as possible, so keep more
+  // of the on-topic, relevance-ranked pool alive before price-sorting/tier-picking below.
+  const relevancePool = hasSignal ? rankedPool.slice(0, 30) : rankedPool;
+  const rankScoreByStore = new Map(relevancePool.map(r => [r.store.id, r.rankScore]));
 
   const baskets = relevancePool
     .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request, { hasMealIntent, wantsSupplies }))
@@ -9312,6 +9323,7 @@ function askDukkanciBuildOptions(request, intent) {
     .sort((a, b) => a.total - b.total);
 
   if (!baskets.length) return { tiers: [], matchedStoreCount: 0 };
+  const byRelevance = (a, b) => (rankScoreByStore.get(b.storeId) || 0) - (rankScoreByStore.get(a.storeId) || 0);
 
   const byBudgetFit = [...baskets].sort((a, b) => Math.abs(a.total - request.budgetTry) - Math.abs(b.total - request.budgetTry));
   const used = new Set();
@@ -9325,33 +9337,63 @@ function askDukkanciBuildOptions(request, intent) {
     tiers.push({ ...economy, tier: "economy", title: "الخيار الاقتصادي", subtitle: "أقل تكلفة ممكنة ضمن ما هو متاح فعلياً" });
   }
 
-  const remaining = baskets.filter(b => !used.has(b.storeId));
-  const withinStretch = remaining.filter(b => b.total <= request.budgetTry * 1.4);
-  const premium = (withinStretch.length ? withinStretch : remaining).at(-1);
-  if (premium) tiers.push({ ...premium, tier: "premium", title: "الخيار المميز", subtitle: "تنوع أكبر وخيار أغنى للضيوف" });
+  const remaining = () => baskets.filter(b => !used.has(b.storeId)).sort(byRelevance);
+  const withinStretch = remaining().filter(b => b.total <= request.budgetTry * 1.4);
+  const premium = (withinStretch.length ? withinStretch : remaining()).at(-1);
+  if (premium) {
+    used.add(premium.storeId);
+    tiers.push({ ...premium, tier: "premium", title: "الخيار المميز", subtitle: "تنوع أكبر وخيار أغنى للضيوف" });
+  }
+
+  // Beyond the 3 curated tiers, surface as many other genuinely on-topic single-store options as
+  // exist (capped at 6 more) — the visitor explicitly asked for the widest possible spread of
+  // real restaurants/stores, not just one "best" pick per budget bracket.
+  remaining().slice(0, 6).forEach((b, i) => {
+    used.add(b.storeId);
+    tiers.push({
+      ...b, tier: `more-${i}`, title: b.store.name,
+      subtitle: b.store.category ? `خيار آخر يطابق طلبك — ${b.store.category}` : "خيار آخر يطابق طلبك"
+    });
+  });
 
   return { tiers, matchedStoreCount: baskets.length };
 }
 
-// Server-side AI intent parse (api/ask-dukkanci.js) — classifies the free-text description
-// into keywords/wantsSupplies/preferredCategories ONLY. It never sees the catalog and can never
-// return a product, price, or store, so a slow/unavailable AI degrades match QUALITY, never
-// correctness — on any failure (network error, timeout, malformed reply) this resolves to null
-// and askDukkanciBuildOptions falls straight back to its pre-AI local keyword heuristics.
-async function askDukkanciFetchIntent(message) {
-  if (!message.trim()) return null;
+// Compact, real grounding data sent to the AI so its clarifying questions never reference a
+// cuisine/category that doesn't actually exist on the platform — the AI still never sees prices,
+// menus, or product data, only category + store NAMES (no descriptions), and is explicitly told
+// not to claim knowledge of a store's actual offering beyond its name existing.
+function askDukkanciCatalogSummary() {
+  const eligible = stores.filter(askDukkanciEligibleStore);
+  const categories = [...new Set(eligible.map(s => s.category).filter(Boolean))];
+  const storeNames = [...new Set(eligible.map(s => s.name).filter(Boolean))].slice(0, 80);
+  return { categories, storeNames };
+}
+
+// Server-side AI conversation turn (api/ask-dukkanci.js) — the AI either asks ONE clarifying
+// question (grounded in the real category/store list above, capped at 2 total per conversation)
+// or returns a classification (keywords/secondaryKeywords/wantsSupplies/preferredCategories). It
+// never sees the real catalog/prices and can never return a product, price, or store, so a slow/
+// unavailable AI degrades match QUALITY, never correctness — on any failure (network error,
+// timeout, malformed reply) this resolves to null and the caller falls back to local heuristics.
+async function askDukkanciChatTurn(message, forceFinal) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
     const res = await fetch("/api/ask-dukkanci", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        history: state.askDukkanci.messages,
+        catalog: askDukkanciCatalogSummary(),
+        forceFinal: !!forceFinal
+      }),
       signal: ctrl.signal
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return (data && data.ok && data.intent) ? data.intent : null;
+    return (data && data.ok && data.turn) ? data.turn : null;
   } catch (e) {
     return null;
   } finally {
@@ -9359,23 +9401,61 @@ async function askDukkanciFetchIntent(message) {
   }
 }
 
-async function submitAskDukkanci(form) {
-  const message = (form.querySelector("#ask-message")?.value || "").trim();
-  const partySize = Math.min(100, Math.max(1, Number(form.querySelector("#ask-partysize")?.value) || 1));
-  const budgetTry = Math.max(0, Number(form.querySelector("#ask-budget")?.value) || 0);
-  state.askDukkanci = { ...state.askDukkanci, message, partySize, budgetTry, submitted: true, submitting: true, result: null };
-  window.DUKKANCI_TRACKING?.track("ask_dukkanci_submitted", { message_length: message.length, party_size: partySize, budget: budgetTry, include_dessert: state.askDukkanci.includeDessert, include_drinks: state.askDukkanci.includeDrinks });
-  render();
-  setTimeout(() => document.getElementById("ask-dukkanci-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-
-  const intent = await askDukkanciFetchIntent(message);
-  // The visitor may have edited party size/budget/message while the AI call was in flight —
-  // rebuild the request from current state, not the stale local variables above.
+// Runs one AI turn and either (a) shows a clarifying-question bubble + reply box, or (b) builds
+// and shows the final results — from the CURRENT state.askDukkanci.messages, which the caller
+// must have already appended the visitor's latest message to. A null/failed turn degrades
+// straight to the pre-AI local heuristics (askDukkanciBuildOptions already handles intent=null).
+async function askDukkanciAdvance(userText, forceFinal) {
+  const turn = await askDukkanciChatTurn(userText, forceFinal);
+  if (turn && turn.type === "question") {
+    state.askDukkanci.messages = [...state.askDukkanci.messages, { role: "assistant", text: turn.question }];
+    state.askDukkanci.awaitingReply = true;
+    state.askDukkanci.submitting = false;
+    render();
+    setTimeout(() => document.getElementById("ask-dukkanci-chat")?.scrollIntoView({ behavior: "smooth", block: "end" }), 60);
+    return;
+  }
+  const intent = turn && turn.type === "ready" ? turn : null;
+  if (intent) state.askDukkanci.messages = [...state.askDukkanci.messages, { role: "assistant", text: intent.summary || "تمام، جهّزت لك أفضل الخيارات المتاحة الآن." }];
+  state.askDukkanci.lastIntent = intent;
+  state.askDukkanci.awaitingReply = false;
+  // The visitor may have edited party size/budget while the AI call was in flight — rebuild the
+  // request from current state, not stale local variables.
   const result = askDukkanciBuildOptions(state.askDukkanci, intent);
   state.askDukkanci.result = result;
   state.askDukkanci.submitting = false;
   render();
+  setTimeout(() => document.getElementById("ask-dukkanci-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   if (result.tiers.length) window.DUKKANCI_TRACKING?.track("ask_dukkanci_result_viewed", { options_count: result.tiers.length, matched_store_count: result.matchedStoreCount, ai_intent_used: !!intent });
+}
+
+async function submitAskDukkanci(form) {
+  const message = (form.querySelector("#ask-message")?.value || "").trim();
+  const partySize = Math.min(100, Math.max(1, Number(form.querySelector("#ask-partysize")?.value) || 1));
+  const budgetTry = Math.max(0, Number(form.querySelector("#ask-budget")?.value) || 0);
+  state.askDukkanci = {
+    ...state.askDukkanci, message, partySize, budgetTry,
+    submitted: true, submitting: true, result: null,
+    messages: message ? [{ role: "user", text: message }] : [],
+    awaitingReply: false, lastIntent: null
+  };
+  window.DUKKANCI_TRACKING?.track("ask_dukkanci_submitted", { message_length: message.length, party_size: partySize, budget: budgetTry, include_dessert: state.askDukkanci.includeDessert, include_drinks: state.askDukkanci.includeDrinks });
+  render();
+  setTimeout(() => document.getElementById("ask-dukkanci-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  await askDukkanciAdvance(message, false);
+}
+
+// Follow-up turn in the clarifying-question chat — appends the visitor's reply and continues the
+// same conversation (askDukkanciChatTurn reads state.askDukkanci.messages for history).
+async function submitAskDukkanciChatReply(form, forceFinal) {
+  const input = form.querySelector("#ask-chat-reply");
+  const reply = (input?.value || "").trim();
+  if (!reply && !forceFinal) return;
+  if (reply) state.askDukkanci.messages = [...state.askDukkanci.messages, { role: "user", text: reply }];
+  state.askDukkanci.awaitingReply = false;
+  state.askDukkanci.submitting = true;
+  render();
+  await askDukkanciAdvance(reply || "(تخطّى العميل السؤال — تابع بأفضل تخمين ممكن)", forceFinal);
 }
 
 // A bundle is guaranteed single-store by construction, so this can call the real addToCart()
@@ -9435,6 +9515,15 @@ function askDukkanciResultCard(bundle, featured = false) {
   </article>`;
 }
 
+// One chat bubble — assistant (AI question/summary) on the start side, visitor's own replies on
+// the end side, matching the familiar chat-app convention.
+function askDukkanciChatBubble(msg) {
+  return `<div class="ask-chat-msg ask-chat-msg--${msg.role}">
+    ${msg.role === "assistant" ? `<span class="ask-chat-msg__avatar">${icon("stars")}</span>` : ""}
+    <div class="ask-chat-msg__bubble">${esc(msg.text)}</div>
+  </div>`;
+}
+
 function renderAskDukkanciPage() {
   const a = state.askDukkanci;
   const address = getDefaultAddress();
@@ -9445,9 +9534,9 @@ function renderAskDukkanciPage() {
     <section class="page-hero compact ask-hero">
       <div class="container">
         <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><strong>اسأل دكانجي</strong></div>
-        <span class="ask-hero__eyebrow">${icon("stars")} مساعدك لاختيار الطلب</span>
+        <span class="ask-hero__eyebrow">${icon("stars")} مساعدك الذكي لاختيار الطلب</span>
         <h1>اسأل دكانجي</h1>
-        <p>قل لنا عدد الأشخاص وميزانيتك، ونرتب لك اقتراحاً متكاملاً من متجر واحد فعلي — بسعر وتوصيل حقيقيين.</p>
+        <p>احكِ لنا ماذا تريد — دكانجي قد يسألك سؤالاً أو اثنين ليفهم طلبك بدقة، ثم يرتّب لك أكبر عدد ممكن من الاقتراحات الحقيقية من مطاعم ومتاجر إسطنبول، بأسعار وتوصيل حقيقيين.</p>
       </div>
     </section>
 
@@ -9485,6 +9574,20 @@ function renderAskDukkanciPage() {
       </div>
     </section>
 
+    ${a.messages.length ? `
+    <section id="ask-dukkanci-chat" class="section ask-chat-section">
+      <div class="container">
+        <div class="ask-chat-thread">${a.messages.map(askDukkanciChatBubble).join("")}</div>
+        ${a.awaitingReply ? `
+          <form id="ask-dukkanci-chat-form" class="ask-chat-reply-form">
+            <input id="ask-chat-reply" type="text" maxlength="300" placeholder="اكتب ردّك هنا..." autocomplete="off">
+            <button type="submit" class="primary-button">${icon("arrowLeft")}</button>
+            <button type="button" class="secondary-button" data-action="ask-dukkanci-skip-question">تخطَّ واعرض النتائج</button>
+          </form>
+        ` : (a.submitting && !result ? `<div class="ask-chat-msg ask-chat-msg--assistant"><span class="ask-chat-msg__avatar">${icon("stars")}</span><div class="ask-chat-msg__bubble"><span class="ask-spinner"></span> دكانجي يفكّر...</div></div>` : "")}
+      </div>
+    </section>` : ""}
+
     ${a.submitted ? `
     <section id="ask-dukkanci-results" class="section ask-results-section">
       <div class="container">
@@ -9495,7 +9598,7 @@ function renderAskDukkanciPage() {
             <div class="ask-skeleton-block"></div>
           </div>
         ` : (result && result.tiers.length ? `
-          <div class="section-heading"><div><span class="section-kicker">النتيجة</span><h2>وجدنا لك ${result.tiers.length > 1 ? "خيارات مناسبة" : "خياراً مناسباً"}</h2></div></div>
+          <div class="section-heading"><div><span class="section-kicker">النتيجة</span><h2>وجدنا لك ${result.tiers.length === 1 ? "خياراً مناسباً" : `${result.tiers.length} خيارات مناسبة`}</h2>${a.lastIntent && a.lastIntent.summary ? `<p class="ask-results-summary">${esc(a.lastIntent.summary)}</p>` : ""}</div></div>
           <div class="ask-results-grid">${result.tiers.map((t, i) => askDukkanciResultCard(t, i === 0)).join("")}</div>
         ` : renderEmpty("لم نجد اقتراحاً مطابقاً الآن", "جرّب توسيع الوصف، أو تقليل شرط الحلويات/المشروبات، أو رفع الميزانية قليلاً.", "تصفح المتاجر", "stores"))}
       </div>
@@ -11409,6 +11512,7 @@ document.addEventListener("click", event => {
   if (action === "ask-dukkanci-toggle-dessert") { state.askDukkanci.includeDessert = !state.askDukkanci.includeDessert; render(); }
   if (action === "ask-dukkanci-toggle-drinks") { state.askDukkanci.includeDrinks = !state.askDukkanci.includeDrinks; render(); }
   if (action === "ask-dukkanci-add-bundle") askDukkanciAddBundleToCart(target.dataset.tier);
+  if (action === "ask-dukkanci-skip-question") submitAskDukkanciChatReply(target.closest("form"), true);
   if (action === "close-drawers") closeDrawers();
   if (action === "close-modal") closeModal();
   if (action === "open-store") {
@@ -13006,6 +13110,7 @@ document.addEventListener("submit", async event => {
   event.preventDefault();
   if (event.target.id === "footer-subscribe-form") { submitFooterSubscribe(event.target); return; }
   if (event.target.id === "ask-dukkanci-form") { submitAskDukkanci(event.target); return; }
+  if (event.target.id === "ask-dukkanci-chat-form") { submitAskDukkanciChatReply(event.target, false); return; }
   if (event.target.id === "group-create-form") { submitCreateGroup(event.target); return; }
   if (event.target.id === "group-join-form") { submitJoinGroup(event.target); return; }
   if (event.target.id === "store-review-form") {

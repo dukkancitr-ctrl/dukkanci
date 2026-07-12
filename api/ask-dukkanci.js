@@ -1,50 +1,80 @@
-// «اسأل دكانجي» — intent parsing only. The AI NEVER sees or returns actual products, prices,
-// or store names — it only classifies the customer's free-text description into abstract
-// signals (keywords / finished-good-vs-supply / which real store category fits). The
-// deterministic client-side engine (app.js, askDukkanciBuildOptions) is the ONLY thing that
-// ever touches the real catalog, so a hallucinated reply here can misclassify at worst — it can
-// never invent a product, price, or store that doesn't exist.
+// «اسأل دكانجي» — multi-turn intent understanding. The AI NEVER sees or returns actual
+// products, prices, or store menus/descriptions — it only (1) asks clarifying questions,
+// grounded ONLY in a compact list of real category names + store names we hand it (so it never
+// asks about a cuisine/category that doesn't exist on the platform), and (2) once it has enough
+// signal, returns an abstract classification (keywords / secondary keywords / finished-good-vs-
+// supply / which real store category fits). The deterministic client-side engine (app.js,
+// askDukkanciBuildOptions) is the ONLY thing that ever touches the real catalog/prices, so a
+// hallucinated reply here can misclassify or ask a slightly-off question at worst — it can never
+// invent a product, price, or store that doesn't exist, and can never quote a price or menu item.
 const gw = require("../lib/ai-gateway");
 
 // Must match the real category set used platform-wide (app.js HOME_CATEGORIES) — the model is
 // told to choose ONLY from this list so it can never invent a category that doesn't exist.
 const KNOWN_CATEGORIES = ["سوبر ماركت", "مطاعم", "ملاحم", "حلويات", "مكسرات وبهارات", "بن ومكسرات", "عصائر", "مواد غذائية متخصصة", "مطابخ منزلية"];
 
-const SYSTEM_PROMPT = [
-  "أنت مصنّف نية طلب عميل مكتوب بالعربية (بلهجات مختلفة) على منصة دكانجي — سوق طلبات محلي في",
-  "إسطنبول يضم مطاعم وسوبرماركت ومحلات حلويات وعصائر وملاحم ومحلات متخصصة.",
-  "مهمتك تصنيف النية فقط — لا تقترح أي منتج أو سعر أو اسم متجر حقيقي أو وهمي مطلقاً، فأنت لا ترى الكتالوج.",
-  "",
-  "أعد JSON فقط بلا أي شرح ولا تنسيق markdown، بالشكل التالي بالضبط:",
-  '{"keywords":["..."],"wantsSupplies":false,"preferredCategories":["..."]}',
-  "",
-  "keywords: الكلمات الأساسية التي تصف نوع المنتج المطلوب فعلياً (وليس المناسبة أو العدد أو",
-  "الميزانية) — بالعربية الفصحى المعيارية قدر الإمكان حتى لو كتب العميل بلهجة، لتسهيل المطابقة",
-  "النصية لاحقاً. من كلمة واحدة إلى 4 كلمات كحد أقصى.",
-  "",
-  "wantsSupplies: true فقط إذا كان العميل يطلب صراحة مكونات أو مستلزمات أو أدوات ليحضّر شيئاً",
-  "بنفسه (مثال: \"مستلزمات حلويات\", \"أدوات شواء\") — وليس المنتج النهائي الجاهز للاستهلاك",
-  "مباشرة. في الحالة الافتراضية (لم يُذكر ذلك صراحة) اجعلها false.",
-  "",
-  `preferredCategories: اختر فقط من هذه القائمة الثابتة (لا تخترع فئة غير موجودة): ${JSON.stringify(KNOWN_CATEGORIES)}.`,
-  "اختر الفئة أو الفئات التي تبيع المنتج جاهزاً للاستهلاك مباشرة كما طلبه العميل تحديداً — لا",
-  "الفئة التي يكون فيها هذا المنتج مجرد صنف جانبي ثانوي. أمثلة:",
-  "- \"مشاوي\" تعني طبقاً مشوياً جاهزاً يُقدَّم في مطعم، وليس لحماً نيئاً من ملحمة يحتاج طبخاً في",
-  "  البيت — الفئة الصحيحة \"مطاعم\" فقط، وليس \"ملاحم\".",
-  "- \"حلويات لعزومة\" تعني حلوى جاهزة من محل حلويات مختص، لا مطعم تكون الحلوى فيه صنفاً جانبياً",
-  "  ثانوياً منخفض الجودة — الفئة الصحيحة \"حلويات\" فقط، وليس \"مطاعم\".",
-  "- \"عصائر لحفلة\" تعني محل عصائر مختص، لا مطعم يبيع مشروبات معلّبة جانبية.",
-  "إن كان الطلب عاماً ولا يحدد فئة واضحة (كوجبة غداء عادية)، أعد preferredCategories كقائمة فارغة [].",
-  "",
-  "تنبيه مهم — الطلب المركّب (وجبة رئيسية + إضافة): إذا ذكر العميل وجبة رئيسية (غداء/عشاء/فطور/",
-  "أكل) ثم أضاف صنفاً ثانوياً بصيغة \"مع\"/\"و\" (مثل حلويات أو مشروبات)، فالوجبة الرئيسية هي",
-  "النية الأساسية والصنف الثانوي مجرد إضافة عليها — ضع الفئة التي تخدم الوجبة الرئيسية فقط في",
-  "preferredCategories (عادة \"مطاعم\") ولا تضع فئة الإضافة إطلاقاً، حتى لو ذُكرت الإضافة",
-  "بوضوح. اذكر كلمة الإضافة (مثل \"حلويات\") ضمن keywords فقط كي تبقى قابلة للمطابقة كصنف",
-  "جانبي داخل نفس المتجر. مثال: \"غداء اقتصادي مع حلويات لـ10 أشخاص\" ← keywords تتضمن",
-  "\"غداء\" و\"حلويات\"، لكن preferredCategories = [\"مطاعم\"] فقط — وليس [\"حلويات\"]، لأن هذا",
-  "طلب غداء أولاً وليس طلب حلويات."
-].join("\n");
+// A conversation is capped at this many clarifying questions before the model is forced to
+// finalize with whatever it has — prevents an endless back-and-forth from ever reaching the
+// customer, no matter what the model itself decides.
+const MAX_QUESTIONS = 2;
+
+function buildSystemPrompt(catalog, questionsAsked, forceFinal) {
+  const categories = Array.isArray(catalog?.categories) && catalog.categories.length ? catalog.categories : KNOWN_CATEGORIES;
+  const storeNames = Array.isArray(catalog?.storeNames) ? catalog.storeNames.slice(0, 80) : [];
+  return [
+    "أنت مساعد محادثة على منصة دكانجي — سوق طلبات محلي في إسطنبول يضم مطاعم وسوبرماركت ومحلات",
+    "حلويات وعصائر وملاحم ومحلات متخصصة. مهمتك فهم ما يريده العميل فعلاً من وصفه الحر، وطرح",
+    "سؤال توضيحي واحد عند الحاجة فقط، ثم تصنيف النية بدقة — لا تقترح أبداً منتجاً أو سعراً أو قائمة",
+    "طعام حقيقية أو وهمية، فأنت لا ترى الكتالوج الفعلي ولا الأسعار إطلاقاً.",
+    "",
+    "الفئات الحقيقية المتاحة على المنصة حالياً: " + JSON.stringify(categories) + ".",
+    storeNames.length ? "أمثلة على أسماء متاجر حقيقية موجودة فعلاً (للاستئناس فقط، لا تدّعِ معرفة تفاصيلها): " + JSON.stringify(storeNames) : "",
+    "لا تسأل أبداً عن فئة أو نوع مطبخ غير موجود ضمن هذه القائمة، ولا تدّعِ معرفة أسعار أو أصناف",
+    "محددة من أي متجر — أنت لا تراها.",
+    "",
+    "أعد JSON فقط بلا أي شرح ولا تنسيق markdown، بأحد شكلين بالضبط:",
+    '1) سؤال توضيحي: {"type":"question","question":"..."}',
+    '2) جاهز للتصنيف: {"type":"ready","keywords":["..."],"secondaryKeywords":["..."],"wantsSupplies":false,"preferredCategories":["..."],"summary":"..."}',
+    "",
+    `اطرح سؤال توضيحي واحد فقط (type=question) إذا كان الوصف غامضاً بشكل حقيقي يمنع تصنيفاً`,
+    "مفيداً (مثال: طلب عام جداً كـ\"بدي شي طيب\" بلا أي تلميح عن نوع الطعام أو المناسبة) — وليس",
+    "لمجرد نقص تفصيل بسيط يمكن افتراضه بمنطق سليم. سؤال واحد قصير ومباشر، لا سلسلة أسئلة.",
+    `${forceFinal || questionsAsked >= MAX_QUESTIONS
+      ? `تنبيه إلزامي: طُرح بالفعل ${questionsAsked} سؤال/أسئلة توضيحية على هذا العميل — يُمنع طرح أي سؤال آخر مهما كان الوضع، ويجب إرجاع type=ready الآن مباشرة مستنتجاً الأفضل الممكن من كل ما قيل حتى الآن، حتى لو كانت المعلومات غير كاملة.`
+      : `عدد الأسئلة المطروحة سابقاً في هذه المحادثة: ${questionsAsked} (الحد الأقصى ${MAX_QUESTIONS}).`}`,
+    "",
+    "عند type=ready:",
+    "keywords: الكلمات الأساسية التي تصف نوع المنتج المطلوب فعلياً (وليس المناسبة أو العدد أو",
+    "الميزانية) — بالعربية الفصحى المعيارية قدر الإمكان حتى لو كتب العميل بلهجة. من كلمة واحدة",
+    "إلى 6 كلمات كحد أقصى.",
+    "",
+    "secondaryKeywords: أصناف إضافية ذات صلة قد تُثري السلة (وليست أساسية للطلب) — مثال: طلب",
+    "\"مشاوي\" قد يقترح ضمنياً \"سلطات\"/\"مقبلات\" كإضافات محتملة. حتى 4 كلمات، أو قائمة فارغة [].",
+    "",
+    "wantsSupplies: true فقط إذا كان العميل يطلب صراحة مكونات أو مستلزمات أو أدوات ليحضّر شيئاً",
+    "بنفسه (مثال: \"مستلزمات حلويات\", \"أدوات شواء\") — وليس المنتج النهائي الجاهز للاستهلاك",
+    "مباشرة. في الحالة الافتراضية (لم يُذكر ذلك صراحة) اجعلها false.",
+    "",
+    `preferredCategories: اختر فقط من القائمة الثابتة أعلاه (لا تخترع فئة غير موجودة).`,
+    "اختر الفئة أو الفئات التي تبيع المنتج جاهزاً للاستهلاك مباشرة كما طلبه العميل تحديداً — لا",
+    "الفئة التي يكون فيها هذا المنتج مجرد صنف جانبي ثانوي. أمثلة:",
+    "- \"مشاوي\" تعني طبقاً مشوياً جاهزاً يُقدَّم في مطعم، وليس لحماً نيئاً من ملحمة يحتاج طبخاً في",
+    "  البيت — الفئة الصحيحة \"مطاعم\" فقط، وليس \"ملاحم\".",
+    "- \"حلويات لعزومة\" تعني حلوى جاهزة من محل حلويات مختص، لا مطعم تكون الحلوى فيه صنفاً جانبياً",
+    "  ثانوياً منخفض الجودة — الفئة الصحيحة \"حلويات\" فقط، وليس \"مطاعم\".",
+    "- \"عصائر لحفلة\" تعني محل عصائر مختص، لا مطعم يبيع مشروبات معلّبة جانبية.",
+    "إن كان الطلب عاماً ولا يحدد فئة واضحة، أعد preferredCategories كقائمة فارغة [].",
+    "",
+    "تنبيه — الطلب المركّب (وجبة رئيسية + إضافة): إذا ذكر العميل وجبة رئيسية (غداء/عشاء/فطور/أكل)",
+    "ثم أضاف صنفاً ثانوياً بصيغة \"مع\"/\"و\" (مثل حلويات أو مشروبات)، فالوجبة الرئيسية هي النية",
+    "الأساسية والصنف الثانوي مجرد إضافة عليها — ضع الفئة التي تخدم الوجبة الرئيسية فقط في",
+    "preferredCategories (عادة \"مطاعم\") ولا تضع فئة الإضافة إطلاقاً، حتى لو ذُكرت الإضافة",
+    "بوضوح؛ اذكر كلمة الإضافة (مثل \"حلويات\") ضمن keywords أو secondaryKeywords فقط.",
+    "",
+    "summary: جملة عربية واحدة قصيرة (أقل من 25 كلمة) تلخّص فهمك لما يريده العميل بأسلوب ودّي —",
+    "لا تذكر فيها اسم منتج أو متجر أو سعر محدد أبداً، فقط وصف عام لنوع الطلب المفهوم."
+  ].filter(Boolean).join("\n");
+}
 
 function extractJson(raw) {
   if (raw == null) return null;
@@ -54,17 +84,31 @@ function extractJson(raw) {
   try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
 }
 
-// Never trust the model's shape blindly — coerce to exactly what the client engine expects,
-// dropping anything malformed instead of forwarding it.
-function sanitizeIntent(parsed) {
+// Never trust the model's shape blindly — coerce to exactly what the client expects, dropping
+// anything malformed instead of forwarding it.
+function sanitizeTurn(parsed, questionsAsked, forceFinal) {
   if (!parsed || typeof parsed !== "object") return null;
+  if (parsed.type === "question" && questionsAsked < MAX_QUESTIONS && !forceFinal) {
+    const question = String(parsed.question || "").trim().slice(0, 300);
+    if (!question) return null;
+    return { type: "question", question };
+  }
   const keywords = Array.isArray(parsed.keywords)
     ? parsed.keywords.map(k => String(k || "").trim()).filter(Boolean).slice(0, 6)
+    : [];
+  const secondaryKeywords = Array.isArray(parsed.secondaryKeywords)
+    ? parsed.secondaryKeywords.map(k => String(k || "").trim()).filter(Boolean).slice(0, 4)
     : [];
   const preferredCategories = Array.isArray(parsed.preferredCategories)
     ? parsed.preferredCategories.filter(c => KNOWN_CATEGORIES.includes(c))
     : [];
-  return { keywords, wantsSupplies: parsed.wantsSupplies === true, preferredCategories };
+  const summary = String(parsed.summary || "").trim().slice(0, 200);
+  return {
+    type: "ready",
+    keywords, secondaryKeywords,
+    wantsSupplies: parsed.wantsSupplies === true,
+    preferredCategories, summary
+  };
 }
 
 module.exports = async (request, response) => {
@@ -75,18 +119,42 @@ module.exports = async (request, response) => {
     return response.status(405).json({ error: "Method not allowed" });
   }
 
-  const message = String((request.body && request.body.message) || "").trim().slice(0, 700);
-  if (!message) return response.status(200).json({ ok: false, intent: null });
+  const body = request.body || {};
+  const message = String(body.message || "").trim().slice(0, 700);
+  if (!message) return response.status(200).json({ ok: false, turn: null });
+
+  // Conversation history: [{role:'user'|'assistant', text}], oldest first. Capped defensively
+  // server-side too (not just relying on the client) so a malformed/huge payload can't blow up
+  // the prompt or the question-count logic below.
+  const rawHistory = Array.isArray(body.history) ? body.history.slice(-12) : [];
+  const history = rawHistory
+    .map(h => ({
+      role: h && h.role === "assistant" ? "assistant" : "user",
+      text: String((h && h.text) || "").trim().slice(0, 700)
+    }))
+    .filter(h => h.text);
+  const questionsAsked = history.filter(h => h.role === "assistant").length;
+  const forceFinal = body.forceFinal === true;
+
+  const catalog = {
+    categories: Array.isArray(body.catalog?.categories) ? body.catalog.categories.map(String).slice(0, 20) : [],
+    storeNames: Array.isArray(body.catalog?.storeNames) ? body.catalog.storeNames.map(String).slice(0, 80) : []
+  };
+
+  const messages = [
+    ...history.map(h => ({ role: h.role, content: h.text })),
+    { role: "user", content: message }
+  ];
 
   const raw = await gw.complete("ask_dukkanci_parse", {
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: message }],
-    maxTokens: 300,
-    temperature: 0.2,
+    system: buildSystemPrompt(catalog, questionsAsked, forceFinal),
+    messages,
+    maxTokens: 350,
+    temperature: 0.3,
     timeoutMs: 10000
   });
 
-  const intent = sanitizeIntent(extractJson(raw));
-  if (!intent) return response.status(200).json({ ok: false, intent: null });
-  return response.status(200).json({ ok: true, intent });
+  const turn = sanitizeTurn(extractJson(raw), questionsAsked, forceFinal);
+  if (!turn) return response.status(200).json({ ok: false, turn: null });
+  return response.status(200).json({ ok: true, turn });
 };
