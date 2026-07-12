@@ -15,10 +15,10 @@ const afganStore = {
  "time": "45 - 75 دقيقة",
  "distance": 24.0,
  "location": {
-  "lat": 41.004,
-  "lng": 28.63
+  "lat": 41.0192502,
+  "lng": 28.6497621
  },
- "mapUrl": "https://www.google.com/maps/search/?api=1&query=Afgan+Kebap+Restaurant+Beylikduzu+Esenyurt+Istanbul",
+ "mapUrl": "https://www.google.com/maps/search/?api=1&query=41.0192502,28.6497621",
  "open": true,
  "featured": true,
  "hasOffer": false,
