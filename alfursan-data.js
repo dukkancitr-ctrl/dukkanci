@@ -53,5 +53,5 @@ const alfursanProducts = alfursanProductCatalog.map((product, index) => ({
 }));
 
 const alfursanDeliverySettings = {
-  [alfursanStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 }
+  [alfursanStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };

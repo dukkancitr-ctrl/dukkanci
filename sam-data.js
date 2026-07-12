@@ -50,5 +50,5 @@ const samProducts = samProductCatalog.map((product, index) => ({
 }));
 
 const samDeliverySettings = {
-  [samStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 120 }
+  [samStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 35, maxRoundTripKm: 120 }
 };

@@ -798,7 +798,7 @@ const bludanProducts = (bludanProductCatalog.length ? bludanProductCatalog : blu
 }));
 
 const bludanDeliverySettings = {
-  [bludanStore.id]: { mode: "distance", fixedFee: 30, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 }
+  [bludanStore.id]: { mode: "distance", fixedFee: 30, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

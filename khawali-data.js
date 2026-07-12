@@ -50,5 +50,5 @@ const khawaliProducts = khawaliProductCatalog.map((product, index) => ({
 }));
 
 const khawaliDeliverySettings = {
-  [khawaliStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 40, prepMinutes: 35, maxRoundTripKm: 120 }
+  [khawaliStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 35, maxRoundTripKm: 120 }
 };

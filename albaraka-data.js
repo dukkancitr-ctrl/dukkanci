@@ -188,7 +188,7 @@ const albarakaProducts = (albarakaProductCatalog.length ? albarakaProductCatalog
 }));
 
 const albarakaDeliverySettings = {
-  [albarakaStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 120 }
+  [albarakaStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 35, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

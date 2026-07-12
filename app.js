@@ -254,6 +254,18 @@ function runDeliveryMigrations() {
       if (saved["50"] && saved["50"].namedZones) { delete saved["50"].namedZones; changed = true; }
       done.safaZones100 = true; changed = true;
     }
+    // كل متاجر «مطاعم» رُفع سعر التوصيل حسب المسافة من 15 إلى 20 ل.ت/كم (بما فيها
+    // مطعم الخوالي الذي كان مخصَّصاً بـ40 — القرار: توحيد السعر الجديد على كل المطاعم).
+    // نفس فئة خطأ khawali40 أعلاه: بلا هذا الإصلاح، أي متصفح زار الموقع سابقاً يحمل
+    // نسخة مجمّدة من السعر القديم في localStorage تتغلّب على القيمة المجمَّعة الجديدة.
+    if (!done.restaurantRate20) {
+      const RESTAURANT_IDS = [15, 16, 17, 18, 20, 21, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 63, 64, 65, 67, 69, 70, 71, 73, 74, 75, 76, 77, 86];
+      RESTAURANT_IDS.forEach(id => {
+        const key = String(id);
+        if (saved[key] && saved[key].ratePerKm !== 20) { saved[key].ratePerKm = 20; changed = true; }
+      });
+      done.restaurantRate20 = true; changed = true;
+    }
     if (changed) {
       localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
       localStorage.setItem(KEY, JSON.stringify(done));

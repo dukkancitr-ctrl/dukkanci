@@ -545,7 +545,7 @@ const rumanProducts = (rumanProductCatalog.length ? rumanProductCatalog : rumanF
 }));
 
 const rumanDeliverySettings = {
-  [rumanStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 }
+  [rumanStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

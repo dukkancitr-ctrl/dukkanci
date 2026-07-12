@@ -581,7 +581,7 @@ const yumyProducts = (yumyProductCatalog.length ? yumyProductCatalog : yumyFullC
 }));
 
 const yumyDeliverySettings = {
-  [yumyStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 20, maxRoundTripKm: 120 }
+  [yumyStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 20, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

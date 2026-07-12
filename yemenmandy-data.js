@@ -53,5 +53,5 @@ const yemenmandyProducts = yemenmandyProductCatalog.map((product, index) => ({
 }));
 
 const yemenmandyDeliverySettings = {
-  [yemenmandyStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 }
+  [yemenmandyStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };

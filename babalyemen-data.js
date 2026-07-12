@@ -693,7 +693,7 @@ const babalyemenProducts = (babalyemenProductCatalog.length ? babalyemenProductC
 }));
 
 const babalyemenDeliverySettings = {
-  [babalyemenStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 40, maxRoundTripKm: 120 }
+  [babalyemenStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 40, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

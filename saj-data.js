@@ -176,7 +176,7 @@ const sajProducts = (sajProductCatalog.length ? sajProductCatalog : sajFullCatal
 }));
 
 const sajDeliverySettings = {
-  [sajStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 25, maxRoundTripKm: 120 }
+  [sajStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 25, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

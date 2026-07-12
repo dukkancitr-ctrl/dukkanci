@@ -51,5 +51,5 @@ const tihamaProducts = tihamaProductCatalog.map((product, index) => ({
 }));
 
 const tihamaDeliverySettings = {
-  [tihamaStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 35, maxRoundTripKm: 120 }
+  [tihamaStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 35, maxRoundTripKm: 120 }
 };

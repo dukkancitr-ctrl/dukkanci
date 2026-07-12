@@ -150,7 +150,7 @@ const anasProducts = anasBranches.flatMap((store, branchIndex) => anasProductCat
 const anasDeliverySettings = Object.fromEntries(anasBranches.map(store => [store.id, {
   mode: "distance",
   fixedFee: store.delivery,
-  ratePerKm: 15,
+  ratePerKm: 20,
   prepMinutes: 30,
   maxRoundTripKm: 120
 }]));

@@ -142,7 +142,7 @@ const bludanFatihProducts = (bludanFatihProductCatalog.length ? bludanFatihProdu
 }));
 
 const bludanFatihDeliverySettings = {
-  [bludanFatihStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 15, prepMinutes: 30, maxRoundTripKm: 120 }
+  [bludanFatihStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
 
 if (typeof module !== "undefined" && module.exports) {

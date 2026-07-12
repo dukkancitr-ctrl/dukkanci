@@ -238,7 +238,7 @@ const alagarProducts = alagarBranches.flatMap((store, branchIndex) => alagarProd
 const alagarDeliverySettings = Object.fromEntries(alagarBranches.map(store => [store.id, {
   mode: "distance",
   fixedFee: store.delivery,
-  ratePerKm: 15,
+  ratePerKm: 20,
   prepMinutes: 30,
   maxRoundTripKm: 120
 }]));
