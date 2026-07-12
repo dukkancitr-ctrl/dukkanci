@@ -321,6 +321,68 @@ function sb() {
     key: env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_ANON_KEY") || PUB_KEY
   };
 }
+
+// ---------------------------------------------------------------------------
+// Inline-image offloading — the root fix for base64 blobs inside DB rows.
+// Merchant/admin/join forms send images as data:image/...;base64 strings inside
+// the row JSON (readImageFileResized in app.js). They used to be stored as-is,
+// bloating every catalog/settings fetch for every visitor (a single store page
+// once carried ~1.9MB of base64). Any data: image arriving in a write below is
+// re-compressed to WebP (sharp), uploaded to the public campaign-images bucket,
+// and the field is replaced with the hosted URL before the row hits the DB.
+// Fail-open: on any upload error the original value is kept (= old behavior),
+// so a storage hiccup can never block a merchant's save.
+const INLINE_IMG_RE = /^data:image\/[a-z0-9.+-]+;base64,/i;
+async function offloadInlineImage(dataUrl, label) {
+  const input = Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
+  if (!input.length || input.length > 8 * 1024 * 1024) throw new Error("bad image size");
+  const sharp = require("sharp"); // lazy — only loaded when a base64 image actually arrives
+  const out = await sharp(input)
+    .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
+  const { url, key } = sb();
+  const safe = String(label).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 60) || "img";
+  const name = `${safe}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.webp`;
+  const r = await fetch(`${url}/storage/v1/object/campaign-images/${name}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "image/webp", "x-upsert": "true" },
+    body: out
+  });
+  if (!r.ok) throw new Error(`storage upload ${r.status}`);
+  return `https://www.dukkanci.com.tr/media/campaign-images/${name}`;
+}
+// Replace data: images in the named fields of a flat row object.
+async function offloadRowImages(row, fields, label) {
+  for (const f of fields) {
+    if (typeof row[f] === "string" && INLINE_IMG_RE.test(row[f])) {
+      try { row[f] = await offloadInlineImage(row[f], `${label}_${f}`); }
+      catch (e) { console.warn("inline image offload failed:", f, e.message); }
+    }
+  }
+}
+// Recursively replace data: images anywhere inside a JSON value (site_settings
+// content nests them at arbitrary depth, e.g. categories items[].image).
+// budget caps uploads per request so a malformed payload can't spam storage.
+async function offloadJsonImages(value, label, budget = { n: 20 }) {
+  if (typeof value === "string") {
+    if (INLINE_IMG_RE.test(value) && budget.n > 0) {
+      budget.n--;
+      try { return await offloadInlineImage(value, label); }
+      catch (e) { console.warn("inline image offload failed:", label, e.message); }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) value[i] = await offloadJsonImages(value[i], label, budget);
+    return value;
+  }
+  if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) value[k] = await offloadJsonImages(value[k], label, budget);
+    return value;
+  }
+  return value;
+}
 async function sbGet(path) {
   const { url, key } = sb();
   try {
@@ -1762,6 +1824,9 @@ module.exports = async (req, res) => {
         }
       });
     }
+    // Root fix for the base64-in-DB bug class: a merchant-uploaded product photo
+    // arrives as a data: URL — host it and store the short URL instead.
+    await offloadRowImages(product, ["image"], `store${product.store_id}_p${product.id}`);
     // Read the current row BEFORE the upsert: price for the price-history log
     // (spec §7) and name/available for the audit entry (spec §17).
     let prevPrice = null, prevRow = null;
@@ -2087,7 +2152,11 @@ module.exports = async (req, res) => {
     if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
     const key = String(body.key || "").trim();
     if (!key) return res.status(400).json({ error: "key required" });
-    const r = await sbWrite("POST", "site_settings?on_conflict=key", { key, value: body.value, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+    // Root fix for the base64-in-DB bug class: admin content images (categories,
+    // banners, daily deal...) can nest data: URLs anywhere in the value JSON —
+    // site_settings is fetched on EVERY page load, so host them instead.
+    const value = await offloadJsonImages(body.value, `setting_${key}`);
+    const r = await sbWrite("POST", "site_settings?on_conflict=key", { key, value, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
     return res.status(200).json({ ok: true });
   }
@@ -2154,6 +2223,9 @@ module.exports = async (req, res) => {
       }
     }
     if (!authed) return res.status(403).json({ error: "unauthorized" });
+    // Root fix for the base64-in-DB bug class: join-form logos and dashboard
+    // cover/logo uploads arrive as data: URLs — host them before the row lands.
+    await offloadRowImages(row, ["image", "cover_image", "logo_image"], `store${storeId}`);
     const r = await sbWrite("POST", "stores?on_conflict=id", row, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
     // A newly self-joined merchant has no store_users row yet, and RLS has no
