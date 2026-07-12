@@ -9,6 +9,7 @@
 // Domain comes from NEXT_PUBLIC_SITE_URL (never hardcoded).
 const { STORE_SLUGS } = require("../store-slugs.js");
 const { CATEGORY_SLUGS } = require("../category-slugs.js");
+const { DALIL_REGIONS } = require("../dalil-regions.js");
 const { resolveStoreSlug } = require("../lib/store-slug.js");
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
@@ -125,11 +126,15 @@ function sitemapPages(res) {
     ["/why-dukkanci", "0.9", "monthly"],
     ["/features", "0.8", "monthly"],
     ["/stores", "0.9", "daily"],
+    ["/dalil", "0.9", "daily"],
     ["/offers", "0.8", "daily"],
     ["/about", "0.5", "monthly"],
     ["/faq", "0.5", "monthly"],
     ["/terms", "0.3", "yearly"]
   ];
+  // «دليل دكانجي» حسب التصنيف والمنطقة — نفس القوائم البيضاء التي يفهرسها api/dalil.js.
+  for (const slug of Object.keys(CATEGORY_SLUGS)) pages.push([`/dalil?category=${slug}`, "0.6", "weekly"]);
+  for (const region of DALIL_REGIONS) pages.push([`/dalil?region=${region.slug}`, "0.6", "weekly"]);
   const urls = pages.map(([path, priority, freq]) =>
     `  <url><loc>${esc(SITE)}${path}</loc><lastmod>${today}</lastmod><changefreq>${freq}</changefreq><priority>${priority}</priority></url>`
   );

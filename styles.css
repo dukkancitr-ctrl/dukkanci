@@ -11464,6 +11464,11 @@ tbody tr:hover {
   .fbads-inline-form { flex-direction: column; align-items: stretch; }
   .fbads-inline-form input { min-width: 0; }
   .fbads-target-item { flex-direction: column; align-items: flex-start; }
+}
+/* كان قوس إغلاق @media أعلاه مفقوداً منذ إضافة أنماط fbads، فحُبس كل ما بعده
+   في الملف داخل شرط ≤640px بصمت (بدا الموبايل سليماً لأن معظم ما بعده أنماط
+   موبايل أصلاً) — أُصلح أثناء بناء «دليل دكانجي» 2026-07-12. */
+
 /* ============================================================
    Homepage conversion additions — sticky trust bar, search chips,
    nearby-store CTA/min-order, live open-stores pill, most-ordered /
@@ -11831,5 +11836,533 @@ tbody tr:hover {
     width: 100%;
     margin: 10px 0 0;
     min-height: 42px;
+  }
+}
+
+/* ═══════════════════ «دليل دكانجي» — /dalil و /dalil/compare ═══════════════════ */
+/* Mobile-first: الأساس للموبايل، ثم توسعة الشبكة والعربة في الميديا كويري أدناه. */
+.dalil-hero .listing-search {
+  margin-top: 18px;
+}
+
+.dalil-section {
+  padding-top: 26px;
+}
+
+.dalil-pills-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.dalil-pills-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  padding: 8px 0;
+}
+
+.dalil-pills-label .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.dalil-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.dalil-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.dalil-pills button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.dalil-pills button i {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.dalil-pills button.active {
+  background: var(--green-800);
+  border-color: var(--green-800);
+  color: #fff;
+}
+
+.dalil-pills button.active i {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dalil-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+
+.dalil-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.dalil-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dalil-toggle .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.dalil-toggle.active {
+  background: var(--green-50);
+  border-color: var(--green-800);
+  color: var(--green-800);
+}
+
+.dalil-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.dalil-note .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.dalil-locate-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--green-50);
+  border: 1px solid var(--green-100);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  margin-bottom: 12px;
+}
+
+.dalil-locate-banner span {
+  flex: 1 1 180px;
+}
+
+.dalil-locate-banner .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--green-800);
+}
+
+.dalil-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.dalil-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 2px rgba(35, 31, 32, 0.04);
+}
+
+.dalil-card--featured {
+  border-color: rgba(242, 162, 58, 0.55);
+  box-shadow: 0 1px 10px rgba(242, 162, 58, 0.12);
+}
+
+.dalil-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dalil-card__head .store-avatar {
+  flex: 0 0 auto;
+}
+
+.dalil-card__title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dalil-card__title strong {
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.dalil-card__title small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.dalil-featured-badge {
+  flex: 0 0 auto;
+  background: var(--orange-soft);
+  color: var(--orange-dark);
+  border: 1px solid rgba(242, 162, 58, 0.4);
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* داخل بطاقة الدليل الشارة ضمن التدفق، لا فوق صورة كما في .store-card */
+.dalil-card .status-badge {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.dalil-google {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+
+.dalil-google--none {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.dalil-google__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dalil-google__score .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--orange);
+}
+
+.dalil-google__score strong {
+  font-size: 0.95rem;
+}
+
+.dalil-google__count {
+  color: var(--muted);
+}
+
+.dalil-google__updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.dalil-google__updated .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.dalil-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.dalil-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dalil-card__meta .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.dalil-product-hit {
+  color: var(--green-800);
+  font-weight: 700;
+}
+
+.dalil-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dalil-card__actions .primary-button,
+.dalil-card__actions .secondary-button {
+  padding: 9px 14px;
+  font-size: 0.78rem;
+  border-radius: 12px;
+}
+
+.dalil-card__actions .primary-button {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.dalil-compare-btn.active {
+  background: var(--green-50);
+  border-color: var(--green-800);
+  color: var(--green-800);
+}
+
+.dalil-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  justify-content: center;
+  margin-top: 26px;
+  font-size: 0.84rem;
+}
+
+.dalil-foot-links a {
+  color: var(--green-800);
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dalil-foot-links a .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* عربة المقارنة: فوق شريط تنقل الموبايل السفلي */
+.dalil-tray {
+  position: fixed;
+  right: 12px;
+  left: 12px;
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(35, 31, 32, 0.16);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dalil-tray__stores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dalil-tray__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.dalil-tray__chip button {
+  display: inline-flex;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+}
+
+.dalil-tray__chip .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.dalil-tray__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.dalil-tray__actions .primary-button {
+  flex: 1;
+  justify-content: center;
+}
+
+.dalil-tray__actions .primary-button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* جدول المقارنة: تمرير أفقي داخل إطاره، وعمود التسميات ثابت على اليمين (RTL) */
+.dalil-compare-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.dalil-compare-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 640px;
+  font-size: 0.8rem;
+}
+
+.dalil-compare-table th,
+.dalil-compare-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  vertical-align: top;
+}
+
+.dalil-compare-table tbody tr:last-child th,
+.dalil-compare-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dalil-compare-table thead th {
+  background: var(--cream);
+}
+
+.dalil-cmp-label {
+  position: sticky;
+  right: 0;
+  background: var(--cream);
+  font-weight: 800;
+  color: var(--ink);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.dalil-cmp-store {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 175px;
+}
+
+.dalil-cmp-store__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dalil-cmp-store__actions .primary-button,
+.dalil-cmp-store__actions .secondary-button {
+  padding: 7px 10px;
+  font-size: 0.72rem;
+  border-radius: 10px;
+}
+
+.dalil-cmp-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.95rem;
+}
+
+.dalil-cmp-score .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--orange);
+}
+
+.dalil-cmp-open {
+  color: #1d7d43;
+  font-weight: 800;
+}
+
+.dalil-cmp-closed {
+  color: var(--red);
+  font-weight: 800;
+}
+
+@media (min-width: 760px) {
+  .dalil-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* لا يوجد شريط تنقل سفلي على الشاشات الواسعة — عربة عائمة مركزية */
+  .dalil-tray {
+    left: 50%;
+    right: auto;
+    transform: translateX(50%);
+    width: min(680px, calc(100vw - 32px));
+    bottom: 18px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dalil-tray__actions {
+    flex: 0 0 auto;
+  }
+}
+
+@media (min-width: 1100px) {
+  .dalil-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
