@@ -8565,7 +8565,7 @@ function renderCategoryPage(slug) {
   const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
   const merchantNoun = CATEGORY_MERCHANT_PITCH[catText] || "متجرك";
   return `
-    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="/" data-action="route-home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length ? `${catStores.length} متجر في إسطنبول على دكانجي.` : "قريباً في منطقتك."}</p></div></section>
+    <section class="page-hero compact category-hero"><div class="container"><div class="breadcrumbs"><a href="/" data-action="route-home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length ? `${catStores.length} متجر في إسطنبول على دكانجي.` : "قريباً في منطقتك."}</p></div></section>
     <section class="section category-stores-section"><div class="container">
       <div class="merchant-cta category-merchant-banner">
         <div class="merchant-cta__art"><div class="shop-mini">${icon("store")}</div></div>
@@ -8576,11 +8576,13 @@ function renderCategoryPage(slug) {
         </div>
         <button class="primary-button dark" data-action="join-merchant">انضم كتاجر ${icon("arrowLeft")}</button>
       </div>
+      <div class="category-stores-block">
       ${catStores.length ? `
         <div class="section-heading small"><h2>${catText}</h2></div>
         <div class="store-grid">${catStores.map(storeCard).join("")}</div>
-        ${catProducts.length ? `<div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div>` : ""}
       ` : renderEmpty("لا توجد متاجر في هذا التصنيف حالياً", "نعمل على إضافة متاجر جديدة قريباً.", "تصفح كل المتاجر", "stores")}
+      </div>
+      ${catStores.length && catProducts.length ? `<div class="category-products-block"><div class="section-heading small" style="margin-top:24px"><h2>منتجات مختارة</h2></div><div class="product-grid">${catProducts.map(productCard).join("")}</div></div>` : ""}
     </div></section>
   `;
 }
