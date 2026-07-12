@@ -9174,8 +9174,9 @@ function askDukkanciBuildBasket(store, storeCandidates, request) {
 // slots with distinct stores, which surfaced an irrelevant, wildly-over-budget "option" just to
 // pad the count. Fewer, honest tiers beats padding with a bad one.
 function askDukkanciBuildOptions(request) {
+  const primary = askDukkanciKeywords(request.message || "");
   const { hasPrimary, items: scoredCandidates } = askDukkanciScoredCandidates(request);
-  const byStore = new Map(); // storeId -> [products], relevance-sorted (preserved from scoredCandidates)
+  const byStore = new Map(); // storeId -> { store, products, bestScore }, products relevance-sorted
   for (const { product: p, primaryScore } of scoredCandidates) {
     // When the visitor actually described what they want, a store must have at least one item
     // matching THAT description to qualify — a secondary-only hit (e.g. a pure dessert shop
@@ -9184,20 +9185,47 @@ function askDukkanciBuildOptions(request) {
     if (hasPrimary && primaryScore <= 0) continue;
     const store = getStore(p.storeId);
     if (!askDukkanciEligibleStore(store)) continue;
-    if (!byStore.has(store.id)) byStore.set(store.id, []);
-    byStore.get(store.id).push(p);
+    let entry = byStore.get(store.id);
+    if (!entry) { entry = { store, products: [], bestScore: primaryScore }; byStore.set(store.id, entry); }
+    entry.products.push(p);
   }
 
-  // With a real description, byStore's insertion order IS the relevance ranking (each store's
-  // own best-matching product decided when it was first seen) — keep a generous but bounded
-  // pool of the most on-topic stores before ranking by price, so budget-fit never promotes an
-  // irrelevant cheap item over a pricier but genuinely on-topic match. With no signal at all
-  // there's nothing to rank by, so every eligible store stays.
+  // A store whose own CATEGORY matches the request (e.g. a "حلويات" shop for a dessert ask, an
+  // "عصائر" bar for a drinks ask) is a specialist — its sweets/juice is the actual business, not
+  // a side item tacked onto a "مطاعم" menu. Scoped to a whitelist of categories that sell a
+  // FINISHED, ready-to-consume good — deliberately excludes e.g. "ملحمة" (a butcher selling raw
+  // meat "للمشاوي", for the CUSTOMER to grill at home): a substring match there would wrongly
+  // treat a raw-ingredient shop as "the مشاوي specialist" over restaurants that actually serve a
+  // cooked dish — the same finished-good-vs-supply trap as askDukkanciIsSupplyItem, one level up
+  // at the store-category rather than the product. Exact match (not substring) against the
+  // whitelist so "ملحمة ومشاوي" never accidentally qualifies via a loose "مشاوي" containment.
+  const ASK_DUKKANCI_SPECIALTY_CATEGORIES = ["حلويات", "عصائر", "بن ومكسرات"].map(normalizeAr);
+  const rankedStores = [...byStore.values()].map(entry => {
+    const cat = entry.store.category ? normalizeAr(entry.store.category) : "";
+    const isSpecialist = !!(hasPrimary && ASK_DUKKANCI_SPECIALTY_CATEGORIES.includes(cat) && primary.some(kw => cat.includes(kw)));
+    return { ...entry, isSpecialist, rankScore: entry.bestScore + (isSpecialist ? 5 : 0) };
+  }).sort((a, b) => b.rankScore - a.rankScore);
+
+  // A ranking bonus alone isn't enough — the tier selection below picks by price/budget-fit,
+  // which can still let a restaurant's cheap side-dish beat a specialist shop's basket on price
+  // alone. When at least one genuine specialist match exists (a "حلويات" shop for a dessert ask,
+  // an "عصائر" bar for a drinks ask), restrict the pool to specialists only — a restaurant's
+  // version of the same item is a side dish, not its actual business, so it shouldn't compete
+  // on price with the shop that specializes in it. Falls back to the full pool when no
+  // specialist exists at all (e.g. "مشاوي", which genuinely lives at restaurants).
+  const specialists = rankedStores.filter(s => s.isSpecialist);
+  const rankedPool = (hasPrimary && specialists.length) ? specialists : rankedStores;
+
+  // With a real description, this ranking IS the relevance order (best match, specialist-
+  // boosted, first) — keep a generous but bounded pool of the most on-topic stores before
+  // ranking by price, so budget-fit never promotes an irrelevant cheap item over a pricier but
+  // genuinely on-topic match. With no signal at all there's nothing to rank by, so every
+  // eligible store stays.
   const hasSignal = hasPrimary || request.includeDessert || request.includeDrinks;
-  const relevancePool = hasSignal ? [...byStore.entries()].slice(0, 15) : [...byStore.entries()];
+  const relevancePool = hasSignal ? rankedPool.slice(0, 15) : rankedPool;
 
   const baskets = relevancePool
-    .map(([storeId, storeCandidates]) => askDukkanciBuildBasket(getStore(storeId), storeCandidates, request))
+    .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request))
     .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
     .sort((a, b) => a.total - b.total);
 
