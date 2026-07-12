@@ -9,9 +9,10 @@
  * (GOOGLE_MAPS_API_KEY) — لا يوجد أي scraping.
  *
  * الاستخدام (من جذر المشروع):
- *   node scripts/update-google-ratings.js              # تحديث كل المتاجر المعتمدة
- *   node scripts/update-google-ratings.js --dry-run    # عرض ما سيُكتب دون أي كتابة
- *   node scripts/update-google-ratings.js --only=5,84  # متاجر محددة فقط
+ *   node scripts/update-google-ratings.js                 # تحديث كل المتاجر المعتمدة
+ *   node scripts/update-google-ratings.js --dry-run       # عرض ما سيُكتب دون أي كتابة
+ *   node scripts/update-google-ratings.js --only=5,84     # متاجر محددة فقط
+ *   node scripts/update-google-ratings.js --exclude=17,22 # كل المتاجر عدا هذه (لمطابقات مشبوهة)
  *
  * المتطلبات في .env (أو بيئة التشغيل):
  *   SUPABASE_SERVICE_ROLE_KEY  — إلزامي للكتابة (RLS يمنع anon من UPDATE).
@@ -52,6 +53,8 @@ const PLACES = "https://maps.googleapis.com/maps/api/place";
 const DRY_RUN = process.argv.includes("--dry-run");
 const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const ONLY = onlyArg ? new Set(onlyArg.slice(7).split(",").map(Number).filter(Boolean)) : null;
+const excludeArg = process.argv.find(a => a.startsWith("--exclude="));
+const EXCLUDE = excludeArg ? new Set(excludeArg.slice(10).split(",").map(Number).filter(Boolean)) : null;
 const MAX_MATCH_KM = 0.45;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -124,6 +127,7 @@ async function main() {
   if (!listRes.ok) throw new Error(`stores fetch: HTTP ${listRes.status}`);
   let storesList = await listRes.json();
   if (ONLY) storesList = storesList.filter(s => ONLY.has(s.id));
+  if (EXCLUDE) storesList = storesList.filter(s => !EXCLUDE.has(s.id));
 
   const report = [];
   for (const store of storesList) {
