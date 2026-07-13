@@ -9034,7 +9034,12 @@ const ASK_DUKKANCI_STOPWORDS = new Set([
   "طلب", "اقتراح", "اقترح", "افضل", "احسن", "ميزانيه", "معقوله", "اقتصادي", "اقتصاديه",
   "عزومه", "جماعي", "جماعيه", "عائلي", "عائليه", "كام", "كم", "بميزانيه", "ضمن", "حوالي", "تقريبا",
   "منتج", "منتجات", "موجود", "موجوده", "اطلاقا", "شي", "شيء", "حاجه", "ابغى", "ابي", "بس", "فقط", "او", "ايضا",
-  "سهره", "حفله", "مناسبه", "خطوبه", "تجمع", "زواج", "فرح", "ميلاد", "مولود", "بيت", "منزل", "اسبوعيه", "شهريه"
+  "سهره", "حفله", "مناسبه", "خطوبه", "تجمع", "زواج", "فرح", "ميلاد", "مولود", "بيت", "منزل", "اسبوعيه", "شهريه",
+  // Vague filler adjectives ("بدي شي طيب" = "I want something nice") carry zero product-specific
+  // signal on their own, and being short (3 letters) they're prone to false-positive substring
+  // matches inside unrelated product names (e.g. "طيب" inside "للترطيب" = "for moisturizing", a
+  // shampoo). Real food-type words like "حلو"/"مالح" stay unfiltered — only the emptiest fillers.
+  "طيب", "طيبه", "زاكي", "زاكيه"
 ]);
 
 // Arabic proclitics (و=and, ل=for/to, ب=with/by, ك=as/like) glue onto the next word with no
@@ -9068,10 +9073,13 @@ function askDukkanciIsSupplyItem(normName, normCat) {
 // gathering. Nothing marks these as "مستلزمات" (they ARE the butcher's real, sellable product),
 // so askDukkanciIsSupplyItem never catches them; without this, a request like "عزومة ... لحم"
 // could surface raw "لحم غنم" from a butcher as if it were food ready to serve guests. A
-// COOKED marker on the same product (e.g. "لحم مشوي", "مشكل مشاوي") means it's an actual
-// prepared dish (typically a restaurant's grill), so that's never excluded.
+// COOKED marker on the same product (e.g. "لحم مشوي", "وجبة مشاوي مشكل") means it's an actual
+// prepared dish (typically a restaurant's grill), so that's never excluded. Deliberately NOT
+// "مشاوي" alone — a butcher labels raw cuts "للمشاوي" ("for the grill", i.e. meant to be grilled
+// at home) using that exact word, which would have wrongly counted as already-cooked; "مشوي"
+// (grilled — past participle, actually describes the item's current state) stays.
 const ASK_DUKKANCI_RAW_MEAT_MARKERS = ["لحم", "لحوم", "لحمة", "دواجن", "ذبائح", "ملحمة"];
-const ASK_DUKKANCI_COOKED_MARKERS = ["مشوي", "مشاوي", "مطبوخ", "جاهز", "مقلي", "طبق", "وجبة", "مشكل", "مقدد", "مدخن"];
+const ASK_DUKKANCI_COOKED_MARKERS = ["مشوي", "مطبوخ", "جاهز", "مقلي", "طبق", "وجبة", "مشكل", "مقدد", "مدخن"];
 function askDukkanciIsRawMeat(normName, normCat) {
   const text = normName + " " + normCat;
   if (!ASK_DUKKANCI_RAW_MEAT_MARKERS.some(m => text.includes(m))) return false;
@@ -9198,21 +9206,40 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
   // so a store can qualify (and fill its whole basket) purely on dessert/drink matches, silently
   // dropping the actual meal. When that happens, swap in one of the store's own real main items
   // (not a dessert/drink/supply) so the "غداء" the visitor asked for is actually represented.
+  // A store with ZERO genuine main-dish item (e.g. a supermarket that only sells coffee cups and
+  // dessert cream) can never actually fulfill "غداء" no matter how the basket is filled — flagged
+  // below so askDukkanciBuildOptions drops it entirely instead of presenting an all-add-on basket
+  // as if it were a real meal option.
+  let noMealAvailable = false;
   if (opts && opts.hasMealIntent) {
+    // Keywords like "قهوة"/"كنافة"/"بقلاوة" end in taa marbuta (ة), which normalizeAr folds to
+    // ه on the PRODUCT text side — comparing against the raw (unnormalized) keyword list would
+    // silently never match those specific words. Normalize the keyword lists too, once per call.
+    const normDessertKw = ASK_DUKKANCI_DESSERT_KEYWORDS.map(normalizeAr);
+    const normDrinkKw = ASK_DUKKANCI_DRINK_KEYWORDS.map(normalizeAr);
     const isAddOnItem = p => {
       const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
-      return ASK_DUKKANCI_DESSERT_KEYWORDS.some(k => n.includes(k) || c.includes(k)) ||
-        ASK_DUKKANCI_DRINK_KEYWORDS.some(k => n.includes(k) || c.includes(k));
+      return normDessertKw.some(k => n.includes(k) || c.includes(k)) ||
+        normDrinkKw.some(k => n.includes(k) || c.includes(k));
     };
     if (chosen.length && chosen.every(isAddOnItem)) {
-      const mainItem = products
-        .filter(p => p.storeId === store.id && p.available !== false && !p.priceOnRequest && Number(p.price) > 0)
-        .filter(p => {
-          const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
-          return !isAddOnItem(p) && !askDukkanciIsSupplyItem(n, c) && (opts.wantsSupplies || !askDukkanciIsRawMeat(n, c));
-        })
-        .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0))[0];
+      // Searching the store's WHOLE catalog for a substitute only makes sense for a restaurant,
+      // where virtually everything on the menu genuinely is food — for a general store (a
+      // supermarket selling toys/cosmetics/spices alongside groceries), "highest-priced item
+      // that isn't a dessert/drink/supply/raw-meat" is not remotely guaranteed to be a meal (a
+      // toy or a shampoo bottle passes those checks trivially). Don't guess there — just reject.
+      const isRestaurant = normalizeAr(store.category || "") === normalizeAr("مطاعم");
+      const mainItem = isRestaurant
+        ? products
+          .filter(p => p.storeId === store.id && p.available !== false && !p.priceOnRequest && Number(p.price) > 0)
+          .filter(p => {
+            const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
+            return !isAddOnItem(p) && !askDukkanciIsSupplyItem(n, c) && (opts.wantsSupplies || !askDukkanciIsRawMeat(n, c));
+          })
+          .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0))[0]
+        : null;
       if (mainItem) chosen = [mainItem, ...chosen].slice(0, basketSize);
+      else noMealAvailable = true;
     }
   }
 
@@ -9247,7 +9274,8 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
     perPerson: Math.round(total / Math.max(1, request.partySize)),
     prepMinutes, reasons, overBudget, budgetLine,
     exceedsMaxDistance: !!quote?.exceedsMaxDistance,
-    belowMinOrder: subtotal < (Number(store.minOrder) || 0)
+    belowMinOrder: subtotal < (Number(store.minOrder) || 0),
+    noMealAvailable
   };
 }
 
@@ -9319,7 +9347,7 @@ function askDukkanciBuildOptions(request, intent) {
 
   const baskets = relevancePool
     .map(({ store, products: storeCandidates }) => askDukkanciBuildBasket(store, storeCandidates, request, { hasMealIntent, wantsSupplies }))
-    .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance)
+    .filter(b => !b.belowMinOrder && !b.exceedsMaxDistance && !b.noMealAvailable)
     .sort((a, b) => a.total - b.total);
 
   if (!baskets.length) return { tiers: [], matchedStoreCount: 0 };
@@ -9451,7 +9479,16 @@ async function submitAskDukkanciChatReply(form, forceFinal) {
   const input = form.querySelector("#ask-chat-reply");
   const reply = (input?.value || "").trim();
   if (!reply && !forceFinal) return;
-  if (reply) state.askDukkanci.messages = [...state.askDukkanci.messages, { role: "user", text: reply }];
+  if (reply) {
+    state.askDukkanci.messages = [...state.askDukkanci.messages, { role: "user", text: reply }];
+    // The FIRST message that opened this chat is often the least informative one — that's
+    // precisely why the AI asked a follow-up. request.message feeds the local keyword-matching
+    // fallback (askDukkanciScoredCandidates), so leaving it frozen at that vague opener would
+    // keep polluting every later turn's matching with stale, non-specific words. Roll forward to
+    // the full conversation's user text instead, so local matching reflects what was ACTUALLY
+    // asked, not just the opening line.
+    state.askDukkanci.message = state.askDukkanci.messages.filter(m => m.role === "user").map(m => m.text).join(" ");
+  }
   state.askDukkanci.awaitingReply = false;
   state.askDukkanci.submitting = true;
   render();
