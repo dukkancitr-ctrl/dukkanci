@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, shamgrillStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, dec8Store, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore);
 
 const products = [];
 
@@ -79,7 +79,6 @@ products.push(...albaraaProducts);
 products.push(...hadramoutProducts);
 products.push(...meatmootProducts);
 products.push(...barakaProducts);
-products.push(...shamgrillProducts);
 products.push(...hawamahallProducts);
 products.push(...mandialyemenProducts);
 products.push(...filistinkunefesiProducts);
@@ -88,7 +87,6 @@ products.push(...albarakaProducts);
 products.push(...istanbulchickenProducts);
 products.push(...reyhanProducts);
 products.push(...nahlProducts);
-products.push(...dec8Products);
 products.push(...alahdabProducts);
 products.push(...rumanProducts);
 products.push(...goldenmixProducts);
@@ -206,7 +204,6 @@ const initialDeliverySettings = {
   ...hadramoutDeliverySettings,
   ...meatmootDeliverySettings,
   ...barakaDeliverySettings,
-  ...shamgrillDeliverySettings,
   ...hawamahallDeliverySettings,
   ...mandialyemenDeliverySettings,
   ...filistinkunefesiDeliverySettings,
@@ -215,7 +212,6 @@ const initialDeliverySettings = {
   ...istanbulchickenDeliverySettings,
   ...reyhanDeliverySettings,
   ...nahlDeliverySettings,
-  ...dec8DeliverySettings,
   ...alahdabDeliverySettings,
   ...rumanDeliverySettings,
   ...goldenmixDeliverySettings,
