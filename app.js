@@ -9132,6 +9132,19 @@ function askDukkanciIsRawMeat(normName, normCat) {
   return !ASK_DUKKANCI_COOKED_MARKERS.some(m => text.includes(m));
 }
 
+// Same finished-good-vs-raw-ingredient trap, one more time, for nuts specifically: a market
+// category literally named "المكسرات النيئة" (raw nuts) sells UNROASTED nuts by weight meant for
+// the customer to roast/bake with — not a ready-to-eat snack. In Arabic dialect "تسالي" (nibbles)
+// commonly implies nuts/seeds, so without this a request for evening snacks surfaced raw baking
+// almonds/cashews as if they were a snack mix. On this platform "نيء/نيئة" only ever appears on
+// this exact raw-nuts category (verified against the live catalog), so no cooked-marker override
+// is needed the way meat needs one — there's no "roasted" spelling that would collide.
+const ASK_DUKKANCI_RAW_NUT_MARKERS = ["نيء", "نيئه", "نيئة", "خام"];
+function askDukkanciIsRawNuts(normName, normCat) {
+  const text = normName + " " + normCat;
+  return ASK_DUKKANCI_RAW_NUT_MARKERS.some(m => text.includes(m));
+}
+
 // Short keywords (≤3 chars — very common in Arabic: "رز"=rice, "لحم"... ) are prone to
 // false-positive substring matches inside a completely unrelated LONGER word — "رز" (rice)
 // matched inside "كرز" (cherry), silently pulling cherry jam/candy into a chicken-and-rice
@@ -9179,9 +9192,19 @@ function askDukkanciScoreProduct(normName, normCat, syn, keywords, weight) {
 function askDukkanciScoredCandidates(request, intent) {
   const localPrimary = askDukkanciKeywords(request.message || "");
   const aiKeywords = (intent && Array.isArray(intent.keywords)) ? intent.keywords.map(normalizeAr).filter(Boolean) : [];
-  // Union, not replace — the AI's cleaner fus7a keywords lead matching, but the local
-  // extraction stays as a safety net so a partial/odd AI reply never loses real matches.
-  const primary = aiKeywords.length ? [...new Set([...aiKeywords, ...localPrimary])] : localPrimary;
+  // Trust the AI's keywords EXCLUSIVELY when it produced any — no union with local extraction.
+  // request.message is every USER reply in the conversation joined together (see
+  // submitAskDukkanciChatReply), including short answers to the assistant's own meta-questions
+  // ("تنويع بين عدة أنواع" / "جاهز مباشرة"), which describe a PREFERENCE, not a product. A union
+  // meant any generic word from those replies ("أنواع", "أصناف", ...) could substring-match a
+  // totally unrelated product/category — this surfaced actual incense and laundry detergent for
+  // a snacks request purely because their names contain "أنواع". Patching each new generic word
+  // into a stopword list is whack-a-mole (the assistant's question phrasing varies turn to turn);
+  // the AI's own `keywords` field is already the full, clean understanding of the WHOLE
+  // conversation (it sees the same history), so once it exists it should just win outright. Local
+  // extraction stays as the fallback ONLY when the AI produced nothing at all (gateway down/timed
+  // out) — the one case the "safety net" comment above originally meant.
+  const primary = aiKeywords.length ? aiKeywords : localPrimary;
   const aiSecondaryKeywords = (intent && Array.isArray(intent.secondaryKeywords)) ? intent.secondaryKeywords.map(normalizeAr).filter(Boolean) : [];
   const secondary = [
     ...(request.includeDessert ? ASK_DUKKANCI_DESSERT_KEYWORDS : []),
@@ -9202,7 +9225,7 @@ function askDukkanciScoredCandidates(request, intent) {
   for (const p of pool) {
     const normName = normalizeAr(p.name);
     const normCat = normalizeAr(p.category || "");
-    if (!wantsSupplies && (askDukkanciIsSupplyItem(normName, normCat) || askDukkanciIsRawMeat(normName, normCat))) continue;
+    if (!wantsSupplies && (askDukkanciIsSupplyItem(normName, normCat) || askDukkanciIsRawMeat(normName, normCat) || askDukkanciIsRawNuts(normName, normCat))) continue;
     const syn = productSynonymIndex.get(p.id) || "";
     const primaryScore = askDukkanciScoreProduct(normName, normCat, syn, primary, 1);
     const totalScore = primaryScore + askDukkanciScoreProduct(normName, normCat, syn, secondary, 0.3);
@@ -9343,7 +9366,8 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
           .filter(p => p.storeId === store.id && p.available !== false && !p.priceOnRequest && Number(p.price) > 0)
           .filter(p => {
             const n = normalizeAr(p.name), c = normalizeAr(p.category || "");
-            return !isAddOnItem(p) && !askDukkanciIsSupplyItem(n, c) && (opts.wantsSupplies || !askDukkanciIsRawMeat(n, c));
+            return !isAddOnItem(p) && !askDukkanciIsSupplyItem(n, c) &&
+              (opts.wantsSupplies || (!askDukkanciIsRawMeat(n, c) && !askDukkanciIsRawNuts(n, c)));
           })
           .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0))[0]
         : null;
