@@ -9047,8 +9047,27 @@ const ASK_DUKKANCI_STOPWORDS = new Set([
   // dangerous: "خيار" here means "choice/option" ("افضل خيار" = best choice) — but it is ALSO
   // the literal word for "cucumber", a genuinely common product-name word, so leaving it
   // unfiltered pulled pickled-cucumber products into completely unrelated requests.
-  "عزيمه", "ضعيف", "ضعيفه", "يكون", "اكل", "خيار"
+  "عزيمه", "ضعيف", "ضعيفه", "يكون", "اكل", "خيار",
+  // The clarifying-question flow rolls EVERY user reply into request.message (see
+  // submitAskDukkanciChatReply) so local matching reflects the full conversation, not just a
+  // possibly-vague opener — but that means a reply ANSWERING one of the assistant's own meta
+  // questions (ready-to-eat vs. prepare-yourself, appetite level, single dish vs. variety) gets
+  // parsed for keywords too. None of this vocabulary describes a dish — left unfiltered, "تنويع
+  // بين عدة أصناف" (variety across several dishes) contributed the keyword "اصناف", which matched
+  // a completely unrelated store's generic "الأصناف" ("Items") category label.
+  "تنويع", "بين", "عدة", "عده", "اصناف", "جاهز", "جاهزه", "مباشرة", "مباشره", "تحضير", "بنفسه", "بنفسي",
+  // "انا" (I/me) is a bare personal pronoun that can show up in any free-text reply ("وأنا شخص
+  // أكول" = "and I'm a big eater") — it never describes food, so it must never survive as a
+  // match keyword regardless of which question it happens to answer.
+  "انا"
 ]);
+
+// Real words that happen to start with a letter that's ALSO a common proclitic (و/ل/ب/ك) but
+// are NOT "proclitic + root" — "لحوم" (meats) is not "ل" (for/to) + "حوم" (not a real word).
+// Stripping them produced meaningless fragments that could coincidentally collide with unrelated
+// products elsewhere in the catalog. Checked before any proclitic stripping so these always
+// survive whole.
+const ASK_DUKKANCI_NEVER_STRIP = new Set(["لحوم", "لحمة", "لحم", "لبن", "كباب", "كبدة", "بيض", "بطاطا", "كفتة"]);
 
 // Arabic proclitics (و=and, ل=for/to, ب=with/by, ك=as/like, ال=the) glue onto the next word with
 // no space ("ومقبلات"، "لعزومة", "بميزانية", "الميزانية") — strip a leading one before the
@@ -9056,15 +9075,32 @@ const ASK_DUKKANCI_STOPWORDS = new Set([
 // "عزومة"/"ميزانية" instead of surviving as noise (the definite article alone let a whole class
 // of stopworded nouns back in whenever the visitor phrased them with "ال").
 function askDukkanciKeywords(message) {
-  const words = normalizeAr(message).split(" ").filter(Boolean);
+  const words = normalizeAr(message)
+    .split(" ")
+    // Trailing/leading punctuation ("مباشرة،", "شخص.") survives the space split and then fails
+    // every stopword Set.has() lookup verbatim, since nothing else in this pipeline strips it
+    // before the comparison — strip it here so punctuation never masks a real stopword match.
+    .map(w => w.replace(/^[،,.!؟?؛;:"'ـ]+|[،,.!؟?؛;:"'ـ]+$/g, ""))
+    .filter(Boolean);
   const out = new Set();
   for (let w of words) {
     if (/^\d+$/.test(w) || w.length < 2) continue;
     // Proclitics stack ("والميزانية" = و + الميزانية = "and the budget") — strip the single-
     // letter one first, THEN check again for a now-exposed "ال", instead of only ever stripping
-    // one or the other (an else-if here silently left "الميزانية" glued onto "و").
-    if (/^[ولبك]/.test(w) && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(1);
-    if (/^ال/.test(w) && w.length > 4 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(2);
+    // one or the other (an else-if here silently left "الميزانية" glued onto "و"). Skipped
+    // entirely for ASK_DUKKANCI_NEVER_STRIP words (real words that only LOOK like proclitic+root).
+    if (!ASK_DUKKANCI_NEVER_STRIP.has(w)) {
+      // "لل" is لـ (for) + ال (the) merged in writing — the alif of "ال" drops when preceded by
+      // ل, so "لـ + الأكل" ("for the food") is written "للأكل", not "لالأكل". The generic
+      // single-letter strip below can't see this (it only removes one ل, leaving "لأكل" still
+      // glued together), so this pair is special-cased and checked first.
+      if (/^لل/.test(w) && w.length > 4 && !ASK_DUKKANCI_STOPWORDS.has(w)) {
+        w = w.slice(2);
+      } else {
+        if (/^[ولبك]/.test(w) && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(1);
+        if (/^ال/.test(w) && w.length > 4 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(2);
+      }
+    }
     if (w.length >= 2 && !ASK_DUKKANCI_STOPWORDS.has(w)) out.add(w);
   }
   return [...out];
