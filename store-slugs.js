@@ -90,7 +90,8 @@ const STORE_SLUGS = {
   86: "alnoor-falafel-restaurant",
   87: "feluka-seafood-restaurant",
   88: "fistik-halep-sweets",
-  89: "beit-beyrut-restaurant"
+  89: "beit-beyrut-restaurant",
+  90: "al-wekala-egyptian-market"
 };
 
 // Reverse: slug -> id.
