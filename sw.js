@@ -1,4 +1,4 @@
-const CACHE = "dukkanci-v216";
+const CACHE = "dukkanci-v217";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -35,7 +35,7 @@ const APP_SHELL = [
   "/alnoor-data.js?v=2",
   "/feluka-data.js?v=1",
   "/beitbeyrut-data.js?v=1",
-  "/wekala-data.js?v=1",
+  "/wekala-data.js?v=2",
   "/app.js?v=298",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",

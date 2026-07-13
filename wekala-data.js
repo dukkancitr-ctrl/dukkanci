@@ -13,7 +13,7 @@ const wekalaStore = {
  "category": "سوبر ماركت",
  "image": "/assets/photos/wekala/cover.jpg",
  "coverImage": "/assets/photos/wekala/cover.jpg",
- "logoImage": "/assets/photos/wekala/logo.jpg",
+ "logoImage": "/assets/photos/wekala/logo.png",
  "logo": "و",
  "rating": 0,
  "reviews": 0,
