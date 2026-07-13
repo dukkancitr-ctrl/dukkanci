@@ -9039,18 +9039,32 @@ const ASK_DUKKANCI_STOPWORDS = new Set([
   // signal on their own, and being short (3 letters) they're prone to false-positive substring
   // matches inside unrelated product names (e.g. "طيب" inside "للترطيب" = "for moisturizing", a
   // shampoo). Real food-type words like "حلو"/"مالح" stay unfiltered — only the emptiest fillers.
-  "طيب", "طيبه", "زاكي", "زاكيه"
+  "طيب", "طيبه", "زاكي", "زاكيه",
+  // "عزيمه" is a dialectal spelling variant of the already-stopworded "عزومه" (both = gathering/
+  // invitation) — normalizeAr doesn't unify them. "ضعيف/ضعيفه" describes the BUDGET ("ميزانية
+  // ضعيفة" = tight budget), not a food trait, so it must never itself become a match keyword.
+  // "يكون"/"اكل" are pure filler ("الاكل يكون دجاج" = "the food should be chicken"). Most
+  // dangerous: "خيار" here means "choice/option" ("افضل خيار" = best choice) — but it is ALSO
+  // the literal word for "cucumber", a genuinely common product-name word, so leaving it
+  // unfiltered pulled pickled-cucumber products into completely unrelated requests.
+  "عزيمه", "ضعيف", "ضعيفه", "يكون", "اكل", "خيار"
 ]);
 
-// Arabic proclitics (و=and, ل=for/to, ب=with/by, ك=as/like) glue onto the next word with no
-// space ("ومقبلات"، "لعزومة", "بميزانية") — strip a leading one before the stopword/keyword
-// check so e.g. "لعزومة" resolves to the already-stopworded "عزومة" instead of surviving as noise.
+// Arabic proclitics (و=and, ل=for/to, ب=with/by, ك=as/like, ال=the) glue onto the next word with
+// no space ("ومقبلات"، "لعزومة", "بميزانية", "الميزانية") — strip a leading one before the
+// stopword/keyword check so e.g. "لعزومة"/"الميزانية" resolve to the already-stopworded
+// "عزومة"/"ميزانية" instead of surviving as noise (the definite article alone let a whole class
+// of stopworded nouns back in whenever the visitor phrased them with "ال").
 function askDukkanciKeywords(message) {
   const words = normalizeAr(message).split(" ").filter(Boolean);
   const out = new Set();
   for (let w of words) {
     if (/^\d+$/.test(w) || w.length < 2) continue;
+    // Proclitics stack ("والميزانية" = و + الميزانية = "and the budget") — strip the single-
+    // letter one first, THEN check again for a now-exposed "ال", instead of only ever stripping
+    // one or the other (an else-if here silently left "الميزانية" glued onto "و").
     if (/^[ولبك]/.test(w) && w.length > 3 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(1);
+    if (/^ال/.test(w) && w.length > 4 && !ASK_DUKKANCI_STOPWORDS.has(w)) w = w.slice(2);
     if (w.length >= 2 && !ASK_DUKKANCI_STOPWORDS.has(w)) out.add(w);
   }
   return [...out];
@@ -9078,12 +9092,25 @@ function askDukkanciIsSupplyItem(normName, normCat) {
 // "مشاوي" alone — a butcher labels raw cuts "للمشاوي" ("for the grill", i.e. meant to be grilled
 // at home) using that exact word, which would have wrongly counted as already-cooked; "مشوي"
 // (grilled — past participle, actually describes the item's current state) stays.
-const ASK_DUKKANCI_RAW_MEAT_MARKERS = ["لحم", "لحوم", "لحمة", "دواجن", "ذبائح", "ملحمة"];
+const ASK_DUKKANCI_RAW_MEAT_MARKERS = ["لحم", "لحوم", "لحمة", "دواجن", "ذبائح", "ملحمة", "دجاج", "دجاجة"];
 const ASK_DUKKANCI_COOKED_MARKERS = ["مشوي", "مطبوخ", "جاهز", "مقلي", "طبق", "وجبة", "مشكل", "مقدد", "مدخن"];
 function askDukkanciIsRawMeat(normName, normCat) {
   const text = normName + " " + normCat;
   if (!ASK_DUKKANCI_RAW_MEAT_MARKERS.some(m => text.includes(m))) return false;
   return !ASK_DUKKANCI_COOKED_MARKERS.some(m => text.includes(m));
+}
+
+// Short keywords (≤3 chars — very common in Arabic: "رز"=rice, "لحم"... ) are prone to
+// false-positive substring matches inside a completely unrelated LONGER word — "رز" (rice)
+// matched inside "كرز" (cherry), silently pulling cherry jam/candy into a chicken-and-rice
+// request. A plain .includes() can't tell "رز" the standalone word from "رز" the tail of
+// "كرز" — so short keywords require a real word boundary (start/end of string or a space)
+// on both sides; longer keywords keep substring matching (often deliberately catches
+// compounds, e.g. "مشاوي" inside "للمشاوي").
+function askDukkanciTextHasKeyword(text, kw) {
+  if (!kw) return false;
+  if (kw.length > 3) return text.includes(kw);
+  return new RegExp(`(^|\\s)${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`).test(text);
 }
 
 // Scores one product against a keyword set: a NAME (or dialect-synonym) match is a much
@@ -9092,8 +9119,8 @@ function askDukkanciIsRawMeat(normName, normCat) {
 function askDukkanciScoreProduct(normName, normCat, syn, keywords, weight) {
   let score = 0;
   for (const kw of keywords) {
-    if (normName.includes(kw) || (syn && syn.includes(kw))) score += 3 * weight;
-    else if (normCat.includes(kw)) score += weight;
+    if (askDukkanciTextHasKeyword(normName, kw) || (syn && askDukkanciTextHasKeyword(syn, kw))) score += 3 * weight;
+    else if (askDukkanciTextHasKeyword(normCat, kw)) score += weight;
   }
   return score;
 }
@@ -9170,26 +9197,70 @@ function askDukkanciBasketMatchesAny(items, keywords) {
   });
 }
 
+// A product explicitly sold as one "- وجبة" (meal/portion) is bought ONE per person, full stop
+// — not shared or tapered by basket size. Without this, a 350 ل.ت single-serving meal cleared
+// the same "price ≥ 250 → sizable, divide by 10" threshold meant for family-size dishes, so 8
+// people could get quantity=1 of a meal built for one.
+function askDukkanciIsSinglePortionMeal(product) {
+  const unit = normalizeAr(product.unit || "");
+  const name = normalizeAr(product.name || "");
+  return /^\s*وجبه\s*$/.test(unit) || /-\s*وجبه\s*$/.test(name) || /^\s*وجبه\s+/.test(name);
+}
+
 // No "serves N people" field exists on real products, so quantity is an estimate — and a basket
 // now holds several items at once, so each one's SHARE of the party shrinks with basket size
 // (a gentle sqrt taper, not a hard divide, so a 3-item basket doesn't crash to a third each).
 // A high unit price is treated as the strongest signal that the item is already a bulk/tray
 // format (catering trays, whole cakes, family platters...) regardless of what it's literally
 // named — a name-only check missed products like "آسيه" at 1260 ل.ت that are obviously
-// already sized for a crowd. Always shown to the visitor as an estimate they can adjust from
-// the store page — never presented as an exact fact.
-function askDukkanciQuantity(product, partySize, basketSize) {
+// already sized for a crowd. `appetiteMultiplier` (default 1) scales the human estimate up/down
+// when the visitor described themselves as a big eater vs a light one. Always shown to the
+// visitor as an estimate they can adjust from the store page — never presented as an exact fact.
+function askDukkanciQuantity(product, partySize, basketSize, appetiteMultiplier) {
   const people = Math.max(1, Number(partySize) || 1);
-  const share = people / Math.max(1, Math.sqrt(basketSize || 1));
+  const mult = Number(appetiteMultiplier) || 1;
   const unit = normalizeAr(product.unit || "");
   const name = normalizeAr(product.name || "");
   const price = Number(product.price) || 0;
   const looksBulky = /صينيه|مشكل|بوفيه|طبق كبير|صحن كبير/.test(unit + " " + name);
 
+  if (askDukkanciIsSinglePortionMeal(product) && !looksBulky) return Math.max(1, Math.round(people * mult));
+
+  const share = (people / Math.max(1, Math.sqrt(basketSize || 1))) * mult;
   if (price >= 800 || (looksBulky && price >= 300)) return Math.max(1, Math.ceil(share / 20));  // already a big shared tray/platter
   if (looksBulky || price >= 250) return Math.max(1, Math.ceil(share / 10));                     // sizable but not huge
   if (/كيلو|كغ|kg/i.test(unit)) return Math.max(1, Math.ceil(share * 0.15));                      // weighed, modest per-person share
   return Math.max(1, Math.ceil(share / 2));                                                       // small individual piece/serving
+}
+
+// Strips serving-size/portion qualifiers ("نصف دجاج مشوي مع رز مندي" and "دجاج مشوي مع رز
+// مندي" and "... - كيلو" are the SAME dish at different sizes) so near-duplicate size variants
+// of one dish can be collapsed to a single representative pick — a restaurant menu routinely
+// lists half/whole/kilo/meal-box versions of the exact same item as separate SKUs.
+function askDukkanciDishBaseName(name) {
+  // JS regex \b is defined for ASCII word chars only — it never matches a real boundary inside
+  // Arabic text, so a \b-based pattern here would silently match nothing at all. Match "نصف"/
+  // "ربع"/"كامل" via explicit space-or-string-edge boundaries instead.
+  return normalizeAr(name)
+    .replace(/-\s*(نصف\s*)?(نصف|ربع|كامل|كيلو|كغ|وجبه)\s*$/, "")
+    .replace(/(^|\s)(نصف|ربع|كامل)(?=\s|$)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Keeps only the first (best-scored, since storeCandidates arrives relevance-sorted) item per
+// distinct base dish — otherwise a basket for "دجاج ورز" could fill every slot with half/whole/
+// kilo variants of the literal same dish instead of representing the menu with real variety.
+function askDukkanciDedupeVariants(candidates) {
+  const seen = new Set();
+  const out = [];
+  for (const p of candidates) {
+    const base = askDukkanciDishBaseName(p.name);
+    if (seen.has(base)) continue;
+    seen.add(base);
+    out.push(p);
+  }
+  return out;
 }
 
 // Assemble one single-store basket from `storeCandidates` (already relevance-sorted for this
@@ -9199,7 +9270,7 @@ function askDukkanciQuantity(product, partySize, basketSize) {
 // total as a fabricated number.
 function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
   const basketSize = askDukkanciBasketSize(request.partySize);
-  let chosen = storeCandidates.slice(0, basketSize);
+  let chosen = askDukkanciDedupeVariants(storeCandidates).slice(0, basketSize);
 
   // Compound request (e.g. "غداء اقتصادي مع حلويات"): storeCandidates only ever contains items
   // that matched a keyword, and generic meal words like "غداء" never match a specific product —
@@ -9243,7 +9314,7 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
     }
   }
 
-  const items = chosen.map(product => ({ product, quantity: askDukkanciQuantity(product, request.partySize, chosen.length) }));
+  const items = chosen.map(product => ({ product, quantity: askDukkanciQuantity(product, request.partySize, chosen.length, request.appetiteMultiplier) }));
 
   const missing = [];
   if (request.includeDessert && !askDukkanciBasketMatchesAny(items, ASK_DUKKANCI_DESSERT_KEYWORDS)) missing.push("لا تتوفر حلويات مطابقة في هذا المتجر حالياً");
@@ -9285,7 +9356,12 @@ function askDukkanciBuildBasket(store, storeCandidates, request, opts) {
 // pick when only one store genuinely qualifies — an earlier version always tried to fill all 3
 // slots with distinct stores, which surfaced an irrelevant, wildly-over-budget "option" just to
 // pad the count. Fewer, honest tiers beats padding with a bad one.
+const ASK_DUKKANCI_APPETITE_MULTIPLIERS = { light: 0.8, moderate: 1, hearty: 1.25 };
+
 function askDukkanciBuildOptions(request, intent) {
+  // "أكول" (big eater) vs "معتدل" (moderate) — a human detail the chat can ask about, scaling
+  // every quantity estimate up/down instead of pretending everyone eats the same amount.
+  request = { ...request, appetiteMultiplier: ASK_DUKKANCI_APPETITE_MULTIPLIERS[intent?.appetiteLevel] || 1 };
   const { hasPrimary, primary, wantsSupplies, items: scoredCandidates } = askDukkanciScoredCandidates(request, intent);
   const byStore = new Map(); // storeId -> { store, products, bestScore }, products relevance-sorted
   for (const { product: p, primaryScore } of scoredCandidates) {

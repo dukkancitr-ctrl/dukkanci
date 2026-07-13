@@ -34,11 +34,22 @@ function buildSystemPrompt(catalog, questionsAsked, forceFinal) {
     "",
     "أعد JSON فقط بلا أي شرح ولا تنسيق markdown، بأحد شكلين بالضبط:",
     '1) سؤال توضيحي: {"type":"question","question":"..."}',
-    '2) جاهز للتصنيف: {"type":"ready","keywords":["..."],"secondaryKeywords":["..."],"wantsSupplies":false,"preferredCategories":["..."],"summary":"..."}',
+    '2) جاهز للتصنيف: {"type":"ready","keywords":["..."],"secondaryKeywords":["..."],"wantsSupplies":false,"preferredCategories":["..."],"appetiteLevel":"moderate","summary":"..."}',
     "",
     `اطرح سؤال توضيحي واحد فقط (type=question) إذا كان الوصف غامضاً بشكل حقيقي يمنع تصنيفاً`,
     "مفيداً (مثال: طلب عام جداً كـ\"بدي شي طيب\" بلا أي تلميح عن نوع الطعام أو المناسبة) — وليس",
     "لمجرد نقص تفصيل بسيط يمكن افتراضه بمنطق سليم. سؤال واحد قصير ومباشر، لا سلسلة أسئلة.",
+    "",
+    "لا مانع إطلاقاً من أن يكون هذا السؤال التوضيحي (عند الحاجة الحقيقية) بأحد بُعدين إنسانيين",
+    "بدل نوع الطعام فقط — يجعلان الحوار طبيعياً لا آلياً، ويفيدان تصنيفاً أدق:",
+    "- هل يريد العميل طعاماً جاهزاً للأكل مباشرة أم مكونات/مستلزمات ليحضّره بنفسه؟ (يفيد",
+    "  wantsSupplies) — مفيد خصوصاً عند طلب مكوّن أساسي كـ\"دجاج\"/\"لحم\" دون وضوح إن كان",
+    "  المقصود طبقاً جاهزاً من مطعم أو لحماً نيئاً للطبخ في البيت.",
+    "- هل هو شخص \"أكول\" يحب الكميات الكبيرة أم \"معتدل\" في الأكل؟ (يفيد appetiteLevel) —",
+    "  سؤال بسيط وودود، ليس استجواباً، ويُطرح فقط إذا كان سيغيّر التقدير فعلاً (طلب لعدد أشخاص",
+    "  محدد مثلاً).",
+    "اختر أي بُعد واحد هو الأهم فعلياً لفهم الطلب في اللحظة، ولا تسأل عن أكثر من بُعد واحد في",
+    "نفس السؤال.",
     `${forceFinal || questionsAsked >= MAX_QUESTIONS
       ? `تنبيه إلزامي: طُرح بالفعل ${questionsAsked} سؤال/أسئلة توضيحية على هذا العميل — يُمنع طرح أي سؤال آخر مهما كان الوضع، ويجب إرجاع type=ready الآن مباشرة مستنتجاً الأفضل الممكن من كل ما قيل حتى الآن، حتى لو كانت المعلومات غير كاملة.`
       : `عدد الأسئلة المطروحة سابقاً في هذه المحادثة: ${questionsAsked} (الحد الأقصى ${MAX_QUESTIONS}).`}`,
@@ -70,6 +81,10 @@ function buildSystemPrompt(catalog, questionsAsked, forceFinal) {
     "الأساسية والصنف الثانوي مجرد إضافة عليها — ضع الفئة التي تخدم الوجبة الرئيسية فقط في",
     "preferredCategories (عادة \"مطاعم\") ولا تضع فئة الإضافة إطلاقاً، حتى لو ذُكرت الإضافة",
     "بوضوح؛ اذكر كلمة الإضافة (مثل \"حلويات\") ضمن keywords أو secondaryKeywords فقط.",
+    "",
+    "appetiteLevel: \"light\" إن بدا العميل يفضّل كميات أقل/معتدلة جداً، \"hearty\" إن ذكر أنه",
+    "\"أكول\"/يحب الكميات الكبيرة أو طلب صراحة تقديرات سخية، وإلا \"moderate\" افتراضياً — يُستخدم",
+    "فقط لتحجيم كميات الطلب المقدَّرة، لا علاقة له بالمطابقة.",
     "",
     "summary: جملة عربية واحدة قصيرة (أقل من 25 كلمة) تلخّص فهمك لما يريده العميل بأسلوب ودّي —",
     "لا تذكر فيها اسم منتج أو متجر أو سعر محدد أبداً، فقط وصف عام لنوع الطلب المفهوم."
@@ -103,11 +118,12 @@ function sanitizeTurn(parsed, questionsAsked, forceFinal) {
     ? parsed.preferredCategories.filter(c => KNOWN_CATEGORIES.includes(c))
     : [];
   const summary = String(parsed.summary || "").trim().slice(0, 200);
+  const appetiteLevel = ["light", "moderate", "hearty"].includes(parsed.appetiteLevel) ? parsed.appetiteLevel : "moderate";
   return {
     type: "ready",
     keywords, secondaryKeywords,
     wantsSupplies: parsed.wantsSupplies === true,
-    preferredCategories, summary
+    preferredCategories, appetiteLevel, summary
   };
 }
 
