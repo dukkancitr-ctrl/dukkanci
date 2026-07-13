@@ -9210,12 +9210,19 @@ function askDukkanciIsSinglePortionMeal(product) {
 // No "serves N people" field exists on real products, so quantity is an estimate — and a basket
 // now holds several items at once, so each one's SHARE of the party shrinks with basket size
 // (a gentle sqrt taper, not a hard divide, so a 3-item basket doesn't crash to a third each).
-// A high unit price is treated as the strongest signal that the item is already a bulk/tray
-// format (catering trays, whole cakes, family platters...) regardless of what it's literally
-// named — a name-only check missed products like "آسيه" at 1260 ل.ت that are obviously
-// already sized for a crowd. `appetiteMultiplier` (default 1) scales the human estimate up/down
-// when the visitor described themselves as a big eater vs a light one. Always shown to the
-// visitor as an estimate they can adjust from the store page — never presented as an exact fact.
+// `appetiteMultiplier` (default 1) scales the human estimate up/down when the visitor described
+// themselves as a big eater vs a light one. Always shown to the visitor as an estimate they can
+// adjust from the store page — never presented as an exact fact.
+//
+// A merely-expensive item is NOT reliable evidence it already feeds a crowd: real menu prices in
+// this catalog for a completely ordinary INDIVIDUAL plate (a single "شاورما عربي" plate, a single
+// "دجاج مشوي مع رز") routinely land in the 250-700 ل.ت range — a "price ≥ 250 → one unit already
+// covers ~10 people" rule (the previous behavior) let a single 280 ل.ت shawarma plate get ordered
+// as the ENTIRE order for a 10-person party. Only an EXPLICITLY bulky name (صينية/مشكل/بوفيه/طبق
+// كبير) or a genuinely extreme price (≥800 ل.ت — a name-only check missed real tray-format items
+// like "آسيه" at 1260 ل.ت) is trusted as "one unit feeds many"; everything else defaults to the
+// individual-serving estimate regardless of price, which is the safer failure mode (a few extra
+// plates ordered beats a table of ten sharing one sandwich).
 function askDukkanciQuantity(product, partySize, basketSize, appetiteMultiplier) {
   const people = Math.max(1, Number(partySize) || 1);
   const mult = Number(appetiteMultiplier) || 1;
@@ -9227,10 +9234,9 @@ function askDukkanciQuantity(product, partySize, basketSize, appetiteMultiplier)
   if (askDukkanciIsSinglePortionMeal(product) && !looksBulky) return Math.max(1, Math.round(people * mult));
 
   const share = (people / Math.max(1, Math.sqrt(basketSize || 1))) * mult;
-  if (price >= 800 || (looksBulky && price >= 300)) return Math.max(1, Math.ceil(share / 20));  // already a big shared tray/platter
-  if (looksBulky || price >= 250) return Math.max(1, Math.ceil(share / 10));                     // sizable but not huge
+  if (looksBulky || price >= 800) return Math.max(1, Math.ceil(share / 10));                     // genuinely a shared tray/platter
   if (/كيلو|كغ|kg/i.test(unit)) return Math.max(1, Math.ceil(share * 0.15));                      // weighed, modest per-person share
-  return Math.max(1, Math.ceil(share / 2));                                                       // small individual piece/serving
+  return Math.max(1, Math.ceil(share / 2));                                                       // individual dish/piece, regardless of price
 }
 
 // Strips serving-size/portion qualifiers ("نصف دجاج مشوي مع رز مندي" and "دجاج مشوي مع رز
