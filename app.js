@@ -9408,7 +9408,17 @@ function askDukkanciBuildOptions(request, intent) {
   // ASK_DUKKANCI_MEAL_KEYWORDS above.
   const hasMealIntent = ASK_DUKKANCI_MEAL_KEYWORDS.some(kw => normalizeAr(request.message || "").includes(kw));
   const specialists = rankedStores.filter(s => s.isSpecialist);
-  const rankedPool = (hasPrimary && specialists.length && !hasMealIntent) ? specialists : rankedStores;
+  // The AI's preferredCategories already resolves compound requests correctly on its own (its
+  // system prompt teaches: "غداء اقتصادي مع حلويات" → preferredCategories=["مطاعم"], the MEAL's
+  // own category, never the add-on's) — so once the AI has spoken, trust it as a hard category
+  // restriction regardless of hasMealIntent. Without that trust, a supermarket whose products
+  // happen to literally contain a matched keyword (a plain rice bag matching "رز") could still
+  // outrank real restaurants on price alone. Only the local-only fallback (aiCategories===null, a
+  // much cruder substring check against a small hardcoded whitelist) still needs the hasMealIntent
+  // escape hatch, to avoid wrongly narrowing a compound request down to just the dessert shops.
+  const rankedPool = !hasPrimary || !specialists.length ? rankedStores
+    : aiCategories ? specialists
+    : (hasMealIntent ? rankedStores : specialists);
 
   // With a real description, this ranking IS the relevance order (best match, specialist-
   // boosted, first) — keep a generous but bounded pool of the most on-topic stores before
