@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore);
 
 const products = [];
 
@@ -101,6 +101,7 @@ products.push(...charcochickenProducts);
 products.push(...fatihalkhairProducts);
 products.push(...qalaatalshamProducts);
 products.push(...friyszoneProducts);
+products.push(...zamzamProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -232,7 +233,8 @@ const initialDeliverySettings = {
   ...charcochickenDeliverySettings,
   ...fatihalkhairDeliverySettings,
   ...qalaatalshamDeliverySettings,
-  ...friyszoneDeliverySettings
+  ...friyszoneDeliverySettings,
+  ...zamzamDeliverySettings
 };
 
 function loadCustomerAddresses() {
