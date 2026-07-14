@@ -93,7 +93,8 @@ const STORE_SLUGS = {
   89: "beit-beyrut-restaurant",
   90: "al-wekala-egyptian-market",
   91: "two2bees-honey-mersin",
-  92: "charco-chicken-fatih"
+  92: "charco-chicken-fatih",
+  93: "fatih-alkhair-restaurant"
 };
 
 // Reverse: slug -> id.
