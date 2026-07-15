@@ -1727,7 +1727,7 @@ function openOtpModal(phone) {
     <h2>أدخل رمز التحقق</h2><p>أرسلنا رمزاً عبر واتساب إلى <strong dir="ltr">${escAttr(phone)}</strong></p>
     <form id="otp-form" data-phone="${escAttr(phone)}">
       <label class="input-label"><span>رمز التحقق</span><input name="token" inputmode="numeric" autocomplete="one-time-code" required placeholder="######" dir="ltr" maxlength="8"></label>
-      <button class="secondary-button full compact otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
+      <button class="secondary-button full otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
       <p class="auth-error" id="otp-error" hidden></p>
       <button class="primary-button full large" type="submit">${icon("check")} تأكيد الدخول</button>
     </form>
@@ -1817,7 +1817,7 @@ function openOrderOtpModal(phone, displayPhone) {
     <p>لمنع الطلبات الوهمية، أرسلنا رمزاً من 6 أرقام عبر واتساب إلى <strong dir="ltr">${escAttr(displayPhone || phone)}</strong>. أدخله لتأكيد طلبك.</p>
     <form id="order-otp-form" data-phone="${escAttr(phone)}">
       <label class="input-label"><span>رمز التحقق</span><input name="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="------" dir="ltr" maxlength="6"></label>
-      <button class="secondary-button full compact otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
+      <button class="secondary-button full otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
       <p class="auth-error" id="order-otp-error" hidden></p>
       <button class="primary-button full large" type="submit">${icon("check")} تأكيد وإرسال الطلب</button>
     </form>

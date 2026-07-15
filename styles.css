@@ -7597,6 +7597,7 @@ tr:last-child td {
 }
 
 .otp-paste-button {
+  width: 100%;
   margin-bottom: 14px;
 }
 
