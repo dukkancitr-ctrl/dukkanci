@@ -15,7 +15,7 @@ const beythalepStore = {
  "category": "مطاعم",
  "image": "/assets/photos/beythalep/cover.jpg",
  "coverImage": "/assets/photos/beythalep/cover.jpg",
- "logoImage": "/assets/photos/beythalep/logo.jpg",
+ "logoImage": "/assets/photos/beythalep/logo.png",
  "logo": "ب",
  "rating": 0,
  "reviews": 0,

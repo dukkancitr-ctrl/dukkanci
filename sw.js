@@ -42,7 +42,7 @@ const APP_SHELL = [
   "/qalaatalsham-data.js?v=1",
   "/friyszone-data.js?v=1",
   "/zamzam-data.js?v=1",
-  "/beythalep-data.js?v=1",
+  "/beythalep-data.js?v=2",
   "/app.js?v=307",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
