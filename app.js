@@ -469,7 +469,8 @@ const iconPaths = {
   dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
-  percent: '<circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="M18 6 6 18"/>'
+  percent: '<circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="M18 6 6 18"/>',
+  clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>'
 };
 
 function icon(name, className = "") {
@@ -1685,6 +1686,40 @@ async function sendWhatsappOtp(form) {
   else showErr("تعذّر إرسال الرمز عبر واتساب، تأكد من الرقم وحاول مجدداً.");
 }
 
+// The WhatsApp OTP forces customers to leave the browser tab to read the code,
+// then struggle to switch back — WebOTP/SMS autofill can't help here because the
+// code arrives via WhatsApp, not an SMS the OS can parse. This closes that gap
+// with the Clipboard API instead: once the customer copies the code in WhatsApp
+// (long-press → Copy) and returns to the tab, the code is picked up automatically.
+// A visible "لصق الرمز" button covers browsers/cases where the passive read is
+// blocked without a direct user gesture (mainly iOS Safari).
+function setupOtpAutofill(input, form) {
+  if (!input || !form) return;
+  const expectedLen = input.maxLength > 0 ? input.maxLength : 6;
+  const digitsFrom = txt => (String(txt || "").match(/\d/g) || []).join("");
+  const tryFill = raw => {
+    if (!input.isConnected || input.value) return false; // don't clobber what the customer is already typing
+    const digits = digitsFrom(raw);
+    if (digits.length < 4 || digits.length > expectedLen + 2) return false;
+    input.value = digits.slice(0, expectedLen);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    if (input.value.length >= expectedLen && typeof form.requestSubmit === "function") form.requestSubmit();
+    return true;
+  };
+  const onVisible = () => {
+    if (!input.isConnected) { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); return; }
+    if (document.visibilityState !== "visible" || !navigator.clipboard || !navigator.clipboard.readText) return;
+    navigator.clipboard.readText().then(tryFill).catch(() => {}); // no permission yet — the paste button covers it
+  };
+  input.addEventListener("paste", e => {
+    const txt = (e.clipboardData && e.clipboardData.getData("text")) || "";
+    if (digitsFrom(txt).length >= 4) { e.preventDefault(); tryFill(txt); }
+  });
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("focus", onVisible);
+  onVisible(); // covers the code already being on the clipboard when the modal opens
+}
+
 function openOtpModal(phone) {
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
@@ -1692,11 +1727,13 @@ function openOtpModal(phone) {
     <h2>أدخل رمز التحقق</h2><p>أرسلنا رمزاً عبر واتساب إلى <strong dir="ltr">${escAttr(phone)}</strong></p>
     <form id="otp-form" data-phone="${escAttr(phone)}">
       <label class="input-label"><span>رمز التحقق</span><input name="token" inputmode="numeric" autocomplete="one-time-code" required placeholder="######" dir="ltr" maxlength="8"></label>
+      <button class="secondary-button full compact otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
       <p class="auth-error" id="otp-error" hidden></p>
       <button class="primary-button full large" type="submit">${icon("check")} تأكيد الدخول</button>
     </form>
     <button class="text-button" data-action="resend-otp" data-phone="${escAttr(phone)}">إعادة إرسال الرمز</button>
   `, "auth-modal");
+  setupOtpAutofill(document.querySelector("#otp-form input[name='token']"), document.getElementById("otp-form"));
 }
 
 async function verifyWhatsappOtp(form) {
@@ -1780,11 +1817,13 @@ function openOrderOtpModal(phone, displayPhone) {
     <p>لمنع الطلبات الوهمية، أرسلنا رمزاً من 6 أرقام عبر واتساب إلى <strong dir="ltr">${escAttr(displayPhone || phone)}</strong>. أدخله لتأكيد طلبك.</p>
     <form id="order-otp-form" data-phone="${escAttr(phone)}">
       <label class="input-label"><span>رمز التحقق</span><input name="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="------" dir="ltr" maxlength="6"></label>
+      <button class="secondary-button full compact otp-paste-button" type="button" data-action="paste-otp">${icon("clipboard")} لصق الرمز من واتساب</button>
       <p class="auth-error" id="order-otp-error" hidden></p>
       <button class="primary-button full large" type="submit">${icon("check")} تأكيد وإرسال الطلب</button>
     </form>
     <button class="text-button" data-action="resend-order-otp" data-phone="${escAttr(phone)}">إعادة إرسال الرمز</button>
   `, "auth-modal");
+  setupOtpAutofill(document.querySelector("#order-otp-form input[name='code']"), document.getElementById("order-otp-form"));
 }
 
 async function verifyOrderOtp(form) {
@@ -11950,6 +11989,24 @@ document.addEventListener("click", event => {
       showToast(r && r.ok ? "تم إرسال الرمز مجدداً" : "تعذّر إعادة الإرسال", r && r.ok ? "success" : ""));
   }
   if (action === "resend-order-otp") resendOrderOtp(target.dataset.phone);
+  if (action === "paste-otp") {
+    const form = target.closest("form");
+    const input = form && form.querySelector("input[name='token'], input[name='code']");
+    if (!input) { /* noop */ }
+    else if (!navigator.clipboard || !navigator.clipboard.readText) {
+      showToast("المتصفح لا يدعم اللصق التلقائي، أدخل الرمز يدوياً");
+    } else {
+      navigator.clipboard.readText().then(txt => {
+        const digits = (String(txt || "").match(/\d/g) || []).join("");
+        if (digits.length < 4) { showToast("لا يوجد رمز في الحافظة، انسخه من واتساب أولاً"); return; }
+        const len = input.maxLength > 0 ? input.maxLength : 6;
+        input.value = digits.slice(0, len);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+        if (input.value.length >= len && typeof form.requestSubmit === "function") form.requestSubmit();
+      }).catch(() => showToast("يرجى نسخ الرمز من واتساب أولاً ثم الضغط على الزر"));
+    }
+  }
   if (action === "logout") signOutUser();
   if (action === "join-merchant") openJoinModal();
   if (action === "join-google") {

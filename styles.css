@@ -7596,6 +7596,10 @@ tr:last-child td {
   text-align: center;
 }
 
+.otp-paste-button {
+  margin-bottom: 14px;
+}
+
 .account-button .avatar-mini img {
   width: 100%;
   height: 100%;
