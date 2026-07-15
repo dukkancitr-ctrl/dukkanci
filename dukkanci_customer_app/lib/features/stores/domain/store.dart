@@ -1,0 +1,113 @@
+/// Mirrors the subset of Supabase's `stores` table (and app.js's
+/// `mapDbStore()`) the customer app actually needs. Field names here are
+/// camelCase Dart; `fromJson` maps from the DB's snake_case columns exactly
+/// like the website does, so both clients stay interchangeable against the
+/// same rows.
+class Store {
+  final int id;
+  final String name;
+  final String? slug;
+  final String category;
+  final String? image;
+  final String? coverImage;
+  final String? logoImage;
+  final double rating;
+  final int reviews;
+  final double? deliveryFeePerKm;
+  final double? minOrder;
+  final int? etaMinutes;
+  final double? lat;
+  final double? lng;
+  final bool open;
+  final bool featured;
+  final bool priceOnRequest;
+  final String? description;
+  final String? address;
+  final String? phone;
+  final String? whatsapp;
+  final String? hours;
+  final PaymentMethods paymentMethods;
+  final String approvalStatus;
+
+  const Store({
+    required this.id,
+    required this.name,
+    this.slug,
+    required this.category,
+    this.image,
+    this.coverImage,
+    this.logoImage,
+    this.rating = 0,
+    this.reviews = 0,
+    this.deliveryFeePerKm,
+    this.minOrder,
+    this.etaMinutes,
+    this.lat,
+    this.lng,
+    this.open = true,
+    this.featured = false,
+    this.priceOnRequest = false,
+    this.description,
+    this.address,
+    this.phone,
+    this.whatsapp,
+    this.hours,
+    this.paymentMethods = const PaymentMethods(),
+    this.approvalStatus = 'approved',
+  });
+
+  /// Only stores worth showing to a customer at all — mirrors
+  /// isStoreApproved()/applyPublishingRules() gating on the website: a
+  /// 'pending' or 'rejected' store must never render in lists, even if a
+  /// direct deep-link to it is still reachable for the merchant's own
+  /// preview.
+  bool get isPubliclyVisible => approvalStatus == 'approved' || approvalStatus.isEmpty;
+
+  factory Store.fromJson(Map<String, dynamic> json) {
+    final paymentMethodsJson = json['payment_methods'];
+    return Store(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      slug: json['slug'] as String?,
+      category: json['category'] as String? ?? '',
+      image: json['image'] as String?,
+      coverImage: json['cover_image'] as String?,
+      logoImage: json['logo_image'] as String?,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      deliveryFeePerKm: (json['delivery'] as num?)?.toDouble(),
+      minOrder: (json['min_order'] as num?)?.toDouble(),
+      etaMinutes: (json['time'] as num?)?.toInt(),
+      lat: (json['lat'] as num?)?.toDouble(),
+      lng: (json['lng'] as num?)?.toDouble(),
+      open: json['open'] as bool? ?? true,
+      featured: json['featured'] as bool? ?? false,
+      priceOnRequest: json['price_on_request'] as bool? ?? false,
+      description: json['description'] as String?,
+      address: json['address'] as String?,
+      phone: json['phone'] as String?,
+      whatsapp: json['whatsapp'] as String?,
+      hours: json['hours'] as String?,
+      paymentMethods: paymentMethodsJson is Map
+          ? PaymentMethods.fromJson(Map<String, dynamic>.from(paymentMethodsJson))
+          : const PaymentMethods(),
+      approvalStatus: json['approval_status'] as String? ?? 'approved',
+    );
+  }
+
+  String? get displayImage => coverImage ?? image ?? logoImage;
+}
+
+class PaymentMethods {
+  final bool cash;
+  final bool card;
+  final bool bank;
+
+  const PaymentMethods({this.cash = true, this.card = true, this.bank = true});
+
+  factory PaymentMethods.fromJson(Map<String, dynamic> json) => PaymentMethods(
+        cash: json['cash'] != false,
+        card: json['card'] != false,
+        bank: json['bank'] != false,
+      );
+}
