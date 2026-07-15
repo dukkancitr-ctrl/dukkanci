@@ -97,7 +97,8 @@ const STORE_SLUGS = {
   93: "fatih-alkhair-restaurant",
   94: "qalaat-alsham-restaurant",
   95: "fries-zone-esenyurt",
-  96: "zamzam-market"
+  96: "zamzam-market",
+  97: "beit-halep-aksaray"
 };
 
 // Reverse: slug -> id.

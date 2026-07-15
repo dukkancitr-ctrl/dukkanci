@@ -1,9 +1,9 @@
-const CACHE = "dukkanci-v225";
+const CACHE = "dukkanci-v226";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css?v=173",
-  "/store-slugs.js?v=245",
+  "/store-slugs.js?v=246",
   "/category-slugs.js?v=83",
   "/dalil-regions.js?v=1",
   "/supabase-config.js?v=82",
@@ -42,7 +42,8 @@ const APP_SHELL = [
   "/qalaatalsham-data.js?v=1",
   "/friyszone-data.js?v=1",
   "/zamzam-data.js?v=1",
-  "/app.js?v=306",
+  "/beythalep-data.js?v=1",
+  "/app.js?v=307",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
