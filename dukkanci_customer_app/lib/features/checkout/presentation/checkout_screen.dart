@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../app/providers.dart';
+import '../../../core/auth/auth_repository.dart' show OtpSendResult;
 import '../../../core/errors/failure.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
@@ -72,18 +73,28 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final auth = ref.read(authRepositoryProvider);
     final alreadyVerified = await auth.isPhoneAlreadyVerified(phone);
     if (!alreadyVerified && !_awaitingOtp) {
+      final OtpSendResult result;
       try {
-        await auth.sendOtp(phone);
-        setState(() {
-          _awaitingOtp = true;
-          _submitting = false;
-        });
+        result = await auth.sendOtp(phone);
       } catch (e) {
         setState(() {
           _submitting = false;
           _error = e is Failure ? e.message : AppStrings.somethingWentWrong;
         });
+        return;
       }
+      // WhatsApp itself unavailable → place the order anyway, exactly like
+      // app.js's startCheckoutOtp does (`if (!r || r.soft) { onVerified() }`).
+      // Blocking here would make an outage reject every order in the app
+      // while the website keeps accepting them.
+      if (result == OtpSendResult.skippedWhatsappUnavailable) {
+        await _placeOrder(cart, name: name, phone: phone);
+        return;
+      }
+      setState(() {
+        _awaitingOtp = true;
+        _submitting = false;
+      });
       return;
     }
 

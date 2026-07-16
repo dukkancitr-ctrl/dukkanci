@@ -1,8 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../api/api_client.dart';
 import '../api/supabase_bootstrap.dart';
 import '../cache/secure_storage.dart';
 import '../errors/failure.dart';
+
+/// Outcome of asking the server to send a checkout OTP.
+enum OtpSendResult {
+  /// Code sent — show the OTP field and require it.
+  sent,
+
+  /// WhatsApp itself is unavailable server-side (not configured / transport
+  /// failed). app.js's startCheckoutOtp treats this as "don't block the
+  /// order" and places it WITHOUT an OTP (`if (!r || r.soft) { onVerified() }`).
+  /// The app must mirror that: otherwise a WhatsApp outage would make the
+  /// app refuse every order while the website keeps taking them.
+  skippedWhatsappUnavailable,
+}
 
 /// Phone + OTP auth — but note a real deviation from the generic spec:
 /// Dukkanci delivers the OTP over WHATSAPP (via the same Meta Cloud API
@@ -19,24 +33,40 @@ class AuthRepository {
 
   /// Sends a WhatsApp OTP to [phone] (E.164-ish, digits only, e.g. "905..."),
   /// used for BOTH account login and the checkout anti-fraud gate.
-  Future<void> sendOtp(String phone) async {
-    final res = await _api.post<Map<String, dynamic>>(
-      '/api/notify-order?action=send-order-otp',
-      data: {'phone': phone},
-      parse: (json) => Map<String, dynamic>.from(json as Map),
-    ).catchError((_) => <String, dynamic>{'ok': false});
-    if (res['ok'] != true) {
-      final reason = res['reason'] as String?;
-      throw Failure.fromCode(
-        switch (reason) {
-          'too_soon' => 'TOO_SOON',
-          'rate_limited' => 'RATE_LIMITED',
-          'bad_phone' => 'BAD_PHONE',
-          _ => 'OTP_SEND_FAILED',
-        },
-        fallbackMessage: 'تعذّر إرسال الرمز عبر واتساب، تأكد من الرقم وحاول مجدداً',
+  ///
+  /// Mirrors app.js's startCheckoutOtp semantics exactly:
+  /// - `{ok:true}`           → [OtpSendResult.sent]
+  /// - `{soft:true}` / transport failure → [OtpSendResult.skippedWhatsappUnavailable]
+  ///   (WhatsApp itself is down/unconfigured — the order must still go through)
+  /// - anything else (too_soon / rate_limited / bad_phone) → throws [Failure]
+  ///   (a real, user-fixable problem — blocking is correct here)
+  Future<OtpSendResult> sendOtp(String phone) async {
+    final Map<String, dynamic> res;
+    try {
+      res = await _api.post<Map<String, dynamic>>(
+        '/api/notify-order?action=send-order-otp',
+        data: {'phone': phone},
+        parse: (json) => Map<String, dynamic>.from(json as Map),
       );
+    } catch (e, st) {
+      // app.js: `catch (e) { return { ok: false, soft: true }; }` — a transport
+      // failure here must not block checkout.
+      debugPrint('AuthRepository.sendOtp transport failure (treating as soft): $e\n$st');
+      return OtpSendResult.skippedWhatsappUnavailable;
     }
+    if (res['ok'] == true) return OtpSendResult.sent;
+    if (res['soft'] == true) return OtpSendResult.skippedWhatsappUnavailable;
+
+    final reason = res['reason'] as String?;
+    throw Failure.fromCode(
+      switch (reason) {
+        'too_soon' => 'TOO_SOON',
+        'rate_limited' => 'RATE_LIMITED',
+        'bad_phone' => 'BAD_PHONE',
+        _ => 'OTP_SEND_FAILED',
+      },
+      fallbackMessage: 'تعذّر إرسال الرمز عبر واتساب، تأكد من الرقم وحاول مجدداً',
+    );
   }
 
   /// Verifies a login OTP and exchanges the server-minted token for a real

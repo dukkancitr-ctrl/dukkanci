@@ -19,13 +19,31 @@ class CartScreen extends ConsumerWidget {
     final cart = ref.watch(cartControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.cartTitle)),
+      // The summary bar lives INSIDE the body (Column + Expanded), not in the
+      // Scaffold's bottomNavigationBar slot. That slot lays its child out with
+      // LOOSE constraints (maxHeight = full screen), and this bar's subtree
+      // expanded to fill all of it — a screen-tall white bar over a cream
+      // background that just looked like an empty page, while the body got
+      // squeezed to zero height. No exception was ever thrown, which made it
+      // look like the cart was simply empty. product_screen.dart already uses
+      // this same in-body pattern successfully; keep them consistent.
       body: cart.isEmpty
           ? AppEmptyView(
               message: AppStrings.cartEmpty,
               icon: Icons.shopping_cart_outlined,
               action: OutlinedButton(onPressed: () => context.go(AppRoutes.home), child: const Text('تصفّح المتاجر')),
             )
-          : ListView.separated(
+          : Column(
+              children: [
+                Expanded(child: _itemList(context, ref, cart)),
+                _summaryBar(context, cart),
+              ],
+            ),
+    );
+  }
+
+  Widget _itemList(BuildContext context, WidgetRef ref, CartState cart) {
+    return ListView.separated(
               padding: const EdgeInsets.all(AppSpacing.lg),
               itemCount: cart.items.length,
               separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
@@ -92,10 +110,11 @@ class CartScreen extends ConsumerWidget {
                   ),
                 );
               },
-            ),
-      bottomNavigationBar: cart.isEmpty
-          ? null
-          : DecoratedBox(
+            );
+  }
+
+  Widget _summaryBar(BuildContext context, CartState cart) {
+    return DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.white,
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -4))],
@@ -104,27 +123,34 @@ class CartScreen extends ConsumerWidget {
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpacing.lg),
+                  // Mirrors product_screen.dart's bottom bar, which is proven to
+                  // render: the flexible child is the BUTTON, and the text block
+                  // sizes to its content. Bisected on the emulator — an earlier
+                  // version wrapped the text Column in Expanded instead, and the
+                  // whole bar (and the list above it) silently failed to paint
+                  // with no exception logged.
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('الإجمالي (${cart.itemCount} منتج)', style: AppTextStyles.caption),
-                            Text('${cart.subtotal.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.price),
-                          ],
-                        ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('الإجمالي (${cart.itemCount} منتج)', style: AppTextStyles.caption),
+                          Text('${cart.subtotal.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.price),
+                        ],
                       ),
-                      ElevatedButton(
-                        onPressed: () => context.push(AppRoutes.checkout),
-                        child: const Text(AppStrings.checkoutTitle),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => context.push(AppRoutes.checkout),
+                          child: const Text(AppStrings.checkoutTitle),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
-    );
+            );
   }
 
   Widget _stepperButton(IconData icon, VoidCallback onTap) {

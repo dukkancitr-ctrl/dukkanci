@@ -26,21 +26,22 @@ class CartState {
 /// important cart invariant. Every mutation goes through here so no other
 /// code path can accidentally bypass it.
 class CartController extends Notifier<CartState> {
+  /// Restores the saved cart SYNCHRONOUSLY and returns it as the initial
+  /// state. An earlier version called an async `_restore()` that assigned
+  /// `state` and then returned `const CartState()` — since readCartJson() has
+  /// no await, the assignment ran first and the empty return value clobbered
+  /// it, so a saved cart never came back after an app restart (caught on the
+  /// emulator: add item → kill app → reopen → cart empty).
   @override
   CartState build() {
-    _restore();
-    return const CartState();
+    final raw = _cache.readCartJson();
+    if (raw.isEmpty) return const CartState();
+    final items = raw.map(CartItem.fromJson).toList();
+    if (items.isEmpty) return const CartState();
+    return CartState(storeId: items.first.storeId, items: items);
   }
 
   LocalCache get _cache => ref.read(localCacheProvider);
-
-  Future<void> _restore() async {
-    final raw = _cache.readCartJson();
-    if (raw.isEmpty) return;
-    final items = raw.map(CartItem.fromJson).toList();
-    if (items.isEmpty) return;
-    state = CartState(storeId: items.first.storeId, items: items);
-  }
 
   Future<void> _persist() async {
     await _cache.saveCartJson(state.items.map((i) => i.toJson()).toList());

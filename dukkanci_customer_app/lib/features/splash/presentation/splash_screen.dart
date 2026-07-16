@@ -40,8 +40,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       // flash for 40ms on a fast device — not a fixed network timeout.
       await Future.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
-      final seenOnboarding = widget.localCache.onboardingSeen;
-      context.go(seenOnboarding ? AppRoutes.locationPicker : AppRoutes.onboarding);
+      if (!widget.localCache.onboardingSeen) {
+        context.go(AppRoutes.onboarding);
+        return;
+      }
+      // Returning customer with a location already chosen goes straight to
+      // the feed — only ask for a location when we genuinely don't have one.
+      context.go(widget.localCache.readLocation() != null ? AppRoutes.home : AppRoutes.locationPicker);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }

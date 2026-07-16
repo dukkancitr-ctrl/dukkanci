@@ -15,6 +15,7 @@ class LocalCache {
   static const _kCartJson = 'dk_cart_json';
   static const _kNotificationsEnabled = 'dk_notifications_enabled';
   static const _kFavoriteStoreIds = 'dk_favorite_store_ids';
+  static const _kLocation = 'dk_selected_location';
   static const _kMyOrderIds = 'dk_my_order_ids';
   static const _kAddressesJson = 'dk_addresses_json';
 
@@ -50,6 +51,19 @@ class LocalCache {
 
   Future<void> saveFavoriteStoreIds(Set<int> ids) =>
       _prefs.setStringList(_kFavoriteStoreIds, ids.map((e) => e.toString()).toList());
+
+  /// The customer's chosen delivery location. Persisted so they don't have
+  /// to re-pick their district on every app launch (an in-memory-only
+  /// version did exactly that — caught on the emulator).
+  Future<void> saveLocation({required double lat, required double lng, required String label}) =>
+      _prefs.setString(_kLocation, jsonEncode({'lat': lat, 'lng': lng, 'label': label}));
+
+  Map<String, dynamic>? readLocation() {
+    final raw = _prefs.getString(_kLocation);
+    if (raw == null || raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+  }
 
   /// Order ids this device has placed — mirrors app.js's
   /// `localStorage["dukkanci-my-orders"]` id list, used to safely re-fetch
