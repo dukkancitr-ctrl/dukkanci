@@ -1,25 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/press_scale.dart';
+import '../application/location_controller.dart';
 
 /// Spec section 9: location permission is requested ONLY when the customer
 /// explicitly taps "استخدام موقعي الحالي" — never at app launch — and it is
 /// always WHILE-IN-USE, never background (Geolocator never requests
 /// "always" unless you call the always-specific API, which this screen must
 /// never do).
-class LocationPickerScreen extends StatefulWidget {
+///
+/// The manual district list below matches the exact rollout order from spec
+/// section 41 ("مراحل الإطلاق") — coordinates are approximate district
+/// centroids, not precise addresses; real reverse-geocoding needs a Google
+/// Geocoding key the app doesn't have yet (see README).
+class LocationPickerScreen extends ConsumerStatefulWidget {
   const LocationPickerScreen({super.key});
 
   @override
-  State<LocationPickerScreen> createState() => _LocationPickerScreenState();
+  ConsumerState<LocationPickerScreen> createState() => _LocationPickerScreenState();
 }
 
-class _LocationPickerScreenState extends State<LocationPickerScreen> {
+class _District {
+  final String name;
+  final double lat;
+  final double lng;
+  const _District(this.name, this.lat, this.lng);
+}
+
+const _launchDistricts = [
+  _District('إسنيورت', 41.0148, 28.6779),
+  _District('بيليك دوزو', 40.9903, 28.6414),
+  _District('أفجلار', 40.9793, 28.7212),
+  _District('باشاك شهير', 41.0949, 28.8039),
+  _District('كوتشوك تشكمجة', 41.0000, 28.7833),
+];
+
+class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
   bool _requesting = false;
   String? _error;
+  bool _showDistricts = false;
 
   Future<void> _useCurrentLocation() async {
     setState(() {
@@ -44,10 +70,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
       );
       if (!mounted) return;
-      // TODO(team): reverse-geocode position -> Address via Google Geocoding
-      // (same API the website already uses through /api/maps-key) and pass
-      // it forward instead of just navigating home.
-      debugPrint('Picked location: ${position.latitude}, ${position.longitude}');
+      ref.read(locationControllerProvider.notifier).set(
+            SelectedLocation(lat: position.latitude, lng: position.longitude, label: 'موقعي الحالي'),
+          );
       context.go(AppRoutes.home);
     } catch (e) {
       setState(() => _error = 'تعذّر تحديد موقعك، حاول اختيار المنطقة يدوياً');
@@ -56,10 +81,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  void _chooseManually() {
-    // TODO(team): push a manual area/district picker screen backed by the
-    // same delivery-zone list the backend will eventually expose
-    // (GET /delivery-zones per spec section 26).
+  void _pickDistrict(_District d) {
+    ref.read(locationControllerProvider.notifier).set(SelectedLocation(lat: d.lat, lng: d.lng, label: d.name));
     context.go(AppRoutes.home);
   }
 
@@ -68,32 +91,86 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     return Scaffold(
       backgroundColor: AppColors.cream,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: AnimatedSwitcher(
+          duration: AppMotion.base,
+          child: _showDistricts ? _districtList() : _initialChoice(),
+        ),
+      ),
+    );
+  }
+
+  Widget _initialChoice() {
+    return Padding(
+      key: const ValueKey('choice'),
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: const BoxDecoration(color: AppColors.green50, shape: BoxShape.circle),
+            child: const Icon(Icons.location_on_rounded, size: 56, color: AppColors.green800),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          Text('أين نوصّل طلبك؟', style: AppTextStyles.headline),
+          const SizedBox(height: AppSpacing.sm),
+          Text('حدّد موقعك لعرض المتاجر التي توصل إليك', style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
+          const SizedBox(height: AppSpacing.xl),
+          if (_error != null) ...[
+            Text(_error!, style: const TextStyle(color: AppColors.danger), textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          ElevatedButton.icon(
+            onPressed: _requesting ? null : _useCurrentLocation,
+            icon: _requesting
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.my_location_rounded),
+            label: const Text(AppStrings.useCurrentLocation),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton(onPressed: () => setState(() => _showDistricts = true), child: const Text(AppStrings.chooseAreaManually)),
+        ],
+      ),
+    );
+  }
+
+  Widget _districtList() {
+    return Column(
+      key: const ValueKey('districts'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+          child: Row(
             children: [
-              const Icon(Icons.location_on_rounded, size: 72, color: AppColors.green800),
-              const SizedBox(height: 16),
-              Text('أين نوصّل طلبك؟', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 24),
-              if (_error != null) ...[
-                Text(_error!, style: const TextStyle(color: AppColors.danger), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-              ],
-              ElevatedButton.icon(
-                onPressed: _requesting ? null : _useCurrentLocation,
-                icon: _requesting
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.my_location_rounded),
-                label: const Text(AppStrings.useCurrentLocation),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(onPressed: _chooseManually, child: const Text(AppStrings.chooseAreaManually)),
+              IconButton(onPressed: () => setState(() => _showDistricts = false), icon: const Icon(Icons.arrow_forward_rounded)),
+              const SizedBox(width: AppSpacing.sm),
+              Text('اختر منطقتك', style: AppTextStyles.title),
             ],
           ),
         ),
-      ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            itemCount: _launchDistricts.length,
+            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (context, i) {
+              final d = _launchDistricts[i];
+              return PressScale(
+                onTap: () => _pickDistrict(d),
+                child: Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.location_city_rounded, color: AppColors.green800),
+                    title: Text(d.name, style: AppTextStyles.body),
+                    trailing: const Icon(Icons.chevron_left_rounded, color: AppColors.muted),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

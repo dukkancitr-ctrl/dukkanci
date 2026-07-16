@@ -6,6 +6,11 @@ import '../../../app/providers.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/press_scale.dart';
+import '../../../core/widgets/state_views.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../products/domain/product.dart';
 import '../domain/store.dart';
 
@@ -17,10 +22,9 @@ final storeProductsProvider = FutureProvider.autoDispose.family<List<Product>, i
   return ref.read(storeRepositoryProvider).fetchProductsForStore(storeId);
 });
 
-/// Spec section 12. Product list is grouped by category but does not yet
-/// implement the sticky jump-to-section shelf described there — that's a
-/// straightforward follow-up (CustomScrollView + section keys) once this
-/// base screen is reviewed; kept as a flat grouped list for this first pass.
+/// Spec section 12. Now implements the sticky jump-to-section category
+/// shelf described there — tapping a category chip scrolls its section into
+/// view (spec: "عند اختيار قسم، ينتقل المستخدم مباشرة إلى مكانه داخل الصفحة").
 class StoreScreen extends ConsumerWidget {
   const StoreScreen({super.key, required this.slugOrId});
 
@@ -31,11 +35,11 @@ class StoreScreen extends ConsumerWidget {
     final storeAsync = ref.watch(storeByKeyProvider(slugOrId));
     return Scaffold(
       body: storeAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text(AppStrings.somethingWentWrong)),
+        loading: () => const AppLoadingView(),
+        error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(storeByKeyProvider(slugOrId))),
         data: (store) {
           if (store == null) {
-            return const Center(child: Text('هذا المتجر غير متاح'));
+            return const AppEmptyView(message: 'هذا المتجر غير متاح', icon: Icons.storefront_outlined);
           }
           return _StoreBody(store: store);
         },
@@ -44,98 +48,212 @@ class StoreScreen extends ConsumerWidget {
   }
 }
 
-class _StoreBody extends ConsumerWidget {
+class _StoreBody extends ConsumerStatefulWidget {
   const _StoreBody({required this.store});
 
   final Store store;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_StoreBody> createState() => _StoreBodyState();
+}
+
+class _StoreBodyState extends ConsumerState<_StoreBody> {
+  final _sectionKeys = <String, GlobalKey>{};
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToCategory(String category) {
+    final key = _sectionKeys[category];
+    final ctx = key?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx, duration: AppMotion.base, curve: Curves.easeOut, alignment: 0, alignmentPolicy: ScrollPositionAlignmentPolicy.explicit);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = widget.store;
     final productsAsync = ref.watch(storeProductsProvider(store.id));
     return CustomScrollView(
+      controller: _scrollController,
       slivers: [
         SliverAppBar(
           expandedHeight: 200,
           pinned: true,
+          backgroundColor: AppColors.cream,
           flexibleSpace: FlexibleSpaceBar(
-            title: Text(store.name),
             background: store.displayImage != null
-                ? CachedNetworkImage(imageUrl: store.displayImage!, fit: BoxFit.cover)
+                ? CachedNetworkImage(
+                    imageUrl: store.displayImage!,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => Container(color: AppColors.creamDark),
+                  )
                 : Container(color: AppColors.creamDark),
           ),
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(store.name, style: AppTextStyles.headline),
+                const SizedBox(height: AppSpacing.sm),
                 Row(
                   children: [
-                    Chip(label: Text(store.open ? AppStrings.storeOpenNow : AppStrings.storeClosedNow)),
-                    const SizedBox(width: 8),
-                    if (store.rating > 0) Chip(avatar: const Icon(Icons.star_rounded, size: 16), label: Text(store.rating.toStringAsFixed(1))),
+                    OpenClosedBadge(open: store.open),
+                    const SizedBox(width: AppSpacing.sm),
+                    RatingPill(rating: store.rating, reviews: store.reviews),
                   ],
                 ),
-                const SizedBox(height: 10),
-                if (store.description != null) Text(store.description!),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 6,
-                  children: [
-                    if (store.minOrder != null) Text('${AppStrings.minOrder}: ${store.minOrder!.toStringAsFixed(0)} ${AppStrings.currencySuffix}'),
-                    if (store.deliveryFeePerKm != null) Text('${AppStrings.deliveryFee}: ${store.deliveryFeePerKm!.toStringAsFixed(0)} ${AppStrings.currencySuffix}/كم'),
-                    if (store.hours != null) Text(store.hours!),
-                  ],
+                if (store.description != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(store.description!, style: AppTextStyles.bodyMuted),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(AppRadius.sm), border: Border.all(color: AppColors.line)),
+                  child: Column(
+                    children: [
+                      if (store.minOrder != null) _infoRow(Icons.shopping_basket_rounded, AppStrings.minOrder, '${store.minOrder!.toStringAsFixed(0)} ${AppStrings.currencySuffix}'),
+                      if (store.deliveryFeePerKm != null) _infoRow(Icons.delivery_dining_rounded, AppStrings.deliveryFee, '${store.deliveryFeePerKm!.toStringAsFixed(0)} ${AppStrings.currencySuffix}/كم'),
+                      if (store.etaLabel != null) _infoRow(Icons.access_time_rounded, AppStrings.deliveryTime, store.etaLabel!),
+                      if (store.hours != null) _infoRow(Icons.schedule_rounded, 'ساعات العمل', store.hours!, isLast: true),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
         ),
         productsAsync.when(
-          loading: () => const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))),
-          error: (_, _) => const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(40), child: Center(child: Text(AppStrings.somethingWentWrong)))),
+          loading: () => const SliverFillRemaining(hasScrollBody: false, child: AppLoadingView()),
+          error: (_, _) => SliverFillRemaining(hasScrollBody: false, child: AppErrorView(onRetry: () => ref.invalidate(storeProductsProvider(store.id)))),
           data: (products) {
             if (products.isEmpty) {
-              return const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(40), child: Center(child: Text(AppStrings.noResults))));
+              return const SliverFillRemaining(hasScrollBody: false, child: AppEmptyView(message: AppStrings.noResults, icon: Icons.no_food_rounded));
             }
             final byCategory = <String, List<Product>>{};
             for (final p in products) {
               byCategory.putIfAbsent(p.category ?? 'أخرى', () => []).add(p);
             }
-            return SliverList(
-              delegate: SliverChildListDelegate([
-                for (final entry in byCategory.entries) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text(entry.key, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            for (final key in byCategory.keys) {
+              _sectionKeys.putIfAbsent(key, () => GlobalKey());
+            }
+            return SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _CategoryBarDelegate(
+                    categories: byCategory.keys.toList(),
+                    onTap: _scrollToCategory,
                   ),
-                  for (final product in entry.value)
-                    ListTile(
-                      leading: SizedBox(
-                        width: 56,
-                        height: 56,
-                        child: product.image != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover),
-                              )
-                            : Container(decoration: BoxDecoration(color: AppColors.creamDark, borderRadius: BorderRadius.circular(10))),
+                ),
+                SliverList(
+                  delegate: SliverChildListDelegate([
+                    for (final entry in byCategory.entries) ...[
+                      Padding(
+                        key: _sectionKeys[entry.key],
+                        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+                        child: Text(entry.key, style: AppTextStyles.title),
                       ),
-                      title: Text(product.name),
-                      subtitle: Text(
-                        product.priceOnRequest ? 'السعر عند الطلب' : '${product.price.toStringAsFixed(0)} ${AppStrings.currencySuffix}',
-                      ),
-                      enabled: product.available,
-                      onTap: () => context.push(AppRoutes.productDetailPath(store.slug ?? store.id.toString(), product.id.toString())),
-                    ),
-                ],
-              ]),
+                      for (final product in entry.value)
+                        PressScale(
+                          onTap: () => context.push(AppRoutes.productDetailPath(store.slug ?? store.id.toString(), product.id.toString())),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                            child: Opacity(
+                              opacity: product.available ? 1 : 0.5,
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    child: SizedBox(
+                                      width: 64,
+                                      height: 64,
+                                      child: product.image != null
+                                          ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                                          : Container(color: AppColors.creamDark),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.md),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(product.name, style: AppTextStyles.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          product.priceOnRequest ? 'السعر عند الطلب' : '${product.price.toStringAsFixed(0)} ${AppStrings.currencySuffix}',
+                                          style: AppTextStyles.price.copyWith(fontSize: 15),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!product.available) Text('غير متوفر', style: AppTextStyles.caption.copyWith(color: AppColors.danger)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      const Divider(height: AppSpacing.lg, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                    ],
+                  ]),
+                ),
+              ],
             );
           },
         ),
       ],
     );
   }
+
+  Widget _infoRow(IconData icon, String label, String value, {bool isLast = false}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.sm),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.green800),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: Text(label, style: AppTextStyles.bodyMuted)),
+          Text(value, style: AppTextStyles.label),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryBarDelegate extends SliverPersistentHeaderDelegate {
+  _CategoryBarDelegate({required this.categories, required this.onTap});
+
+  final List<String> categories;
+  final void Function(String) onTap;
+
+  @override
+  double get minExtent => 52;
+  @override
+  double get maxExtent => 52;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return ColoredBox(
+      color: AppColors.cream,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+        itemCount: categories.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, i) => ActionChip(label: Text(categories[i]), onPressed: () => onTap(categories[i])),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _CategoryBarDelegate oldDelegate) => oldDelegate.categories != categories;
 }

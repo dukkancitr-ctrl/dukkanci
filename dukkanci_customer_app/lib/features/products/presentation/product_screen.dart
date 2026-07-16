@@ -3,14 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/state_views.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../cart/domain/cart_item.dart';
 import '../../stores/presentation/store_screen.dart';
 import '../domain/product.dart';
 
-/// Spec section 13. Enforces required option groups before "أضف إلى السلة"
-/// can be pressed, and shows the exact single-store conflict dialog from
-/// spec section 14 when needed.
+/// Spec section 13 + 14. Option groups are single-select radios that always
+/// default to their first value (matches app.js's openProductModal — there
+/// is no "unselected" state), so there is nothing to validate/require before
+/// enabling "أضف إلى السلة"; addons are independent optional checkboxes.
 class ProductScreen extends ConsumerStatefulWidget {
   const ProductScreen({super.key, required this.storeSlugOrId, required this.productId});
 
@@ -23,8 +27,8 @@ class ProductScreen extends ConsumerStatefulWidget {
 
 class _ProductScreenState extends ConsumerState<ProductScreen> {
   int _quantity = 1;
-  final Map<String, String> _selectedOptionPerGroup = {}; // groupId -> choiceId
-  final Set<String> _selectedAddonIds = {};
+  final List<int> _selectedValueIndexPerOption = []; // one entry per product.options[i], defaults to 0
+  final Set<int> _selectedAddonIndexes = {};
   final _notesController = TextEditingController();
 
   @override
@@ -33,46 +37,39 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
     super.dispose();
   }
 
-  bool _canAdd(Product product) {
-    for (final group in product.options) {
-      if (group.required && _selectedOptionPerGroup[group.id] == null) return false;
+  void _ensureOptionDefaults(Product product) {
+    while (_selectedValueIndexPerOption.length < product.options.length) {
+      _selectedValueIndexPerOption.add(0);
     }
-    for (final group in product.addons) {
-      final count = group.choices.where((c) => _selectedAddonIds.contains(c.id)).length;
-      if (count < group.min) return false;
-      if (group.max != null && count > group.max!) return false;
-    }
-    return true;
   }
 
   void _addToCart(Product product) {
-    final storeId = product.storeId;
-    OptionChoice? selectedOption;
-    for (final group in product.options) {
-      final choiceId = _selectedOptionPerGroup[group.id];
-      if (choiceId != null) {
-        selectedOption = group.choices.firstWhere((c) => c.id == choiceId);
-      }
-    }
-    final selectedAddons = <AddonChoice>[
-      for (final group in product.addons) ...group.choices.where((c) => _selectedAddonIds.contains(c.id)),
-    ];
+    _ensureOptionDefaults(product);
     final unitPrice = product.estimatedTotal(
-      selectedOptionId: selectedOption?.id,
-      selectedAddonIds: selectedAddons.map((a) => a.id).toList(),
+      selectedValueIndexPerOption: _selectedValueIndexPerOption,
+      selectedAddonIndexes: _selectedAddonIndexes,
     );
+    final optionLabels = [
+      for (var i = 0; i < product.options.length; i++)
+        if (_selectedValueIndexPerOption[i] < product.options[i].values.length)
+          product.options[i].values[_selectedValueIndexPerOption[i]],
+    ];
+    final addonLabels = [
+      for (var i = 0; i < product.addons.length; i++)
+        if (_selectedAddonIndexes.contains(i)) '+${product.addons[i].name}',
+    ];
 
     final item = CartItem(
       productId: product.id,
-      storeId: storeId,
+      storeId: product.storeId,
       name: product.name,
       image: product.image,
       unitPrice: unitPrice,
       quantity: _quantity,
-      selectedOptionId: selectedOption?.id,
-      selectedOptionLabel: selectedOption?.label,
-      selectedAddonIds: selectedAddons.map((a) => a.id).toList(),
-      selectedAddonLabels: selectedAddons.map((a) => a.label).toList(),
+      selectedOptionId: optionLabels.isEmpty ? null : optionLabels.join('، '),
+      selectedOptionLabel: optionLabels.isEmpty ? null : optionLabels.join('، '),
+      selectedAddonIds: List.generate(addonLabels.length, (i) => i.toString()),
+      selectedAddonLabels: addonLabels,
       notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
     );
 
@@ -82,7 +79,7 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
       return;
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أُضيف إلى السلة')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('أُضيف "${product.name}" إلى السلة')));
       Navigator.of(context).maybePop();
     }
   }
@@ -110,31 +107,33 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final productsAsync = ref.watch(storeByKeyProvider(widget.storeSlugOrId));
+    final storeAsync = ref.watch(storeByKeyProvider(widget.storeSlugOrId));
     return Scaffold(
-      body: productsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text(AppStrings.somethingWentWrong)),
+      appBar: AppBar(backgroundColor: AppColors.cream),
+      extendBodyBehindAppBar: false,
+      body: storeAsync.when(
+        loading: () => const AppLoadingView(),
+        error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(storeByKeyProvider(widget.storeSlugOrId))),
         data: (store) {
-          if (store == null) return const Center(child: Text('غير متاح'));
-          final productsAsync2 = ref.watch(storeProductsProvider(store.id));
-          return productsAsync2.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const Center(child: Text(AppStrings.somethingWentWrong)),
+          if (store == null) return const AppEmptyView(message: 'غير متاح', icon: Icons.error_outline_rounded);
+          final productsAsync = ref.watch(storeProductsProvider(store.id));
+          return productsAsync.when(
+            loading: () => const AppLoadingView(),
+            error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(storeProductsProvider(store.id))),
             data: (products) {
               final matches = products.where((p) => p.id.toString() == widget.productId);
               final product = matches.isEmpty ? null : matches.first;
-              if (product == null) return const Center(child: Text('هذا المنتج غير متاح'));
+              if (product == null) return const AppEmptyView(message: 'هذا المنتج غير متاح', icon: Icons.no_food_rounded);
+              _ensureOptionDefaults(product);
               return _ProductBody(
                 product: product,
                 quantity: _quantity,
-                selectedOptionPerGroup: _selectedOptionPerGroup,
-                selectedAddonIds: _selectedAddonIds,
+                selectedValueIndexPerOption: _selectedValueIndexPerOption,
+                selectedAddonIndexes: _selectedAddonIndexes,
                 notesController: _notesController,
-                canAdd: _canAdd(product),
                 onQuantityChanged: (q) => setState(() => _quantity = q),
-                onOptionSelected: (groupId, choiceId) => setState(() => _selectedOptionPerGroup[groupId] = choiceId),
-                onAddonToggled: (choiceId, selected) => setState(() => selected ? _selectedAddonIds.add(choiceId) : _selectedAddonIds.remove(choiceId)),
+                onOptionSelected: (groupIndex, valueIndex) => setState(() => _selectedValueIndexPerOption[groupIndex] = valueIndex),
+                onAddonToggled: (addonIndex, selected) => setState(() => selected ? _selectedAddonIndexes.add(addonIndex) : _selectedAddonIndexes.remove(addonIndex)),
                 onAdd: () => _addToCart(product),
               );
             },
@@ -149,10 +148,9 @@ class _ProductBody extends StatelessWidget {
   const _ProductBody({
     required this.product,
     required this.quantity,
-    required this.selectedOptionPerGroup,
-    required this.selectedAddonIds,
+    required this.selectedValueIndexPerOption,
+    required this.selectedAddonIndexes,
     required this.notesController,
-    required this.canAdd,
     required this.onQuantityChanged,
     required this.onOptionSelected,
     required this.onAddonToggled,
@@ -161,114 +159,161 @@ class _ProductBody extends StatelessWidget {
 
   final Product product;
   final int quantity;
-  final Map<String, String> selectedOptionPerGroup;
-  final Set<String> selectedAddonIds;
+  final List<int> selectedValueIndexPerOption;
+  final Set<int> selectedAddonIndexes;
   final TextEditingController notesController;
-  final bool canAdd;
   final ValueChanged<int> onQuantityChanged;
-  final void Function(String groupId, String choiceId) onOptionSelected;
-  final void Function(String choiceId, bool selected) onAddonToggled;
+  final void Function(int groupIndex, int valueIndex) onOptionSelected;
+  final void Function(int addonIndex, bool selected) onAddonToggled;
   final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
     final total = product.estimatedTotal(
-      selectedOptionId: selectedOptionPerGroup.values.isEmpty ? null : selectedOptionPerGroup.values.last,
-      selectedAddonIds: selectedAddonIds.toList(),
-    ) * quantity;
+          selectedValueIndexPerOption: selectedValueIndexPerOption,
+          selectedAddonIndexes: selectedAddonIndexes,
+        ) *
+        quantity;
 
     return Column(
       children: [
         Expanded(
           child: ListView(
+            padding: EdgeInsets.zero,
             children: [
-              AspectRatio(
-                aspectRatio: 4 / 3,
-                child: product.image != null
-                    ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover)
-                    : Container(color: AppColors.creamDark),
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppRadius.md)),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: product.image != null
+                      ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                      : Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, size: 48, color: AppColors.line)),
+                ),
               ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(product.name, style: Theme.of(context).textTheme.headlineSmall),
+                    Text(product.name, style: AppTextStyles.headline),
                     if (product.description != null) ...[
-                      const SizedBox(height: 8),
-                      Text(product.description!, style: const TextStyle(color: AppColors.muted)),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(product.description!, style: AppTextStyles.bodyMuted),
                     ],
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     Text(
                       product.priceOnRequest ? 'السعر عند الطلب' : '${product.price.toStringAsFixed(0)} ${AppStrings.currencySuffix}',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.green800),
+                      style: AppTextStyles.priceLarge,
                     ),
                   ],
                 ),
               ),
-              for (final group in product.options)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              for (var groupIndex = 0; groupIndex < product.options.length; groupIndex++)
+                _OptionCard(
+                  title: product.options[groupIndex].name,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${group.name}${group.required ? ' *' : ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ...group.choices.map((choice) => RadioListTile<String>(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(choice.label),
-                            value: choice.id,
-                            groupValue: selectedOptionPerGroup[group.id],
-                            onChanged: (v) => onOptionSelected(group.id, v!),
-                          )),
+                      for (var valueIndex = 0; valueIndex < product.options[groupIndex].values.length; valueIndex++)
+                        RadioListTile<int>(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            product.options[groupIndex].values[valueIndex],
+                            style: AppTextStyles.body,
+                          ),
+                          secondary: product.options[groupIndex].extra[valueIndex] != 0
+                              ? Text(
+                                  '${product.options[groupIndex].extra[valueIndex] > 0 ? '+' : ''}${product.options[groupIndex].extra[valueIndex].toStringAsFixed(0)}',
+                                  style: AppTextStyles.label.copyWith(color: AppColors.green800),
+                                )
+                              : null,
+                          value: valueIndex,
+                          groupValue: groupIndex < selectedValueIndexPerOption.length ? selectedValueIndexPerOption[groupIndex] : 0,
+                          onChanged: (v) => onOptionSelected(groupIndex, v!),
+                        ),
                     ],
                   ),
                 ),
-              for (final group in product.addons)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              if (product.addons.isNotEmpty)
+                _OptionCard(
+                  title: 'إضافات (اختياري)',
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(group.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ...group.choices.map((choice) => CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text('${choice.label}${choice.priceDelta != null && choice.priceDelta! > 0 ? ' (+${choice.priceDelta!.toStringAsFixed(0)})' : ''}'),
-                            value: selectedAddonIds.contains(choice.id),
-                            enabled: choice.available,
-                            onChanged: (v) => onAddonToggled(choice.id, v ?? false),
-                          )),
+                      for (var i = 0; i < product.addons.length; i++)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(product.addons[i].name, style: AppTextStyles.body),
+                          secondary: product.addons[i].price > 0
+                              ? Text('+${product.addons[i].price.toStringAsFixed(0)}', style: AppTextStyles.label.copyWith(color: AppColors.green800))
+                              : null,
+                          value: selectedAddonIndexes.contains(i),
+                          onChanged: (v) => onAddonToggled(i, v ?? false),
+                        ),
                     ],
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
                 child: TextField(
                   controller: notesController,
-                  decoration: const InputDecoration(labelText: 'ملاحظات على المنتج'),
+                  decoration: const InputDecoration(labelText: 'ملاحظات على المنتج', hintText: 'اختياري'),
                   maxLines: 2,
                 ),
               ),
+              const SizedBox(height: AppSpacing.xl),
             ],
           ),
         ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                _QuantityStepper(quantity: quantity, onChanged: onQuantityChanged),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: canAdd && product.available ? onAdd : null,
-                    child: Text('${AppStrings.addToCart} · ${total.toStringAsFixed(0)} ${AppStrings.currencySuffix}'),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -4))],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Row(
+                children: [
+                  _QuantityStepper(quantity: quantity, onChanged: onQuantityChanged),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: product.available ? onAdd : null,
+                      child: Text('${AppStrings.addToCart} · ${total.toStringAsFixed(0)} ${AppStrings.currencySuffix}'),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OptionCard extends StatelessWidget {
+  const _OptionCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTextStyles.titleSmall),
+              child,
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -282,12 +327,12 @@ class _QuantityStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(AppRadius.sm)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(onPressed: quantity > 1 ? () => onChanged(quantity - 1) : null, icon: const Icon(Icons.remove)),
-          Text('$quantity', style: const TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(width: 24, child: Text('$quantity', textAlign: TextAlign.center, style: AppTextStyles.titleSmall)),
           IconButton(onPressed: () => onChanged(quantity + 1), icon: const Icon(Icons.add)),
         ],
       ),

@@ -92,6 +92,10 @@ class AuthRepository {
   Future<bool> isPhoneAlreadyVerified(String phone) async =>
       (await _secureStorage.verifiedPhone) == phone;
 
+  /// The last WhatsApp-verified phone on this device, if any — used to look
+  /// up "طلباتي" (see orders_screen.dart's myOrdersProvider).
+  Future<String?> get verifiedPhone => _secureStorage.verifiedPhone;
+
   Session? get currentSession => supabase.auth.currentSession;
 
   Future<void> signOut() async {

@@ -1,4 +1,12 @@
+import '../../../core/utils/asset_url.dart';
+
 /// Mirrors `mapDbProduct()` in app.js / Supabase's `products` table.
+///
+/// `options`/`addons` shapes below were reverse-engineered from REAL data in
+/// Supabase + app.js's actual rendering code (openProductModal, addToCart),
+/// not guessed — see product_screen.dart for why that mattered (an earlier,
+/// invented {id, choices: [...]} shape didn't match reality and crashed on
+/// the first product with real variants).
 class Product {
   final int id;
   final int storeId;
@@ -13,7 +21,7 @@ class Product {
   final bool featured;
   final String? description;
   final List<OptionGroup> options;
-  final List<AddonGroup> addons;
+  final List<Addon> addons;
 
   const Product({
     required this.id,
@@ -36,7 +44,7 @@ class Product {
         id: json['id'] as int,
         storeId: json['store_id'] as int,
         name: json['name'] as String? ?? '',
-        image: json['image'] as String?,
+        image: resolveAssetUrl(json['image'] as String?),
         price: (json['price'] as num?)?.toDouble() ?? 0,
         oldPrice: (json['old_price'] as num?)?.toDouble(),
         priceOnRequest: json['price_on_request'] as bool? ?? false,
@@ -49,104 +57,58 @@ class Product {
             .map((o) => OptionGroup.fromJson(Map<String, dynamic>.from(o as Map)))
             .toList(),
         addons: ((json['addons'] as List?) ?? [])
-            .map((a) => AddonGroup.fromJson(Map<String, dynamic>.from(a as Map)))
+            .map((a) => Addon.fromJson(Map<String, dynamic>.from(a as Map)))
             .toList(),
       );
 
   /// Server is the source of truth for the final price of a variant/addon
   /// combo — this is a client-side estimate ONLY, always re-validated before
   /// order creation (spec section 14, "يجب إعادة التحقق من الأسعار... قبل
-  /// إنشاء الطلب").
-  double estimatedTotal({String? selectedOptionId, List<String> selectedAddonIds = const []}) {
+  /// إنشاء الطلب"). Matches app.js's own math exactly: price + selected
+  /// option delta + sum of selected addon prices (never an absolute
+  /// replacement price — every option is base+delta, always).
+  double estimatedTotal({List<int?> selectedValueIndexPerOption = const [], Set<int> selectedAddonIndexes = const {}}) {
     var total = price;
-    if (selectedOptionId != null) {
-      for (final group in options) {
-        for (final choice in group.choices) {
-          if (choice.id == selectedOptionId) total = choice.absolutePrice ?? (price + (choice.priceDelta ?? 0));
-        }
-      }
+    for (var i = 0; i < options.length; i++) {
+      final selectedIndex = i < selectedValueIndexPerOption.length ? selectedValueIndexPerOption[i] : null;
+      final index = selectedIndex ?? 0; // app.js defaults the first radio to checked
+      if (index < options[i].extra.length) total += options[i].extra[index];
     }
-    for (final group in addons) {
-      for (final choice in group.choices) {
-        if (selectedAddonIds.contains(choice.id)) total += choice.priceDelta ?? 0;
-      }
+    for (var i = 0; i < addons.length; i++) {
+      if (selectedAddonIndexes.contains(i)) total += addons[i].price;
     }
     return total;
   }
 }
 
-/// A mandatory/optional single-choice group (e.g. "الحجم: صغير/وسط/كبير").
+/// A single-select option group rendered as radio buttons, first value
+/// defaulted to checked (e.g. "الكمية: كيلو / نصف كيلو") — there is no
+/// "optional" variant of this in the real data; a product either has no
+/// options or exactly one always-selected choice per group.
 class OptionGroup {
-  final String id;
   final String name;
-  final bool required;
-  final List<OptionChoice> choices;
+  final List<String> values;
+  final List<double> extra;
 
-  const OptionGroup({required this.id, required this.name, this.required = false, this.choices = const []});
+  const OptionGroup({required this.name, this.values = const [], this.extra = const []});
 
   factory OptionGroup.fromJson(Map<String, dynamic> json) => OptionGroup(
-        id: json['id']?.toString() ?? '',
         name: json['name'] as String? ?? '',
-        required: json['required'] as bool? ?? false,
-        choices: ((json['choices'] as List?) ?? [])
-            .map((c) => OptionChoice.fromJson(Map<String, dynamic>.from(c as Map)))
-            .toList(),
+        values: ((json['values'] as List?) ?? []).map((v) => v.toString()).toList(),
+        extra: ((json['extra'] as List?) ?? []).map((e) => (e as num?)?.toDouble() ?? 0).toList(),
       );
 }
 
-class OptionChoice {
-  final String id;
-  final String label;
-  /// If set, this choice REPLACES the base price (e.g. "كبير" = 180 TRY flat)
-  /// rather than adding a delta — the buyer modal must show this full price,
-  /// not base+delta (see memory: product-variant-price-fix, a real prior bug
-  /// where the modal showed base+delta and double-counted).
-  final double? absolutePrice;
-  final double? priceDelta;
-
-  const OptionChoice({required this.id, required this.label, this.absolutePrice, this.priceDelta});
-
-  factory OptionChoice.fromJson(Map<String, dynamic> json) => OptionChoice(
-        id: json['id']?.toString() ?? '',
-        label: json['label'] as String? ?? '',
-        absolutePrice: (json['price'] as num?)?.toDouble(),
-        priceDelta: (json['delta'] as num?)?.toDouble(),
-      );
-}
-
-/// A multi-select addon group (e.g. "الإضافات") with its own min/max.
-class AddonGroup {
-  final String id;
+/// A single independent checkbox addon (e.g. "جبنة إضافية +20") — addons are
+/// a flat list, NOT grouped; each one is its own optional multi-select item.
+class Addon {
   final String name;
-  final int min;
-  final int? max;
-  final List<AddonChoice> choices;
+  final double price;
 
-  const AddonGroup({required this.id, required this.name, this.min = 0, this.max, this.choices = const []});
+  const Addon({required this.name, this.price = 0});
 
-  factory AddonGroup.fromJson(Map<String, dynamic> json) => AddonGroup(
-        id: json['id']?.toString() ?? '',
+  factory Addon.fromJson(Map<String, dynamic> json) => Addon(
         name: json['name'] as String? ?? '',
-        min: (json['min'] as num?)?.toInt() ?? 0,
-        max: (json['max'] as num?)?.toInt(),
-        choices: ((json['choices'] as List?) ?? [])
-            .map((c) => AddonChoice.fromJson(Map<String, dynamic>.from(c as Map)))
-            .toList(),
-      );
-}
-
-class AddonChoice {
-  final String id;
-  final String label;
-  final double? priceDelta;
-  final bool available;
-
-  const AddonChoice({required this.id, required this.label, this.priceDelta, this.available = true});
-
-  factory AddonChoice.fromJson(Map<String, dynamic> json) => AddonChoice(
-        id: json['id']?.toString() ?? '',
-        label: json['label'] as String? ?? '',
-        priceDelta: (json['delta'] as num?)?.toDouble(),
-        available: json['available'] as bool? ?? true,
+        price: (json['price'] as num?)?.toDouble() ?? 0,
       );
 }

@@ -1,3 +1,5 @@
+import '../../../core/utils/asset_url.dart';
+
 /// Mirrors the subset of Supabase's `stores` table (and app.js's
 /// `mapDbStore()`) the customer app actually needs. Field names here are
 /// camelCase Dart; `fromJson` maps from the DB's snake_case columns exactly
@@ -15,11 +17,16 @@ class Store {
   final int reviews;
   final double? deliveryFeePerKm;
   final double? minOrder;
-  final int? etaMinutes;
+  /// Free-text delivery-time label as stored in Supabase (e.g. "45 - 75
+  /// دقيقة") — NOT a number. `stores.time` is a `text` column on real data,
+  /// already formatted for display; never parse/cast it as numeric.
+  final String? etaLabel;
   final double? lat;
   final double? lng;
   final bool open;
   final bool featured;
+  final bool hasOffer;
+  final String? offer;
   final bool priceOnRequest;
   final String? description;
   final String? address;
@@ -41,11 +48,13 @@ class Store {
     this.reviews = 0,
     this.deliveryFeePerKm,
     this.minOrder,
-    this.etaMinutes,
+    this.etaLabel,
     this.lat,
     this.lng,
     this.open = true,
     this.featured = false,
+    this.hasOffer = false,
+    this.offer,
     this.priceOnRequest = false,
     this.description,
     this.address,
@@ -65,23 +74,26 @@ class Store {
 
   factory Store.fromJson(Map<String, dynamic> json) {
     final paymentMethodsJson = json['payment_methods'];
+    final rawTime = (json['time'] as String?)?.trim();
     return Store(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       slug: json['slug'] as String?,
       category: json['category'] as String? ?? '',
-      image: json['image'] as String?,
-      coverImage: json['cover_image'] as String?,
-      logoImage: json['logo_image'] as String?,
+      image: resolveAssetUrl(json['image'] as String?),
+      coverImage: resolveAssetUrl(json['cover_image'] as String?),
+      logoImage: resolveAssetUrl(json['logo_image'] as String?),
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       deliveryFeePerKm: (json['delivery'] as num?)?.toDouble(),
       minOrder: (json['min_order'] as num?)?.toDouble(),
-      etaMinutes: (json['time'] as num?)?.toInt(),
+      etaLabel: (rawTime == null || rawTime.isEmpty) ? null : rawTime,
       lat: (json['lat'] as num?)?.toDouble(),
       lng: (json['lng'] as num?)?.toDouble(),
       open: json['open'] as bool? ?? true,
       featured: json['featured'] as bool? ?? false,
+      hasOffer: json['has_offer'] as bool? ?? false,
+      offer: json['offer'] as String?,
       priceOnRequest: json['price_on_request'] as bool? ?? false,
       description: json['description'] as String?,
       address: json['address'] as String?,

@@ -79,33 +79,7 @@ class AppStrings {
   static const resendOtp = 'إعادة إرسال الرمز';
   static const verify = 'تحقق';
 
-  // حالات الطلب
-  static String orderStatusLabel(String status) {
-    switch (status) {
-      case 'pending':
-        return 'تم استلام طلبك';
-      case 'accepted':
-        return 'وافق المتجر على الطلب';
-      case 'preparing':
-        return 'يجري تجهيز طلبك';
-      case 'ready':
-        return 'طلبك جاهز';
-      case 'assigned_to_driver':
-        return 'تم تعيين مندوب التوصيل';
-      case 'out_for_delivery':
-        return 'طلبك في الطريق';
-      case 'delivered':
-        return 'تم تسليم الطلب';
-      case 'rejected':
-        return 'تعذر قبول الطلب';
-      case 'cancelled_by_customer':
-        return 'تم إلغاء الطلب من طرفك';
-      case 'cancelled_by_store':
-        return 'ألغى المتجر الطلب';
-      case 'cancelled_by_admin':
-        return 'تم إلغاء الطلب من إدارة دكانجي';
-      default:
-        return status;
-    }
-  }
+  // حالات الطلب — القيم الحقيقية في قاعدة البيانات نصوص عربية جاهزة للعرض
+  // مباشرة (انظر features/checkout/domain/order.dart::OrderStatus)، فلا حاجة
+  // لدالة ترجمة هنا.
 }

@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../app/providers.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/state_views.dart';
 import '../../home/presentation/widgets/store_card.dart';
 import '../../stores/domain/store.dart';
 import '../application/favorites_controller.dart';
@@ -24,23 +26,18 @@ class FavoritesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.navFavorites)),
       body: storesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text(AppStrings.somethingWentWrong)),
+        loading: () => const AppLoadingView(),
+        error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(_favoriteStoresProvider)),
         data: (stores) {
           if (stores.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('لم تُضِف أي متجر إلى المفضلة بعد', textAlign: TextAlign.center),
-              ),
-            );
+            return const AppEmptyView(message: 'لم تُضِف أي متجر إلى المفضلة بعد', icon: Icons.favorite_border_rounded);
           }
           return GridView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
+              mainAxisSpacing: AppSpacing.md,
+              crossAxisSpacing: AppSpacing.md,
               childAspectRatio: 0.72,
             ),
             itemCount: stores.length,

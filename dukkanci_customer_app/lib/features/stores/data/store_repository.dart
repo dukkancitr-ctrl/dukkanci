@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../../../core/api/supabase_bootstrap.dart';
 import '../../../core/errors/failure.dart';
 import '../domain/store.dart';
@@ -17,7 +18,8 @@ class StoreRepository {
           .map((r) => Store.fromJson(Map<String, dynamic>.from(r as Map)))
           .where((s) => s.isPubliclyVisible)
           .toList();
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchApprovedStores failed: $e\n$st');
       throw Failure.network();
     }
   }
@@ -30,7 +32,8 @@ class StoreRepository {
           : await supabase.from('stores').select().eq('slug', slugOrId).maybeSingle();
       if (row == null) return null;
       return Store.fromJson(Map<String, dynamic>.from(row));
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchStoreBySlugOrId failed: $e\n$st');
       throw Failure.network();
     }
   }
@@ -44,7 +47,8 @@ class StoreRepository {
           .eq('available', true)
           .order('id');
       return (rows as List).map((r) => Product.fromJson(Map<String, dynamic>.from(r as Map))).toList();
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchProductsForStore failed: $e\n$st');
       throw Failure.network();
     }
   }
