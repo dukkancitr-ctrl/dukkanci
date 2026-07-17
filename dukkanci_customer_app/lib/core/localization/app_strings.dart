@@ -36,6 +36,10 @@ class AppStrings {
   static const railPopular = 'الأكثر رواجاً';
   static const allStores = 'كل المتاجر';
 
+  // البحث
+  static const searchRecentTitle = 'عمليات بحث سابقة';
+  static const searchClearAll = 'مسح الكل';
+
   // Onboarding
   static const onboarding1Title = 'كل متاجر منطقتك في مكان واحد';
   static const onboarding1Body = 'اكتشف المطاعم والسوبرماركت والملاحم والحلويات القريبة منك.';

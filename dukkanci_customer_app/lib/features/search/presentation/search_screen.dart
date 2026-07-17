@@ -7,14 +7,26 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/distance.dart';
+import '../../../core/widgets/press_scale.dart';
 import '../../../core/widgets/state_views.dart';
+import '../../cart/application/cart_controller.dart' show localCacheProvider;
+import '../../home/domain/home_category.dart';
 import '../../home/presentation/widgets/store_card.dart';
 import '../../location/application/location_controller.dart';
 import '../../stores/domain/store.dart';
 
 enum _Filter { openNow, nearest, topRated, offers }
 
+/// No fresh reference screenshot was sent for this page — the redesign
+/// applies the SAME real-data-only visual language already established on
+/// every other screen this session (bordered pill chips, the shared
+/// [HomeCategory] taxonomy) rather than inventing a new look. The one
+/// genuinely new piece is real, functional "recent searches" (persisted
+/// locally, only on explicit submit — not every debounced keystroke), since
+/// a blank search landing page is worse than showing nothing while also not
+/// being worth fabricating fake "trending searches" data for.
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
@@ -58,6 +70,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 300), () => setState(() => _query = query.trim()));
   }
 
+  void _submitSearch(String query) {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    ref.read(localCacheProvider).addRecentSearch(q);
+    setState(() => _query = q); // also picks up the just-saved recent search on rebuild
+  }
+
+  void _applyRecentSearch(String query) {
+    _controller.text = query;
+    _controller.selection = TextSelection.collapsed(offset: query.length);
+    setState(() => _query = query);
+  }
+
   String _normalizeArabic(String input) => input
       .replaceAll(RegExp('[أإآا]'), 'ا')
       .replaceAll('ة', 'ه')
@@ -99,30 +124,41 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     final hasLocation = ref.watch(locationControllerProvider) != null;
     final results = _filtered;
-    final showingAll = _query.isEmpty && _activeFilters.isEmpty;
+    final showingLanding = _query.isEmpty && _activeFilters.isEmpty;
+    final recentSearches = ref.read(localCacheProvider).recentSearches;
+    final categories = _allStores == null ? const <HomeCategory>[] : HomeCategory.all.where((c) => _allStores!.any(c.matches)).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _controller,
-          autofocus: false,
-          textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            hintText: 'ابحث عن متجر...',
-            prefixIcon: Icon(Icons.search_rounded),
-            filled: false,
-            border: InputBorder.none,
-          ),
-          onChanged: _onChanged,
-        ),
-      ),
+      appBar: AppBar(title: const Text(AppStrings.navSearch)),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
+            child: TextField(
+              controller: _controller,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'ابحث عن متجر...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _controller.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+              ),
+              onChanged: _onChanged,
+              onSubmitted: _submitSearch,
+            ),
+          ),
           SizedBox(
             height: 48,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
               itemCount: _Filter.values.length,
               separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
               itemBuilder: (context, i) {
@@ -153,28 +189,183 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Expanded(
             child: _loading
                 ? const AppLoadingView()
-                : results.isEmpty
-                    ? AppEmptyView(message: showingAll ? 'لا توجد متاجر بعد' : AppStrings.noResults, icon: Icons.search_off_rounded)
-                    : GridView.builder(
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: AppSpacing.md,
-                          crossAxisSpacing: AppSpacing.md,
-                          childAspectRatio: 0.72,
-                        ),
-                        itemCount: results.length,
-                        itemBuilder: (context, i) {
-                          final store = results[i];
-                          return StoreCard(
-                            store: store,
-                            onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
-                          );
+                : showingLanding
+                    ? _SearchLanding(
+                        recentSearches: recentSearches,
+                        categories: categories,
+                        onTapRecent: _applyRecentSearch,
+                        onClearRecent: () async {
+                          await ref.read(localCacheProvider).clearRecentSearches();
+                          setState(() {});
                         },
-                      ),
+                        results: results,
+                      )
+                    : results.isEmpty
+                        ? const AppEmptyView(message: AppStrings.noResults, icon: Icons.search_off_rounded)
+                        : _StoreResultsGrid(stores: results),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StoreResultsGrid extends StatelessWidget {
+  const _StoreResultsGrid({required this.stores});
+
+  final List<Store> stores;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: AppSpacing.md,
+        crossAxisSpacing: AppSpacing.md,
+        childAspectRatio: 0.72,
+      ),
+      itemCount: stores.length,
+      itemBuilder: (context, i) {
+        final store = stores[i];
+        return StoreCard(
+          store: store,
+          onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
+        );
+      },
+    );
+  }
+}
+
+/// The pre-search state: real recent searches (if any) + a category
+/// shortcut strip, followed by the full "browse everything" grid — additive,
+/// not a replacement for the existing browse-all behaviour.
+class _SearchLanding extends StatelessWidget {
+  const _SearchLanding({
+    required this.recentSearches,
+    required this.categories,
+    required this.onTapRecent,
+    required this.onClearRecent,
+    required this.results,
+  });
+
+  final List<String> recentSearches;
+  final List<HomeCategory> categories;
+  final ValueChanged<String> onTapRecent;
+  final VoidCallback onClearRecent;
+  final List<Store> results;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      slivers: [
+        if (recentSearches.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(AppStrings.searchRecentTitle, style: AppTextStyles.titleSmall)),
+                      PressScale(onTap: onClearRecent, child: Text(AppStrings.searchClearAll, style: AppTextStyles.label.copyWith(color: AppColors.green800))),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    children: [
+                      for (final q in recentSearches)
+                        ActionChip(
+                          avatar: const Icon(Icons.history_rounded, size: 16, color: AppColors.muted),
+                          label: Text(q),
+                          onPressed: () => onTapRecent(q),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (categories.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.md),
+              child: Text(AppStrings.sectionCategories, style: AppTextStyles.titleSmall),
+            ),
+          ),
+        if (categories.isNotEmpty)
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                itemCount: categories.length,
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
+                itemBuilder: (context, i) {
+                  final c = categories[i];
+                  return PressScale(
+                    onTap: () => context.push(AppRoutes.categoryPath(c.key)),
+                    child: SizedBox(
+                      width: 68,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: AppColors.green50,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              border: Border.all(color: AppColors.green100),
+                            ),
+                            child: Icon(c.icon, color: AppColors.green800, size: 26),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(c.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.caption.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.md),
+            child: Text(AppStrings.allStores, style: AppTextStyles.titleSmall),
+          ),
+        ),
+        if (results.isEmpty)
+          const SliverFillRemaining(hasScrollBody: false, child: AppEmptyView(message: 'لا توجد متاجر بعد', icon: Icons.storefront_outlined))
+        else
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: AppSpacing.md,
+                crossAxisSpacing: AppSpacing.md,
+                childAspectRatio: 0.72,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final store = results[i];
+                  return StoreCard(
+                    store: store,
+                    onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
+                  );
+                },
+                childCount: results.length,
+              ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
+      ],
     );
   }
 }

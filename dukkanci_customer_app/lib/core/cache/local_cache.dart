@@ -18,6 +18,7 @@ class LocalCache {
   static const _kLocation = 'dk_selected_location';
   static const _kMyOrderIds = 'dk_my_order_ids';
   static const _kAddressesJson = 'dk_addresses_json';
+  static const _kRecentSearches = 'dk_recent_searches';
 
   bool get onboardingSeen => _prefs.getBool(_kOnboardingSeen) ?? false;
   Future<void> setOnboardingSeen() => _prefs.setBool(_kOnboardingSeen, true);
@@ -90,4 +91,18 @@ class LocalCache {
     if (decoded is! List) return [];
     return decoded.cast<Map<String, dynamic>>();
   }
+
+  /// Last few search queries the customer actually submitted (not every
+  /// debounced keystroke) — shown as tappable chips on the search screen's
+  /// empty state, same "move existing entry to front" pattern as [myOrderIds].
+  List<String> get recentSearches => _prefs.getStringList(_kRecentSearches) ?? [];
+
+  Future<void> addRecentSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final next = [q, ...recentSearches.where((e) => e != q)].take(8).toList();
+    await _prefs.setStringList(_kRecentSearches, next);
+  }
+
+  Future<void> clearRecentSearches() => _prefs.remove(_kRecentSearches);
 }
