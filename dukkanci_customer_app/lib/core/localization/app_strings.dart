@@ -129,4 +129,28 @@ class AppStrings {
   // حالات الطلب — القيم الحقيقية في قاعدة البيانات نصوص عربية جاهزة للعرض
   // مباشرة (انظر features/checkout/domain/order.dart::OrderStatus)، فلا حاجة
   // لدالة ترجمة هنا.
+
+  // المفضلة
+  static const favoritesEmpty = 'لم تُضِف أي متجر إلى المفضلة بعد';
+  static const favoritesFilterAll = 'الكل';
+
+  // حسابي
+  static const profileGuestName = 'زائر';
+  static const profileGuestBody = 'سجّل الدخول لحفظ عناوينك وطلباتك';
+  static const profileLogin = 'دخول';
+  static const myAddresses = 'عناويني';
+  static const moreSection = 'المزيد';
+  static const supportAndHelp = 'الدعم والمساعدة';
+  static const termsAndConditions = 'الشروط والأحكام';
+  static const privacyPolicy = 'سياسة الخصوصية';
+  static const aboutApp = 'عن التطبيق';
+  static const logout = 'تسجيل الخروج';
+  static const deleteAccount = 'حذف الحساب';
+  static const appVersionPrefix = 'الإصدار';
+
+  // الدعم والمساعدة
+  static const supportSearchHint = 'ابحث عن مساعدة...';
+  static const supportWhatsappTitle = 'تواصل عبر واتساب';
+  static const supportWhatsappSubtitle = 'أسرع طريقة للحصول على مساعدة';
+  static const supportIssueTypesTitle = 'نوع المشكلة';
 }
