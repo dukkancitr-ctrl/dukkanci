@@ -30,7 +30,12 @@ class CartItem {
   /// A cart "line identity" — same product with the SAME option/addons combo
   /// stacks quantity; a different combo is a separate line, matching the
   /// website's cart behaviour.
-  String get lineKey => [productId, selectedOptionId ?? '', ...selectedAddonIds..sort()].join('|');
+  ///
+  /// Sorts a COPY of selectedAddonIds — sorting the field in place (`...list
+  /// ..sort()`) crashes with "Cannot modify an unmodifiable list" whenever the
+  /// list is the default `const []` (e.g. the store page's quick-add "+" which
+  /// passes no addons), and would also be a surprise side-effect on a getter.
+  String get lineKey => [productId, selectedOptionId ?? '', ...([...selectedAddonIds]..sort())].join('|');
 
   CartItem copyWith({int? quantity}) => CartItem(
         productId: productId,

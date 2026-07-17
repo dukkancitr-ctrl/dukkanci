@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/home_shell.dart';
 import '../../features/cart/presentation/cart_screen.dart';
+import '../../features/category/presentation/category_screen.dart';
 import '../../features/checkout/presentation/checkout_screen.dart';
 import '../../features/favorites/presentation/favorites_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
@@ -64,6 +65,11 @@ GoRouter buildRouter(LocalCache localCache) {
           storeSlugOrId: state.pathParameters['slugOrId']!,
           productId: state.pathParameters['productId']!,
         ),
+      ),
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: AppRoutes.category,
+        builder: (context, state) => CategoryScreen(categoryKey: state.pathParameters['key']!),
       ),
       GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.cart, builder: (c, s) => const CartScreen()),
       GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.checkout, builder: (c, s) => const CheckoutScreen()),

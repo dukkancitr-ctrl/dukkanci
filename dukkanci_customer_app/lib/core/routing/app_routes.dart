@@ -14,6 +14,11 @@ class AppRoutes {
   static const favorites = '/favorites';
   static const profile = '/profile';
 
+  /// A curated store listing: a real category key ("restaurants", "sweets"…)
+  /// or a synthetic one ("offers", "popular", "all"). See CategoryScreen.
+  static const category = '/category/:key';
+  static String categoryPath(String key) => '/category/$key';
+
   static const storeDetail = '/store/:slugOrId';
   static const productDetail = '/store/:slugOrId/product/:productId';
   static const cart = '/cart';

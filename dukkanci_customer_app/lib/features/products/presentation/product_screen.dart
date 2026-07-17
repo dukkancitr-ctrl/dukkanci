@@ -15,6 +15,13 @@ import '../domain/product.dart';
 /// default to their first value (matches app.js's openProductModal — there
 /// is no "unselected" state), so there is nothing to validate/require before
 /// enabling "أضف إلى السلة"; addons are independent optional checkboxes.
+///
+/// Layout modeled on a rich reference (Yemeksepeti-style product sheet) the
+/// user sent: badged option sections ("مطلوب"/"اختياري"), a discount pill on
+/// the price, and a bordered notes box. The reference's "quick preset combo"
+/// and "goes well with" upsell rails are NOT reproduced — we have no preset
+/// combos or per-product upsell data in Supabase, and inventing them would
+/// show the customer options that don't actually exist.
 class ProductScreen extends ConsumerStatefulWidget {
   const ProductScreen({super.key, required this.storeSlugOrId, required this.productId});
 
@@ -109,8 +116,14 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
   Widget build(BuildContext context) {
     final storeAsync = ref.watch(storeByKeyProvider(widget.storeSlugOrId));
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.cream),
-      extendBodyBehindAppBar: false,
+      appBar: AppBar(
+        backgroundColor: AppColors.cream,
+        title: const Text(AppStrings.productDetailsTitle),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+      ),
       body: storeAsync.when(
         loading: () => const AppLoadingView(),
         error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(storeByKeyProvider(widget.storeSlugOrId))),
@@ -167,6 +180,12 @@ class _ProductBody extends StatelessWidget {
   final void Function(int addonIndex, bool selected) onAddonToggled;
   final VoidCallback onAdd;
 
+  String _priceDeltaLabel(double delta) {
+    if (delta == 0) return AppStrings.freeLabel;
+    final sign = delta > 0 ? '+' : '-';
+    return '$sign${delta.abs().toStringAsFixed(0)} ${AppStrings.currencySuffix}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = product.estimatedTotal(
@@ -174,6 +193,8 @@ class _ProductBody extends StatelessWidget {
           selectedAddonIndexes: selectedAddonIndexes,
         ) *
         quantity;
+    final hasDiscount = product.oldPrice != null && product.oldPrice! > product.price;
+    final discountPercent = hasDiscount ? (((product.oldPrice! - product.price) / product.oldPrice!) * 100).round() : 0;
 
     return Column(
       children: [
@@ -181,14 +202,44 @@ class _ProductBody extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppRadius.md)),
-                child: AspectRatio(
-                  aspectRatio: 4 / 3,
-                  child: product.image != null
-                      ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
-                      : Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, size: 48, color: AppColors.line)),
-                ),
+              Stack(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: product.image != null
+                        ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                        : Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, size: 48, color: AppColors.line)),
+                  ),
+                  if (product.featured)
+                    Positioned(
+                      top: AppSpacing.md,
+                      right: AppSpacing.md,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 4),
+                        decoration: BoxDecoration(color: AppColors.orange, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.local_fire_department_rounded, size: 14, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(AppStrings.featuredBadge, style: AppTextStyles.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (!product.available)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                          decoration: BoxDecoration(color: AppColors.ink, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                          child: Text(AppStrings.productUnavailableNotice, style: AppTextStyles.label.copyWith(color: Colors.white)),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
@@ -196,70 +247,75 @@ class _ProductBody extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(product.name, style: AppTextStyles.headline),
-                    if (product.description != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(product.description!, style: AppTextStyles.bodyMuted),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (product.priceOnRequest)
+                      Text(AppStrings.priceOnRequestLabel, style: AppTextStyles.priceLarge)
+                    else
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: AppSpacing.sm,
+                        runSpacing: 4,
+                        children: [
+                          Text('${product.price.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.priceLarge),
+                          if (hasDiscount)
+                            Text(
+                              '${product.oldPrice!.toStringAsFixed(0)} ${AppStrings.currencySuffix}',
+                              style: AppTextStyles.body.copyWith(color: AppColors.muted, decoration: TextDecoration.lineThrough),
+                            ),
+                          if (hasDiscount && discountPercent > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 3),
+                              decoration: BoxDecoration(color: AppColors.orangeSoft, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                              child: Text('خصم $discountPercent%', style: AppTextStyles.caption.copyWith(color: AppColors.orangeDark, fontWeight: FontWeight.w700)),
+                            ),
+                        ],
+                      ),
+                    if (product.description != null && product.description!.trim().isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Text(product.description!.trim(), style: AppTextStyles.bodyMuted),
                     ],
-                    const SizedBox(height: AppSpacing.md),
-                    Text(
-                      product.priceOnRequest ? 'السعر عند الطلب' : '${product.price.toStringAsFixed(0)} ${AppStrings.currencySuffix}',
-                      style: AppTextStyles.priceLarge,
-                    ),
                   ],
                 ),
               ),
               for (var groupIndex = 0; groupIndex < product.options.length; groupIndex++)
-                _OptionCard(
-                  title: product.options[groupIndex].name,
-                  child: Column(
-                    children: [
-                      for (var valueIndex = 0; valueIndex < product.options[groupIndex].values.length; valueIndex++)
-                        RadioListTile<int>(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            product.options[groupIndex].values[valueIndex],
-                            style: AppTextStyles.body,
-                          ),
-                          secondary: product.options[groupIndex].extra[valueIndex] != 0
-                              ? Text(
-                                  '${product.options[groupIndex].extra[valueIndex] > 0 ? '+' : ''}${product.options[groupIndex].extra[valueIndex].toStringAsFixed(0)}',
-                                  style: AppTextStyles.label.copyWith(color: AppColors.green800),
-                                )
-                              : null,
-                          value: valueIndex,
-                          groupValue: groupIndex < selectedValueIndexPerOption.length ? selectedValueIndexPerOption[groupIndex] : 0,
-                          onChanged: (v) => onOptionSelected(groupIndex, v!),
-                        ),
-                    ],
+                _SectionDivider(
+                  child: _OptionSection(
+                    title: product.options[groupIndex].name,
+                    values: product.options[groupIndex].values,
+                    extra: product.options[groupIndex].extra,
+                    selectedIndex: groupIndex < selectedValueIndexPerOption.length ? selectedValueIndexPerOption[groupIndex] : 0,
+                    priceDeltaLabel: _priceDeltaLabel,
+                    onSelected: (v) => onOptionSelected(groupIndex, v),
                   ),
                 ),
               if (product.addons.isNotEmpty)
-                _OptionCard(
-                  title: 'إضافات (اختياري)',
+                _SectionDivider(
+                  child: _AddonSection(
+                    addons: product.addons,
+                    selectedIndexes: selectedAddonIndexes,
+                    priceDeltaLabel: _priceDeltaLabel,
+                    onToggled: onAddonToggled,
+                  ),
+                ),
+              _SectionDivider(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (var i = 0; i < product.addons.length; i++)
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(product.addons[i].name, style: AppTextStyles.body),
-                          secondary: product.addons[i].price > 0
-                              ? Text('+${product.addons[i].price.toStringAsFixed(0)}', style: AppTextStyles.label.copyWith(color: AppColors.green800))
-                              : null,
-                          value: selectedAddonIndexes.contains(i),
-                          onChanged: (v) => onAddonToggled(i, v ?? false),
-                        ),
+                      Text(AppStrings.productNoteLabel, style: AppTextStyles.title),
+                      const SizedBox(height: AppSpacing.sm),
+                      TextField(
+                        controller: notesController,
+                        decoration: const InputDecoration(hintText: AppStrings.productNoteHint),
+                        maxLines: 3,
+                        maxLength: 200,
+                      ),
                     ],
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-                child: TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(labelText: 'ملاحظات على المنتج', hintText: 'اختياري'),
-                  maxLines: 2,
-                ),
               ),
-              const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: AppSpacing.md),
             ],
           ),
         ),
@@ -292,26 +348,190 @@ class _ProductBody extends StatelessWidget {
   }
 }
 
-class _OptionCard extends StatelessWidget {
-  const _OptionCard({required this.title, required this.child});
+/// A hairline divider between product-detail sections, matching the
+/// reference's full-bleed section separators (not a boxed Card like the
+/// previous design).
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider({required this.child});
 
-  final String title;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const Divider(height: 1, thickness: 8, color: AppColors.cream),
+        child,
+      ],
+    );
+  }
+}
+
+/// "مطلوب"/"اختياري" pill next to a section title (spec: every real
+/// [OptionGroup] always has a pre-selected default, so it's accurately
+/// "required" in the sense the customer can't leave it unanswered; addons are
+/// genuinely optional multi-select).
+class _SectionBadge extends StatelessWidget {
+  const _SectionBadge({required this.required});
+
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 4),
+      decoration: BoxDecoration(
+        color: required ? AppColors.ink : AppColors.creamDark,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        required ? AppStrings.requiredBadge : AppStrings.optionalBadge,
+        style: AppTextStyles.caption.copyWith(color: required ? Colors.white : AppColors.muted, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _OptionSection extends StatelessWidget {
+  const _OptionSection({
+    required this.title,
+    required this.values,
+    required this.extra,
+    required this.selectedIndex,
+    required this.priceDeltaLabel,
+    required this.onSelected,
+  });
+
+  final String title;
+  final List<String> values;
+  final List<double> extra;
+  final int selectedIndex;
+  final String Function(double) priceDeltaLabel;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(title, style: AppTextStyles.titleSmall),
-              child,
+              Expanded(child: Text(title, style: AppTextStyles.title)),
+              const SizedBox(width: AppSpacing.sm),
+              const _SectionBadge(required: true),
             ],
           ),
+          const SizedBox(height: 2),
+          Text(AppStrings.chooseOneOnly, style: AppTextStyles.caption),
+          const SizedBox(height: AppSpacing.xs),
+          for (var i = 0; i < values.length; i++)
+            _SelectableRow(
+              label: values[i],
+              trailingLabel: priceDeltaLabel(i < extra.length ? extra[i] : 0),
+              trailingIsFree: (i < extra.length ? extra[i] : 0) == 0,
+              selected: i == selectedIndex,
+              control: Radio<int>(
+                value: i,
+                groupValue: selectedIndex,
+                onChanged: (v) => onSelected(v!),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onTap: () => onSelected(i),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddonSection extends StatelessWidget {
+  const _AddonSection({
+    required this.addons,
+    required this.selectedIndexes,
+    required this.priceDeltaLabel,
+    required this.onToggled,
+  });
+
+  final List<Addon> addons;
+  final Set<int> selectedIndexes;
+  final String Function(double) priceDeltaLabel;
+  final void Function(int index, bool selected) onToggled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(AppStrings.addonsSectionTitle, style: AppTextStyles.title)),
+              const SizedBox(width: AppSpacing.sm),
+              const _SectionBadge(required: false),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(AppStrings.addonsSectionSubtitle, style: AppTextStyles.caption),
+          const SizedBox(height: AppSpacing.xs),
+          for (var i = 0; i < addons.length; i++)
+            _SelectableRow(
+              label: addons[i].name,
+              trailingLabel: priceDeltaLabel(addons[i].price),
+              trailingIsFree: addons[i].price == 0,
+              selected: selectedIndexes.contains(i),
+              control: Checkbox(
+                value: selectedIndexes.contains(i),
+                onChanged: (v) => onToggled(i, v ?? false),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onTap: () => onToggled(i, !selectedIndexes.contains(i)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One tappable option/addon row: control (radio or checkbox) + label +
+/// trailing price delta. Shared by both section types so a radio group and a
+/// checkbox list read as the same visual language.
+class _SelectableRow extends StatelessWidget {
+  const _SelectableRow({
+    required this.label,
+    required this.trailingLabel,
+    required this.trailingIsFree,
+    required this.selected,
+    required this.control,
+    required this.onTap,
+  });
+
+  final String label;
+  final String trailingLabel;
+  final bool trailingIsFree;
+  final bool selected;
+  final Widget control;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        child: Row(
+          children: [
+            control,
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(child: Text(label, style: AppTextStyles.body)),
+            Text(
+              trailingLabel,
+              style: AppTextStyles.label.copyWith(color: trailingIsFree ? AppColors.muted : AppColors.green800),
+            ),
+          ],
         ),
       ),
     );

@@ -22,6 +22,20 @@ class AppStrings {
   static const noInternet = 'لا يوجد اتصال بالإنترنت';
   static const currencySuffix = '₺';
 
+  // الصفحة الرئيسية
+  static const homeSearchHint = 'ابحث عن متجر أو منتج...';
+  static const seeAll = 'عرض الكل';
+  static const setLocation = 'حدّد موقعك';
+  static const heroWelcomeTitle = 'كل ما تحتاجه يوصلك';
+  static const heroWelcomeBody = 'مطاعم وأسواق ومحلات منطقتك في تطبيق واحد';
+  static const heroWelcomeCta = 'تصفّح المتاجر';
+  static const orderNow = 'اطلب الآن';
+  static const offerLabel = 'عرض';
+  static const sectionCategories = 'تصفّح حسب القسم';
+  static const railOffers = 'عروض وخصومات';
+  static const railPopular = 'الأكثر رواجاً';
+  static const allStores = 'كل المتاجر';
+
   // Onboarding
   static const onboarding1Title = 'كل متاجر منطقتك في مكان واحد';
   static const onboarding1Body = 'اكتشف المطاعم والسوبرماركت والملاحم والحلويات القريبة منك.';
@@ -49,9 +63,29 @@ class AppStrings {
   static const minOrder = 'الحد الأدنى للطلب';
   static const deliveryFee = 'رسوم التوصيل';
   static const deliveryTime = 'وقت التوصيل المتوقع';
+  static const storeMenuSearchHint = 'ابحث في القائمة...';
+  static const productUnavailable = 'غير متوفر';
+  static const featuredBadge = 'مميز';
+  static const priceOnRequestLabel = 'السعر عند الطلب';
+  static const viewCart = 'عرض السلة';
+  static const perKm = '/كم';
+  static const workingHours = 'ساعات العمل';
+  static const storeUnavailable = 'هذا المتجر غير متاح';
+
+  // تفاصيل المنتج
+  static const productDetailsTitle = 'تفاصيل المنتج';
+  static const requiredBadge = 'مطلوب';
+  static const optionalBadge = 'اختياري';
+  static const chooseOneOnly = 'اختر خياراً واحداً';
+  static const addonsSectionTitle = 'إضافات';
+  static const addonsSectionSubtitle = 'يمكنك إضافة أكثر من عنصر';
+  static const freeLabel = 'مجاناً';
+  static const productNoteLabel = 'ملاحظات على المنتج';
+  static const productNoteHint = 'أخبرنا إن كان لديك طلب خاص (اختياري)';
+  static const productUnavailableNotice = 'هذا المنتج غير متوفر حالياً';
 
   // السلة
-  static const cartTitle = 'سلتي';
+  static const cartTitle = 'السلة';
   static const cartEmpty = 'سلتك فارغة';
   static const cartConflictTitle = 'تحتوي سلتك على منتجات من متجر آخر';
   static const cartConflictBody =
@@ -59,6 +93,10 @@ class AppStrings {
   static const cartConflictKeep = 'إبقاء السلة الحالية';
   static const cartConflictClear = 'إفراغ السلة والبدء من المتجر الجديد';
   static const addToCart = 'أضف إلى السلة';
+  static const cartAddMoreSubtitle = 'استكشف باقي القائمة';
+  static const cartSubtotal = 'المجموع الفرعي';
+  static const cartDeliveryNote = 'رسوم التوصيل تُحدَّد حسب عنوانك عند إتمام الطلب';
+  static const cartTotal = 'الإجمالي';
 
   // الدفع وتأكيد الطلب
   static const checkoutTitle = 'إتمام الطلب';
@@ -71,6 +109,15 @@ class AppStrings {
   static const placeOrder = 'تأكيد الطلب';
   static const placingOrder = 'جارٍ إرسال الطلب...';
   static const orderPlacedTitle = 'تم إرسال طلبك بنجاح';
+  static const checkoutStepMenu = 'القائمة';
+  static const checkoutStepCart = 'السلة';
+  static const checkoutStepPayment = 'الدفع';
+  static const addressDetailsLabel = 'تفاصيل إضافية (اختياري)';
+  static const addressDetailsHint = 'الدور، رقم الشقة، معلم قريب...';
+  static const leaveAtDoorLabel = 'اترك الطلب عند الباب';
+  static const leaveAtDoorNote = 'سيُبلَّغ المندوب بعدم الحاجة لمقابلتك';
+  static const checkoutDeliveryFeeNote = 'يتواصل معك المتجر عبر واتساب لتأكيد رسوم التوصيل';
+  static const checkoutSubtotal = 'المجموع الفرعي';
 
   // OTP
   static const enterPhone = 'رقم الهاتف';
