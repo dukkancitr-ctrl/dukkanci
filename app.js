@@ -2802,6 +2802,26 @@ function saveStoreExtraCategory(storeId, catName) {
 // same search flow as typing + pressing "ابحث" (see action "quick-chip").
 const QUICK_SEARCH_CHIPS = ["دجاج مشوي", "رز", "لحوم", "حلويات", "خضار", "ماركت عربي"];
 
+// Paid-priority stores — طلب المستخدم 2026-07-18: متاجر دفعت (الخوالي، باشا
+// بيتزريا، ملحمة الدوماني، صفا الشام) يجب أن تظهر في مقدمة قوائم المتاجر
+// وأن تتصدر عروضها أي عروض أخرى على الموقع. الترتيب هنا هو ترتيب الظهور
+// نفسه عند التساوي. لا يُطبَّق على /dalil (دليل التقييمات — ترتيب عضوي بحت
+// حسب تصميمه أصلاً) ولا يتجاوز فرزاً صريحاً اختاره الزائر بنفسه (تقييم/سعر
+// توصيل/الأقرب) في صفحة المتاجر.
+const PAID_PRIORITY_STORE_IDS = [31, 56, 84, 50];
+function paidPriorityRank(storeId) {
+  const idx = PAID_PRIORITY_STORE_IDS.indexOf(storeId);
+  return idx === -1 ? PAID_PRIORITY_STORE_IDS.length : idx;
+}
+// Stable sort: priority stores float to the front in PAID_PRIORITY_STORE_IDS
+// order; everything else keeps its existing relative order.
+function sortStoresByPaidPriority(list) {
+  return list.slice().sort((a, b) => paidPriorityRank(a.id) - paidPriorityRank(b.id));
+}
+function sortProductsByPaidPriority(list) {
+  return list.slice().sort((a, b) => paidPriorityRank(a.storeId) - paidPriorityRank(b.storeId));
+}
+
 // A sensible cross-store mix when there's no curated pick: one available,
 // imaged product per approved BRAND (highest-rated stores first) — branches of
 // the same brand are collapsed first so a multi-branch chain doesn't fill the
@@ -2934,7 +2954,10 @@ function renderHome() {
   // When the visitor's location is known, show the nearest featured stores first
   // so "متاجر قريبة منك الآن" is literally true.
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
-  const offerProducts = products.filter(product => product.oldPrice && product.available).slice(0, 8);
+  // Paid-priority stores float to the front regardless of distance — see
+  // PAID_PRIORITY_STORE_IDS above.
+  featuredStores = sortStoresByPaidPriority(featuredStores);
+  const offerProducts = sortProductsByPaidPriority(products.filter(product => product.oldPrice && product.available)).slice(0, 8);
   const mostOrdered = mostOrderedProducts();
   const recommended = recommendedProducts(mostOrdered.map(p => p.id));
   // Real, not fabricated — a plain count of currently-open approved stores.
@@ -3282,6 +3305,10 @@ function getFilteredStores() {
     // genuinely nearest stores (open ones first) instead of the bundled order.
     result.sort((a, b) => Number(isStoreOpenNow(b)) - Number(isStoreOpenNow(a)) || compareStoresByDistance(a, b));
   }
+  // Paid-priority stores lead the default "recommended" view (no explicit
+  // sort chosen by the visitor); an explicit sort choice (rating/delivery/
+  // distance/open/offers) is respected as-is and not overridden.
+  if (!state.storeSort || state.storeSort === "recommended") result = sortStoresByPaidPriority(result);
   return result;
 }
 
@@ -3366,7 +3393,11 @@ function renderOffers() {
   // stable order across visits — only the product grid itself is shuffled.
   const baseOfferProducts = products.filter(product => product.oldPrice && product.available);
   const offerCategories = [...new Set(baseOfferProducts.map(product => (getStore(product.storeId) || {}).category).filter(Boolean))];
-  const allOfferProducts = seededShuffle(baseOfferProducts, state._offersSeed);
+  // Paid-priority stores' offers lead the grid (in PAID_PRIORITY_STORE_IDS
+  // order), before everything else — only the remainder is shuffled per visit.
+  const priorityOfferProducts = sortProductsByPaidPriority(baseOfferProducts.filter(product => paidPriorityRank(product.storeId) < PAID_PRIORITY_STORE_IDS.length));
+  const restOfferProducts = baseOfferProducts.filter(product => paidPriorityRank(product.storeId) >= PAID_PRIORITY_STORE_IDS.length);
+  const allOfferProducts = [...priorityOfferProducts, ...seededShuffle(restOfferProducts, state._offersSeed)];
   const activeOffersCategory = offerCategories.includes(state.offersCategory) ? state.offersCategory : "الكل";
   const offerProducts = activeOffersCategory === "الكل"
     ? allOfferProducts
@@ -9873,7 +9904,7 @@ function renderCategoryPage(slug) {
   if (!catText) {
     return `<section class="section empty-page">${renderEmpty("الفئة غير موجودة", "تصفح كل المتاجر بدلاً من ذلك.", "تصفح المتاجر", "stores")}</section>`;
   }
-  const catStores = collapseBranchGroups(stores.filter(s => storeMatchesCategory(s, catText) && isStoreApproved(s)));
+  const catStores = sortStoresByPaidPriority(collapseBranchGroups(stores.filter(s => storeMatchesCategory(s, catText) && isStoreApproved(s))));
   const storeIds = new Set(catStores.map(s => s.id));
   const catProducts = products.filter(p => storeIds.has(p.storeId) && p.available !== false).slice(0, 40);
   const merchantNoun = CATEGORY_MERCHANT_PITCH[catText] || "متجرك";
