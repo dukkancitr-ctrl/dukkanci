@@ -3498,6 +3498,157 @@ function renderOffers() {
   `;
 }
 
+// ---- Store-page category organizer (display layer only — never mutates product.category
+// or writes anything back to Supabase; see "تعليمة تنظيم تصنيفات المتاجر"). Groups a store's
+// raw merchant-typed product.category strings into an ordered, deduped, non-empty set of
+// display buckets: known synonyms of the same category collapse together, and tiny
+// (<=2 product) one-off categories fold into a related bucket via a curated keyword list —
+// or land in "تصنيفات أخرى" when no confident match exists. "العروض"/"الأكثر طلباً" are
+// handled separately as dedicated sliders (storeOfferProducts/storePopularProducts below),
+// not as pills, so they're intentionally excluded from these order lists.
+const RESTAURANT_CATEGORY_ORDER = [
+  "وجبات الإفطار", "الشوربات", "السلطات", "المقبلات الباردة", "المقبلات الساخنة", "المقبلات",
+  "الأطباق الرئيسية", "المشاوي", "البرغر", "الشاورما", "السندويشات", "البيتزا",
+  "المناقيش والمعجنات", "الأرز والمعكرونة", "الوجبات الفردية", "الوجبات العائلية", "وجبات الأطفال",
+  "الأطباق الجانبية", "الإضافات والصوصات", "الحلويات", "المشروبات الساخنة", "العصائر والكوكتيلات",
+  "المشروبات الباردة", "المشروبات الغازية والمياه"
+];
+const SUPERMARKET_CATEGORY_ORDER = [
+  "وصل حديثاً", "الخضروات والفواكه", "اللحوم والدواجن", "الأسماك والمأكولات البحرية", "الألبان والأجبان",
+  "البيض", "المخبوزات والخبز", "المواد الغذائية الأساسية", "الأرز والحبوب", "البقوليات",
+  "المعكرونة والشعيرية", "الطحين ومستلزمات الخَبز", "الزيوت والسمن", "السكر والملح", "المعلبات",
+  "الصلصات ومعجون الطماطم", "التوابل والبهارات", "المخللات والزيتون", "منتجات الإفطار", "العسل والمربى",
+  "الشوكولاتة والحلويات", "البسكويت والكيك", "الشيبس والمقرمشات", "المكسرات والفواكه المجففة", "المجمدات",
+  "الوجبات الجاهزة", "المياه", "المشروبات الغازية", "العصائر", "الشاي والقهوة", "مشروبات الطاقة",
+  "حليب الأطفال وأغذية الأطفال", "العناية الشخصية", "العناية بالشعر والجسم", "المناديل والمنتجات الورقية",
+  "المنظفات المنزلية", "مستلزمات المطبخ", "مستلزمات المنزل", "منتجات الحيوانات الأليفة", "تصنيفات موسمية"
+];
+// Loose match key: trims, drops Arabic diacritics/tatweel, and strips a leading "ال" from
+// EACH word (not just the first) so "المشروبات"/"مشروبات" or "المقبلات الباردة"/"مقبلات باردة"
+// collapse to the same key without needing an explicit alias for every "ال" variant.
+function normalizeCategoryKey(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/[ـً-ٟ]/g, "")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(w => (w.length > 2 && w.startsWith("ال") ? w.slice(2) : w))
+    .join(" ");
+}
+function buildCategoryAliasMap(orderList, extraSynonyms) {
+  const map = {};
+  orderList.forEach(name => { map[normalizeCategoryKey(name)] = name; });
+  Object.keys(extraSynonyms).forEach(k => { map[normalizeCategoryKey(k)] = extraSynonyms[k]; });
+  return map;
+}
+// Explicit synonym examples from the spec (section "رابعاً: منع التصنيفات المكررة") beyond
+// what the "ال"-stripping above already unifies on its own.
+const RESTAURANT_CATEGORY_ALIASES = buildCategoryAliasMap(RESTAURANT_CATEGORY_ORDER, {
+  "مشروب": "المشروبات الباردة",
+  "الحلو": "الحلويات",
+  "قسم الحلويات": "الحلويات",
+  "عصير طبيعي": "العصائر والكوكتيلات",
+  "عصائر طازجة": "العصائر والكوكتيلات",
+  "عصائر": "العصائر والكوكتيلات",
+  "أنواع السلطات": "السلطات",
+  "السلطة": "السلطات",
+  "مقبلات متنوعة": "المقبلات"
+});
+const SUPERMARKET_CATEGORY_ALIASES = buildCategoryAliasMap(SUPERMARKET_CATEGORY_ORDER, {
+  "صلصات": "الصلصات ومعجون الطماطم",
+  "طحينة": "الصلصات ومعجون الطماطم"
+});
+// Small (<=2 product) categories that don't match an official name outright get one more
+// chance via these keyword lists before falling into "تصنيفات أخرى" (spec section
+// "رابعاً"/"سادساً"). Never applied to a category that already resolved to an official name —
+// official categories are never auto-merged away just for being small.
+const RESTAURANT_MERGE_TARGETS = [
+  { target: "المقبلات الباردة", keywords: ["حمص", "متبل", "لبنة", "ورق عنب", "بابا غنوج"] },
+  { target: "المقبلات الساخنة", keywords: ["كبة مقلية", "كبة", "سمبوسك", "أصابع جبن", "بطاطا مقلية", "بطاطا"] },
+  { target: "الإضافات والصوصات", keywords: ["كاتشب", "مايونيز", "ثوم", "خبز إضافي", "صوص"] },
+  { target: "الأطباق الجانبية", keywords: ["أرز جانبي", "خضار مشكل", "برغل"] },
+  { target: "المشروبات الباردة", keywords: ["مياه", "عيران", "كولا", "مشروب غازي", "مشروبات غازية"] },
+  { target: "المشروبات الساخنة", keywords: ["قهوة", "شاي", "نسكافيه"] },
+  { target: "الحلويات", keywords: ["كنافة", "بقلاوة", "كيك", "مهلبية"] }
+];
+const SUPERMARKET_MERGE_TARGETS = [
+  { target: "البقوليات", keywords: ["عدس", "حمص", "فاصولياء", "فاصوليا"] },
+  { target: "الأرز والحبوب", keywords: ["أرز مصري", "أرز بسمتي", "برغل", "أرز"] },
+  { target: "الزيوت والسمن", keywords: ["زيت دوار الشمس", "زيت زيتون", "سمن", "زيت"] },
+  { target: "السكر والملح", keywords: ["سكر", "ملح"] },
+  { target: "الصلصات ومعجون الطماطم", keywords: ["كاتشب", "مايونيز", "دبس رمان", "طحينة", "صلصة"] },
+  { target: "العسل والمربى", keywords: ["مربى", "عسل", "دبس"] },
+  { target: "العناية الشخصية", keywords: ["شامبو", "صابون", "مزيل عرق"] },
+  { target: "المنظفات المنزلية", keywords: ["مسحوق غسيل", "سائل جلي", "منظف أرضيات", "منظف"] },
+  { target: "المناديل والمنتجات الورقية", keywords: ["محارم", "ورق تواليت", "مناديل مطبخ", "مناديل"] }
+];
+// Returns an ordered array of { label, rawCategories:[...], products:[...] } — one entry per
+// non-empty display category, built purely from `allStoreProducts` already passed to this
+// render (which already went through applyPublishingRules upstream). Nothing here is
+// persisted; it's recomputed fresh on every render.
+function buildStoreCategoryPlan(store, allStoreProducts) {
+  const isRestaurant = store && store.category === "مطاعم";
+  const isSupermarket = store && store.category === "سوبر ماركت";
+  const orderList = isRestaurant ? RESTAURANT_CATEGORY_ORDER : isSupermarket ? SUPERMARKET_CATEGORY_ORDER : null;
+
+  const rawGroups = new Map(); // trimmed raw category -> products[]
+  allStoreProducts.forEach(product => {
+    const raw = String(product.category || "").trim();
+    if (!rawGroups.has(raw)) rawGroups.set(raw, []);
+    rawGroups.get(raw).push(product);
+  });
+
+  if (!orderList) {
+    // Store types outside "مطاعم"/"سوبر ماركت" (حلويات، ملاحم، عصائر...) keep the original
+    // behaviour: one bucket per distinct raw category, first-appearance order.
+    return [...rawGroups.entries()].map(([label, prods]) => ({ label, rawCategories: [label], products: prods }));
+  }
+  const aliasMap = isRestaurant ? RESTAURANT_CATEGORY_ALIASES : SUPERMARKET_CATEGORY_ALIASES;
+  const mergeTargets = isRestaurant ? RESTAURANT_MERGE_TARGETS : SUPERMARKET_MERGE_TARGETS;
+
+  const official = new Map(); // canonical label -> { rawCategories:Set, products:[] }
+  const custom = new Map();   // trimmed raw text -> { rawCategories:Set, products:[] } (unresolved)
+  rawGroups.forEach((prods, raw) => {
+    const canonical = aliasMap[normalizeCategoryKey(raw)];
+    const bucketMap = canonical ? official : custom;
+    const bucketKey = canonical || raw;
+    if (!bucketMap.has(bucketKey)) bucketMap.set(bucketKey, { rawCategories: new Set(), products: [] });
+    const bucket = bucketMap.get(bucketKey);
+    bucket.rawCategories.add(raw);
+    bucket.products.push(...prods);
+  });
+
+  const otherBucket = { rawCategories: new Set(), products: [] };
+  const standaloneCustom = [];
+  custom.forEach((bucket, raw) => {
+    if (bucket.products.length <= 2) {
+      const key = normalizeCategoryKey(raw);
+      const match = mergeTargets.find(rule => rule.keywords.some(kw => key.includes(normalizeCategoryKey(kw))));
+      if (match) {
+        if (!official.has(match.target)) official.set(match.target, { rawCategories: new Set(), products: [] });
+        const target = official.get(match.target);
+        bucket.rawCategories.forEach(r => target.rawCategories.add(r));
+        target.products.push(...bucket.products);
+      } else {
+        bucket.rawCategories.forEach(r => otherBucket.rawCategories.add(r));
+        otherBucket.products.push(...bucket.products);
+      }
+    } else {
+      standaloneCustom.push({ label: raw, rawCategories: [...bucket.rawCategories], products: bucket.products });
+    }
+  });
+
+  const orderedOfficial = orderList
+    .filter(label => official.has(label))
+    .map(label => ({ label, rawCategories: [...official.get(label).rawCategories], products: official.get(label).products }));
+
+  const result = [...orderedOfficial, ...standaloneCustom];
+  if (otherBucket.products.length) {
+    result.push({ label: "تصنيفات أخرى", rawCategories: [...otherBucket.rawCategories], products: otherBucket.products });
+  }
+  return result;
+}
+
 function renderStorePage(id) {
   const store = getStore(id);
   if (!store) {
@@ -3519,12 +3670,16 @@ function renderStorePage(id) {
   const nearestSiblingId = store.branchGroup ? nearestBranchId(store.branchGroup, store.id) : null;
   const allStoreProducts = products.filter(product => product.storeId === store.id);
   const storeOfferProducts = allStoreProducts.filter(product => product.oldPrice && product.available);
-  const productCategories = [...new Set(allStoreProducts.map(product => product.category))];
+  const storePopularProducts = allStoreProducts.filter(product => MOST_ORDERED_PRODUCTS.has(product.id) && product.available);
+  const categoryPlan = buildStoreCategoryPlan(store, allStoreProducts);
+  const categoryRawMap = new Map(categoryPlan.map(bucket => [bucket.label, new Set(bucket.rawCategories)]));
+  const categoryCountMap = new Map(categoryPlan.map(bucket => [bucket.label, bucket.products.length]));
+  const productCategories = categoryPlan.map(bucket => bucket.label);
   const activeProductFilter = productCategories.includes(state.storeProductFilter) ? state.storeProductFilter : "الكل";
   const searchQuery = (state.storeProductSearch || "").trim().toLowerCase();
   const categoryFiltered = activeProductFilter === "الكل"
     ? allStoreProducts
-    : allStoreProducts.filter(product => product.category === activeProductFilter);
+    : allStoreProducts.filter(product => (categoryRawMap.get(activeProductFilter) || new Set()).has(String(product.category || "").trim()));
   const storeProducts = searchQuery
     ? categoryFiltered.filter(p =>
         (p.name || "").toLowerCase().includes(searchQuery) ||
@@ -3576,7 +3731,11 @@ function renderStorePage(id) {
           ${voiceSearchButton("store")}
           ${searchQuery ? `<button class="store-search-clear" data-action="clear-store-search" aria-label="مسح البحث">${icon("close")}</button>` : ""}
         </div>
-        ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${category}">${category}<span>${category === "الكل" ? allStoreProducts.length : allStoreProducts.filter(product => product.category === category).length}</span></button>`).join("")}</div>` : ""}
+        ${productCategories.length > 1 ? `<div class="store-product-filters">${["الكل", ...productCategories].map(category => {
+          const count = category === "الكل" ? allStoreProducts.length : (categoryCountMap.get(category) || 0);
+          const rawAttr = category === "الكل" ? "" : ` data-raw-categories="${escAttr(JSON.stringify([...(categoryRawMap.get(category) || [])]))}"`;
+          return `<button class="${activeProductFilter === category ? "active" : ""}" data-action="product-category" data-category="${escAttr(category)}"${rawAttr}>${esc(category)}<span>${count}</span></button>`;
+        }).join("")}</div>` : ""}
       </div>
     </div>
     <section class="section store-content-section">
@@ -3629,6 +3788,24 @@ function renderStorePage(id) {
                 </span>
                 <strong>${esc(product.name)}</strong>
                 <span class="store-offer-card__price"><b>${money(product.price)}</b><del>${money(product.oldPrice)}</del></span>
+              </button>`;
+              }).join("")}
+            </div>
+          </section>
+          ` : ""}
+          ${storePopularProducts.length ? `
+          <section class="store-offers-slider store-popular-slider">
+            <div class="section-heading small"><div><span class="section-kicker">الأعلى طلباً</span><h2>الأكثر طلباً من ${esc(store.name)}</h2></div><span class="count-chip">${storePopularProducts.length} منتج</span></div>
+            <div class="store-offers-track">
+              ${storePopularProducts.map(product => {
+                const noImg = isPlaceholderImage(product.image);
+                return `
+              <button class="store-offer-card" data-action="open-product" data-id="${product.id}">
+                <span class="store-offer-card__image ${noImg ? "no-image" : ""}">
+                  ${noImg ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy">`}
+                </span>
+                <strong>${esc(product.name)}</strong>
+                <span class="store-offer-card__price"><b>${money(product.price)}</b></span>
               </button>`;
               }).join("")}
             </div>
@@ -11891,6 +12068,13 @@ document.addEventListener("click", event => {
   }
   if (action === "product-category") {
     const category = target.dataset.category;
+    // A pill can represent several merged raw product.category values at once (see
+    // buildStoreCategoryPlan) — data-raw-categories carries that set as JSON so this
+    // DOM-level filter still matches every card that belongs to the merged bucket.
+    let rawCats = null;
+    if (target.dataset.rawCategories) {
+      try { rawCats = JSON.parse(target.dataset.rawCategories); } catch (_) { rawCats = null; }
+    }
     state.storeProductFilter = category;
     state.storeProductSearch = "";
     // DOM-level filter — no re-render, no scroll-to-top
@@ -11906,7 +12090,7 @@ document.addEventListener("click", event => {
       let visible = 0;
       const total = grid.querySelectorAll("article.product-card").length;
       grid.querySelectorAll("article.product-card").forEach(card => {
-        const show = category === "الكل" || card.dataset.category === category;
+        const show = category === "الكل" || (rawCats ? rawCats.includes(card.dataset.category) : card.dataset.category === category);
         card.style.display = show ? "" : "none";
         if (show) visible++;
       });
