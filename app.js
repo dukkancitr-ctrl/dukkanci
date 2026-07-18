@@ -3384,6 +3384,29 @@ function seededShuffle(list, seed) {
   return list.map(item => [seededRandomKey(seed, item.id), item]).sort((a, b) => a[0] - b[0]).map(pair => pair[1]);
 }
 
+// Store-level promo banners on /offers — distinct from the admin "عرض اليوم"
+// dailyDeal hero above (bound to ONE product): each entry calls out a
+// whole-category discount for one store. The claim is checked against real
+// product data at render time (categoryContains matched against product.category,
+// oldPrice/available required) — if the store or category no longer has ANY
+// matching discounted product the banner silently stops rendering instead of
+// showing a stale/false claim. 2026-07-18: طلب المستخدم بانر لباشا بيتزريا
+// («خصم 10% على أطباق البيتزا لعملاء دكانجي») — طُبِّق خصم 10% حقيقي على كل
+// الـ30 صنف بيتزا في المتجر (كان 13 منها فقط مخفَّضاً سابقاً) ليكون الادّعاء
+// صحيحاً 100% قبل بناء هذا البانر، وليس مجرد نص تسويقي بلا سعر فعلي خلفه.
+const OFFERS_PAGE_STORE_PROMOS = [
+  { storeId: 56, categoryContains: "بيتزا", headline: "خصم 10% على أطباق البيتزا", sub: "لعملاء دكانجي — على كل أصناف البيتزا" }
+];
+function offersPageStorePromoBanners() {
+  return OFFERS_PAGE_STORE_PROMOS.map(promo => {
+    const store = getStore(promo.storeId);
+    if (!store || !isStoreApproved(store)) return null;
+    const matches = products.filter(p => p.storeId === promo.storeId && p.available && p.oldPrice && (p.category || "").includes(promo.categoryContains));
+    if (!matches.length) return null;
+    return { store, promo };
+  }).filter(Boolean);
+}
+
 function renderOffers() {
   // render() writes state._lastNavKey ("offers/") only after this returns, so
   // "the visitor just navigated here" is exactly when it still holds another
@@ -3414,6 +3437,7 @@ function renderOffers() {
   const ddStore = ddProductRaw ? getStore(ddProductRaw.storeId) : null;
   const ddProduct = ddStore && isStoreApproved(ddStore) ? ddProductRaw : null;
   const ddPct = ddProduct && ddProduct.oldPrice ? Math.round((1 - ddProduct.price / ddProduct.oldPrice) * 100) : 0;
+  const storePromoBanners = offersPageStorePromoBanners();
   return `
     <section class="page-hero offers-page-hero${ddProduct ? " offers-page-hero--dd" : ""}">
       ${ddProduct ? `
@@ -3433,6 +3457,23 @@ function renderOffers() {
         <div class="big-percent">%</div>
       </div>`}
     </section>
+    ${storePromoBanners.length ? `
+    <section class="section store-promo-banners-section">
+      <div class="container">
+        ${storePromoBanners.map(({ store, promo }) => `
+          <button class="store-promo-banner" data-action="open-store" data-id="${store.id}" aria-label="${escAttr(promo.headline)} — ${escAttr(store.name)}">
+            <img src="${store.coverImage || store.image}" alt="${escAttr(store.name)}">
+            <span class="store-promo-banner__gradient"></span>
+            <span class="store-promo-banner__body">
+              <b class="store-promo-banner__badge">${icon("percent")} عرض خاص</b>
+              <strong>${esc(promo.headline)}</strong>
+              <small>${esc(promo.sub)} · ${esc(store.name)}</small>
+            </span>
+            <span class="store-promo-banner__go">${icon("arrowLeft")}</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>` : ""}
     <section class="section">
       <div class="container">
         <div class="section-heading"><div><span class="section-kicker">لفترة محدودة</span><h2>خصومات اليوم</h2></div><span class="count-chip">${offerProducts.length} عروض متاحة</span></div>

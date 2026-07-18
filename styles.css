@@ -2548,6 +2548,100 @@ img {
   font-weight: 800;
 }
 
+.store-promo-banners-section {
+  padding-top: 6px;
+  padding-bottom: 4px;
+}
+
+.store-promo-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 120px;
+  border: none;
+  padding: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: right;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.store-promo-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(76, 27, 31, 0.2);
+}
+
+.store-promo-banner img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.store-promo-banner__gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to left, rgba(20, 6, 8, 0.88), rgba(20, 6, 8, 0.55) 55%, rgba(20, 6, 8, 0.15));
+}
+
+.store-promo-banner__body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 18px 20px;
+  color: #fff;
+  flex: 1;
+}
+
+.store-promo-banner__badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 30px;
+  background: var(--yellow);
+  color: #4c1b1f;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.store-promo-banner__badge .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.store-promo-banner__body strong {
+  font-size: clamp(16px, 2.4vw, 20px);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+.store-promo-banner__body small {
+  color: #f0d9d9;
+  font-size: 13px;
+}
+
+.store-promo-banner__go {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  margin-inline-end: 18px;
+  flex-shrink: 0;
+}
+
 .count-chip {
   padding: 7px 12px;
   border-radius: 20px;
