@@ -39,6 +39,10 @@ class AppStrings {
   // البحث
   static const searchRecentTitle = 'عمليات بحث سابقة';
   static const searchClearAll = 'مسح الكل';
+  static const voiceSearchListening = 'جارٍ الاستماع... تحدّث الآن';
+  static const voiceSearchUnavailable = 'البحث الصوتي غير متاح على هذا الجهاز';
+  static const voiceSearchNoPermission = 'يحتاج البحث الصوتي إذن الوصول إلى الميكروفون';
+  static const voiceSearchNoSpeechDetected = 'لم يُسمع أي كلام، حاول مرة أخرى';
 
   // شاشة البداية — «Dukkanci Marketplace» وسم علامة تجارية ثابت على هذه
   // الشاشة فقط (يطابق تصميم الشعار المُعتمَد)، وليس جزءاً من سطح الترجمة —

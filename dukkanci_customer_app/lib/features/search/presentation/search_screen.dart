@@ -11,6 +11,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/distance.dart';
 import '../../../core/widgets/press_scale.dart';
 import '../../../core/widgets/state_views.dart';
+import '../../../core/widgets/voice_search_button.dart';
 import '../../cart/application/cart_controller.dart' show localCacheProvider;
 import '../../home/domain/home_category.dart';
 import '../../home/presentation/widgets/store_card.dart';
@@ -141,7 +142,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 hintText: 'ابحث عن متجر...',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _controller.text.isEmpty
-                    ? null
+                    ? VoiceSearchButton(
+                        onResult: (text) {
+                          _controller.text = text;
+                          _controller.selection = TextSelection.collapsed(offset: text.length);
+                          _submitSearch(text);
+                        },
+                      )
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () {
