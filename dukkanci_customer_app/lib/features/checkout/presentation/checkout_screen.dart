@@ -9,6 +9,8 @@ import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../addresses/application/addresses_controller.dart';
+import '../../addresses/domain/saved_address.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../stores/presentation/store_screen.dart';
 import '../domain/order.dart';
@@ -46,6 +48,37 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   bool _awaitingOtp = false;
   String? _orderId;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill from the customer's default saved address, if any — the
+    // whole point of marking one "افتراضي" is that checkout uses it without
+    // being asked again. Never overwrites (fields start empty on a fresh
+    // checkout screen anyway; the guard just documents the intent).
+    final addresses = ref.read(addressesControllerProvider);
+    if (addresses.isEmpty) return;
+    final preferred = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
+    _applyAddress(preferred);
+  }
+
+  void _applyAddress(SavedAddress address) {
+    _addressController.text = address.addressText;
+    _addressDetailsController.text = address.addressDetails;
+    if (address.recipientName.isNotEmpty) _nameController.text = address.recipientName;
+    if (address.recipientPhone.isNotEmpty) _phoneController.text = address.recipientPhone;
+  }
+
+  Future<void> _pickSavedAddress() async {
+    final addresses = ref.read(addressesControllerProvider);
+    final picked = await showModalBottomSheet<SavedAddress>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg))),
+      builder: (sheetContext) => _SavedAddressSheet(addresses: addresses),
+    );
+    if (picked != null) setState(() => _applyAddress(picked));
+  }
 
   @override
   void dispose() {
@@ -218,9 +251,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     title: AppStrings.deliveryAddress,
                     child: Column(
                       children: [
+                        if (ref.watch(addressesControllerProvider).isNotEmpty) ...[
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: TextButton.icon(
+                              onPressed: _pickSavedAddress,
+                              icon: const Icon(Icons.bookmark_outline_rounded, size: 18),
+                              label: const Text(AppStrings.useSavedAddress),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
                         TextField(
                           controller: _addressController,
-                          decoration: const InputDecoration(labelText: 'العنوان بالتفصيل'),
+                          decoration: const InputDecoration(labelText: AppStrings.addressTextLabel),
                           maxLines: 2,
                         ),
                         const SizedBox(height: AppSpacing.md),
@@ -535,6 +579,59 @@ class _FulfillmentTile extends StatelessWidget {
             Icon(icon, color: selected ? AppColors.green800 : AppColors.muted),
             const SizedBox(height: 6),
             Text(label, style: AppTextStyles.label.copyWith(color: selected ? AppColors.green800 : AppColors.muted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet listing the customer's saved addresses ("عناويني") for a
+/// one-tap fill of the free-text fields above, instead of retyping an
+/// address that's already on file.
+class _SavedAddressSheet extends StatelessWidget {
+  const _SavedAddressSheet({required this.addresses});
+
+  final List<SavedAddress> addresses;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AppStrings.savedAddressSheetTitle, style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: addresses.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, i) {
+                  final a = addresses[i];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(radius: 18, backgroundColor: AppColors.green50, child: Icon(Icons.location_on_rounded, color: AppColors.green800, size: 18)),
+                    title: Text(a.label.isEmpty ? AppStrings.myAddresses : a.label, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
+                    subtitle: Text(a.addressText, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.bodyMuted),
+                    onTap: () => Navigator.of(context).pop(a),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.push(AppRoutes.addresses);
+              },
+              icon: const Icon(Icons.settings_outlined, size: 18),
+              label: const Text(AppStrings.manageAddresses),
+            ),
           ],
         ),
       ),

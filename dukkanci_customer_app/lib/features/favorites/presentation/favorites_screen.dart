@@ -51,7 +51,15 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
         error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(_favoriteStoresProvider)),
         data: (stores) {
           if (stores.isEmpty) {
-            return const AppEmptyView(message: AppStrings.favoritesEmpty, icon: Icons.favorite_border_rounded);
+            return AppEmptyView(
+              message: AppStrings.favoritesEmpty,
+              icon: Icons.favorite_border_rounded,
+              action: FilledButton.icon(
+                onPressed: () => context.go(AppRoutes.home),
+                icon: const Icon(Icons.storefront_rounded),
+                label: const Text(AppStrings.heroWelcomeCta),
+              ),
+            );
           }
           final presentCategories = HomeCategory.all.where((c) => stores.any(c.matches)).toList();
           final filtered = _selectedCategoryKey == null

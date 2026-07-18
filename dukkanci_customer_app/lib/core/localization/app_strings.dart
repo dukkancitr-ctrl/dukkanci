@@ -40,6 +40,12 @@ class AppStrings {
   static const searchRecentTitle = 'عمليات بحث سابقة';
   static const searchClearAll = 'مسح الكل';
 
+  // شاشة البداية — «Dukkanci Marketplace» وسم علامة تجارية ثابت على هذه
+  // الشاشة فقط (يطابق تصميم الشعار المُعتمَد)، وليس جزءاً من سطح الترجمة —
+  // بقية التطبيق يبقى عربياً بالكامل بلا استثناء.
+  static const splashBrandLatin = 'Dukkanci Marketplace';
+  static const splashTagline = 'كل متاجر الحي في مكان واحد';
+
   // Onboarding
   static const onboarding1Title = 'كل متاجر منطقتك في مكان واحد';
   static const onboarding1Body = 'اكتشف المطاعم والسوبرماركت والملاحم والحلويات القريبة منك.';
@@ -151,6 +157,33 @@ class AppStrings {
   static const logout = 'تسجيل الخروج';
   static const deleteAccount = 'حذف الحساب';
   static const appVersionPrefix = 'الإصدار';
+
+  // عناويني
+  static const addressesEmptyTitle = 'لا توجد عناوين محفوظة';
+  static const addressesEmptyBody = 'أضف عنواناً لتسريع عملية الطلب لاحقاً';
+  static const addressAddNew = 'إضافة عنوان جديد';
+  static const addressEdit = 'تعديل';
+  static const addressDelete = 'حذف';
+  static const addressSetDefault = 'تعيين كافتراضي';
+  static const addressDefaultBadge = 'افتراضي';
+  static const addressDeleteConfirmTitle = 'حذف هذا العنوان؟';
+  static const addressDeleteConfirmBody = 'لن تتمكن من التراجع عن هذا الإجراء.';
+  static const addressFormTitleAdd = 'عنوان جديد';
+  static const addressFormTitleEdit = 'تعديل العنوان';
+  static const addressLabelFieldTitle = 'اسم العنوان';
+  static const addressLabelHome = 'المنزل';
+  static const addressLabelWork = 'العمل';
+  static const addressLabelOther = 'آخر';
+  static const addressLabelCustomHint = 'اسم مخصص (اختياري)';
+  static const addressTextLabel = 'العنوان بالتفصيل';
+  static const recipientNameLabel = 'اسم المستلم';
+  static const addressValidationError = 'يرجى إدخال العنوان بالتفصيل';
+  static const useSavedAddress = 'استخدام عنوان محفوظ';
+  static const savedAddressSheetTitle = 'اختر عنوان التوصيل';
+  static const manageAddresses = 'إدارة العناوين';
+
+  // طلباتي
+  static const reorderCta = 'اطلب مرة أخرى';
 
   // الدعم والمساعدة
   static const supportSearchHint = 'ابحث عن مساعدة...';

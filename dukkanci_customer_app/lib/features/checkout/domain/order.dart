@@ -136,6 +136,30 @@ class OrderDraft {
       };
 }
 
+/// One snapshotted line from `delivery_details.lineItems` — the exact same
+/// shape app.js writes at checkout (`{productId, name, qty, price, options,
+/// notes}`, see app.js line ~13836), so no per-order product image is
+/// available here (never captured at order time). Order Detail shows a
+/// generic icon per line instead of guessing/fetching a possibly-stale
+/// current product image for what must stay a historical snapshot.
+class OrderLineItem {
+  final String name;
+  final int qty;
+  final double price;
+  final String options;
+  final String notes;
+
+  const OrderLineItem({required this.name, required this.qty, required this.price, this.options = '', this.notes = ''});
+
+  factory OrderLineItem.fromJson(Map<String, dynamic> json) => OrderLineItem(
+        name: json['name'] as String? ?? '',
+        qty: (json['qty'] as num?)?.toInt() ?? 1,
+        price: (json['price'] as num?)?.toDouble() ?? 0,
+        options: json['options'] as String? ?? '',
+        notes: json['notes'] as String? ?? '',
+      );
+}
+
 class OrderSummary {
   final String id;
   final int storeId;
@@ -143,6 +167,12 @@ class OrderSummary {
   final double total;
   final String status;
   final DateTime createdAt;
+  final List<OrderLineItem> lineItems;
+  final bool isPickup;
+  final String addressText;
+  final String addressDetails;
+  final String payment;
+  final String notes;
 
   const OrderSummary({
     required this.id,
@@ -151,16 +181,44 @@ class OrderSummary {
     required this.total,
     required this.status,
     required this.createdAt,
+    this.lineItems = const [],
+    this.isPickup = false,
+    this.addressText = '',
+    this.addressDetails = '',
+    this.payment = '',
+    this.notes = '',
   });
 
   bool get isTerminal => OrderStatus.terminal.contains(status);
 
-  factory OrderSummary.fromJson(Map<String, dynamic> json) => OrderSummary(
-        id: json['id'].toString(),
-        storeId: json['store_id'] as int,
-        storeName: json['store_name'] as String? ?? '',
-        total: (json['total'] as num?)?.toDouble() ?? 0,
-        status: json['status'] as String? ?? OrderStatus.newOrder,
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
-      );
+  /// A short "٢× دجاج مشوي، أرز..." preview for list rows — real item
+  /// names from the snapshot, not a generic "N items" placeholder.
+  String get itemsPreview {
+    if (lineItems.isEmpty) return '';
+    final parts = lineItems.map((i) => i.qty > 1 ? '${i.qty}× ${i.name}' : i.name);
+    return parts.join('، ');
+  }
+
+  factory OrderSummary.fromJson(Map<String, dynamic> json) {
+    // delivery_details is a jsonb column — arrives as a nested map on the
+    // customer-orders response (server does `select=*`, see
+    // api/notify-order.js's customer-orders action), same shape this app's
+    // own OrderDraft.toSupabaseRow() writes.
+    final dd = json['delivery_details'] is Map ? Map<String, dynamic>.from(json['delivery_details'] as Map) : const <String, dynamic>{};
+    final rawItems = dd['lineItems'] is List ? (dd['lineItems'] as List) : const [];
+    return OrderSummary(
+      id: json['id'].toString(),
+      storeId: json['store_id'] as int,
+      storeName: json['store_name'] as String? ?? '',
+      total: (json['total'] as num?)?.toDouble() ?? 0,
+      status: json['status'] as String? ?? OrderStatus.newOrder,
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      lineItems: rawItems.map((i) => OrderLineItem.fromJson(Map<String, dynamic>.from(i as Map))).toList(),
+      isPickup: dd['fulfillment'] == 'pickup',
+      addressText: dd['address'] as String? ?? '',
+      addressDetails: dd['addressDetails'] as String? ?? '',
+      payment: dd['payment'] as String? ?? '',
+      notes: dd['notes'] as String? ?? '',
+    );
+  }
 }

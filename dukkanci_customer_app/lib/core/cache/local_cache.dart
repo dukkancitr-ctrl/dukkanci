@@ -79,8 +79,9 @@ class LocalCache {
     }
   }
 
-  /// Saved delivery addresses (spec section 9 field list), stored as raw
-  /// JSON — Address feature owns the actual shape via Address.toJson/fromJson.
+  /// Saved delivery addresses ("عناويني"), stored as raw JSON — the
+  /// addresses feature owns the actual shape via
+  /// SavedAddress.toJson/fromJson.
   Future<void> saveAddressesJson(List<Map<String, dynamic>> addresses) =>
       _prefs.setString(_kAddressesJson, jsonEncode(addresses));
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/home_shell.dart';
+import '../../features/addresses/domain/saved_address.dart';
+import '../../features/addresses/presentation/address_form_screen.dart';
+import '../../features/addresses/presentation/addresses_screen.dart';
 import '../../features/cart/presentation/cart_screen.dart';
 import '../../features/category/presentation/category_screen.dart';
 import '../../features/checkout/presentation/checkout_screen.dart';
@@ -79,6 +82,12 @@ GoRouter buildRouter(LocalCache localCache) {
         builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['orderId']!),
       ),
       GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.support, builder: (c, s) => const SupportScreen()),
+      GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.addresses, builder: (c, s) => const AddressesScreen()),
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: AppRoutes.addressForm,
+        builder: (context, state) => AddressFormScreen(initial: state.extra as SavedAddress?),
+      ),
     ],
   );
 }

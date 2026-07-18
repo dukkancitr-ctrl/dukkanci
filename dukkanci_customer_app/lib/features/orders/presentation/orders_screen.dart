@@ -54,31 +54,50 @@ class OrdersScreen extends ConsumerWidget {
                   child: Card(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.lg),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-                            child: Icon(Icons.receipt_long_rounded, color: color, size: 20),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(order.storeName, style: AppTextStyles.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                const SizedBox(height: 3),
-                                Text(order.status, style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.w700)),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          Row(
                             children: [
-                              Text('${order.total.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.price.copyWith(fontSize: 15)),
-                              const Icon(Icons.chevron_left_rounded, color: AppColors.muted, size: 18),
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+                                child: Icon(Icons.receipt_long_rounded, color: color, size: 20),
+                              ),
+                              const SizedBox(width: AppSpacing.md),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(order.storeName, style: AppTextStyles.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    const SizedBox(height: 3),
+                                    Text(order.status, style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('${order.total.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.price.copyWith(fontSize: 15)),
+                                  const Icon(Icons.chevron_left_rounded, color: AppColors.muted, size: 18),
+                                ],
+                              ),
                             ],
+                          ),
+                          if (order.itemsPreview.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(order.itemsPreview, style: AppTextStyles.bodyMuted, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ],
+                          const SizedBox(height: AppSpacing.sm),
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: OutlinedButton.icon(
+                              onPressed: () => context.push(AppRoutes.storeDetailPath(order.storeId.toString())),
+                              icon: const Icon(Icons.replay_rounded, size: 16),
+                              label: const Text(AppStrings.reorderCta),
+                              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6)),
+                            ),
                           ),
                         ],
                       ),

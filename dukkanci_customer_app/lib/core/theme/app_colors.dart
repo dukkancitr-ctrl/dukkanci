@@ -31,4 +31,11 @@ class AppColors {
   static const success = Color(0xFF2E7D32);
   static const warning = orange;
   static const danger = red;
+
+  /// Dusty-rose line-art stroke used only by the splash screen's arched
+  /// doorway illustration — distinct from `line` (which is a neutral
+  /// gray-tan border color used everywhere else) because the reference
+  /// design's line art reads as warm pink-tan against the cream background,
+  /// not gray.
+  static const archLine = Color(0xFFE7C6B8);
 }

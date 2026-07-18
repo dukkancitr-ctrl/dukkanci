@@ -13,6 +13,8 @@ class AppRoutes {
   static const orders = '/orders';
   static const favorites = '/favorites';
   static const profile = '/profile';
+  static const addresses = '/addresses';
+  static const addressForm = '/addresses/form';
 
   /// A curated store listing: a real category key ("restaurants", "sweets"…)
   /// or a synthetic one ("offers", "popular", "all"). See CategoryScreen.

@@ -86,7 +86,7 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(child: _QuickActionTile(icon: Icons.favorite_rounded, label: AppStrings.navFavorites, onTap: () => context.push(AppRoutes.favorites))),
               const SizedBox(width: AppSpacing.sm),
-              Expanded(child: _QuickActionTile(icon: Icons.location_on_rounded, label: AppStrings.myAddresses, onTap: () => context.push(AppRoutes.locationPicker))),
+              Expanded(child: _QuickActionTile(icon: Icons.location_on_rounded, label: AppStrings.myAddresses, onTap: () => context.push(AppRoutes.addresses))),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
