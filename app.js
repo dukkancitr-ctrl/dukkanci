@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, hadramoutStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore);
 
 const products = [];
 
@@ -76,7 +76,6 @@ products.push(...bludanFatihProducts);
 products.push(...bludanProducts);
 products.push(...sajProducts);
 products.push(...albaraaProducts);
-products.push(...hadramoutProducts);
 products.push(...meatmootProducts);
 products.push(...barakaProducts);
 products.push(...hawamahallProducts);
@@ -218,7 +217,6 @@ const initialDeliverySettings = {
   ...bludanDeliverySettings,
   ...sajDeliverySettings,
   ...albaraaDeliverySettings,
-  ...hadramoutDeliverySettings,
   ...meatmootDeliverySettings,
   ...barakaDeliverySettings,
   ...hawamahallDeliverySettings,
