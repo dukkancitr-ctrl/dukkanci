@@ -103,7 +103,8 @@ const STORE_SLUGS = {
   99: "omar-market-kanarya",
   100: "fistik-halep-sweets-beylikduzu",
   101: "layali-shamiya-bosphorus",
-  102: "bigtavuk-fatih-restaurant"
+  102: "bigtavuk-fatih-restaurant",
+  103: "abdulhamit-tavuk-basaksehir"
 };
 
 // Reverse: slug -> id.
