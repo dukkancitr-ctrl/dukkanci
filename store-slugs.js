@@ -111,7 +111,8 @@ const STORE_SLUGS = {
   105: "friends-restaurant-avcilar",
   106: "ibn-alwazeer-basaksehir",
   107: "turkwaz-balik-basaksehir",
-  108: "shamoglu-restaurant-basaksehir"
+  108: "shamoglu-restaurant-basaksehir",
+  109: "chiki-wiki-beylikduzu"
 };
 
 // Reverse: slug -> id.
