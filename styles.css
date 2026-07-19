@@ -12726,3 +12726,115 @@ tbody tr:hover {
   .ask-dukkanci-cta__copy strong { font-size: 14.5px; }
   .ask-dukkanci-cta__copy span { font-size: 11.5px; }
 }
+
+/* ===== Featured (paid-placement) stores — header strip + hero chips =====
+   The four merchant-paid stores (PAID_PRIORITY_STORE_IDS in app.js), shown by
+   name in the sticky site header on every page, and as logo chips inside the
+   homepage hero on desktop (the hero is hidden ≤640px, where the header strip
+   carries the placement instead). */
+.featured-stores-bar {
+  background: #fff;
+  border-bottom: 1px solid #f0e4e0;
+}
+
+.featured-stores-bar__inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.featured-stores-bar__inner::-webkit-scrollbar { display: none; }
+
+.featured-stores-bar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: #9a0000;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.featured-stores-bar__label .icon { width: 14px; height: 14px; }
+
+.featured-stores-bar__inner a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(154, 0, 0, 0.16);
+  background: #fff8f5;
+  color: #5b5052;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: 0.2s;
+}
+
+.featured-stores-bar__inner a:hover {
+  background: #fff1ed;
+  border-color: rgba(154, 0, 0, 0.32);
+  color: #9a0000;
+}
+
+.hero2 .h2-featured {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hero2 .h2-featured-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--h2-brand);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hero2 .h2-featured-label .icon { width: 15px; height: 15px; }
+
+.hero2 .h2-featured-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding-block: 4px;
+  padding-inline: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(154, 0, 0, 0.14);
+  background: #fff;
+  color: var(--green-900);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(154, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.hero2 .h2-featured-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(154, 0, 0, 0.12);
+  color: var(--h2-brand);
+}
+
+.hero2 .h2-featured-chip .store-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  /* Phones: the header strip right above already shows the same four stores —
+     don't repeat them inside the hero. */
+  .hero2 .h2-featured { display: none; }
+}

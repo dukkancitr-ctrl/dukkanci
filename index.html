@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://tzcqnqzltrjemdnkzpzn.supabase.co" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alyamama:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=176">
+    <link rel="stylesheet" href="/styles.css?v=177">
     <title>دكانجي | سوق الحي بين يديك</title>
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="دكانجي">
@@ -171,6 +171,18 @@
             <span>الدفع عند الاستلام</span><span class="trust-bar__sep" aria-hidden="true">|</span>
             <span>لا تحتاج بطاقة</span><span class="trust-bar__sep" aria-hidden="true">|</span>
             <span>اطلب الآن وادفع عند الباب</span>
+          </div>
+        </div>
+        <!-- Paid header placement: the four merchant-paid stores (same ids as
+             PAID_PRIORITY_STORE_IDS in app.js). Static links so they render on
+             every page (and in SSR shells) before any JS runs. -->
+        <div class="featured-stores-bar">
+          <div class="container featured-stores-bar__inner">
+            <span class="featured-stores-bar__label"><span class="icon-slot" data-icon="star"></span>متاجر مميزة</span>
+            <a href="/store/alkhawali-restaurant" data-action="open-store" data-id="31">مطعم الخوالي</a>
+            <a href="/store/pasa-pizzeria-restaurant" data-action="open-store" data-id="56">مطعم باشا بيتزريا</a>
+            <a href="/store/domani" data-action="open-store" data-id="84">ملحمة الدوماني</a>
+            <a href="/store/safa-alsham-market" data-action="open-store" data-id="50">ماركت صفا الشام</a>
           </div>
         </div>
       </header>
@@ -363,7 +375,7 @@
     <script src="/ibnalwazeer-data.js?v=1"></script>
     <script src="/friendstr-data.js?v=1"></script>
     <script src="/shamoglu-data.js?v=1"></script>
-    <script src="/app.js?v=325"></script>
+    <script src="/app.js?v=326"></script>
     <script src="/tracking.js?v=7"></script>
     <script src="/integrations.js?v=89"></script>
     <script src="/assets/capacitor-bridge.js?v=1"></script>

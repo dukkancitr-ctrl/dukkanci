@@ -2999,6 +2999,15 @@ function renderHome() {
   };
   const bHref = hb.link || "#offers";
   const bAttrs = `href="${escAttr(bHref)}"${/^(https?:|tel:|mailto:|wa\.me)/i.test(bHref) ? ' target="_blank" rel="noopener"' : ""}`;
+  // Paid hero placement — the four merchant-paid stores (PAID_PRIORITY_STORE_IDS)
+  // surfaced by name/logo inside the hero itself. Real store rows only: a paid id
+  // that's missing or unapproved simply doesn't render a chip.
+  const paidHeroStores = PAID_PRIORITY_STORE_IDS.map(id => stores.find(s => s.id === id)).filter(s => s && isStoreApproved(s));
+  const paidHeroStrip = paidHeroStores.length ? `
+          <div class="h2-featured" aria-label="متاجر مميزة">
+            <span class="h2-featured-label">${icon("star")} متاجر مميزة</span>
+            ${paidHeroStores.map(s => `<a class="h2-featured-chip" href="/store/${escAttr(storeParam(s))}" data-action="open-store" data-id="${s.id}">${storeAvatar(s)}<span>${esc(s.name)}</span></a>`).join("")}
+          </div>` : "";
   // Real average store rating (truthful — never fabricated) for the hero rating float.
   const ratedHeroStores = stores.filter(s => (Number(s.reviews) || 0) > 0);
   let heroRatingFloat = "";
@@ -3045,7 +3054,7 @@ function renderHome() {
           <div class="search-chips" aria-label="بحث سريع">
             ${QUICK_SEARCH_CHIPS.map(term => `<button type="button" class="search-chip" data-action="quick-chip" data-term="${escAttr(term)}">${esc(term)}</button>`).join("")}
           </div>
-
+${paidHeroStrip}
           <div class="h2-cta-row">
             <a class="h2-cta-main" href="/stores" data-route="stores">ابدأ التسوق الآن ←</a>
             <a class="h2-cta-second" href="#nearby-stores">تصفح المتاجر القريبة</a>

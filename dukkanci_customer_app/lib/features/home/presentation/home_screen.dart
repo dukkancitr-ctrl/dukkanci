@@ -139,6 +139,12 @@ class _HomeBody extends StatelessWidget {
 
   final List<Store> stores;
 
+  /// Paid header placement — the same four merchant-paid stores as the
+  /// website's PAID_PRIORITY_STORE_IDS (app.js): مطعم الخوالي، باشا بيتزريا،
+  /// ملحمة الدوماني، ماركت صفا الشام. They lead the home hero slides; an id
+  /// that's missing from the approved-stores fetch simply doesn't render.
+  static const List<int> _paidHeroIds = [31, 56, 84, 50];
+
   List<Store> _sortedCategory(String key) {
     final c = HomeCategory.byKey(key);
     if (c == null) return const [];
@@ -169,10 +175,20 @@ class _HomeBody extends StatelessWidget {
     final sweets = _sortedCategory('sweets');
     final supermarket = _sortedCategory('supermarket');
 
+    // Paid placements first (in their fixed order), then the previous behavior
+    // (offer stores, else popular stores) fills the remaining slides.
+    final paidHeroStores = [
+      for (final id in _paidHeroIds)
+        for (final s in stores)
+          if (s.id == id) s,
+    ];
     final promoStores = offers.where((s) => s.displayImage != null).take(5).toList();
-    final heroStores = promoStores.isNotEmpty
-        ? promoStores
-        : popular.where((s) => s.displayImage != null).take(5).toList();
+    final fillStores = (promoStores.isNotEmpty
+            ? promoStores
+            : popular.where((s) => s.displayImage != null).take(5).toList())
+        .where((s) => !_paidHeroIds.contains(s.id))
+        .toList();
+    final heroStores = [...paidHeroStores, ...fillStores].take(6).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
