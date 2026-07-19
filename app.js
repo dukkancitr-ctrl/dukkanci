@@ -3127,6 +3127,8 @@ ${paidHeroStrip}
       </div>
     </section>
 
+    ${bannerStripHTML("home_top")}
+
     <section class="section mobile-shop-tiles-section">
       <div class="container">
         <div class="shop-tiles-grid">
@@ -3187,6 +3189,8 @@ ${paidHeroStrip}
         ${offerProducts.length ? `<div class="product-grid home-offer-grid">${offerProducts.map(homeOfferCard).join("")}</div>` : ""}
       </div>
     </section>
+
+    ${bannerStripHTML("home_mid")}
 
     <section class="section categories-section">
       <div class="container">
@@ -3434,6 +3438,240 @@ function offersPageStorePromoBanners() {
   }).filter(Boolean);
 }
 
+// ============================================================================
+// نظام البانرات المُدار — 2026-07-19
+// ============================================================================
+// تعريفات البانرات تعيش في site_settings.banners (jsonb) وليس في جدول مستقل،
+// عمداً: site_settings مقروء أصلاً في كل تحميل صفحة عبر loadSiteSettings()،
+// والكتابة تمر بـ action=save-settings الذي يحوّل الصور المرفوعة تلقائياً إلى
+// روابط مستضافة (offloadJsonImages) — فلا يدخل base64 ضخم في صفّ يُقرأ على كل
+// زيارة. والأهم: صفر DDL، فالميزة تعمل فور النشر بلا انتظار ترحيل يدوي.
+// (أحداث النقر/الظهور وحدها تحتاج جدولاً — راجع migrations/20260719_banners_and_banner_events.sql.)
+//
+// الشكل: { items: [ {...banner} ], limits: { "<placement>": عدد } }
+// كل بانر: { id, title, placement, image, headline, sub, cta, linkType, linkValue,
+//            startAt, endAt, active, sort, categoryKey }
+//
+// هذه طبقة جديدة مستقلة تماماً: لا تلمس ولا تستبدل شرائح الهيرو الأربع ولا
+// homeBanner ولا dailyDeal ولا OFFERS_PAGE_STORE_PROMOS — كلها تبقى كما هي.
+const BANNER_PLACEMENTS = [
+  { key: "home_top", label: "الرئيسية — أعلى الصفحة", hint: "تحت الهيرو مباشرة، أول ما يراه الزائر", limit: 3 },
+  { key: "home_mid", label: "الرئيسية — وسط الصفحة", hint: "قبل قسم «ماذا تحتاج اليوم؟»", limit: 3 },
+  { key: "offers_top", label: "صفحة العروض — أعلى", hint: "أعلى /offers قبل خصومات اليوم", limit: 3 },
+  { key: "category_top", label: "صفحة قسم — أعلى", hint: "داخل قسم محدد فقط (مطاعم، حلويات...)", limit: 2 },
+  { key: "app_home", label: "تطبيق الجوال — الرئيسية", hint: "يظهر في تطبيق Flutter وليس على الموقع", limit: 5 }
+];
+const BANNER_LINK_TYPES = [
+  { key: "store", label: "متجر" },
+  { key: "product", label: "منتج" },
+  { key: "category", label: "قسم" },
+  { key: "url", label: "رابط خارجي" },
+  { key: "none", label: "بلا رابط (عرض فقط)" }
+];
+
+function bannerSettings() {
+  const raw = (state.siteSettings && state.siteSettings.banners) || {};
+  return {
+    items: Array.isArray(raw.items) ? raw.items : [],
+    limits: (raw.limits && typeof raw.limits === "object") ? raw.limits : {}
+  };
+}
+
+function bannerPlacementLimit(key) {
+  const { limits } = bannerSettings();
+  const custom = Number(limits[key]);
+  if (Number.isFinite(custom) && custom > 0) return custom;
+  const def = BANNER_PLACEMENTS.find(p => p.key === key);
+  return def ? def.limit : 3;
+}
+
+// Parses a banner date field. Admin inputs are <input type="date"> (date-only,
+// e.g. "2026-08-01"). Treating an end date as raw midnight would expire the
+// banner at the START of the day the admin picked — so a date-only endAt is
+// pushed to the end of that day, which is what "ينتهي في 1 أغسطس" actually means.
+function bannerTime(value, endOfDay) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const ms = Date.parse(dateOnly ? `${raw}T00:00:00` : raw);
+  if (!Number.isFinite(ms)) return null;
+  return (dateOnly && endOfDay) ? ms + 86399999 : ms;
+}
+
+// "paused" | "scheduled" | "expired" | "live"
+function bannerScheduleState(banner, nowMs) {
+  if (!banner || banner.active === false) return "paused";
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const start = bannerTime(banner.startAt, false);
+  const end = bannerTime(banner.endAt, true);
+  if (start && now < start) return "scheduled";
+  if (end && now > end) return "expired";
+  return "live";
+}
+
+// Resolves a banner's link to a real, currently-valid target. Returns null when
+// the target went stale (store deleted/unapproved, product removed/unavailable,
+// category renamed) — same render-time truth-validation rule the dailyDeal hero
+// and offersPageStorePromoBanners() already follow: a banner whose destination
+// no longer exists must disappear, never render as a dead click.
+function bannerLinkTarget(banner) {
+  const type = banner.linkType || "none";
+  const value = String(banner.linkValue == null ? "" : banner.linkValue).trim();
+  if (type === "none" || !value) return { kind: "none", attrs: "", tag: "div" };
+  if (type === "store") {
+    const store = getStore(Number(value));
+    if (!store || !isStoreApproved(store)) return null;
+    return { kind: "store", tag: "button", attrs: `data-action="open-store" data-id="${store.id}"` };
+  }
+  if (type === "product") {
+    const product = products.find(p => p.id === Number(value));
+    if (!product || product.available === false) return null;
+    const store = getStore(product.storeId);
+    if (!store || !isStoreApproved(store)) return null;
+    return { kind: "product", tag: "button", attrs: `data-action="open-product" data-id="${product.id}"` };
+  }
+  if (type === "category") {
+    if (!CATEGORY_MAP[value]) return null;
+    return { kind: "category", tag: "a", attrs: `href="/category/${escAttr(value)}" data-route="category/${escAttr(value)}"` };
+  }
+  if (type === "url") {
+    if (!/^(https?:|tel:|mailto:|\/)/i.test(value)) return null;
+    const external = /^https?:/i.test(value);
+    return { kind: "url", tag: "a", attrs: `href="${escAttr(value)}"${external ? ' target="_blank" rel="noopener"' : ""}` };
+  }
+  return null;
+}
+
+// The single source of truth for "which banners should be on screen right now".
+// Used by every web surface AND mirrored by the Flutter app (see
+// lib/features/banners/domain/banner.dart — keep both in sync).
+function activeBanners(placement, opts = {}) {
+  const now = Date.now();
+  return bannerSettings().items
+    .filter(b => b && b.id && b.placement === placement)
+    .filter(b => bannerScheduleState(b, now) === "live")
+    .filter(b => placement !== "category_top" || (b.categoryKey && b.categoryKey === opts.categoryKey))
+    .filter(b => b.image || b.headline)
+    .map(b => ({ banner: b, target: bannerLinkTarget(b) }))
+    .filter(x => x.target)
+    .sort((a, b) => (Number(a.banner.sort) || 0) - (Number(b.banner.sort) || 0))
+    .slice(0, bannerPlacementLimit(placement));
+}
+
+function bannerCardHTML({ banner, target }, placement) {
+  const clickable = target.kind !== "none";
+  const tag = target.tag;
+  const label = banner.headline || banner.title || "بانر";
+  return `<${tag} class="managed-banner${clickable ? "" : " is-static"}${banner.image ? "" : " no-image"}" ${target.attrs} data-banner-id="${escAttr(banner.id)}" data-banner-placement="${escAttr(placement)}"${clickable ? ` aria-label="${escAttr(label)}"` : ""}>
+      ${banner.image ? `<img src="${escAttr(banner.image)}" alt="${escAttr(label)}" loading="lazy">` : ""}
+      <span class="managed-banner__gradient"></span>
+      <span class="managed-banner__body">
+        ${banner.headline ? `<strong>${esc(banner.headline)}</strong>` : ""}
+        ${banner.sub ? `<small>${esc(banner.sub)}</small>` : ""}
+        ${clickable && banner.cta ? `<span class="managed-banner__cta">${esc(banner.cta)} ${icon("arrowLeft")}</span>` : ""}
+      </span>
+    </${tag}>`;
+}
+
+// Multiple banners in one placement render as a manual-swipe horizontal strip.
+// Deliberately NO auto-advance — auto-motion carousels are a standing product
+// rejection on this project (mobile category strip, 2026-06; Flutter PromoHero,
+// 2026-07-17). The visitor moves it, never the page.
+function bannerStripHTML(placement, opts = {}) {
+  const list = activeBanners(placement, opts);
+  if (!list.length) return "";
+  const multi = list.length > 1;
+  return `
+    <section class="section managed-banners-section">
+      <div class="container">
+        <div class="managed-banners${multi ? " managed-banners--strip" : ""}">
+          ${list.map(item => bannerCardHTML(item, placement)).join("")}
+        </div>
+      </div>
+    </section>`;
+}
+
+// ---- قياس كفاءة البانرات: إرسال حدث ظهور/نقر ----
+// يُكتب في جدول banner_events المجهول تماماً (بلا أي معرّف زائر) عبر الخادم.
+// الفشل صامت دائماً: العدّاد لا يجوز أن يعطّل تصفّح العميل بأي حال.
+function trackBannerEvent(bannerId, placement, type) {
+  if (!bannerId || !type) return;
+  try {
+    const body = JSON.stringify({ bannerId, placement: placement || "", type, source: "web" });
+    const url = "/api/notify-order?action=banner-event";
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    } else {
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+    }
+  } catch (e) { /* never break the page for a counter */ }
+}
+
+// Impression = at least half the banner actually reached the visitor's screen,
+// not merely "was somewhere in the page" — otherwise a banner far below the fold
+// would inflate its own impressions and make CTR meaningless. Counted once per
+// banner per browsing session, so bouncing between pages doesn't multiply views.
+//
+// Implemented with an explicit geometry check on a rAF-throttled passive scroll
+// listener rather than IntersectionObserver. IO is the more idiomatic tool, but
+// its callbacks are tied to the browser's rendering step and can be starved
+// entirely in non-painting contexts (verified: a control IO on a fully visible
+// element delivered zero callbacks in the automated browser used to test this).
+// A silently-zero impression counter would poison every CTR number in the admin
+// dashboard, so correctness wins over idiom here. The listener detaches itself
+// as soon as every banner on the page has been counted, so the steady-state cost
+// is zero.
+function setupBannerImpressions() {
+  const detach = () => {
+    if (!state._bannerImpressionHandler) return;
+    window.removeEventListener("scroll", state._bannerImpressionHandler);
+    window.removeEventListener("resize", state._bannerImpressionHandler);
+    state._bannerImpressionHandler = null;
+  };
+  detach(); // a re-render replaced the DOM — drop the previous page's listener
+
+  const seen = state._bannerSeen || (state._bannerSeen = new Set());
+  let pending = [...document.querySelectorAll("[data-banner-id]")]
+    .filter(el => el.dataset.bannerId && !seen.has(el.dataset.bannerId));
+  if (!pending.length) return;
+
+  const check = () => {
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    pending = pending.filter(el => {
+      const id = el.dataset.bannerId;
+      if (seen.has(id)) return false;
+      const rect = el.getBoundingClientRect();
+      if (!rect.height) return true; // not laid out yet — keep watching
+      const visible = Math.max(0, Math.min(rect.bottom, viewportH) - Math.max(rect.top, 0));
+      if (visible / rect.height < 0.5) return true;
+      seen.add(id);
+      let already = false;
+      try { already = sessionStorage.getItem("dkbi:" + id) === "1"; } catch (e) { /* private mode */ }
+      if (!already) {
+        try { sessionStorage.setItem("dkbi:" + id, "1"); } catch (e) { /* ignore */ }
+        trackBannerEvent(id, el.dataset.bannerPlacement, "impression");
+      }
+      return false;
+    });
+    if (!pending.length) detach();
+  };
+
+  // Time-based throttle rather than requestAnimationFrame: rAF is also tied to
+  // the rendering loop and can be starved in the same contexts that starve IO,
+  // whereas timers keep running. 150ms is well under the time it takes a person
+  // to scroll a banner into view and read it.
+  let queued = false;
+  state._bannerImpressionHandler = () => {
+    if (queued) return;
+    queued = true;
+    setTimeout(() => { queued = false; check(); }, 150);
+  };
+  window.addEventListener("scroll", state._bannerImpressionHandler, { passive: true });
+  window.addEventListener("resize", state._bannerImpressionHandler, { passive: true });
+  check(); // count whatever is already on screen at first paint
+}
+
 function renderOffers() {
   // render() writes state._lastNavKey ("offers/") only after this returns, so
   // "the visitor just navigated here" is exactly when it still holds another
@@ -3484,6 +3722,7 @@ function renderOffers() {
         <div class="big-percent">%</div>
       </div>`}
     </section>
+    ${bannerStripHTML("offers_top")}
     ${storePromoBanners.length ? `
     <section class="section store-promo-banners-section">
       <div class="container">
@@ -4250,6 +4489,7 @@ function dashboardSidebar(type, active) {
     ["storeCategories", "filter", "تصنيفات المتاجر"],
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"],
+    ["banners", "image", "البانرات"],
     ["integrations", "megaphone", "التكاملات"],
     ["marketing", "chart", "التتبع والتسويق"],
     ["fbads", "map", "استهداف فيسبوك"],
@@ -7626,6 +7866,212 @@ function openCategoryEditModal(index) {
     </form>
   `, "");
 }
+// ============================================================================
+// لوحة الإدارة — البانرات
+// ============================================================================
+function bannerNewId() {
+  return "bnr_" + Math.random().toString(36).slice(2, 10);
+}
+
+function saveBannerSettings(next) {
+  saveContentSetting("banners", next);
+}
+
+// Loads aggregate stats for the banners tab. Kept separate from the banner
+// definitions (which come from site_settings) because stats live in a table
+// that may not exist yet — `enabled:false` means "migration not run", which the
+// UI must show honestly rather than rendering zeros that look like real data.
+function loadAdminBannerStats(days) {
+  const range = days || (state.adminBannerStats && state.adminBannerStats.days) || 30;
+  state.adminBannerStats = { ...(state.adminBannerStats || {}), loading: true, days: range };
+  render();
+  // POST, not GET: api/notify-order.js handles GET actions in a separate earlier
+  // block that ends in a bare 403 — every action added to the POST section (like
+  // this one) must be called with POST or it silently falls through to that 403.
+  adminApi("banner-stats", { method: "POST", params: { days: range } })
+    .then(res => {
+      const map = {};
+      (res.rows || []).forEach(r => { map[r.banner_id] = r; });
+      state.adminBannerStats = { loading: false, enabled: res.enabled !== false, days: range, map, error: null };
+      render();
+    })
+    .catch(err => {
+      state.adminBannerStats = { loading: false, enabled: false, days: range, map: {}, error: String(err && err.message || err) };
+      render();
+    });
+}
+
+const BANNER_STATE_BADGE = {
+  live: ["نشط الآن", "ok"],
+  scheduled: ["مجدول", "warn"],
+  expired: ["منتهي", "muted"],
+  paused: ["متوقف", "muted"]
+};
+
+function bannerScheduleLabel(banner) {
+  const start = banner.startAt ? formatBannerDate(banner.startAt) : "";
+  const end = banner.endAt ? formatBannerDate(banner.endAt) : "";
+  if (start && end) return `${start} ← ${end}`;
+  if (start) return `من ${start}`;
+  if (end) return `حتى ${end}`;
+  return "دائم (بلا تاريخ انتهاء)";
+}
+
+function formatBannerDate(value) {
+  const ms = bannerTime(value, false);
+  if (!ms) return String(value || "");
+  try { return new Date(ms).toLocaleDateString("ar-EG", { day: "numeric", month: "short", year: "numeric" }); }
+  catch (e) { return String(value); }
+}
+
+function bannerTargetLabel(banner) {
+  const type = banner.linkType || "none";
+  const value = String(banner.linkValue == null ? "" : banner.linkValue).trim();
+  if (type === "none" || !value) return "بلا رابط";
+  if (type === "store") { const s = getStore(Number(value)); return s ? `متجر: ${s.name}` : `⚠ متجر غير موجود (${value})`; }
+  if (type === "product") { const p = products.find(x => x.id === Number(value)); return p ? `منتج: ${p.name}` : `⚠ منتج غير موجود (${value})`; }
+  if (type === "category") return CATEGORY_MAP[value] ? `قسم: ${CATEGORY_MAP[value]}` : `⚠ قسم غير موجود (${value})`;
+  return `رابط: ${value}`;
+}
+
+function adminBanners() {
+  const { items, limits } = bannerSettings();
+  const stats = state.adminBannerStats || {};
+  const statMap = stats.map || {};
+  const now = Date.now();
+  const liveCount = items.filter(b => bannerScheduleState(b, now) === "live").length;
+
+  const ranges = [[7, "٧ أيام"], [30, "٣٠ يوم"], [90, "٩٠ يوم"]];
+  const activeRange = stats.days || 30;
+
+  const totalImpressions = Object.values(statMap).reduce((s, r) => s + Number(r.impressions || 0), 0);
+  const totalClicks = Object.values(statMap).reduce((s, r) => s + Number(r.clicks || 0), 0);
+  const ctr = totalImpressions ? ((totalClicks / totalImpressions) * 100).toFixed(1) + "%" : "—";
+  const kpi = (val, label, ic) => `<div class="kpi-card"><span class="kpi-icon">${icon(ic)}</span><div class="kpi-body"><b>${val}</b><small>${label}</small></div></div>`;
+
+  // Honest empty state: distinguishes "tracking isn't installed" from "zero clicks".
+  const statsBody = stats.loading
+    ? `<div class="empty-managed"><span class="delivery-loader"></span><p>جارٍ تحميل الإحصاءات…</p></div>`
+    : stats.enabled === false
+      ? `<div class="empty-managed banner-stats-off">${icon("shield")}<p><strong>تتبّع البانرات غير مُفعّل بعد.</strong><br>
+          البانرات نفسها تعمل وتظهر للزوار بشكل طبيعي — الناقص هو جدول تسجيل النقرات فقط.<br>
+          لتفعيله: افتح <b>Supabase → SQL Editor</b> وشغّل الملف
+          <code dir="ltr">migrations/20260719_banners_and_banner_events.sql</code> مرة واحدة، ثم اضغط «تحديث».<br>
+          <small>حتى ذلك الحين لا تُعرض أرقام هنا عمداً، كي لا تبدو الأصفار كأنها «صفر نقرة» حقيقية.</small></p></div>`
+      : !items.length
+        ? `<div class="empty-managed">${icon("chart")}<p>أضِف بانراً أولاً لتبدأ القياس.</p></div>`
+        : `<div class="kpi-grid">${kpi(totalImpressions.toLocaleString("ar"), `ظهور خلال ${activeRange} يوم`, "chart")}${kpi(totalClicks.toLocaleString("ar"), "نقرة", "star")}${kpi(ctr, "متوسط معدل النقر (CTR)", "percent")}</div>
+          <div class="campaigns-table-wrap"><table class="admin-table">
+            <thead><tr><th>البانر</th><th>المكان</th><th>ظهور</th><th>نقرات</th><th>CTR</th><th>موقع/تطبيق</th></tr></thead>
+            <tbody>${[...items].sort((a, b) => Number((statMap[b.id] || {}).clicks || 0) - Number((statMap[a.id] || {}).clicks || 0)).map(b => {
+              const r = statMap[b.id] || {};
+              const imp = Number(r.impressions || 0), clk = Number(r.clicks || 0);
+              const rowCtr = imp ? ((clk / imp) * 100).toFixed(1) + "%" : "—";
+              const place = BANNER_PLACEMENTS.find(p => p.key === b.placement);
+              return `<tr><td>${esc(b.title || b.headline || b.id)}</td><td><small>${esc(place ? place.label : b.placement)}</small></td><td>${imp.toLocaleString("ar")}</td><td><b>${clk.toLocaleString("ar")}</b></td><td>${rowCtr}</td><td><small>${Number(r.web_clicks || 0)} / ${Number(r.app_clicks || 0)}</small></td></tr>`;
+            }).join("")}</tbody>
+          </table></div>`;
+
+  return `
+    <div class="dashboard-toolbar">
+      <p class="creds-summary">${items.length} بانر — ${liveCount} نشط الآن</p>
+      <div class="toolbar-actions">
+        ${ranges.map(([d, l]) => `<button class="${activeRange === d ? "primary-button" : "secondary-button"} compact" data-action="banner-range" data-days="${d}">${l}</button>`).join("")}
+        <button class="secondary-button compact" data-action="banner-stats-refresh">${icon("filter")} تحديث</button>
+        <button class="primary-button compact" data-action="banner-add">${icon("plus")} إضافة بانر</button>
+      </div>
+    </div>
+
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>أداء البانرات</h3><p>الظهور يُحتسب مرة واحدة لكل زائر لكل بانر عند وصوله فعلاً لشاشته (وليس بمجرد وجوده في الصفحة)، فيكون معدل النقر واقعياً.</p></div></div>
+      ${statsBody}
+    </section>
+
+    ${BANNER_PLACEMENTS.map(place => {
+      const list = items.filter(b => b.placement === place.key).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0));
+      const limit = bannerPlacementLimit(place.key);
+      return `
+      <section class="dashboard-card">
+        <div class="card-heading">
+          <div><h3>${esc(place.label)}</h3><p>${esc(place.hint)}</p></div>
+          <label class="input-label banner-limit-field"><span>أقصى عدد معروض</span>
+            <input type="number" min="1" max="12" value="${limit}" data-action="banner-limit" data-placement="${place.key}">
+          </label>
+        </div>
+        ${list.length > limit ? `<p class="banner-limit-note">${icon("shield")} يوجد ${list.length} بانر هنا لكن الحد الأقصى ${limit} — الزائد لن يُعرض للزوار (الترتيب يحدد الأولوية).</p>` : ""}
+        <div class="admin-store-list">${list.length ? list.map((b, i) => {
+          const st = bannerScheduleState(b, now);
+          const [badgeText, badgeTone] = BANNER_STATE_BADGE[st];
+          const r = statMap[b.id] || {};
+          const imp = Number(r.impressions || 0), clk = Number(r.clicks || 0);
+          const overLimit = i >= limit;
+          const targetLabel = bannerTargetLabel(b);
+          const broken = targetLabel.startsWith("⚠");
+          return `<article class="${overLimit ? "banner-row-over" : ""}">
+            <span class="avatar-mini banner-thumb">${b.image ? `<img src="${escAttr(b.image)}" alt="">` : icon("image")}</span>
+            <div style="flex:1 1 auto;min-width:0">
+              <strong>${esc(b.title || b.headline || "(بلا اسم)")}</strong>
+              <small>
+                <b class="banner-badge ${badgeTone}">${badgeText}</b>
+                · ${esc(bannerScheduleLabel(b))}
+                · <span class="${broken ? "banner-target-broken" : ""}">${esc(targetLabel)}</span>
+                ${stats.enabled !== false && (imp || clk) ? ` · ${clk.toLocaleString("ar")} نقرة / ${imp.toLocaleString("ar")} ظهور` : ""}
+              </small>
+            </div>
+            <span style="display:flex;gap:.25rem;align-items:center;flex-wrap:wrap">
+              <button class="table-action" data-action="banner-move" data-id="${escAttr(b.id)}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="تحريك لأعلى">▲</button>
+              <button class="table-action" data-action="banner-move" data-id="${escAttr(b.id)}" data-dir="down" ${i === list.length - 1 ? "disabled" : ""} aria-label="تحريك لأسفل">▼</button>
+              <button class="table-action" data-action="banner-edit" data-id="${escAttr(b.id)}" aria-label="تعديل">${icon("edit")}</button>
+              <button class="table-action danger" data-action="banner-delete" data-id="${escAttr(b.id)}" aria-label="حذف">${icon("trash")}</button>
+              <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-action="banner-toggle" data-id="${escAttr(b.id)}" ${b.active === false ? "" : "checked"}><b>${b.active === false ? "متوقف" : "مفعّل"}</b></label>
+            </span>
+          </article>`;
+        }).join("") : `<div class="empty-managed">${icon("image")}<p>لا بانرات في هذا المكان.</p></div>`}</div>
+      </section>`;
+    }).join("")}`;
+}
+
+function openBannerEditModal(id) {
+  const { items } = bannerSettings();
+  const editing = id ? items.find(b => b.id === id) : null;
+  const b = editing || { placement: "home_top", linkType: "none", active: true, sort: (items.length + 1) * 10 };
+  const catOptions = Object.keys(CATEGORY_MAP).map(slug => `<option value="${escAttr(slug)}" ${b.categoryKey === slug ? "selected" : ""}>${esc(CATEGORY_MAP[slug])}</option>`).join("");
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">البانرات</span><h2>${editing ? "تعديل بانر" : "إضافة بانر"}</h2>
+    <form id="banner-form" data-id="${escAttr(editing ? editing.id : "")}" class="form-grid">
+      <label class="input-label" style="grid-column:1/-1"><span>اسم داخلي (للإدارة فقط)</span><input name="title" value="${escAttr(b.title || "")}" required placeholder="مثال: حملة رمضان — باشا بيتزريا"></label>
+
+      <label class="input-label"><span>مكان الظهور</span><select name="placement">${BANNER_PLACEMENTS.map(p => `<option value="${p.key}" ${b.placement === p.key ? "selected" : ""}>${esc(p.label)}</option>`).join("")}</select></label>
+      <label class="input-label"><span>الترتيب (الأصغر أولاً)</span><input type="number" name="sort" value="${escAttr(String(b.sort == null ? 10 : b.sort))}"></label>
+
+      <label class="input-label banner-category-field" style="grid-column:1/-1"><span>القسم (مطلوب فقط لمكان «صفحة قسم»)</span><select name="categoryKey"><option value="">— اختر القسم —</option>${catOptions}</select></label>
+
+      <label class="input-label" style="grid-column:1/-1"><span>العنوان الظاهر للزائر</span><input name="headline" value="${escAttr(b.headline || "")}" placeholder="مثال: خصم ٢٠٪ هذا الأسبوع"></label>
+      <label class="input-label" style="grid-column:1/-1"><span>سطر وصف قصير</span><input name="sub" value="${escAttr(b.sub || "")}" placeholder="مثال: على كل الطلبات فوق ٢٠٠ ل.ت"></label>
+      <label class="input-label" style="grid-column:1/-1"><span>نص الزر</span><input name="cta" value="${escAttr(b.cta || "")}" placeholder="مثال: اطلب الآن"></label>
+
+      <label class="input-label"><span>نوع الرابط</span><select name="linkType">${BANNER_LINK_TYPES.map(t => `<option value="${t.key}" ${(b.linkType || "none") === t.key ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</select></label>
+      <label class="input-label"><span>قيمة الرابط</span><input name="linkValue" value="${escAttr(String(b.linkValue == null ? "" : b.linkValue))}" placeholder="رقم المتجر / رقم المنتج / slug القسم / https://..."></label>
+
+      <label class="input-label"><span>يبدأ الظهور</span><input type="date" name="startAt" value="${escAttr(String(b.startAt || "").slice(0, 10))}"></label>
+      <label class="input-label"><span>ينتهي الظهور (شامل اليوم نفسه)</span><input type="date" name="endAt" value="${escAttr(String(b.endAt || "").slice(0, 10))}"></label>
+
+      <input type="hidden" name="image" value="${escAttr(b.image || "")}">
+      <div class="input-label" style="grid-column:1/-1"><span>صورة البانر (يُنصح بعرض ١٢٠٠ بكسل أو أكثر)</span>
+        <div class="image-preview" id="banner-image-preview">${b.image ? `<img src="${escAttr(b.image)}" alt="">` : icon("image")}</div>
+        <label class="upload-tile">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="banner-image-file" accept="image/*" hidden></label>
+      </div>
+
+      <label class="input-label" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:.5rem">
+        <input type="checkbox" name="active" ${b.active === false ? "" : "checked"}><span>مفعّل</span>
+      </label>
+
+      <button type="submit" class="primary-button full" style="grid-column:1/-1">${icon("check")} حفظ البانر</button>
+    </form>
+  `, "");
+}
+
 // Persist a content setting (optimistic local update + re-render, then save via
 // the admin server endpoint). Used by the categories toggles/reorder.
 function saveContentSetting(key, value) {
@@ -8639,8 +9085,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, storeCategories: adminStoreCategories, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], storeCategories: ["تصنيفات المتاجر", "تجاوز يدوي لترتيب/دمج تصنيفات منتجات أي متجر — فوق الترتيب التلقائي"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, storeCategories: adminStoreCategories, credentials: adminCredentials, content: adminContent, banners: adminBanners, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], storeCategories: ["تصنيفات المتاجر", "تجاوز يدوي لترتيب/دمج تصنيفات منتجات أي متجر — فوق الترتيب التلقائي"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], banners: ["إدارة البانرات", "أضِف بانرات بصور وروابط، حدّد مكان وفترة ظهور كل بانر وعددها، وقِس نقراتها"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -10413,6 +10859,7 @@ function renderCategoryPage(slug) {
   const merchantNoun = CATEGORY_MERCHANT_PITCH[catText] || "متجرك";
   return `
     <section class="page-hero compact category-hero"><div class="container"><div class="breadcrumbs"><a href="/" data-action="route-home">الرئيسية</a><span>/</span><strong>${catText}</strong></div><h1>${catText}</h1><p>${catStores.length ? `${catStores.length} متجر في إسطنبول على دكانجي.` : "قريباً في منطقتك."}</p></div></section>
+    ${bannerStripHTML("category_top", { categoryKey: slug })}
     <section class="section category-stores-section"><div class="container">
       <div class="merchant-cta category-merchant-banner">
         <div class="merchant-cta__art"><div class="shop-mini">${icon("store")}</div></div>
@@ -10601,6 +11048,9 @@ function render() {
   updateOffersBadge();
   // Home/join render the V2 hero with its rotating headline — arm its auto-advance slider.
   if (route === "home" || route === "join") { setupHeroSlider(); setupHeroSearchTyper(); }
+  // Managed banners can appear on home/offers/category — arm their in-view
+  // impression counter after every paint (it self-dedupes per session).
+  setupBannerImpressions();
   // Only reset scroll on actual navigation (route/id change). Data-refresh
   // re-renders (catalog load, site settings, polling) must preserve the user's
   // scroll position — otherwise the page snaps to top a few seconds after load
@@ -12283,6 +12733,17 @@ document.addEventListener("click", event => {
   if (href.startsWith("/") && !href.startsWith("//") && !/\.[a-z0-9]+(\?|$)/i.test(href)) { event.preventDefault(); navigate(href); }
 });
 
+// Managed-banner click counter — a listener of its own, deliberately NOT folded
+// into the [data-action] dispatcher below. Banners linking to a category or an
+// external URL render as plain <a href> with no data-action at all, so a hook
+// inside that dispatcher would silently miss their clicks and under-report their
+// CTR. This one fires for every banner variant (button, route link, external).
+document.addEventListener("click", event => {
+  const el = event.target.closest("[data-banner-id]");
+  if (!el) return;
+  trackBannerEvent(el.dataset.bannerId, el.dataset.bannerPlacement, "click");
+}, true);
+
 document.addEventListener("click", event => {
   const target = event.target.closest("[data-action]");
   if (!target) return;
@@ -12868,6 +13329,7 @@ document.addEventListener("click", event => {
     if (target.dataset.tab === "campaigns" && !state.adminCampaigns) loadAdminCampaigns();
     if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
     if (target.dataset.tab === "fbads" && state.fbadsCompounds == null) loadFbAdsBootstrap();
+    if (target.dataset.tab === "banners" && !state.adminBannerStats) loadAdminBannerStats(30);
     if (target.dataset.tab !== "fbads") { fbadsMap = null; fbadsMapEl = null; state._fbadsMapSig = null; }
     render();
   }
@@ -13280,6 +13742,45 @@ document.addEventListener("click", event => {
     const items = categoriesList().map(c => ({ ...c }));
     const j = dir === "up" ? i - 1 : i + 1;
     if (i >= 0 && j >= 0 && j < items.length) { const t = items[i]; items[i] = items[j]; items[j] = t; saveContentSetting("categories", { items }); }
+  }
+  // ── البانرات المُدارة ──
+  if (action === "banner-add") openBannerEditModal(null);
+  if (action === "banner-edit") openBannerEditModal(target.dataset.id);
+  if (action === "banner-range") loadAdminBannerStats(Number(target.dataset.days) || 30);
+  if (action === "banner-stats-refresh") loadAdminBannerStats();
+  if (action === "banner-move") {
+    const { items, limits } = bannerSettings();
+    const banner = items.find(b => b.id === target.dataset.id);
+    if (!banner) return;
+    // Reorder within the banner's own placement group: neighbours in other
+    // placements are irrelevant, so swap sort values with the adjacent sibling.
+    const siblings = items.filter(b => b.placement === banner.placement).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0));
+    const i = siblings.findIndex(b => b.id === banner.id);
+    const j = target.dataset.dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= siblings.length) return;
+    const next = items.map(b => {
+      if (b.id === siblings[i].id) return { ...b, sort: Number(siblings[j].sort) || 0 };
+      if (b.id === siblings[j].id) return { ...b, sort: Number(siblings[i].sort) || 0 };
+      return b;
+    });
+    saveBannerSettings({ items: next, limits });
+  }
+  if (action === "banner-delete") {
+    const { items, limits } = bannerSettings();
+    const banner = items.find(b => b.id === target.dataset.id);
+    if (!banner) return;
+    showModal(`
+      <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+      <div class="conflict-modal-icon">${icon("trash")}</div><h2>حذف «${esc(banner.title || banner.headline || banner.id)}»؟</h2>
+      <p>سيختفي البانر من الموقع فوراً. إحصاءات نقراته السابقة تبقى محفوظة في قاعدة البيانات لكنها لن تظهر في اللوحة بعد الحذف.<br><small>إن كنت تريد إيقافه مؤقتاً فقط، أغلق مفتاح «مفعّل» بدل الحذف.</small></p>
+      <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إلغاء</button><button class="danger-button" data-action="banner-confirm-delete" data-id="${escAttr(banner.id)}">حذف نهائياً</button></div>
+    `, "");
+  }
+  if (action === "banner-confirm-delete") {
+    const { items, limits } = bannerSettings();
+    saveBannerSettings({ items: items.filter(b => b.id !== target.dataset.id), limits });
+    closeModal();
+    showToast("تم حذف البانر", "success");
   }
   if (action === "cat-add") openCategoryEditModal(null);
   if (action === "cat-edit") openCategoryEditModal(Number(target.dataset.index));
@@ -13709,6 +14210,32 @@ document.addEventListener("change", event => {
     const i = Number(event.target.dataset.index);
     const items = categoriesList().map(c => ({ ...c }));
     if (items[i]) { items[i].hidden = !event.target.checked; saveContentSetting("categories", { items }); }
+  }
+  if (event.target.dataset.action === "banner-toggle") {
+    const { items, limits } = bannerSettings();
+    const id = event.target.dataset.id;
+    saveBannerSettings({ items: items.map(b => b.id === id ? { ...b, active: event.target.checked } : b), limits });
+  }
+  if (event.target.dataset.action === "banner-limit") {
+    const { items, limits } = bannerSettings();
+    const placement = event.target.dataset.placement;
+    const n = Math.min(Math.max(Number(event.target.value) || 1, 1), 12);
+    saveBannerSettings({ items, limits: { ...limits, [placement]: n } });
+  }
+  if (event.target.id === "banner-image-file") {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const form = event.target.closest("form");
+    const preview = document.getElementById("banner-image-preview");
+    if (preview) preview.innerHTML = `<span class="image-loading">${icon("upload")}</span>`;
+    // Banners render full-width edge-to-edge, so they keep more resolution than
+    // the 900px content default. The server hosts the result (offloadJsonImages),
+    // so nothing this large ever lands in the site_settings row itself.
+    readImageFileResized(file, 1400, 0.82).then(dataUrl => {
+      const imgInput = form.querySelector('[name="image"]'); if (imgInput) imgInput.value = dataUrl;
+      if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="">`;
+      showToast(`تم اختيار "${file.name}"`, "success");
+    }).catch(() => { if (preview) preview.innerHTML = icon("image"); showToast("تعذّر رفع الصورة، جرّب صورة أخرى", ""); });
   }
   if (event.target.id === "store-cover-file") {
     const file = event.target.files && event.target.files[0];
@@ -14172,6 +14699,55 @@ document.addEventListener("submit", async event => {
     adminApi("save-settings", { method: "POST", body: { key: "dailyDeal", value } })
       .then(() => { state.siteSettings = { ...state.siteSettings, dailyDeal: value }; showToast("تم حفظ عرض اليوم", "success"); render(); })
       .catch(() => { showToast("تعذّر الحفظ", ""); if (btn) { btn.disabled = false; btn.innerHTML = `${icon("check")} حفظ`; } });
+    return;
+  }
+  if (event.target.id === "banner-form") {
+    const f = event.target;
+    const val = n => (f.querySelector(`[name="${n}"]`)?.value || "").trim();
+    const title = val("title");
+    if (!title) return;
+    const placement = val("placement") || "home_top";
+    const linkType = val("linkType") || "none";
+    const linkValue = val("linkValue");
+    const categoryKey = val("categoryKey");
+
+    // Validate before saving rather than letting the banner silently never
+    // render: activeBanners() drops anything whose target doesn't resolve, so a
+    // typo'd store id would just look like "my banner disappeared".
+    if (linkType !== "none" && !linkValue) { showToast("اكتب قيمة الرابط أو اختر «بلا رابط»", ""); return; }
+    if (linkType === "store" && !getStore(Number(linkValue))) { showToast("لا يوجد متجر بهذا الرقم", ""); return; }
+    if (linkType === "product" && !products.find(p => p.id === Number(linkValue))) { showToast("لا يوجد منتج بهذا الرقم", ""); return; }
+    if (linkType === "category" && !CATEGORY_MAP[linkValue]) { showToast("slug القسم غير صحيح", ""); return; }
+    if (linkType === "url" && !/^(https?:|tel:|mailto:|\/)/i.test(linkValue)) { showToast("الرابط يجب أن يبدأ بـ https:// أو / ", ""); return; }
+    if (placement === "category_top" && !categoryKey) { showToast("اختر القسم الذي سيظهر فيه البانر", ""); return; }
+    const startAt = val("startAt"), endAt = val("endAt");
+    if (startAt && endAt && bannerTime(startAt, false) > bannerTime(endAt, true)) { showToast("تاريخ البداية بعد تاريخ الانتهاء", ""); return; }
+    if (!val("headline") && !(f.querySelector('[name="image"]')?.value || "")) { showToast("أضِف صورة أو عنواناً على الأقل", ""); return; }
+
+    const { items, limits } = bannerSettings();
+    const editingId = f.dataset.id;
+    const record = {
+      id: editingId || bannerNewId(),
+      title,
+      placement,
+      image: f.querySelector('[name="image"]')?.value || "",
+      headline: val("headline"),
+      sub: val("sub"),
+      cta: val("cta"),
+      linkType,
+      linkValue,
+      categoryKey: placement === "category_top" ? categoryKey : "",
+      startAt,
+      endAt,
+      active: !!f.querySelector('[name="active"]')?.checked,
+      sort: Number(val("sort")) || 0
+    };
+    const next = editingId && items.some(b => b.id === editingId)
+      ? items.map(b => b.id === editingId ? { ...b, ...record } : b)
+      : [...items, { ...record, createdAt: new Date().toISOString() }];
+    closeModal();
+    saveBannerSettings({ items: next, limits });
+    showToast(editingId ? "تم تحديث البانر" : "تمت إضافة البانر", "success");
     return;
   }
   if (event.target.id === "category-form") {

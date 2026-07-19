@@ -393,6 +393,24 @@ async function sbGet(path) {
   } catch (e) { return null; }
 }
 
+// Allow-list of real banner ids, used to reject forged banner-event writes.
+// Cached in module scope (warm serverless instances reuse it) for 60s so a busy
+// page doesn't re-read site_settings on every impression. Invalidated eagerly
+// whenever the banners setting is saved.
+const bannerIdCache = { ids: null, at: 0 };
+async function knownBannerIds() {
+  const now = Date.now();
+  if (bannerIdCache.ids && now - bannerIdCache.at < 60000) return bannerIdCache.ids;
+  const rows = await sbGet("site_settings?key=eq.banners&select=value");
+  // null => the read itself failed; return null so the caller skips validation
+  // rather than silently dropping every real event during a Supabase blip.
+  if (!rows) return bannerIdCache.ids;
+  const items = (rows[0] && rows[0].value && Array.isArray(rows[0].value.items)) ? rows[0].value.items : [];
+  bannerIdCache.ids = new Set(items.map(b => b && b.id).filter(Boolean).map(String));
+  bannerIdCache.at = now;
+  return bannerIdCache.ids;
+}
+
 // Exact row count via the Content-Range header. Returns null (NOT 0) when the
 // count fails, so callers can tell "unknown" from "genuinely empty".
 // Same helper pattern already proven in api/campaign.js.
@@ -2225,7 +2243,60 @@ module.exports = async (req, res) => {
     const value = await offloadJsonImages(body.value, `setting_${key}`);
     const r = await sbWrite("POST", "site_settings?on_conflict=key", { key, value, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    if (key === "banners") bannerIdCache.ids = null; // force a refresh of the event-validation allow-list
     return res.status(200).json({ ok: true });
+  }
+
+  // ---- البانرات المُدارة: عدّاد الظهور/النقر ----
+  // نقطة عامة بلا مصادقة عمداً: الزائر المجهول هو من يُطلقها، ولا تُرجع أي بيانات.
+  // الصف المكتوب مجهول تماماً (بلا معرّف زائر/IP) — راجع تعليق الجدول في
+  // migrations/20260719_banners_and_banner_events.sql.
+  // حماية من التلاعب: يُقبل فقط معرّف بانر موجود فعلاً في site_settings.banners،
+  // فلا يستطيع أحد حشو الجدول بمعرّفات مخترعة. القائمة مخزَّنة مؤقتاً 60 ثانية
+  // كي لا نقرأ الإعدادات مع كل ظهور.
+  if (pq.action === "banner-event") {
+    const type = String(body.type || "").trim();
+    const bannerId = String(body.bannerId || "").trim();
+    const source = body.source === "app" ? "app" : "web";
+    const placement = String(body.placement || "").trim().slice(0, 40);
+    // Fail-open on every rejection: a counter must never surface an error to a
+    // shopper, and a 4xx here would just add noise to the browser console.
+    if (!bannerId || bannerId.length > 64 || (type !== "impression" && type !== "click")) {
+      return res.status(200).json({ ok: true, skipped: "invalid" });
+    }
+    const known = await knownBannerIds();
+    if (known && !known.has(bannerId)) return res.status(200).json({ ok: true, skipped: "unknown_banner" });
+    const w = await sbWrite("POST", "banner_events", { banner_id: bannerId, placement, event_type: type, source }, "return=minimal");
+    // A missing table (migration not run yet) lands here — still a silent 200.
+    return res.status(200).json({ ok: true, recorded: !!w.ok });
+  }
+
+  // ---- البانرات المُدارة: قراءة الإحصاءات للوحة الإدارة ----
+  // التجميع يتم داخل Postgres عبر دالة banner_stats() وليس بجلب كل الصفوف وعدّها هنا.
+  // إن لم يكن الترحيل قد شُغّل بعد، نُرجع enabled:false كي تعرض اللوحة رسالة صريحة
+  // «التتبع غير مفعّل» بدل أصفار كاذبة تبدو كأنها «صفر نقرة».
+  if (pq.action === "banner-stats") {
+    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    const days = Math.min(Math.max(Number(pq.days) || 30, 1), 365);
+    const { url, key } = sb();
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/banner_stats`, {
+        method: "POST",
+        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ days })
+      });
+      if (r.status === 404) return res.status(200).json({ ok: true, enabled: false, days, rows: [] });
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        // PGRST202 = function not found, 42P01 = relation does not exist.
+        if (/PGRST202|42P01|does not exist/i.test(detail)) return res.status(200).json({ ok: true, enabled: false, days, rows: [] });
+        return res.status(502).json({ error: "stats failed", detail: detail.slice(0, 300) });
+      }
+      const rows = await r.json().catch(() => []);
+      return res.status(200).json({ ok: true, enabled: true, days, rows: Array.isArray(rows) ? rows : [] });
+    } catch (e) {
+      return res.status(502).json({ error: "stats failed", detail: String(e && e.message || e) });
+    }
   }
 
   // Merchant/Admin: save the fixed-price delivery zones for ONE store into the

@@ -12850,3 +12850,131 @@ tbody tr:hover {
      don't repeat them inside the hero. */
   .hero2 .h2-featured { display: none; }
 }
+
+/* ============================================================================
+   البانرات المُدارة (site_settings.banners) — 2026-07-19
+   طبقة عرض جديدة مستقلة تماماً عن .offers-banner و.dd-hero و.store-promo-banner
+   الموجودة مسبقاً؛ لم يُلمس أيٌّ منها. تستخدم رموز الألوان الموجودة فعلاً في
+   المشروع (--green-700/--cream-dark/--ink) وليس متغيرات غير معرَّفة.
+   ============================================================================ */
+.managed-banners-section { padding-block: 18px; }
+.managed-banners { display: grid; gap: 14px; }
+
+/* عدة بانرات في نفس المكان = شريط أفقي بالسحب اليدوي فقط، بلا أي حركة تلقائية
+   (قرار منتج ثابت في المشروع: لا كاروسيل ذاتي الحركة). */
+.managed-banners--strip {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(min(560px, 88%), 1fr);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.managed-banners--strip::-webkit-scrollbar { display: none; }
+.managed-banners--strip > .managed-banner { scroll-snap-align: start; }
+
+.managed-banner {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 168px;
+  border: 0;
+  padding: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--green-700, #14532d);
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+  color: #fff;
+  text-decoration: none;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.managed-banner.is-static { cursor: default; }
+.managed-banner:hover:not(.is-static) { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(0, 0, 0, .16); }
+.managed-banner:focus-visible { outline: 3px solid var(--green-700, #14532d); outline-offset: 3px; }
+
+.managed-banner > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* تدرّج من اليمين (بداية السطر في RTL) كي يبقى النص مقروءاً فوق أي صورة. */
+.managed-banner__gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to left, rgba(0, 0, 0, .72) 0%, rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .05) 100%);
+}
+.managed-banner.no-image .managed-banner__gradient {
+  background: linear-gradient(135deg, rgba(0, 0, 0, .28), rgba(0, 0, 0, .05));
+}
+.managed-banner__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px 26px;
+  max-width: 62%;
+}
+.managed-banner__body strong { font-size: 1.35rem; line-height: 1.3; font-weight: 800; }
+.managed-banner__body small { font-size: .93rem; opacity: .92; line-height: 1.6; }
+.managed-banner__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink, #231f20);
+  font-weight: 700;
+  font-size: .9rem;
+}
+.managed-banner__cta svg { width: 16px; height: 16px; }
+
+@media (max-width: 640px) {
+  .managed-banners-section { padding-block: 12px; }
+  .managed-banners--strip { grid-auto-columns: minmax(86%, 1fr); }
+  .managed-banner { min-height: 140px; border-radius: 16px; }
+  .managed-banner__body { padding: 18px; max-width: 78%; gap: 6px; }
+  .managed-banner__body strong { font-size: 1.08rem; }
+  .managed-banner__body small { font-size: .82rem; }
+  .managed-banner__cta { padding: 7px 14px; font-size: .82rem; }
+}
+
+/* ---- لوحة الإدارة: صفوف البانرات ---- */
+.banner-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.banner-badge { padding: 2px 8px; border-radius: 999px; font-size: .72rem; font-weight: 700; }
+.banner-badge.ok { background: var(--green-50, #e8f5ee); color: var(--green-700, #14532d); }
+.banner-badge.warn { background: #fff4e5; color: #9a5b00; }
+.banner-badge.muted { background: var(--cream-dark, #efe7df); color: #6b6560; }
+.banner-target-broken { color: #b42318; font-weight: 700; }
+.banner-limit-field { max-width: 150px; }
+.banner-limit-field input { width: 100%; }
+.banner-limit-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff4e5;
+  color: #9a5b00;
+  font-size: .86rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.banner-limit-note svg { width: 16px; height: 16px; flex: 0 0 auto; }
+/* الصفوف فوق الحد الأقصى: ظاهرة في الإدارة لكن لا تُعرض للزوار — وضّح ذلك بصرياً. */
+.banner-row-over { opacity: .55; }
+.empty-managed.banner-stats-off p { line-height: 1.9; }
+.empty-managed.banner-stats-off code {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--cream-dark, #efe7df);
+  font-size: .84rem;
+}

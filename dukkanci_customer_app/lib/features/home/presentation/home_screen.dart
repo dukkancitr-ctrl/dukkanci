@@ -11,6 +11,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/press_scale.dart';
 import '../../../core/widgets/shimmer_box.dart';
 import '../../../core/widgets/state_views.dart';
+import '../../banners/presentation/app_home_banner_section.dart';
 import '../../location/application/location_controller.dart';
 import '../../stores/domain/store.dart';
 import '../domain/home_category.dart';
@@ -196,6 +197,10 @@ class _HomeBody extends StatelessWidget {
         const SizedBox(height: AppSpacing.lg),
         PromoHero(promoStores: heroStores),
         const SizedBox(height: AppSpacing.xl),
+        // Admin-managed banners (site_settings.banners, placement `app_home`) —
+        // the same row the website reads, so one edit in the admin panel covers
+        // both. Renders nothing when there are no live banners.
+        const AppHomeBannerSection(),
         Padding(
           padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
           child: Text(AppStrings.sectionCategories, style: AppTextStyles.title),
