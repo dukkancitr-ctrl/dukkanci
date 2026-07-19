@@ -393,6 +393,54 @@ async function sbGet(path) {
   } catch (e) { return null; }
 }
 
+// Exact row count via the Content-Range header. Returns null (NOT 0) when the
+// count fails, so callers can tell "unknown" from "genuinely empty".
+// Same helper pattern already proven in api/campaign.js.
+async function sbCount(path) {
+  const { url, key } = sb();
+  const sep = path.includes("?") ? "&" : "?";
+  try {
+    const r = await fetch(`${url}/rest/v1/${path}${sep}select=*`, {
+      headers: {
+        apikey: key, Authorization: `Bearer ${key}`,
+        Prefer: "count=exact", "Range-Unit": "items", Range: "0-0"
+      }
+    });
+    if (!r.ok) return null;
+    const m = /\/(\d+)\s*$/.exec(r.headers.get("content-range") || "");
+    return m ? Number(m[1]) : null;
+  } catch (e) { return null; }
+}
+
+// Fetch EVERY row matching `path`, paging past PostgREST's db-max-rows cap with
+// Range headers. That cap is 1000 on this project and it truncates EVERY
+// response regardless of any `&limit=` in the query — verified directly against
+// production (`products?limit=5000` returns exactly 1000 of 11,725 rows). So a
+// plain sbGet() on a growing table silently drops rows with no error anywhere.
+// `path` must not carry its own `limit=`. `max` is a hard safety stop.
+async function sbGetAll(path, max = 50000) {
+  const { url, key } = sb();
+  const PAGE = 1000;
+  const out = [];
+  for (let from = 0; from < max; from += PAGE) {
+    let rows;
+    try {
+      const r = await fetch(`${url}/rest/v1/${path}`, {
+        headers: {
+          apikey: key, Authorization: `Bearer ${key}`,
+          "Range-Unit": "items", Range: `${from}-${from + PAGE - 1}`
+        }
+      });
+      if (!r.ok) break;
+      rows = await r.json().catch(() => null);
+    } catch (e) { break; }
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 // Write to Supabase (insert/upsert/patch). `prefer` tunes conflict handling;
 // inbound messages upsert on wam_id so webhook retries don't duplicate rows.
 async function sbWrite(method, path, body, prefer) {
@@ -1239,20 +1287,39 @@ module.exports = async (req, res) => {
       return res.status(200).json({ hasServiceRole, hasMetaSecret, hasWaToken, msgCount });
     }
 
-    // Admin: all orders (service-role read, bypasses anon RLS)
+    // Admin: all orders (service-role read, bypasses anon RLS).
+    // Paged, NOT `limit=1000`: the admin panel replaces state.orders wholesale
+    // with whatever this returns and builds every report/total from it, so a
+    // truncated read here silently under-counts the platform's revenue rather
+    // than failing loudly. `id.desc` breaks created_at ties so paging can't skip
+    // or duplicate a row across a page boundary.
+    // `total` is counted independently from the rows so truncation can never be
+    // silent again — the caller can always compare the two.
     if (q.action === "orders") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
-      const rows = await sbGet("orders?select=*&order=created_at.desc&limit=1000") || [];
-      return res.status(200).json({ orders: rows });
+      const rows = await sbGetAll("orders?select=*&order=created_at.desc,id.desc");
+      const total = await sbCount("orders");
+      return res.status(200).json({
+        orders: rows,
+        total: total == null ? rows.length : total,
+        truncated: total != null && rows.length < total
+      });
     }
 
-    // Merchant: their store's orders only (verified by phone+password credentials)
+    // Merchant: their store's orders only (verified by phone+password credentials).
+    // Paged for the same reason as the admin read above — a busy store passing
+    // the old limit=500 would have quietly lost its oldest orders.
     if (q.action === "store-orders") {
       const storeId = Number(q.storeId);
       if (!storeId) return res.status(400).json({ error: "storeId required" });
       if (!merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
-      const rows = await sbGet(`orders?store_id=eq.${storeId}&select=*&order=created_at.desc&limit=500`) || [];
-      return res.status(200).json({ orders: rows });
+      const rows = await sbGetAll(`orders?store_id=eq.${storeId}&select=*&order=created_at.desc,id.desc`);
+      const total = await sbCount(`orders?store_id=eq.${storeId}`);
+      return res.status(200).json({
+        orders: rows,
+        total: total == null ? rows.length : total,
+        truncated: total != null && rows.length < total
+      });
     }
 
     // Guest/customer: "طلباتي" cross-device order history, keyed by phone (no
