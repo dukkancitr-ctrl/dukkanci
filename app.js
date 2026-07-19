@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, yemenchefStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore);
 
 const products = [];
 
@@ -48,7 +48,6 @@ products.push(...tihamaProducts);
 products.push(...afganProducts);
 products.push(...samProducts);
 products.push(...kadyProducts);
-products.push(...yemenchefProducts);
 products.push(...alwadiProducts);
 products.push(...kadibyProducts);
 products.push(...azalProducts);
@@ -191,7 +190,6 @@ const initialDeliverySettings = {
   ...afganDeliverySettings,
   ...samDeliverySettings,
   ...kadyDeliverySettings,
-  ...yemenchefDeliverySettings,
   ...alwadiDeliverySettings,
   ...kadibyDeliverySettings,
   ...azalDeliverySettings,
@@ -3848,6 +3846,13 @@ function renderStorePage(id) {
     }
     return renderNotFound();
   }
+  // متجر مرفوض = محذوف فعلياً: لا يجوز الوصول له حتى بالرابط المباشر.
+  // صفّه في Supabase قد يبقى للأبد رغم "الحذف" لأن قيد المفتاح الأجنبي
+  // (orders_store_id_fkey) يمنع حذف أي متجر له طلبات تاريخية — فبدون هذه
+  // البوابة تبقى صفحته حيّة وتستقبل طلبات حقيقية (حدث فعلاً مع متجر 20).
+  // ملاحظة: "pending" غير مشمول عمداً — الرابط المباشر هو وسيلة مراجعة
+  // المتجر الجديد قبل اعتماده، وهو سلوك مقصود في هذا المشروع.
+  if (store.approvalStatus === "rejected") return renderNotFound();
   // view_store — deduped per store so re-renders don't double-count.
   window.DUKKANCI_TRACKING?.trackView("store:" + store.id, "view_store", { store_id: store.id, store_slug: (typeof SLUG_MAP !== "undefined" && SLUG_MAP[store.id]) || undefined, store_name: store.name });
   if (!store.newStore) ensureReviewEligibility(store.id); // fire-and-forget; re-renders once resolved
@@ -8814,7 +8819,9 @@ function updateHead(route, id) {
   let image = base + "/assets/dukkanci-app-icon-512.png";
   if (route === "store" && id) {
     const s = getStore(id);
-    if (s) {
+    // متجر مرفوض تُعرض صفحته كـ"غير موجودة"، فيجب ألا يتسرّب اسمه/صورته
+    // إلى عنوان التبويب أو وسوم المشاركة (og/twitter) — نُبقي العنوان العام.
+    if (s && s.approvalStatus !== "rejected") {
       title = `دكانجي - ${s.name}`;
       desc = s.description || desc;
       const img = s.coverImage || s.image;

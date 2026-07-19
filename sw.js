@@ -1,9 +1,9 @@
-const CACHE = "dukkanci-v247";
+const CACHE = "dukkanci-v248";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css?v=177",
-  "/store-slugs.js?v=260",
+  "/store-slugs.js?v=261",
   "/category-slugs.js?v=83",
   "/dalil-regions.js?v=1",
   "/supabase-config.js?v=82",
@@ -17,7 +17,6 @@ const APP_SHELL = [
   "/afgan-data.js?v=128",
   "/sam-data.js?v=127",
   "/kady-data.js?v=126",
-  "/yemenchef-data.js?v=127",
   "/alwadi-data.js?v=127",
   "/kadiby-data.js?v=126",
   "/azal-data.js?v=127",
@@ -53,7 +52,7 @@ const APP_SHELL = [
   "/friendstr-data.js?v=1",
   "/shamoglu-data.js?v=1",
   "/chikiwiki-data.js?v=1",
-  "/app.js?v=327",
+  "/app.js?v=328",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
@@ -71,8 +70,6 @@ const APP_SHELL = [
   "/assets/photos/sam/logo.png",
   "/assets/photos/kady/cover.jpg",
   "/assets/photos/kady/logo.png",
-  "/assets/photos/yemenchef/cover.jpg",
-  "/assets/photos/yemenchef/logo.png",
   "/assets/photos/alwadi/cover.jpg",
   "/assets/photos/alwadi/logo.png",
   "/assets/photos/kadiby/logo.png",

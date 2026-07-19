@@ -29,7 +29,6 @@ const STORE_SLUGS = {
   17: "afgan-kebab-restaurant",
   18: "ayam-shamia-restaurant",
   19: "kadi-market-basaksehir",
-  20: "yemen-chef-restaurant",
   21: "alwadi-restaurant",
   22: "kadi-market-esenyurt",
   23: "azal-restaurant",
