@@ -8,4 +8,9 @@ Disallow: /orders
 Disallow: /merchant
 Disallow: /admin
 
+# «Disallow» يطابق البادئة، فسطر /merchant أعلاه كان يحجب أيضاً صفحة
+# استقطاب التجار العامة /merchants. هذا الاستثناء يُعيد فهرستها،
+# مع بقاء لوحة التاجر /merchant نفسها محجوبة.
+Allow: /merchants
+
 Sitemap: https://www.dukkanci.com.tr/sitemap.xml
