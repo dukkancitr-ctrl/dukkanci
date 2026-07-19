@@ -1,0 +1,21 @@
+# تطبيع نهايات الأسطر لمنع فروقات (diff) وهمية ضخمة بين الفروع.
+# ملاحظة: تطبيق هذا الملف على الملفات الموجودة يتطلب لاحقاً تشغيل:
+#   git add --renormalize .
+#   git commit -m "Normalize line endings"
+# نفّذ هذه الخطوة فقط على main نظيف (git status فارغ)، وليس على فرع فيه تعديلات معلّقة.
+
+* text=auto eol=lf
+
+# ملفات ثنائية — لا تُطبَّق عليها أي معالجة لنهايات الأسطر
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.jfif binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
