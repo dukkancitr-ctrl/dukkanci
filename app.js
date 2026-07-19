@@ -2550,7 +2550,7 @@ function hydrateIcons(root = document) {
 }
 
 function storeAvatar(store, extraClass = "") {
-  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""} ${store.sourceBranded || store.officialStore ? "store-avatar--source-branded" : ""} ${store.brandTheme ? `store-avatar--${store.brandTheme}` : ""}"><img src="${store.logoImage || store.image}" alt="${store.name}"></span>`;
+  return `<span class="store-avatar ${extraClass} ${store.logoImage ? "store-avatar--logo" : ""} ${store.sourceBranded || store.officialStore ? "store-avatar--source-branded" : ""} ${store.brandTheme ? `store-avatar--${store.brandTheme}` : ""}"><img src="${escAttr(store.logoImage || store.image)}" alt="${escAttr(store.name)}"></span>`;
 }
 
 function categoryCard(name, image, caption) {
@@ -2658,10 +2658,10 @@ function storeCard(store) {
   return `
     <article class="store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
-        <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
+        <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}" loading="lazy">
         <span class="status-badge ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح" : "مغلق الآن"}</span>
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
-        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
+        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${esc(store.offer)}</span>` : ""}
       </button>
       <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
         ${icon("heart")}
@@ -2934,10 +2934,10 @@ function nearbyStoreCard(store) {
   return `
     <article class="store-card nearby-store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
-        <img src="${store.coverImage || store.image}" alt="${store.name}" loading="lazy">
+        <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}" loading="lazy">
         <span class="status-badge ${open ? "open" : "closed"}">${open ? "مفتوح" : "مغلق الآن"}</span>
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
-        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${store.offer}</span>` : ""}
+        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${esc(store.offer)}</span>` : ""}
       </button>
       <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
         ${icon("heart")}
@@ -3181,8 +3181,8 @@ ${paidHeroStrip}
           <div class="offer-products">
             ${hb.image ? `<a ${bAttrs} class="offers-banner__image" style="display:block;width:100%;border-radius:18px;overflow:hidden"><img src="${escAttr(hb.image)}" alt="${escAttr(hb.title)}" style="width:100%;display:block;object-fit:cover"></a>` : offerProducts.slice(0, 2).map(product => `
               <button class="mini-offer-card" data-action="open-product" data-id="${product.id}">
-                <img src="${product.image}" alt="${product.name}">
-                <span><small>عرض اليوم</small><strong>${product.name}</strong><b>${money(product.price)}</b></span>
+                <img src="${escAttr(product.image)}" alt="${escAttr(product.name)}">
+                <span><small>عرض اليوم</small><strong>${esc(product.name)}</strong><b>${money(product.price)}</b></span>
               </button>
             `).join("")}
           </div>
@@ -3729,7 +3729,7 @@ function renderOffers() {
       <div class="container">
         ${storePromoBanners.map(({ store, promo }) => `
           <button class="store-promo-banner" data-action="open-store" data-id="${store.id}" aria-label="${escAttr(promo.headline)} — ${escAttr(store.name)}">
-            <img src="${store.coverImage || store.image}" alt="${escAttr(store.name)}">
+            <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
             <span class="store-promo-banner__gradient"></span>
             <span class="store-promo-banner__body">
               <b class="store-promo-banner__badge">${icon("percent")} عرض خاص</b>
@@ -4128,9 +4128,9 @@ function renderStorePage(id) {
   return `
     <section class="store-page-head">
       <div class="container">
-        <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${store.name}</strong></div>
+        <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${esc(store.name)}</strong></div>
         <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""}">
-          <img src="${store.coverImage || store.image}" alt="${store.name}">
+          <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح ويستقبل الطلبات" : "مغلق الآن"}</span>
           ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
@@ -4208,7 +4208,7 @@ function renderStorePage(id) {
               ${defaultQuote ? `<b>${formatDistance(defaultQuote.roundTripKm)} · ${money(defaultQuote.fee)}</b>` : '<b>حدد موقعك لإظهار السعر</b>'}
             </div>
           ` : ""}
-          ${store.hasOffer && store.offer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${store.offer}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
+          ${store.hasOffer && store.offer ? `<div class="store-offer-strip">${icon("megaphone")} <div><strong>${esc(store.offer)}</strong><span>العرض متاح لفترة محدودة</span></div><button data-action="scroll-products">تسوّق العرض</button></div>` : ""}
           ${storeOfferProducts.length ? `
           <section class="store-offers-slider">
             <div class="section-heading small"><div><span class="section-kicker">لفترة محدودة</span><h2>عروض ${esc(store.name)}</h2></div><span class="count-chip">${storeOfferProducts.length} عرض</span></div>
@@ -4398,9 +4398,9 @@ function renderCustomerFavorites() {
   }
   return `
     ${favoriteStores.length ? `<section class="favorite-section"><div class="account-toolbar"><div><h2>المتاجر المحفوظة</h2><p>${favoriteStores.length} متاجر</p></div></div><div class="account-favorite-grid">${favoriteStores.map(store => `
-      <article class="account-favorite-card"><img src="${store.logoImage || store.image}" alt="${store.name}"><div><small>${store.category}</small><strong>${store.name}</strong><span>${store.newStore ? `${icon("check")} متجر جديد موثق` : `${icon("star")} ${store.rating}`} · ${store.time}</span></div><button class="secondary-button compact" data-action="open-store" data-id="${store.id}">عرض المتجر</button><button class="remove-favorite" data-action="remove-account-favorite" data-key="store-${store.id}" aria-label="إزالة">${icon("trash")}</button></article>`).join("")}</div></section>` : ""}
+      <article class="account-favorite-card"><img src="${escAttr(store.logoImage || store.image)}" alt="${escAttr(store.name)}"><div><small>${store.category}</small><strong>${esc(store.name)}</strong><span>${store.newStore ? `${icon("check")} متجر جديد موثق` : `${icon("star")} ${store.rating}`} · ${store.time}</span></div><button class="secondary-button compact" data-action="open-store" data-id="${store.id}">عرض المتجر</button><button class="remove-favorite" data-action="remove-account-favorite" data-key="store-${store.id}" aria-label="إزالة">${icon("trash")}</button></article>`).join("")}</div></section>` : ""}
     ${favoriteProducts.length ? `<section class="favorite-section"><div class="account-toolbar"><div><h2>المنتجات المحفوظة</h2><p>${favoriteProducts.length} منتجات</p></div></div><div class="account-favorite-grid">${favoriteProducts.map(product => `
-      <article class="account-favorite-card"><img src="${product.image}" alt="${product.name}"><div><small>${getStore(product.storeId).name}</small><strong>${product.name}</strong><span>${money(product.price)} / ${product.unit}</span></div><button class="primary-button compact" data-action="quick-add" data-id="${product.id}">${icon("plus")} أضف للسلة</button><button class="remove-favorite" data-action="remove-account-favorite" data-key="product-${product.id}" aria-label="إزالة">${icon("trash")}</button></article>`).join("")}</div></section>` : ""}
+      <article class="account-favorite-card"><img src="${escAttr(product.image)}" alt="${escAttr(product.name)}"><div><small>${getStore(product.storeId).name}</small><strong>${esc(product.name)}</strong><span>${money(product.price)} / ${product.unit}</span></div><button class="primary-button compact" data-action="quick-add" data-id="${product.id}">${icon("plus")} أضف للسلة</button><button class="remove-favorite" data-action="remove-account-favorite" data-key="product-${product.id}" aria-label="إزالة">${icon("trash")}</button></article>`).join("")}</div></section>` : ""}
   `;
 }
 
@@ -5375,8 +5375,8 @@ function merchantProducts() {
   </div>`;
   const rows = merchantProducts.map(product => `
         <article>
-          <img src="${product.image}" alt="${escAttr(product.name)}" loading="lazy">
-          <div class="managed-product-name"><strong>${product.name}</strong><small>${product.category} · ${product.unit}</small></div>
+          <img src="${escAttr(product.image)}" alt="${escAttr(product.name)}" loading="lazy">
+          <div class="managed-product-name"><strong>${esc(product.name)}</strong><small>${product.category} · ${product.unit}</small></div>
           <div class="inline-price">
             <input type="number" min="0" step="1" inputmode="numeric" id="price-inp-${product.id}" value="${Number(product.price) || 0}" data-action="inline-price" data-id="${product.id}" aria-label="سعر ${escAttr(product.name)}" title="عدّل السعر مباشرة ثم اضغط Enter">
             <b>ل.ت</b>
@@ -5885,7 +5885,7 @@ function merchantStore() {
       <div class="card-heading"><div><h3>بيانات المتجر</h3><p>المعلومات الظاهرة للعملاء في صفحة متجرك</p></div>
         <label class="delivery-toggle"><input type="checkbox" name="storeOpen" ${store.open !== false ? "checked" : ""}><span></span><b>${store.open !== false ? "المتجر مفتوح" : "المتجر مغلق"}</b></label>
       </div>
-      <div class="cover-uploader" id="store-cover-preview"><img src="${store.coverImage || store.image}" alt=""></div>
+      <div class="cover-uploader" id="store-cover-preview"><img src="${escAttr(store.coverImage || store.image)}" alt=""></div>
       <input type="hidden" name="coverImage" value="${escAttr(store.coverImage || store.image || "")}">
       <div class="cover-uploader-actions">
         <label class="upload-tile compact">${icon("upload")}<span>رفع صورة من الجهاز</span><input type="file" id="store-cover-file" accept="image/jpeg,image/png,image/webp" hidden></label>
@@ -9244,8 +9244,8 @@ function renderCheckout() {
           <label class="terms-check"><input type="checkbox" name="terms" required><span></span><p>أوافق أن دكانجي منصة لتسهيل الطلبات بين العملاء والمتاجر، وأن المتجر هو البائع المباشر والمسؤول عن توفر المنتجات وجودتها وأسعارها وتجهيزها وتوصيلها، مع بقاء دكانجي جهة متابعة وتنظيم للطلب.</p></label>
         </div>
         <aside class="order-summary checkout-summary">
-          <div class="summary-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${store.name}</strong></div></div>
-          <div class="summary-items">${state.cart.map(item => { const product = getProduct(item.productId); return `<div><img src="${product.image}" alt=""><span><strong>${product.name}</strong><small>${item.quantity} × ${money(item.finalPrice)}</small></span><b>${money(item.quantity * item.finalPrice)}</b></div>`; }).join("")}</div>
+          <div class="summary-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${esc(store.name)}</strong></div></div>
+          <div class="summary-items">${state.cart.map(item => { const product = getProduct(item.productId); return `<div><img src="${escAttr(product.image)}" alt=""><span><strong>${esc(product.name)}</strong><small>${item.quantity} × ${money(item.finalPrice)}</small></span><b>${money(item.quantity * item.finalPrice)}</b></div>`; }).join("")}</div>
           ${isFeatureOn("feature_conversion_drivers") ? couponCheckoutBlock() : ""}
           ${creditCheckoutBlock()}
           <div class="summary-prices"><span><small>المجموع الفرعي</small><strong>${money(totals.subtotal)}</strong></span>${totals.discount > 0 ? `<span class="summary-discount"><small>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</small><strong id="checkout-discount">−${money(totals.discount)}</strong></span>` : ""}${totals.creditApplied > 0 ? `<span class="summary-discount"><small>رصيدك</small><strong id="checkout-credit">−${money(totals.creditApplied)}</strong></span>` : ""}<span><small>رسوم التوصيل</small><strong id="checkout-delivery-fee">${totals.quote?.exceedsMaxDistance ? "خارج النطاق" : (totals.freeDelivery ? "مجاني 🎉" : money(totals.delivery))}</strong></span><span class="summary-total"><small>الإجمالي</small><strong id="checkout-final-total">${money(totals.total)}</strong></span></div>
@@ -9384,7 +9384,7 @@ function renderProductPage(slugOrId) {
   const storeSeg = store ? storeParam(store) : product.storeId;
   const priceLine = product.priceOnRequest || !product.price ? "السعر عند الطلب" : money(product.price);
   return `
-    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span>${store ? `<a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a><span>/</span>` : ""}<strong>${product.name}</strong></div></div></section>
+    <section class="page-hero compact"><div class="container"><div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span>${store ? `<a href="/store/${storeSeg}" data-action="open-store" data-id="${product.storeId}">${store.name}</a><span>/</span>` : ""}<strong>${esc(product.name)}</strong></div></div></section>
     <section class="section">
       <div class="container product-page-grid">
         <div class="product-page-media ${isPlaceholderImage(product.image) ? "no-image" : ""}">${isPlaceholderImage(product.image) ? productNoImageMedia(product) : `<img src="${esc(product.image)}" alt="${esc(product.name)}" style="${product.imageFit === "contain" ? "object-fit:contain" : "object-fit:cover"}">`}</div>
@@ -11099,10 +11099,10 @@ function renderCart() {
   const store = getStore(state.cart[0].storeId);
   cartDrawer.innerHTML = `
     <div class="drawer-head"><div><h2>سلة التسوق</h2><span>${state.cart.reduce((sum, item) => sum + item.quantity, 0)} منتجات</span></div><button data-action="close-drawers">${icon("close")}</button></div>
-    <div class="cart-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${store.name}</strong></div><button data-action="open-store" data-id="${store.id}">عرض المتجر</button></div>
+    <div class="cart-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${esc(store.name)}</strong></div><button data-action="open-store" data-id="${store.id}">عرض المتجر</button></div>
     <div class="cart-items">${state.cart.map((item, index) => {
       const product = getProduct(item.productId);
-      return `<article class="cart-item"><img src="${product.image}" alt="${product.name}"><div class="cart-item__info"><strong>${product.name}</strong><small>${item.optionsText || product.unit}</small><b>${money(item.finalPrice)}</b><div class="quantity-control"><button data-action="cart-minus" data-index="${index}">${item.quantity === 1 ? icon("trash") : icon("minus")}</button><span>${item.quantity}</span><button data-action="cart-plus" data-index="${index}">${icon("plus")}</button></div></div></article>`;
+      return `<article class="cart-item"><img src="${escAttr(product.image)}" alt="${escAttr(product.name)}"><div class="cart-item__info"><strong>${esc(product.name)}</strong><small>${item.optionsText || product.unit}</small><b>${money(item.finalPrice)}</b><div class="quantity-control"><button data-action="cart-minus" data-index="${index}">${item.quantity === 1 ? icon("trash") : icon("minus")}</button><span>${item.quantity}</span><button data-action="cart-plus" data-index="${index}">${icon("plus")}</button></div></div></article>`;
     }).join("")}</div>
     <div class="cart-note"><label for="cart-note">ملاحظات للمتجر</label><textarea id="cart-note" placeholder="مثال: يرجى اختيار حبات ناضجة...">${escAttr(state.cartNote || "")}</textarea></div>
     <div class="cart-footer">
@@ -11167,7 +11167,7 @@ function openCustomerOrderDetails(orderId) {
     </div>
     <div class="customer-order-modal__items">${items.map(item => {
       const product = item.productId ? getProduct(item.productId) : null;
-      return `<article>${product ? `<img src="${product.image}" alt="${escAttr(item.name)}">` : ""}<div><strong>${escAttr(item.name)}</strong>${item.options ? `<small>${escAttr(item.options)}</small>` : ""}</div><span>${(item.qty || 1).toLocaleString("ar")} × ${money(item.price)}</span></article>`;
+      return `<article>${product ? `<img src="${escAttr(product.image)}" alt="${escAttr(item.name)}">` : ""}<div><strong>${escAttr(item.name)}</strong>${item.options ? `<small>${escAttr(item.options)}</small>` : ""}</div><span>${(item.qty || 1).toLocaleString("ar")} × ${money(item.price)}</span></article>`;
     }).join("")}</div>
     <div class="customer-order-modal__summary"><span><small>قيمة المنتجات</small><strong>${money(order.total - deliveryFee)}</strong></span><span><small>${isDelivery ? "رسوم التوصيل" : "الاستلام"}</small><strong>${isDelivery ? money(deliveryFee) : "مجاناً"}</strong></span><span class="total"><small>الإجمالي</small><strong>${money(order.total)}</strong></span></div>
     <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إغلاق</button><button class="primary-button" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div>
@@ -11361,7 +11361,7 @@ function openProductModal(id) {
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <div class="product-modal-grid">
-      <div class="product-gallery ${isPlaceholderImage(product.image) ? "no-image" : ""}">${isPlaceholderImage(product.image) ? productNoImageMedia(product) : `<img src="${product.image}" alt="${product.name}"><div><button class="active"><img src="${product.image}" alt=""></button><button><img src="${store.image}" alt=""></button></div>`}</div>
+      <div class="product-gallery ${isPlaceholderImage(product.image) ? "no-image" : ""}">${isPlaceholderImage(product.image) ? productNoImageMedia(product) : `<img src="${escAttr(product.image)}" alt="${escAttr(product.name)}"><div><button class="active"><img src="${escAttr(product.image)}" alt=""></button><button><img src="${escAttr(store.image)}" alt=""></button></div>`}</div>
       <form class="product-details" id="product-form" data-id="${product.id}">
         <span class="product-breadcrumb">${esc(store.name)} · ${esc(product.category)}</span>
         <h2>${esc(product.name)}</h2>
