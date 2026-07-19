@@ -1899,8 +1899,11 @@ img {
 }
 
 /* Social icons */
+/* 6 icons = 300px, fits one line in the brand column (368px desktop /
+   349px mobile). wrap is a safety net if more are ever added. */
 .social-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -2230,6 +2233,11 @@ img {
   .footer-brand p {
     margin: 0 auto;
     text-align: center;
+  }
+
+  /* brand column is centered on mobile — center the icon row with it */
+  .social-row {
+    justify-content: center;
   }
 
   .footer-grid > div:not(.footer-brand) {
