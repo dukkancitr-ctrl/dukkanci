@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../localization/app_strings.dart';
 import '../theme/app_colors.dart';
@@ -9,12 +10,16 @@ import '../theme/app_colors.dart';
 /// only on the first tap, never at screen load, matching this app's
 /// explicit-action permission policy (see AndroidManifest.xml).
 ///
-/// There is no cheap way to check "does this device support Arabic speech
-/// recognition" without first calling `initialize()` (which itself triggers
-/// the permission prompt on Android) — so unlike the website, which can hide
-/// the mic icon upfront via `window.SpeechRecognition`, this button always
-/// shows and instead fails closed with an honest message on tap if the
-/// device, permission, or an Arabic locale isn't available.
+/// Deliberately does NOT pre-check `SpeechToText.locales()` before
+/// listening: on Android 13+ that call reports only *downloaded on-device*
+/// language packs (`checkRecognitionSupport().supportedOnDeviceLanguages`),
+/// not overall recognition ability — real-phone testing showed it reports
+/// zero Arabic entries on stock phones that recognize Arabic fine via the
+/// normal online path (nobody manually downloads the offline pack), which
+/// made the button falsely claim "unavailable" on working hardware. Instead
+/// this just attempts `listen(localeId: 'ar')` directly (same as the
+/// website's `lang='ar'`) and only shows an honest failure message if the
+/// listen attempt itself actually errors.
 class VoiceSearchButton extends StatefulWidget {
   const VoiceSearchButton({super.key, required this.onResult});
 
@@ -35,18 +40,27 @@ class _VoiceSearchButtonState extends State<VoiceSearchButton> {
     super.dispose();
   }
 
-  stt.LocaleName? _findArabicLocale(List<stt.LocaleName> locales) {
-    for (final locale in locales) {
-      if (locale.localeId.toLowerCase().startsWith('ar')) return locale;
-    }
-    return null;
-  }
-
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
+  }
+
+  void _handleListenError(SpeechRecognitionError error) {
+    if (!mounted) return;
+    setState(() => _listening = false);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    switch (error.errorMsg) {
+      case 'error_no_match':
+      case 'error_speech_timeout':
+        _showMessage(AppStrings.voiceSearchNoSpeechDetected);
+      case 'error_language_not_supported':
+      case 'error_language_unavailable':
+        _showMessage(AppStrings.voiceSearchUnavailable);
+      default:
+        _showMessage(AppStrings.somethingWentWrong);
+    }
   }
 
   Future<void> _stopListening() async {
@@ -64,9 +78,7 @@ class _VoiceSearchButtonState extends State<VoiceSearchButton> {
             setState(() => _listening = false);
           }
         },
-        onError: (_) {
-          if (mounted) setState(() => _listening = false);
-        },
+        onError: _handleListenError,
       );
       if (!mounted) return;
       if (!available) {
@@ -76,13 +88,6 @@ class _VoiceSearchButtonState extends State<VoiceSearchButton> {
       _speechEnabled = true;
     }
 
-    final arabicLocale = _findArabicLocale(await _speech.locales());
-    if (!mounted) return;
-    if (arabicLocale == null) {
-      _showMessage(AppStrings.voiceSearchUnavailable);
-      return;
-    }
-
     setState(() => _listening = true);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -90,9 +95,9 @@ class _VoiceSearchButtonState extends State<VoiceSearchButton> {
 
     await _speech.listen(
       listenOptions: stt.SpeechListenOptions(
-        localeId: arabicLocale.localeId,
-        listenFor: const Duration(seconds: 15),
-        pauseFor: const Duration(seconds: 3),
+        localeId: 'ar',
+        listenFor: Duration(seconds: 15),
+        pauseFor: Duration(seconds: 3),
       ),
       onResult: (result) {
         if (!result.finalResult) return;
