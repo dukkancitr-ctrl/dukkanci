@@ -2183,6 +2183,47 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, value: current });
   }
 
+  // Merchant/Admin: save manual category-organizer overrides for ONE store
+  // (Phase 2 of the store-page category engine — see buildStoreCategoryPlan in
+  // app.js). Stored in stores.category_settings as { admin: {...}, merchant: {...} },
+  // one bucket per role so a merchant save can never clobber an admin override
+  // and vice versa (client-side priority: admin[raw] wins over merchant[raw]).
+  // Read-modify-write like save-store-zones above, for the same reason: a caller
+  // only ever sends the full override set for THEIR role, never the other's.
+  if (pq.action === "save-store-categories") {
+    const storeId = Number(body.storeId);
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    const scope = isAdmin ? "admin" : (merchantOk(req, storeId) ? "merchant" : null);
+    if (!scope) return res.status(403).json({ error: "unauthorized" });
+    const rawSettings = (body.settings && typeof body.settings === "object") ? body.settings : {};
+    const clean = {};
+    for (const key of Object.keys(rawSettings)) {
+      const raw = String(key || "").trim();
+      if (!raw) continue;
+      const v = rawSettings[key] || {};
+      const mergeInto = typeof v.mergeInto === "string" ? v.mergeInto.trim() : "";
+      const sortOrderNum = Number(v.sortOrder);
+      const entry = {
+        mergeInto: mergeInto || null,
+        disableAutoMerge: !!v.disableAutoMerge,
+        forceVisible: !!v.forceVisible,
+        hidden: !!v.hidden,
+        sortOrder: Number.isFinite(sortOrderNum) ? sortOrderNum : null
+      };
+      // Skip fully-default rows — keeps the stored JSON limited to actual overrides.
+      if (entry.mergeInto || entry.disableAutoMerge || entry.forceVisible || entry.hidden || entry.sortOrder != null) {
+        clean[raw] = entry;
+      }
+    }
+    const rows = await sbGet(`stores?id=eq.${storeId}&select=category_settings`);
+    const current = (rows && rows[0] && rows[0].category_settings && typeof rows[0].category_settings === "object") ? rows[0].category_settings : {};
+    const next = { ...current, [scope]: clean };
+    const r = await sbWrite("PATCH", `stores?id=eq.${storeId}`, { category_settings: next }, "return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true, categorySettings: next });
+  }
+
   // Admin: approve / reject / suspend a store (item 9 moderation). Admin-gated and
   // written with the service-role key, so it keeps working after RLS is locked
   // down (the admin panel has no Supabase Auth session of its own).

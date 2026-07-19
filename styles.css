@@ -7178,6 +7178,16 @@ table {
 .customers-table-card .table-action { text-decoration: none; }
 .cust-addr { display: block; color: var(--muted); font-size: 12px; font-weight: 500; margin-top: 2px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Category-organizer manual overrides (admin "تصنيفات المتاجر" + merchant "تصنيفات متجرك") */
+.category-settings-table td { white-space: normal; }
+.category-settings-table .cat-merge-into { width: 150px; }
+.category-settings-table .cat-sort-order { width: 70px; }
+.category-settings-table td.cat-check { text-align: center; }
+.category-settings-table td.cat-check input { width: 16px; height: 16px; }
+.category-settings-preview { margin-top: 12px; }
+.category-settings-preview .store-product-filters { margin-top: 6px; }
+.category-settings-preview button[disabled] { opacity: 1; cursor: default; }
+
 th,
 td {
   padding: 13px 10px;

@@ -680,7 +680,12 @@ function mapDbStore(r) {
     subscription: r.subscription, orderCount: r.order_count, officialStore: r.official_store,
     branchGroup: r.branch_group, brandTheme: r.brand_theme, approvalStatus: r.approval_status,
     subscriptionStatus: r.subscription_status, subscriptionActive: r.subscription_active !== false,
-    trialEndsAt: r.trial_ends_at, currentPeriodEnd: r.current_period_end, whopMembershipId: r.whop_membership_id
+    trialEndsAt: r.trial_ends_at, currentPeriodEnd: r.current_period_end, whopMembershipId: r.whop_membership_id,
+    // Phase 2 category-organizer overrides (admin+merchant) — read-only here on
+    // purpose: written exclusively via action=save-store-categories (server-side
+    // read-modify-write), never through the generic toDbStore()/save-store path,
+    // so a stale client-side store save can never wipe these. See buildStoreCategoryPlan.
+    categorySettings: (r.category_settings && typeof r.category_settings === "object") ? r.category_settings : {}
   };
 }
 function mapDbProduct(r) {
@@ -3588,6 +3593,56 @@ const SUPERMARKET_MERGE_TARGETS = [
 // non-empty display category, built purely from `allStoreProducts` already passed to this
 // render (which already went through applyPublishingRules upstream). Nothing here is
 // persisted; it's recomputed fresh on every render.
+// ---- Phase 2: manual admin/merchant overrides on top of the Phase 1 automatic
+// plan above (migrations/20260719_store_category_settings.sql, action=save-store-categories
+// in api/notify-order.js). store.categorySettings = { admin:{[raw]:override}, merchant:{...} }.
+// Platform-admin's override for a raw category wins wholesale over the merchant's
+// for that SAME raw category when both exist — not merged field-by-field, the
+// whole record wins, matching the spec's plain "admin priority over merchant" rule.
+function resolveCategoryOverride(store, raw) {
+  const cs = store && store.categorySettings;
+  if (!cs || typeof cs !== "object") return null;
+  const admin = cs.admin && typeof cs.admin === "object" ? cs.admin[raw] : null;
+  if (admin && typeof admin === "object") return admin;
+  const merchant = cs.merchant && typeof cs.merchant === "object" ? cs.merchant[raw] : null;
+  return (merchant && typeof merchant === "object") ? merchant : null;
+}
+// Products whose raw category was manually marked "hidden" never reach the
+// storefront at all — same treatment as an unavailable product. Call this on
+// allStoreProducts BEFORE anything else derives from it (offers slider, popular
+// slider, counts), so a hidden category disappears consistently everywhere.
+function filterHiddenCategoryProducts(store, list) {
+  if (!store || !store.categorySettings) return list;
+  const hiddenRaw = new Set();
+  list.forEach(p => {
+    const raw = String(p.category || "").trim();
+    if (hiddenRaw.has(raw)) return;
+    const ov = resolveCategoryOverride(store, raw);
+    if (ov && ov.hidden) hiddenRaw.add(raw);
+  });
+  return hiddenRaw.size ? list.filter(p => !hiddenRaw.has(String(p.category || "").trim())) : list;
+}
+// Applies a manual sort-order override on top of an already-computed bucket
+// list. Explicit numbers (lower = earlier) win outright; buckets nobody
+// customized keep their existing relative order, placed after any numbered ones
+// (so an admin only needs to pick numbers for the categories they actually want
+// to reposition). "تصنيفات أخرى" always stays last — its members are by
+// definition the ones nobody bothered to customize.
+function applyManualCategoryOrder(store, buckets) {
+  if (!store || !store.categorySettings) return buckets;
+  const other = buckets.find(b => b.label === "تصنيفات أخرى");
+  const rest = other ? buckets.filter(b => b !== other) : buckets;
+  const keyed = rest.map((b, i) => {
+    let best = null;
+    b.rawCategories.forEach(raw => {
+      const ov = resolveCategoryOverride(store, raw);
+      if (ov && Number.isFinite(ov.sortOrder) && (best === null || ov.sortOrder < best)) best = ov.sortOrder;
+    });
+    return { bucket: b, key: best !== null ? best : 1000 + i };
+  }).sort((a, b) => a.key - b.key).map(x => x.bucket);
+  return other ? [...keyed, other] : keyed;
+}
+
 function buildStoreCategoryPlan(store, allStoreProducts) {
   const isRestaurant = store && store.category === "مطاعم";
   const isSupermarket = store && store.category === "سوبر ماركت";
@@ -3601,54 +3656,174 @@ function buildStoreCategoryPlan(store, allStoreProducts) {
   });
 
   if (!orderList) {
-    // Store types outside "مطاعم"/"سوبر ماركت" (حلويات، ملاحم، عصائر...) keep the original
-    // behaviour: one bucket per distinct raw category, first-appearance order.
-    return [...rawGroups.entries()].map(([label, prods]) => ({ label, rawCategories: [label], products: prods }));
+    // Store types outside "مطاعم"/"سوبر ماركت" (حلويات، ملاحم، عصائر...): no automatic
+    // merge/reorder, but a manual mergeInto override still applies for any store
+    // type — an admin/merchant can fold one raw category into another by hand.
+    const merged = new Map(); // final label -> { rawCategories:Set, products:[] }
+    rawGroups.forEach((prods, raw) => {
+      const ov = resolveCategoryOverride(store, raw);
+      const label = (ov && ov.mergeInto) || raw;
+      if (!merged.has(label)) merged.set(label, { rawCategories: new Set(), products: [] });
+      const bucket = merged.get(label);
+      bucket.rawCategories.add(raw);
+      bucket.products.push(...prods);
+    });
+    const plan = [...merged.entries()].map(([label, b]) => ({ label, rawCategories: [...b.rawCategories], products: b.products }));
+    return applyManualCategoryOrder(store, plan);
   }
   const aliasMap = isRestaurant ? RESTAURANT_CATEGORY_ALIASES : SUPERMARKET_CATEGORY_ALIASES;
   const mergeTargets = isRestaurant ? RESTAURANT_MERGE_TARGETS : SUPERMARKET_MERGE_TARGETS;
 
-  const official = new Map(); // canonical label -> { rawCategories:Set, products:[] }
-  const custom = new Map();   // trimmed raw text -> { rawCategories:Set, products:[] } (unresolved)
+  // Single map keyed by FINAL label — deliberately not two separate official/custom
+  // maps (a manual mergeInto target can collide textually with another raw
+  // category's own name; splitting into two maps let each land in a different
+  // map under the same label text and render as two duplicate pills instead of
+  // merging into one — isOfficial is a per-bucket flag instead).
+  const buckets = new Map(); // label -> { rawCategories:Set, products:[], isOfficial:bool }
+  const pinned = new Set();  // raw categories forced standalone (disableAutoMerge/forceVisible)
   rawGroups.forEach((prods, raw) => {
-    const canonical = aliasMap[normalizeCategoryKey(raw)];
-    const bucketMap = canonical ? official : custom;
-    const bucketKey = canonical || raw;
-    if (!bucketMap.has(bucketKey)) bucketMap.set(bucketKey, { rawCategories: new Set(), products: [] });
-    const bucket = bucketMap.get(bucketKey);
+    const ov = resolveCategoryOverride(store, raw);
+    const manualTarget = ov && ov.mergeInto;
+    const aliasTarget = aliasMap[normalizeCategoryKey(raw)];
+    const isOfficial = !!(manualTarget || aliasTarget);
+    const label = manualTarget || aliasTarget || raw;
+    if (!manualTarget && ov && (ov.disableAutoMerge || ov.forceVisible)) pinned.add(raw);
+    if (!buckets.has(label)) buckets.set(label, { rawCategories: new Set(), products: [], isOfficial: false });
+    const bucket = buckets.get(label);
+    if (isOfficial) bucket.isOfficial = true;
     bucket.rawCategories.add(raw);
     bucket.products.push(...prods);
   });
 
+  // Shrink pass: any bucket nobody officially claimed (no alias/manual match) and
+  // with <=2 products, and not pinned standalone, tries an automatic keyword merge
+  // target next, else falls into "تصنيفات أخرى". Official/manually-targeted
+  // buckets are NEVER shrunk, however small.
   const otherBucket = { rawCategories: new Set(), products: [] };
-  const standaloneCustom = [];
-  custom.forEach((bucket, raw) => {
-    if (bucket.products.length <= 2) {
-      const key = normalizeCategoryKey(raw);
-      const match = mergeTargets.find(rule => rule.keywords.some(kw => key.includes(normalizeCategoryKey(kw))));
-      if (match) {
-        if (!official.has(match.target)) official.set(match.target, { rawCategories: new Set(), products: [] });
-        const target = official.get(match.target);
-        bucket.rawCategories.forEach(r => target.rawCategories.add(r));
-        target.products.push(...bucket.products);
-      } else {
-        bucket.rawCategories.forEach(r => otherBucket.rawCategories.add(r));
-        otherBucket.products.push(...bucket.products);
-      }
+  [...buckets.entries()].forEach(([label, bucket]) => {
+    if (bucket.isOfficial) return;
+    if (bucket.products.length > 2) return;
+    if ([...bucket.rawCategories].some(r => pinned.has(r))) return;
+    buckets.delete(label);
+    const key = normalizeCategoryKey(label);
+    const match = mergeTargets.find(rule => rule.keywords.some(kw => key.includes(normalizeCategoryKey(kw))));
+    if (match) {
+      if (!buckets.has(match.target)) buckets.set(match.target, { rawCategories: new Set(), products: [], isOfficial: true });
+      const target = buckets.get(match.target);
+      target.isOfficial = true;
+      bucket.rawCategories.forEach(r => target.rawCategories.add(r));
+      target.products.push(...bucket.products);
     } else {
-      standaloneCustom.push({ label: raw, rawCategories: [...bucket.rawCategories], products: bucket.products });
+      bucket.rawCategories.forEach(r => otherBucket.rawCategories.add(r));
+      otherBucket.products.push(...bucket.products);
     }
   });
 
   const orderedOfficial = orderList
-    .filter(label => official.has(label))
-    .map(label => ({ label, rawCategories: [...official.get(label).rawCategories], products: official.get(label).products }));
+    .filter(label => buckets.has(label))
+    .map(label => { const b = buckets.get(label); buckets.delete(label); return { label, rawCategories: [...b.rawCategories], products: b.products }; });
+  // Whatever's left (custom categories, and manual mergeInto targets outside
+  // orderList — e.g. a brand-new admin-chosen heading) stays in first-appearance order.
+  const standaloneCustom = [...buckets.entries()].map(([label, b]) => ({ label, rawCategories: [...b.rawCategories], products: b.products }));
 
   const result = [...orderedOfficial, ...standaloneCustom];
   if (otherBucket.products.length) {
     result.push({ label: "تصنيفات أخرى", rawCategories: [...otherBucket.rawCategories], products: otherBucket.products });
   }
-  return result;
+  return applyManualCategoryOrder(store, result);
+}
+
+// ---- Phase 2 admin/merchant editor UI (shared by adminStoreCategories and
+// merchantStoreCategories) — "عاشراً: متطلبات واجهة الإدارة" in the spec.
+
+// What a raw category would resolve to with ZERO overrides — shown as a hint
+// next to the override inputs so the person editing sees what they're changing.
+function autoCategoryLabelFor(store, raw, allStoreProducts) {
+  const plan = buildStoreCategoryPlan({ ...store, categorySettings: {} }, allStoreProducts);
+  const hit = plan.find(b => b.rawCategories.includes(raw));
+  return hit ? hit.label : raw;
+}
+
+// One store's full override table + "معاينة"/"حفظ" actions. scope is "admin" or
+// "merchant" — each reads/writes ONLY its own half of store.categorySettings
+// (see resolveCategoryOverride: admin[raw] wins over merchant[raw] when both
+// exist), and shows a transparency note when the OTHER role has also set
+// something for the same raw category, so nobody edits blind to the other side.
+function categorySettingsEditorHTML(store, scope) {
+  const allStoreProducts = products.filter(p => p.storeId === store.id);
+  const rawCounts = new Map();
+  allStoreProducts.forEach(p => {
+    const raw = String(p.category || "").trim();
+    if (!raw) return;
+    rawCounts.set(raw, (rawCounts.get(raw) || 0) + 1);
+  });
+  if (!rawCounts.size) return `<p class="zones-empty-hint">لا توجد منتجات/تصنيفات في هذا المتجر بعد.</p>`;
+  const isTyped = store.category === "مطاعم" || store.category === "سوبر ماركت";
+  const officialList = store.category === "مطاعم" ? RESTAURANT_CATEGORY_ORDER : store.category === "سوبر ماركت" ? SUPERMARKET_CATEGORY_ORDER : [];
+  const cs = (store.categorySettings && typeof store.categorySettings === "object") ? store.categorySettings : {};
+  const mine = (cs[scope] && typeof cs[scope] === "object") ? cs[scope] : {};
+  const other = scope === "admin" ? (cs.merchant || {}) : (cs.admin || {});
+  const otherLabel = scope === "admin" ? "التاجر" : "الإدارة";
+  const rows = [...rawCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const listId = `cat-official-list-${store.id}-${scope}`;
+  return `
+    <div class="category-settings-block" id="category-settings-${store.id}-${scope}">
+      <datalist id="${listId}">${officialList.map(c => `<option value="${escAttr(c)}">`).join("")}</datalist>
+      <div class="table-wrap">
+      <table class="admin-table category-settings-table">
+        <thead><tr><th>التصنيف</th><th>العدد</th><th>تلقائياً</th><th>دمج مع</th><th>منع الدمج</th><th>إظهار دائماً</th><th>الترتيب</th><th>إخفاء</th></tr></thead>
+        <tbody>
+          ${rows.map(([raw, count]) => {
+            const auto = autoCategoryLabelFor(store, raw, allStoreProducts);
+            const current = (mine[raw] && typeof mine[raw] === "object") ? mine[raw] : {};
+            const otherVal = (other[raw] && typeof other[raw] === "object") ? other[raw] : null;
+            return `
+            <tr class="category-override-row" data-raw="${escAttr(raw)}">
+              <td><strong>${esc(raw)}</strong>${otherVal ? `<br><small class="muted-note">${otherLabel} ضبط تجاوزاً لهذا التصنيف أيضاً</small>` : ""}</td>
+              <td>${count}</td>
+              <td><small class="muted-note">${esc(auto)}</small></td>
+              <td><input class="cat-merge-into" list="${listId}" value="${escAttr(current.mergeInto || "")}" placeholder="بلا دمج"></td>
+              <td class="cat-check"><input type="checkbox" class="cat-disable-merge" ${current.disableAutoMerge ? "checked" : ""}></td>
+              <td class="cat-check"><input type="checkbox" class="cat-force-visible" ${current.forceVisible ? "checked" : ""}></td>
+              <td><input type="number" class="cat-sort-order" value="${current.sortOrder ?? ""}" placeholder="تلقائي"></td>
+              <td class="cat-check"><input type="checkbox" class="cat-hidden" ${current.hidden ? "checked" : ""}></td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      </div>
+      ${!isTyped ? `<div class="named-zones-guide"><small>${icon("info")} هذا المتجر ليس من فئة «مطاعم»/«سوبر ماركت» — لا يوجد ترتيب/دمج تلقائي رسمي، لكن الدمج والإخفاء والترتيب اليدوي هنا يعملون كما هم.</small></div>` : ""}
+      <div class="named-zones-guide"><small>${icon("info")} «الترتيب»: رقم أصغر = يظهر أولاً؛ التصنيفات بلا رقم تُرتَّب تلقائياً بعد كل الأرقام المخصَّصة. «دمج مع»: اكتب اسم تصنيف آخر (من القائمة التلقائية أو أي اسم تريده) ليضمّ هذا التصنيف. تجاوز الإدارة يفوز دائماً على تجاوز التاجر لنفس التصنيف.</small></div>
+      <div class="zone-editor-actions">
+        <button type="button" class="secondary-button compact" data-action="preview-category-settings" data-id="${store.id}" data-scope="${scope}">${icon("eye")} معاينة</button>
+        <button type="button" class="primary-button compact" data-action="save-category-settings" data-id="${store.id}" data-scope="${scope}">${icon("check")} حفظ</button>
+      </div>
+      <div class="category-settings-preview"></div>
+    </div>
+  `;
+}
+
+// Reads the current (possibly-unsaved) form state for one store/scope back out
+// of the DOM — shared by the "معاينة" preview and the "حفظ" save action so both
+// see exactly the same values. Fully-default rows are omitted (nothing to store).
+function readCategoryOverridesFromDOM(storeId, scope) {
+  const root = document.getElementById(`category-settings-${storeId}-${scope}`);
+  const settings = {};
+  if (!root) return settings;
+  root.querySelectorAll(".category-override-row").forEach(row => {
+    const raw = row.dataset.raw;
+    if (!raw) return;
+    const mergeInto = (row.querySelector(".cat-merge-into")?.value || "").trim();
+    const disableAutoMerge = !!row.querySelector(".cat-disable-merge")?.checked;
+    const forceVisible = !!row.querySelector(".cat-force-visible")?.checked;
+    const hidden = !!row.querySelector(".cat-hidden")?.checked;
+    const sortRaw = row.querySelector(".cat-sort-order")?.value;
+    const sortOrder = (sortRaw !== "" && sortRaw != null && Number.isFinite(Number(sortRaw))) ? Number(sortRaw) : null;
+    if (mergeInto || disableAutoMerge || forceVisible || hidden || sortOrder != null) {
+      settings[raw] = { mergeInto: mergeInto || null, disableAutoMerge, forceVisible, hidden, sortOrder };
+    }
+  });
+  return settings;
 }
 
 function renderStorePage(id) {
@@ -3670,7 +3845,10 @@ function renderStorePage(id) {
         .sort((a, b) => (branchDistanceKm(a) ?? Infinity) - (branchDistanceKm(b) ?? Infinity))
     : [];
   const nearestSiblingId = store.branchGroup ? nearestBranchId(store.branchGroup, store.id) : null;
-  const allStoreProducts = products.filter(product => product.storeId === store.id);
+  // filterHiddenCategoryProducts must run before anything else derives from
+  // allStoreProducts — a manually "hidden" category (Phase 2 override) should
+  // disappear from the offers/popular sliders and the "X من Y منتجاً" counts too.
+  const allStoreProducts = filterHiddenCategoryProducts(store, products.filter(product => product.storeId === store.id));
   const storeOfferProducts = allStoreProducts.filter(product => product.oldPrice && product.available);
   const storePopularProducts = allStoreProducts.filter(product => MOST_ORDERED_PRODUCTS.has(product.id) && product.available);
   const categoryPlan = buildStoreCategoryPlan(store, allStoreProducts);
@@ -4012,6 +4190,7 @@ const MERCHANT_SECTIONS = [
   ["catalog", "box", "كتالوجات ميتا", "beta", "جهّز منتجاتك (صورة، سعر، رابط، توفّر) لتكون جاهزة لكتالوجات وإعلانات ميتا على فيسبوك وإنستغرام، مع كشف أخطاء الصور والأسعار وإعادة المزامنة."],
   ["analytics", "chart", "التقارير والتحليلات", "active", ""],
   ["store", "store", "إعدادات المتجر", "active", ""],
+  ["storeCategories", "filter", "تصنيفات المتجر", "active", ""],
   ["audit", "shield", "سجل التعديلات", "beta", "سجل واضح لكل تعديل: تغيير سعر، إضافة أو حذف منتج، إخفاء منتج، تغيير حالة طلب، وتعديل بيانات المتجر — لتعرف من فعل ماذا ومتى."],
   ["support", "phone", "الدعم الفني", "active", ""],
   ["share", "share", "رابط المتجر", "active", ""],
@@ -4052,6 +4231,7 @@ function dashboardSidebar(type, active) {
     ["complaints", "megaphone", "الشكاوى"],
     ["coupons", "megaphone", "الكوبونات"],
     ["delivery", "bike", "التوصيل"],
+    ["storeCategories", "filter", "تصنيفات المتاجر"],
     ["credentials", "shield", "حسابات المتاجر"],
     ["content", "settings", "المحتوى"],
     ["integrations", "megaphone", "التكاملات"],
@@ -5511,6 +5691,17 @@ function merchantStore() {
   `;
 }
 
+// Phase 2 category-organizer manual overrides for the merchant's own store —
+// same editor as adminStoreCategories, scope="merchant" (see categorySettingsEditorHTML).
+function merchantStoreCategories() {
+  const store = getMerchantStore();
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>تصنيفات متجرك</h3><p>دكانجي يرتّب ويدمج تصنيفات منتجاتك تلقائياً في صفحة متجرك. يمكنك هنا تعديل ذلك يدوياً: دمج تصنيف صغير في آخر، منع دمجه تلقائياً، تثبيت ترتيب ظهوره، أو إخفاؤه عن الزوار مؤقتاً — دون حذف أو تعديل منتجاتك.</p></div></div>
+      ${categorySettingsEditorHTML(store, "merchant")}
+    </section>`;
+}
+
 // Arabic label + pill colour for each subscription status.
 const SUBSCRIPTION_LABELS = {
   trialing: { text: "فترة تجريبية", pill: "green" },
@@ -5919,6 +6110,7 @@ function renderMerchant(id) {
     products: merchantProducts,
     offers: merchantOffers,
     store: merchantStore,
+    storeCategories: merchantStoreCategories,
     analytics: merchantAnalytics,
     integrations: merchantIntegrations,
     subscription: merchantSubscription,
@@ -5930,7 +6122,7 @@ function renderMerchant(id) {
     catalog: merchantCatalog,
     support: merchantSupport
   }[state.merchantTab] || (() => merchantComingSoon(state.merchantTab)))();
-  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"], customers: ["عملاء متجرك", "اعرف عملاءك الجدد والمتكررين وتواصل معهم"], catalog: ["كتالوجات ميتا", "اربط منتجاتك بفيسبوك وإنستغرام عبر رابط Feed جاهز"], support: ["الدعم الفني", "أجوبة سريعة وتواصل مباشر مع فريق دكانجي"] };
+  const titles = { overview: [`مرحباً، ${store.name}`, "إليك ملخص أداء متجرك اليوم"], orders: ["إدارة الطلبات", "تابع الطلبات وعدّل حالاتها"], products: ["المنتجات والمنيو", "حدّث الأسعار والتوفر وأضف منتجاتك"], offers: ["كودات الخصم", "اجذب عملاء أكثر بعروض وكودات مميزة"], store: ["إعدادات المتجر", "حدّث معلومات متجرك ومناطق الخدمة"], storeCategories: ["تصنيفات متجرك", "دمج/ترتيب يدوي لتصنيفات منتجاتك فوق الترتيب التلقائي"], analytics: ["التقارير والتحليلات", "زوّار متجرك ومنتجاتك ومعدلات التحويل ومصادر الزيارات"], integrations: ["التكاملات", "بكسلات التتبّع وأدوات جوجل للتحليلات والإعلانات"], subscription: ["اشتراك المتجر", "تابع خطتك وجدّد اشتراكك"], share: ["رابط متجرك", "شارك متجرك في كل مكان بضغطة واحدة"], images: ["الصور والتحسين بالذكاء الصناعي", "حسّن صور منتجاتك — والأصل محفوظ ويمكن استرجاعه دائماً"], search: ["البحث والمرادفات", "اجعل منتجاتك تظهر مهما اختلفت تسمية العميل ولهجته"], audit: ["سجل التعديلات", "كل تعديل على متجرك — من فعل ماذا ومتى"], customers: ["عملاء متجرك", "اعرف عملاءك الجدد والمتكررين وتواصل معهم"], catalog: ["كتالوجات ميتا", "اربط منتجاتك بفيسبوك وإنستغرام عبر رابط Feed جاهز"], support: ["الدعم الفني", "أجوبة سريعة وتواصل مباشر مع فريق دكانجي"] };
   const _sec = merchantSection(state.merchantTab);
   const [title, subtitle] = titles[state.merchantTab] || [(_sec && _sec[2]) || "لوحة المتجر", "قيد التطوير — قريباً في لوحتك"];
   // Ring + nudge for new/pending orders while the dashboard stays open.
@@ -6354,6 +6546,32 @@ function adminDeliveryZones() {
                 <button type="button" class="primary-button compact" data-action="save-zones-admin" data-id="${store.id}">${icon("check")} حفظ</button>
               </div>
               <div class="named-zones-guide"><small>${icon("info")} اسم المنطقة: ما يراه العميل · كلمات المطابقة: نص يبحث عنه في عنوانه (عربي أو لاتيني) · السعر: ل.ت</small></div>
+            </div>
+          </article>`;
+        }).join("")}
+      </div>
+    </section>`;
+}
+
+// Phase 2 category-organizer manual overrides — one editor per store, mirrors
+// adminDeliveryZones()'s collapse-to-edit pattern. Applies on top of the
+// automatic Phase 1 plan (buildStoreCategoryPlan); see categorySettingsEditorHTML.
+function adminStoreCategories() {
+  const sorted = [...stores].filter(s => (s.approvalStatus || "approved") === "approved").sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+  return `
+    <section class="dashboard-card">
+      <div class="card-heading"><div><h3>تصنيفات المتاجر (تجاوز يدوي)</h3><p>المرحلة الأولى ترتّب وتدمج تصنيفات كل متجر تلقائياً. هنا يمكنك تجاوز ذلك يدوياً لأي تصنيف: دمجه في تصنيف آخر، منع دمجه التلقائي، تثبيت ترتيب ظهوره، أو إخفاؤه عن الزوار. تجاوز الإدارة هنا يفوز دائماً على تجاوز التاجر لنفس التصنيف.</p></div></div>
+      <div class="admin-zones-list">
+        ${sorted.map(store => {
+          const count = products.filter(p => p.storeId === store.id).length;
+          return `<article class="admin-zone-store">
+            <div class="admin-zone-store__head">
+              ${storeAvatar(store)}
+              <div><strong>${escAttr(store.name)}</strong><small>${count} منتجاً · ${esc(store.category)}</small></div>
+              <button class="secondary-button compact" data-action="toggle-category-editor" data-id="${store.id}">${icon("edit")} تعديل</button>
+            </div>
+            <div class="zone-editor" id="category-editor-${store.id}" style="display:none">
+              ${categorySettingsEditorHTML(store, "admin")}
             </div>
           </article>`;
         }).join("")}
@@ -8369,8 +8587,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, storeCategories: adminStoreCategories, credentials: adminCredentials, content: adminContent, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], storeCategories: ["تصنيفات المتاجر", "تجاوز يدوي لترتيب/دمج تصنيفات منتجات أي متجر — فوق الترتيب التلقائي"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -12460,6 +12678,50 @@ document.addEventListener("click", event => {
     });
     saveNamedZonesCloud(storeId, zones);
     showToast(`تم حفظ مناطق التوصيل لـ ${getStore(storeId)?.name || storeId}`, "success");
+  }
+  if (action === "toggle-category-editor") {
+    const id = target.dataset.id;
+    const editor = document.getElementById(`category-editor-${id}`);
+    if (editor) editor.style.display = editor.style.display === "none" ? "" : "none";
+  }
+  if (action === "preview-category-settings") {
+    const storeId = Number(target.dataset.id);
+    const scope = target.dataset.scope;
+    const store = getStore(storeId);
+    const box = document.querySelector(`#category-settings-${storeId}-${scope} .category-settings-preview`);
+    if (!store || !box) return;
+    const settings = readCategoryOverridesFromDOM(storeId, scope);
+    const existing = (store.categorySettings && typeof store.categorySettings === "object") ? store.categorySettings : {};
+    const hypothetical = { ...store, categorySettings: { ...existing, [scope]: settings } };
+    const allStoreProducts = filterHiddenCategoryProducts(hypothetical, products.filter(p => p.storeId === storeId));
+    const plan = buildStoreCategoryPlan(hypothetical, allStoreProducts);
+    box.innerHTML = plan.length
+      ? `<strong>معاينة الترتيب (غير محفوظ بعد):</strong><div class="store-product-filters">${plan.map(b => `<button type="button" disabled>${esc(b.label)}<span>${b.products.length}</span></button>`).join("")}</div>`
+      : `<p class="muted-note">لا توجد تصنيفات ظاهرة بهذه الإعدادات — كل المنتجات مخفية.</p>`;
+  }
+  if (action === "save-category-settings") {
+    const storeId = Number(target.dataset.id);
+    const scope = target.dataset.scope;
+    const settings = readCategoryOverridesFromDOM(storeId, scope);
+    const headers = { "Content-Type": "application/json" };
+    if (scope === "admin" && state.adminKey) headers["x-admin-token"] = state.adminKey;
+    if (scope === "merchant" && state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+    fetch("/api/notify-order?action=save-store-categories", {
+      method: "POST", headers, body: JSON.stringify({ storeId, settings })
+    }).then(async r => {
+      if (r.status === 401 || r.status === 403) {
+        if (scope === "merchant") handleMerchantSessionExpired(); else if (state.adminKey) lockAdmin();
+        throw new Error("unauthorized");
+      }
+      if (!r.ok) throw new Error(`request failed (${r.status})`);
+      return r.json().catch(() => ({}));
+    }).then(data => {
+      const store = getStore(storeId);
+      if (store && data && data.categorySettings) store.categorySettings = data.categorySettings;
+      showToast(`تم حفظ تصنيفات ${getStore(storeId)?.name || storeId}`, "success");
+    }).catch(e => {
+      if (e.message !== "unauthorized") showToast("تعذّر حفظ التصنيفات، تحقّق من الاتصال", "error");
+    });
   }
   if (action === "default-address") {
     state.customerAddresses = state.customerAddresses.map(address => ({ ...address, isDefault: address.id === Number(target.dataset.id) }));
