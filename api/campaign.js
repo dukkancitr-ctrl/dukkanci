@@ -451,16 +451,38 @@ async function sendBatch(campaignId) {
     if (result.ok) sent++; else failed++;
   }
 
-  const newSent = (campaign.sent_count || 0) + sent;
-  const newFailed = (campaign.failed_count || 0) + failed;
-  const total = campaign.total_recipients || 0;
-  const allDone = total > 0 && newSent + newFailed >= total;
+  // Derive the counters from the recipients table instead of incrementing the
+  // snapshot read at the top of this function.
+  //
+  // `campaign` was fetched before ~8 message sends (~2.4s earlier), so
+  // `campaign.sent_count + sent` writes a stale base: any batch that finished in
+  // between has its delta silently overwritten. The row claim above is atomic, so
+  // nobody is messaged twice — but the COUNTER still drifts. That is exactly how a
+  // campaign ended up reporting sent_count=65 while 305 of its rows were 'sent'
+  // (a fossil of the overlapping-batch incident described in app.js's send loop).
+  // Recounting is race-free, idempotent, and self-heals already-corrupted rows.
+  const scope = `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(campaignId)}`;
+  const [sentTotal, failedTotal, allTotal, remaining] = await Promise.all([
+    sbCount(`${scope}&status=eq.sent`),
+    sbCount(`${scope}&status=eq.failed`),
+    sbCount(scope),
+    sbCount(`${scope}&status=in.(pending,sending)`)
+  ]);
 
-  await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(campaignId)}`, {
-    sent_count: newSent,
-    failed_count: newFailed,
-    ...(allDone ? { status: "done", finished_at: new Date().toISOString() } : {})
-  }, "return=minimal");
+  // If a count call failed it returns null — fall back to the incremental value
+  // rather than writing a wrong (or zero) counter over a good one.
+  const patch = {
+    sent_count:   sentTotal   == null ? (campaign.sent_count   || 0) + sent   : sentTotal,
+    failed_count: failedTotal == null ? (campaign.failed_count || 0) + failed : failedTotal
+  };
+  if (allTotal != null) patch.total_recipients = allTotal;
+
+  // Finish only on a definite zero: `null` means the count failed, and must never
+  // be read as "nothing left to send".
+  const allDone = remaining === 0;
+  if (allDone) { patch.status = "done"; patch.finished_at = new Date().toISOString(); }
+
+  await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(campaignId)}`, patch, "return=minimal");
 
   return { ok: true, sent, failed, done: allDone, sentToday: sentToday + sent };
 }
@@ -619,19 +641,31 @@ module.exports = async (req, res) => {
       if (!cid) return res.status(400).json({ error: "id required" });
       const { template_params, button_url_param, keep_params } = body;
       const { header_image_url } = body;
-      const patch = { status: "ready", sent_count: 0, failed_count: 0 };
+      const patch = { status: "ready" };
       if (!keep_params) {
         patch.template_params = Array.isArray(template_params) ? template_params : [];
         if (button_url_param !== undefined) patch.button_url_param = button_url_param;
         if (header_image_url !== undefined) patch.header_image_url = header_image_url;
       }
-      // Reset failed (and any 'sending' left stranded by a timed-out batch) → pending,
-      // then count actual pending to fix total_recipients
+      // Reset failed (and any 'sending' left stranded by a timed-out batch) → pending.
+      // Rows already 'sent' are deliberately left alone — nobody gets messaged twice.
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=in.(failed,sending)`,
         { status: "pending", error: null, sent_at: null }, "return=minimal");
-      patch.total_recipients = await sbCount(
-        `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.pending`
-      ) || 0;
+
+      // The counters describe the WHOLE list, not just this run. Counting only
+      // `pending` here (and zeroing sent_count) made a re-armed campaign report
+      // "191 recipients / 0 sent" when 335 were on its list and 144 had already
+      // received the message. Recount every bucket from the recipients table so the
+      // panel's "sent / total" line always answers "how many of my list got it".
+      const rescope = `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}`;
+      const [allTotal, sentTotal, failedTotal] = await Promise.all([
+        sbCount(rescope),
+        sbCount(`${rescope}&status=eq.sent`),
+        sbCount(`${rescope}&status=eq.failed`)
+      ]);
+      patch.total_recipients = allTotal   == null ? 0 : allTotal;
+      patch.sent_count       = sentTotal  == null ? 0 : sentTotal;
+      patch.failed_count     = failedTotal == null ? 0 : failedTotal;
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
       return res.json({ ok: true });
     }
@@ -736,9 +770,12 @@ module.exports = async (req, res) => {
     if (action === "build") {
       const camp = (await sbGet(`wa_campaigns?id=eq.${encodeURIComponent(cid)}&select=*`))?.[0];
       if (!camp) return res.status(404).json({ error: "campaign not found" });
+      // buildRecipients deletes every existing recipient row and re-inserts the list
+      // as 'pending', so any previous send is wiped — the counters must be zeroed with
+      // it, otherwise a rebuilt campaign shows a stale "319 sent" against 0 sent rows.
       const total = await buildRecipients(cid, camp.audience_type || "all_customers", camp);
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`,
-        { status: "ready", total_recipients: total }, "return=minimal");
+        { status: "ready", total_recipients: total, sent_count: 0, failed_count: 0 }, "return=minimal");
       return res.json({ ok: true, total });
     }
 
