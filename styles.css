@@ -10493,6 +10493,18 @@ tbody tr:hover {
 .group-card__name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-card__count { font-size: 13px; color: var(--muted); }
 .group-card__count b { font-size: 16px; font-weight: 800; color: var(--text); }
+/* NOTE: the surrounding campaign styles reference --accent/--bg/--text, which this
+   project never defines (pre-existing), so those declarations silently no-op.
+   The rules below deliberately use only tokens that exist in :root. */
+.group-card.is-clickable { cursor: pointer; }
+.group-card.is-active { border-color: var(--green-700); background: var(--green-50); }
+
+/* ─── Uploaded numbers listing (the phones themselves, not just group counts) ─── */
+.contacts-numbers-list { margin-bottom: 22px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.contacts-numbers-list .groups-heading .groups-count { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 20px; background: var(--green-700); }
+.contacts-scope-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.contacts-numbers-list code { direction: ltr; unicode-bidi: embed; color: var(--ink); background: var(--cream-dark); padding: 2px 7px; border-radius: 6px; }
+.contacts-numbers-list tbody td { vertical-align: middle; }
 
 /* ─── Upload area heading + campaigns table scroll ─── */
 .upload-heading { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; margin-bottom: 4px; }

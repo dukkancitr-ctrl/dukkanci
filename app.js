@@ -7997,8 +7997,11 @@ function adminProducts() {
 
 // ─── WhatsApp Campaign Management ────────────────────────────────────────────
 
-async function campaignApi(action, { method = "GET", id = null, body = null } = {}) {
-  const qs = new URLSearchParams({ action, ...(id ? { id } : {}) }).toString();
+async function campaignApi(action, { method = "GET", id = null, body = null, params = null } = {}) {
+  // `params` carries extra query args (e.g. group=). Never append them to `action`
+  // itself — URLSearchParams escapes the whole value, so "a&b=c" would arrive as
+  // one literal action name.
+  const qs = new URLSearchParams({ action, ...(id ? { id } : {}), ...(params || {}) }).toString();
   const opts = { method, headers: { "x-admin-token": state.adminKey || "", "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`/api/campaign?${qs}`, opts);
@@ -8122,6 +8125,11 @@ function adminCampaigns() {
   const contacts = state.adminContacts || null;
   const groups   = (contacts && contacts.groups) || [];
   const optouts  = state.adminOptouts || null;
+  // The uploaded numbers themselves — fetched by loadContacts() and, until now,
+  // never rendered anywhere, so the panel only ever showed group cards.
+  const preview     = (contacts && contacts.preview) || [];
+  const activeGroup = (contacts && contacts.group) || "";
+  const scopeTotal  = contacts ? (contacts.scopeTotal || contacts.total || 0) : 0;
 
   const audienceLabel = (t, g) => {
     if (t === "wa_contacts") return g ? `مجموعة: ${g}` : "كل الأرقام المرفوعة";
@@ -8162,7 +8170,7 @@ function adminCampaigns() {
       <div class="contacts-groups-list">
         <p class="groups-heading">${icon("users")} المجموعات المحفوظة <span class="groups-count">${groups.length}</span></p>
         <div class="groups-grid">
-          ${groups.map(g => `<article class="group-card">
+          ${groups.map(g => `<article class="group-card is-clickable ${activeGroup === g.group_name ? "is-active" : ""}" data-action="contacts-view-group" data-group="${escAttr(g.group_name)}" title="عرض أرقام هذه المجموعة">
             <div class="group-card__top">
               <span class="group-card__icon">${icon("users")}</span>
               <button class="group-card__del" data-action="contacts-delete-group" data-group="${escAttr(g.group_name)}" title="حذف المجموعة" aria-label="حذف المجموعة">${icon("trash")}</button>
@@ -8172,6 +8180,29 @@ function adminCampaigns() {
           </article>`).join("")}
         </div>
       </div>` : contacts ? `<p class="muted-hint">لا مجموعات بعد — ارفع أرقامك الأولى أدناه.</p>` : ""}
+
+      ${contacts ? `
+      <div class="contacts-numbers-list">
+        <p class="groups-heading">
+          ${icon("users")} الأرقام المرفوعة
+          ${activeGroup ? `<span class="groups-count">${esc(activeGroup)}</span>` : ""}
+        </p>
+        ${preview.length ? `
+        <p class="muted-hint contacts-scope-hint">
+          عرض أحدث <b>${preview.length.toLocaleString("ar")}</b> رقم من أصل <b>${scopeTotal.toLocaleString("ar")}</b>${activeGroup ? " في هذه المجموعة" : ""}
+          ${activeGroup ? `<button class="inline-link" data-action="contacts-view-group" data-group="">عرض كل المجموعات</button>` : ""}
+        </p>
+        <div class="campaigns-table-wrap"><table class="admin-table campaigns-table">
+          <thead><tr><th>الرقم</th><th>المجموعة</th><th>تاريخ الإضافة</th></tr></thead>
+          <tbody>
+            ${preview.map(c => `<tr>
+              <td dir="ltr"><code>+${esc(c.phone)}</code></td>
+              <td><small>${esc(c.group_name || "default")}</small></td>
+              <td><small>${c.created_at ? new Date(c.created_at).toLocaleDateString("ar") : "—"}</small></td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>` : `<p class="muted-hint">لا أرقام${activeGroup ? " في هذه المجموعة" : " مرفوعة بعد — ارفع أرقامك الأولى أدناه"}.</p>`}
+      </div>` : ""}
 
       <div class="contacts-upload-area">
         <p class="upload-heading">${icon("users")} رفع مجموعة جديدة</p>
@@ -8361,19 +8392,24 @@ function adminCampaigns() {
   `;
 }
 
-async function loadContacts() {
+async function loadContacts(group = "") {
   try {
     const [listData, groupsData] = await Promise.all([
-      campaignApi("contacts-list"),
+      campaignApi("contacts-list", group ? { params: { group } } : {}),
       campaignApi("contacts-groups")
     ]);
     state.adminContacts = {
-      total:   listData.total  || 0,
-      preview: listData.contacts || [],
-      groups:  groupsData.groups || []
+      total:      listData.total || 0,
+      preview:    listData.contacts || [],
+      group:      listData.group || "",
+      scopeTotal: listData.scopeTotal || listData.total || 0,
+      groups:     groupsData.groups || []
     };
     render();
-  } catch (e) { state.adminContacts = { total: 0, preview: [], groups: [] }; render(); }
+  } catch (e) {
+    state.adminContacts = { total: 0, preview: [], group: "", scopeTotal: 0, groups: [] };
+    render();
+  }
 }
 
 async function loadOptouts() {
@@ -13079,6 +13115,10 @@ document.addEventListener("click", event => {
         if (ta) ta.value = "";
         if (gn) gn.value = "";
       }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "contacts-view-group") {
+    // Empty data-group = back to the newest numbers across all groups.
+    loadContacts(target.dataset.group || "");
   }
   if (action === "contacts-delete-group") {
     const group = target.dataset.group;

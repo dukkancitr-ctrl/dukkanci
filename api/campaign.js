@@ -24,6 +24,7 @@ const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
 const env = k => (process.env[k] || "").trim();
 const DAILY_CAP = 2000; // Meta tier limit received by user
 const BATCH_SIZE = 8;   // messages per send-batch call
+const CONTACTS_PREVIEW = 200; // uploaded numbers listed per page in the admin panel
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,57 @@ async function sbGet(path) {
     if (!r.ok) return null;
     return await r.json().catch(() => null);
   } catch (e) { return null; }
+}
+
+// Exact row count for a table/filter.
+//
+// Do NOT count by fetching rows and reading `.length` — two separate traps bite:
+//   1. PostgREST caps every response at db-max-rows (1000 here) no matter how big
+//      `&limit=` is, so a `.length` count silently plateaus at 1000.
+//   2. `wa_contacts` has no `id` column (its PK is `phone`), so the old
+//      `select=id` counting queries returned HTTP 400 and counted 0 forever.
+// The only reliable count is the `Content-Range: 0-0/<total>` header returned
+// when `Prefer: count=exact` is sent. Returns null when the count is unavailable
+// so callers can tell "unknown" apart from a real zero.
+async function sbCount(path) {
+  const { url, key } = sb();
+  const sep = path.includes("?") ? "&" : "?";
+  try {
+    const r = await fetch(`${url}/rest/v1/${path}${sep}select=*`, {
+      headers: {
+        apikey: key, Authorization: `Bearer ${key}`,
+        Prefer: "count=exact", "Range-Unit": "items", Range: "0-0"
+      }
+    });
+    if (!r.ok) return null;
+    const m = /\/(\d+)\s*$/.exec(r.headers.get("content-range") || "");
+    return m ? Number(m[1]) : null;
+  } catch (e) { return null; }
+}
+
+// Fetch EVERY row matching `path`, paging past the db-max-rows cap with Range
+// headers. `path` must not carry its own `limit=`. `max` is a hard safety stop.
+async function sbGetAll(path, max = 50000) {
+  const { url, key } = sb();
+  const PAGE = 1000;
+  const out = [];
+  for (let from = 0; from < max; from += PAGE) {
+    let rows;
+    try {
+      const r = await fetch(`${url}/rest/v1/${path}`, {
+        headers: {
+          apikey: key, Authorization: `Bearer ${key}`,
+          "Range-Unit": "items", Range: `${from}-${from + PAGE - 1}`
+        }
+      });
+      if (!r.ok) break;
+      rows = await r.json().catch(() => null);
+    } catch (e) { break; }
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }
 
 async function sbWrite(method, path, body, prefer = "return=representation") {
@@ -248,16 +300,19 @@ async function buildRecipients(campaignId, audienceType, campaign) {
 
   let phones = [];
 
+  // Every recipient query below MUST page via sbGetAll. A plain sbGet is capped
+  // at db-max-rows (1000) no matter how large `&limit=` is, which silently built
+  // campaigns that reached only the first 1000 of the uploaded numbers.
   if (audienceType === "no_order_30d") {
     // Customers who haven't ordered in the last 30 days
     const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
     const [allRows, recentRows] = await Promise.all([
-      sbGet(`orders?select=customer_phone&not.customer_phone.is.null&limit=5000`),
-      sbGet(`orders?select=customer_phone&created_at=gte.${encodeURIComponent(cutoff)}&not.customer_phone.is.null`)
+      sbGetAll(`orders?select=customer_phone&not.customer_phone.is.null`),
+      sbGetAll(`orders?select=customer_phone&created_at=gte.${encodeURIComponent(cutoff)}&not.customer_phone.is.null`)
     ]);
-    const recent = new Set((recentRows || []).map(r => toE164(r.customer_phone, cc)).filter(Boolean));
+    const recent = new Set(recentRows.map(r => toE164(r.customer_phone, cc)).filter(Boolean));
     const seen = new Set();
-    for (const r of (allRows || [])) {
+    for (const r of allRows) {
       const p = toE164(r.customer_phone, cc);
       if (p && !seen.has(p) && !recent.has(p)) { seen.add(p); phones.push(p); }
     }
@@ -265,26 +320,26 @@ async function buildRecipients(campaignId, audienceType, campaign) {
     // Uploaded contacts — optionally filtered to a specific group
     const groupFilter = campaign?.contact_group;
     const path = groupFilter
-      ? `wa_contacts?select=phone&group_name=eq.${encodeURIComponent(groupFilter)}&limit=10000`
-      : `wa_contacts?select=phone&limit=10000`;
-    const rows = await sbGet(path);
+      ? `wa_contacts?select=phone&group_name=eq.${encodeURIComponent(groupFilter)}`
+      : `wa_contacts?select=phone`;
+    const rows = await sbGetAll(path);
     const seen = new Set();
-    for (const r of (rows || [])) {
+    for (const r of rows) {
       const p = toE164(r.phone, cc);
       if (p && !seen.has(p)) { seen.add(p); phones.push(p); }
     }
   } else {
     // all_customers: every unique customer phone that ever ordered
-    const rows = await sbGet(`orders?select=customer_phone&not.customer_phone.is.null&order=created_at.desc&limit=5000`);
+    const rows = await sbGetAll(`orders?select=customer_phone&not.customer_phone.is.null&order=created_at.desc`);
     const seen = new Set();
-    for (const r of (rows || [])) {
+    for (const r of rows) {
       const p = toE164(r.customer_phone, cc);
       if (p && !seen.has(p)) { seen.add(p); phones.push(p); }
     }
   }
 
   // Remove opted-out phones
-  const optouts = await sbGet(`wa_optout?select=phone`) || [];
+  const optouts = await sbGetAll(`wa_optout?select=phone`, 20000);
   const optoutSet = new Set(optouts.map(o => String(o.phone)));
   phones = phones.filter(p => !optoutSet.has(p));
 
@@ -336,10 +391,13 @@ async function sendBatch(campaignId) {
     return { ok: false, error: `campaign_not_sending`, status: campaign.status };
   }
 
-  // Count today's sends across ALL campaigns (daily cap enforced per Meta tier)
+  // Count today's sends across ALL campaigns (daily cap enforced per Meta tier).
+  // Must be an exact count: fetching rows and reading .length plateaus at the
+  // 1000-row cap, so the 2000/day limit would never have fired.
   const todayStart = new Date(); todayStart.setUTCHours(0, 0, 0, 0);
-  const sentTodayRows = await sbGet(`wa_campaign_recipients?sent_at=gte.${encodeURIComponent(todayStart.toISOString())}&status=eq.sent&select=id&limit=2001`);
-  const sentToday = (sentTodayRows || []).length;
+  const sentToday = await sbCount(
+    `wa_campaign_recipients?sent_at=gte.${encodeURIComponent(todayStart.toISOString())}&status=eq.sent`
+  ) || 0;
 
   if (sentToday >= DAILY_CAP) {
     await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(campaignId)}`,
@@ -435,22 +493,37 @@ module.exports = async (req, res) => {
       return res.json({ ok: true, campaign: row });
     }
     if (action === "contacts-count") {
-      const rows = await sbGet("wa_contacts?select=id&limit=1&count=exact") || [];
-      // Supabase returns count in Content-Range header; fall back to row count
-      return res.json({ ok: true, count: Array.isArray(rows) ? rows.length : 0 });
+      const count = await sbCount("wa_contacts");
+      return res.json({ ok: true, count: count == null ? 0 : count });
     }
     if (action === "contacts-list") {
-      const rows = await sbGet("wa_contacts?select=phone,group_name,created_at&order=created_at.desc&limit=20");
-      const total = await sbGet("wa_contacts?select=id&limit=10000");
-      return res.json({ ok: true, contacts: rows || [], total: (total || []).length });
+      // `group` narrows the listing to one uploaded group; omitted = newest overall.
+      const group = q.get("group") || "";
+      const filter = group ? `&group_name=eq.${encodeURIComponent(group)}` : "";
+      const rows = await sbGet(
+        `wa_contacts?select=phone,group_name,created_at${filter}&order=created_at.desc&limit=${CONTACTS_PREVIEW}`
+      );
+      const total = await sbCount("wa_contacts");
+      const scopeTotal = group
+        ? await sbCount(`wa_contacts?group_name=eq.${encodeURIComponent(group)}`)
+        : total;
+      return res.json({
+        ok: true,
+        contacts: rows || [],
+        total: total == null ? 0 : total,
+        group: group || null,
+        scopeTotal: scopeTotal == null ? 0 : scopeTotal,
+        limit: CONTACTS_PREVIEW
+      });
     }
     if (action === "contacts-groups") {
       const groups = await getContactGroups();
       return res.json({ ok: true, groups });
     }
     if (action === "optout-list") {
-      const rows = await sbGet("wa_optout?select=phone,reason,created_at&order=created_at.desc&limit=2000");
-      return res.json({ ok: true, optouts: rows || [], total: (rows || []).length });
+      const rows = await sbGetAll("wa_optout?select=phone,reason,created_at&order=created_at.desc", 5000);
+      const total = await sbCount("wa_optout");
+      return res.json({ ok: true, optouts: rows, total: total == null ? rows.length : total });
     }
     if (action === "template-inspect") {
       const { template_name } = req.query;
@@ -556,8 +629,9 @@ module.exports = async (req, res) => {
       // then count actual pending to fix total_recipients
       await sbWrite("PATCH", `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=in.(failed,sending)`,
         { status: "pending", error: null, sent_at: null }, "return=minimal");
-      const allPending = await sbGet(`wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.pending&select=id&limit=10000`);
-      patch.total_recipients = (allPending || []).length;
+      patch.total_recipients = await sbCount(
+        `wa_campaign_recipients?campaign_id=eq.${encodeURIComponent(cid)}&status=eq.pending`
+      ) || 0;
       await sbWrite("PATCH", `wa_campaigns?id=eq.${encodeURIComponent(cid)}`, patch, "return=minimal");
       return res.json({ ok: true });
     }
@@ -600,13 +674,17 @@ module.exports = async (req, res) => {
       if (!phones.length) return res.status(400).json({ error: "لا أرقام صالحة في القائمة" });
       await upsertContacts(phones, group_name || "default");
       // Return fresh total
-      const total = await sbGet("wa_contacts?select=id&limit=10000");
-      return res.json({ ok: true, added: phones.length, total: (total || []).length });
+      const total = await sbCount("wa_contacts");
+      return res.json({ ok: true, added: phones.length, total: total == null ? 0 : total });
     }
 
-    // Clear all contacts
+    // Clear all contacts.
+    // Filter on `phone`, not `id`: wa_contacts has no id column, so the old
+    // `id=not.is.null` filter 400'd and deleted nothing while the UI still
+    // reported success. `phone` is the NOT NULL primary key, so it matches every row.
     if (action === "contacts-clear") {
-      await sbWrite("DELETE", "wa_contacts?id=not.is.null", undefined, "return=minimal");
+      const r = await sbWrite("DELETE", "wa_contacts?phone=not.is.null", undefined, "return=minimal");
+      if (!r.ok) return res.status(500).json({ error: "تعذّر حذف الأرقام", detail: r.rows });
       return res.json({ ok: true });
     }
 
@@ -633,8 +711,8 @@ module.exports = async (req, res) => {
       }
       if (!phones.length) return res.status(400).json({ error: "لا أرقام صالحة في القائمة" });
       await upsertOptouts(phones, reason);
-      const total = await sbGet("wa_optout?select=phone&limit=10000");
-      return res.json({ ok: true, added: phones.length, total: (total || []).length });
+      const total = await sbCount("wa_optout");
+      return res.json({ ok: true, added: phones.length, total: total == null ? 0 : total });
     }
 
     // Remove a single phone from the exclusion list
