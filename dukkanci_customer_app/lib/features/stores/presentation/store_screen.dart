@@ -16,6 +16,7 @@ import '../../cart/domain/cart_item.dart';
 import '../../favorites/application/favorites_controller.dart';
 import '../../products/domain/product.dart';
 import '../domain/store.dart';
+import '../domain/store_category_plan.dart';
 
 final storeByKeyProvider = FutureProvider.autoDispose.family<Store?, String>((ref, slugOrId) {
   return ref.read(storeRepositoryProvider).fetchStoreBySlugOrId(slugOrId);
@@ -266,7 +267,12 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
     );
   }
 
-  Widget _buildProductSlivers(BuildContext context, List<Product> products) {
+  Widget _buildProductSlivers(BuildContext context, List<Product> allProducts) {
+    // A manually "hidden" category (admin/merchant override) must disappear
+    // everywhere below — search results included — same as the website
+    // (filterHiddenCategoryProducts runs before anything else derives from
+    // the store's product list there too).
+    final products = filterHiddenCategoryProducts(widget.store, allProducts);
     if (products.isEmpty) {
       return const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(top: 60), child: AppEmptyView(message: AppStrings.noResults, icon: Icons.no_food_rounded)));
     }
@@ -302,10 +308,14 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
     }
 
     // Categorized mode: sticky bar + a titled 2-column grid per category.
-    final byCategory = <String, List<Product>>{};
-    for (final p in products) {
-      byCategory.putIfAbsent(p.category ?? 'أخرى', () => []).add(p);
-    }
+    // buildStoreCategoryPlan orders/merges categories exactly like the
+    // website (canonical order for مطاعم/سوبر ماركت, small-category merge,
+    // admin/merchant manual overrides) — a LinkedHashMap built from its
+    // output keeps that order while leaving the rest of this widget (keyed
+    // by category label) unchanged.
+    final byCategory = <String, List<Product>>{
+      for (final bucket in buildStoreCategoryPlan(widget.store, products)) bucket.label: bucket.products,
+    };
     // Stable keys across rebuilds (recreating GlobalKeys every build would
     // detach the sections and break scroll-to / active tracking).
     for (final k in byCategory.keys) {
