@@ -393,24 +393,6 @@ async function sbGet(path) {
   } catch (e) { return null; }
 }
 
-// Allow-list of real banner ids, used to reject forged banner-event writes.
-// Cached in module scope (warm serverless instances reuse it) for 60s so a busy
-// page doesn't re-read site_settings on every impression. Invalidated eagerly
-// whenever the banners setting is saved.
-const bannerIdCache = { ids: null, at: 0 };
-async function knownBannerIds() {
-  const now = Date.now();
-  if (bannerIdCache.ids && now - bannerIdCache.at < 60000) return bannerIdCache.ids;
-  const rows = await sbGet("site_settings?key=eq.banners&select=value");
-  // null => the read itself failed; return null so the caller skips validation
-  // rather than silently dropping every real event during a Supabase blip.
-  if (!rows) return bannerIdCache.ids;
-  const items = (rows[0] && rows[0].value && Array.isArray(rows[0].value.items)) ? rows[0].value.items : [];
-  bannerIdCache.ids = new Set(items.map(b => b && b.id).filter(Boolean).map(String));
-  bannerIdCache.at = now;
-  return bannerIdCache.ids;
-}
-
 // Exact row count via the Content-Range header. Returns null (NOT 0) when the
 // count fails, so callers can tell "unknown" from "genuinely empty".
 // Same helper pattern already proven in api/campaign.js.
@@ -428,6 +410,24 @@ async function sbCount(path) {
     const m = /\/(\d+)\s*$/.exec(r.headers.get("content-range") || "");
     return m ? Number(m[1]) : null;
   } catch (e) { return null; }
+}
+
+// Allow-list of real banner ids, used to reject forged banner-event writes.
+// Cached in module scope (warm serverless instances reuse it) for 60s so a busy
+// page doesn't re-read site_settings on every impression. Invalidated eagerly
+// whenever the banners setting is saved.
+const bannerIdCache = { ids: null, at: 0 };
+async function knownBannerIds() {
+  const now = Date.now();
+  if (bannerIdCache.ids && now - bannerIdCache.at < 60000) return bannerIdCache.ids;
+  const rows = await sbGet("site_settings?key=eq.banners&select=value");
+  // null => the read itself failed; return null so the caller skips validation
+  // rather than silently dropping every real event during a Supabase blip.
+  if (!rows) return bannerIdCache.ids;
+  const items = (rows[0] && rows[0].value && Array.isArray(rows[0].value.items)) ? rows[0].value.items : [];
+  bannerIdCache.ids = new Set(items.map(b => b && b.id).filter(Boolean).map(String));
+  bannerIdCache.at = now;
+  return bannerIdCache.ids;
 }
 
 // Fetch EVERY row matching `path`, paging past PostgREST's db-max-rows cap with
@@ -955,6 +955,89 @@ async function retrieveKnowledge(query) {
     if (!good.length) return "";
     return good.map((c, i) => `[${i + 1}] ${String(c.content).slice(0, 700)}`).join("\n\n");
   } catch (e) { return ""; }
+}
+
+// ── Phase 1 order-creation helpers (see CLAUDE.md fix log, 2026-07-16) ──────
+
+function haversineKm(origin, destination) {
+  const toRadians = value => value * Math.PI / 180;
+  const earthRadius = 6371;
+  const deltaLat = toRadians(destination.lat - origin.lat);
+  const deltaLng = toRadians(destination.lng - origin.lng);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(deltaLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function normalizeDeliveryFee(rawFee) {
+  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+}
+
+async function nextOrderId() {
+  for (let i = 0; i < 5; i++) {
+    const candidate = "DK-" + String(crypto.randomInt(100000000, 999999999));
+    const clash = await sbGet(`orders?id=eq.${candidate}&select=id&limit=1`);
+    if (!Array.isArray(clash) || !clash.length) return candidate;
+  }
+  return "DK-" + Date.now().toString().slice(-9);
+}
+
+function publicOrderView(row) {
+  const dd = (row.delivery_details && typeof row.delivery_details === "object") ? row.delivery_details : {};
+  return {
+    id: row.id, storeId: row.store_id, total: Number(row.total) || 0, items: row.items,
+    fulfillment: dd.fulfillment || "delivery", address: dd.address || "",
+    etaMin: 20 + (dd.fulfillment === "pickup" ? 0 : 25), closedWhenOrdered: !!dd.closedWhenOrdered
+  };
+}
+
+async function sendOrderWhatsapp(c, order, store, priceFlag) {
+  const storeName = (store && store.name) || "متجرك";
+  const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
+  const adminTos = c.adminPhones.map(p => toE164(p, c.cc)).filter(Boolean);
+  const custTo = toE164(order.customerPhone, c.cc);
+  const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
+  const scheduleAr = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
+  const fulfillmentFull = scheduleAr ? `${fulfillmentAr} - ${scheduleAr}` : `${fulfillmentAr} - في أقرب وقت`;
+  const results = {};
+
+  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentFull}`
+    + (order.address ? `\nالعنوان: ${order.address}` : "")
+    + (order.payment ? `\nالدفع: ${order.payment}` : "")
+    + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
+  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentFull, itemsLine(order.lineItems) || "-"];
+
+  if (storeTo) results.store = await sendWhatsapp(c, storeTo, { template: c.tplStore, params: storeAlertParams, text: storeAlertText });
+  else results.store = { skipped: true, reason: "store has no whatsapp/phone" };
+
+  if (adminTos.length) {
+    const flagNote = priceFlag
+      ? `⚠️ تنبيه سعر مشبوه: الإجمالي المُرسَل (${money(priceFlag.total)}) أقل بكثير من السعر الفعلي للمنتجات (${money(priceFlag.expectedSubtotal)}). تحقّق قبل تجهيز الطلب.\n\n`
+      : "";
+    const adminText = flagNote + `🛒 [${storeName}] ` + storeAlertText;
+    const adminParams = [...storeAlertParams];
+    adminParams[1] = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
+    results.admin = [];
+    for (const to of adminTos) results.admin.push({ to, ...(await sendWhatsapp(c, to, { template: c.tplStore, params: adminParams, text: adminText })) });
+  } else {
+    results.admin = { skipped: true, reason: "no admin phones configured" };
+  }
+
+  if (custTo) {
+    const text = `✅ تم استلام طلبك على دكانجي\n\nرقم الطلب: ${order.id}\nالمتجر: ${storeName}\nالإجمالي: ${money(order.total)}\n\nسنعلمك فور تأكيد المتجر لطلبك. شكراً لاستخدامك دكانجي 🛍️`;
+    const params = [String(order.id), storeName, money(order.total)];
+    results.customer = await sendWhatsapp(c, custTo, { template: c.tplCustomer, params, text });
+  } else {
+    results.customer = { skipped: true, reason: "no customer phone" };
+  }
+
+  try {
+    const adminOkAll = Array.isArray(results.admin) ? results.admin.every(r => r.ok) : !!(results.admin && results.admin.ok);
+    await logAudit(order.storeId, "system", "order_notify", "order", order.id, null, {
+      store: !!(results.store && results.store.ok), admin: adminOkAll, customer: !!(results.customer && results.customer.ok)
+    });
+  } catch (e) {}
+
+  return results;
 }
 
 // Re-prices an order's line items from the real `products` table (never the
@@ -1588,7 +1671,215 @@ module.exports = async (req, res) => {
   let pq = {};
   try { pq = require("url").parse(req.url || "", true).query || {}; } catch (e) { pq = req.query || {}; }
 
+  // ── Authoritative order creation (Phase 1 of the order-system reliability
+  // audit — CLAUDE.md fix log, 2026-07-16). This is now the ONLY path that
+  // should insert a new orders row; the checkout page awaits this instead of
+  // writing straight to Supabase with the anon key. Only productId/qty/
+  // optionSelections/storeId and similar identifiers are trusted from the
+  // client — price/subtotal/delivery/total sent by the browser are ALWAYS
+  // ignored and re-derived here. Creation and notification delivery are
+  // deliberately split: the client gets its 200 response the instant the order
+  // row is durably saved, and WhatsApp/push/dashboard notifications run
+  // afterwards in the same invocation (Vercel keeps a Node function alive until
+  // the async handler actually returns, not just until res.json() is called),
+  // so a slow or down WhatsApp API can never delay or fail the order itself.
+  if (pq.action === "create-order") {
+    const idempotencyKey = String(body.idempotencyKey || "").trim().slice(0, 120);
+    if (!idempotencyKey) return res.status(400).json({ error: "idempotencyKey required" });
+    const storeId = Number(body.storeId);
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const lineItemsIn = Array.isArray(body.lineItems) ? body.lineItems : [];
+    if (!lineItemsIn.length) return res.status(400).json({ error: "cart is empty" });
+    const customer = String(body.customer || "").trim().slice(0, 120);
+    const customerPhone = String(body.customerPhone || "").trim().slice(0, 40);
+    if (!customer) return res.status(400).json({ error: "customer name required" });
+    if (customerPhone.replace(/\D/g, "").length < 10) return res.status(400).json({ error: "valid customer phone required" });
+    const fulfillment = body.fulfillment === "pickup" ? "pickup" : "delivery";
+
+    try {
+      const existing = await sbGet(`orders?idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&select=*&limit=1`);
+      if (Array.isArray(existing) && existing[0]) {
+        return res.status(200).json({ ok: true, alreadyExists: true, order: publicOrderView(existing[0]) });
+      }
+
+      const storeRows = await sbGet(`stores?id=eq.${storeId}&select=id,name,phone,whatsapp,lat,lng,min_order,free_delivery_threshold,open,approval_status,subscription_active&limit=1`);
+      const store = storeRows && storeRows[0];
+      if (!store) return res.status(404).json({ error: "store not found", code: "store_not_found" });
+      if (store.approval_status && store.approval_status !== "approved") {
+        return res.status(403).json({ error: "store not approved", code: "store_not_approved" });
+      }
+      if (store.open === false) return res.status(409).json({ error: "المتجر مغلق حالياً ولا يستقبل طلبات", code: "store_closed" });
+      if (store.subscription_active === false) {
+        return res.status(409).json({ error: "هذا المتجر لا يستقبل طلبات حالياً — الاشتراك منتهٍ", code: "subscription_inactive" });
+      }
+
+      const productIds = [...new Set(lineItemsIn.map(i => Number(i.productId)).filter(Boolean))];
+      if (!productIds.length) return res.status(400).json({ error: "no valid line items" });
+      const productRows = await sbGet(`products?id=in.(${productIds.join(",")})&select=id,store_id,name,price,price_on_request,available,options,addons`);
+      const productById = new Map((productRows || []).map(p => [Number(p.id), p]));
+
+      let subtotal = 0;
+      let totalQty = 0;
+      const lineItems = [];
+      for (const raw of lineItemsIn) {
+        const p = productById.get(Number(raw.productId));
+        if (!p) return res.status(409).json({ error: "أحد المنتجات لم يعد متوفراً — يرجى مراجعة السلة", code: "product_unavailable", productId: raw.productId });
+        if (Number(p.store_id) !== storeId) return res.status(409).json({ error: "منتج لا ينتمي لهذا المتجر", code: "product_unavailable", productId: p.id });
+        if (p.available === false) return res.status(409).json({ error: `${p.name} غير متوفر حالياً وتمت إزالته من السلة`, code: "product_unavailable", productId: p.id });
+        if (p.price_on_request) return res.status(409).json({ error: `${p.name} بسعر عند الطلب — تواصل عبر واتساب`, code: "price_on_request", productId: p.id });
+        const qty = Math.max(1, Math.min(50, Number(raw.qty) || 1));
+        let extra = 0;
+        const optionLabels = [];
+        const optionSelections = Array.isArray(raw.optionSelections) ? raw.optionSelections : [];
+        (Array.isArray(p.options) ? p.options : []).forEach((option, index) => {
+          const selectedIndex = Number(optionSelections[index] || 0);
+          extra += Number(option && option.extra && option.extra[selectedIndex]) || 0;
+          if (option && option.values && option.values[selectedIndex]) optionLabels.push(option.values[selectedIndex]);
+        });
+        const addonSelections = Array.isArray(raw.addonSelections) ? raw.addonSelections : [];
+        const addonLabels = [];
+        (Array.isArray(p.addons) ? p.addons : []).forEach((addon, index) => {
+          if (!addonSelections.includes(index)) return;
+          extra += Number(addon && addon.price) || 0;
+          if (addon && addon.name) addonLabels.push(`+${addon.name}`);
+        });
+        const unitPrice = (Number(p.price) || 0) + extra;
+        subtotal += unitPrice * qty;
+        totalQty += qty;
+        lineItems.push({
+          productId: p.id, name: p.name, qty, price: unitPrice,
+          options: [...optionLabels, ...addonLabels].join("، "),
+          optionSelections, notes: String(raw.notes || "").slice(0, 300)
+        });
+      }
+      if (subtotal <= 0) return res.status(400).json({ error: "invalid order total" });
+
+      if (store.min_order && subtotal < Number(store.min_order)) {
+        return res.status(409).json({ error: `الحد الأدنى للطلب ${store.min_order} ل.ت`, code: "below_min_order", minOrder: Number(store.min_order) });
+      }
+
+      let delivery = 0;
+      let deliveryMeta = null;
+      if (fulfillment !== "pickup") {
+        const ds = body.deliverySettings || {};
+        const dest = body.destination || {};
+        if (ds.mode === "fixed") {
+          delivery = Math.min(500, Math.max(0, Number(ds.fixedFee) || 0));
+        } else if (Number.isFinite(Number(store.lat)) && Number.isFinite(Number(store.lng))
+          && Number.isFinite(Number(dest.lat)) && Number.isFinite(Number(dest.lng))) {
+          const ratePerKm = Math.min(40, Math.max(10, Number(ds.ratePerKm) || 15));
+          const maxRoundTripKm = Math.min(200, Math.max(5, Number(ds.maxRoundTripKm) || 60));
+          const oneWayKm = Math.max(0.5, haversineKm(
+            { lat: Number(store.lat), lng: Number(store.lng) },
+            { lat: Number(dest.lat), lng: Number(dest.lng) }
+          ) * 1.28);
+          const roundTripKm = oneWayKm * 2;
+          if (roundTripKm > maxRoundTripKm) {
+            return res.status(409).json({ error: "العنوان خارج نطاق توصيل هذا المتجر", code: "out_of_range" });
+          }
+          delivery = normalizeDeliveryFee(Math.round(roundTripKm * ratePerKm));
+          deliveryMeta = { oneWayKm, roundTripKm };
+        } else {
+          delivery = Math.min(500, Math.max(0, Number(ds.clientFee) || 0));
+        }
+        if (store.free_delivery_threshold != null && subtotal >= Number(store.free_delivery_threshold)) delivery = 0;
+      }
+
+      let discount = 0;
+      let couponCode = "";
+      const rawCoupon = String(body.couponCode || "").trim();
+      if (rawCoupon) {
+        const rpc = await sbWrite("POST", "rpc/validate_coupon", {
+          p_code: rawCoupon, p_store_id: storeId, p_subtotal: subtotal, p_phone: customerPhone
+        }, "return=representation");
+        const data = rpc.ok ? rpc.rows : null;
+        if (data && data.valid) {
+          discount = Number(data.discount) || 0;
+          if (data.freeDelivery) delivery = 0;
+          couponCode = rawCoupon;
+        }
+      }
+
+      const total = Math.max(0, subtotal + delivery - discount);
+
+      const orderId = await nextOrderId();
+      const nowIso = new Date().toISOString();
+      const orderRow = {
+        id: orderId, store_id: storeId, customer, total, status: "طلب جديد", time: "الآن",
+        items: totalQty,
+        delivery_details: {
+          quote: deliveryMeta, phone: customerPhone, phoneKey: customerPhone.replace(/\D/g, ""),
+          fulfillment, address: String(body.address || "").slice(0, 300), addressDetails: String(body.addressDetails || "").slice(0, 300),
+          lineItems, notes: String(body.notes || "").slice(0, 500), substitution: String(body.substitution || "").slice(0, 200),
+          payment: String(body.payment || "نقداً عند التسليم").slice(0, 60),
+          scheduleDay: String(body.scheduleDay || "").slice(0, 40), scheduleTime: String(body.scheduleTime || "").slice(0, 40),
+          closedWhenOrdered: !!body.closedWhenOrdered, createdAt: nowIso, couponCode, discount
+        },
+        idempotency_key: idempotencyKey,
+        notification_status: "pending",
+        source: String(body.source || "web").slice(0, 40),
+        is_test_order: !!body.isTestOrder
+      };
+      if (body.customerId) { orderRow.customer_id = body.customerId; orderRow.customer_phone = customerPhone; }
+      if (body.attribution) orderRow.attribution = body.attribution;
+
+      const ins = await sbWrite("POST", "orders?on_conflict=idempotency_key", orderRow, "resolution=ignore-duplicates,return=representation");
+      let savedRow = Array.isArray(ins.rows) && ins.rows[0];
+      if (!savedRow) {
+        const after = await sbGet(`orders?idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&select=*&limit=1`);
+        savedRow = Array.isArray(after) && after[0];
+      }
+      if (!savedRow) {
+        console.warn("[create-order] insert failed for " + orderId + ": " + ins.status + " " + JSON.stringify(ins.rows || ins.error));
+        return res.status(500).json({ error: "تعذّر حفظ الطلب، حاول مجدداً" });
+      }
+
+      await sbWrite("POST", "order_status_history", {
+        order_id: savedRow.id, status: "طلب جديد", note: null, changed_by: "system"
+      }, "return=minimal");
+
+      res.status(200).json({ ok: true, order: publicOrderView(savedRow) });
+
+      try {
+        const orderForNotify = {
+          id: savedRow.id, storeId, customer, customerPhone, total, fulfillment,
+          address: orderRow.delivery_details.address, payment: orderRow.delivery_details.payment,
+          lineItems, scheduleDay: orderRow.delivery_details.scheduleDay, scheduleTime: orderRow.delivery_details.scheduleTime
+        };
+        let push = { skipped: true };
+        try { push = await pushNewOrder(orderForNotify); } catch (e) {}
+        await notifyMerchant(storeId, "new_order", "طلب جديد 🛒",
+          `طلب ${orderForNotify.id} من ${customer} بقيمة ${money(total)}.`, "order", orderForNotify.id);
+        let notifyResult = { skipped: true, reason: "whatsapp not configured" };
+        if (c.token && c.phoneId) notifyResult = await sendOrderWhatsapp(c, orderForNotify, store, null);
+        const anyOk = !!(notifyResult && (
+          (notifyResult.store && notifyResult.store.ok) ||
+          (notifyResult.customer && notifyResult.customer.ok) ||
+          (Array.isArray(notifyResult.admin) && notifyResult.admin.some(r => r.ok))
+        ));
+        await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(savedRow.id)}`, {
+          notification_status: notifyResult.skipped ? "pending" : (anyOk ? "sent" : "failed"),
+          notification_attempts: 1, notification_last_attempt_at: new Date().toISOString(),
+          notification_last_error: notifyResult.skipped ? (notifyResult.reason || null) : (anyOk ? null : "no channel succeeded")
+        }, "return=minimal");
+      } catch (e) {
+        try {
+          await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(savedRow.id)}`, {
+            notification_status: "failed", notification_attempts: 1,
+            notification_last_attempt_at: new Date().toISOString(),
+            notification_last_error: String((e && e.message) || e).slice(0, 500)
+          }, "return=minimal");
+        } catch (_) {}
+      }
+      return;
+    } catch (e) {
+      console.warn("[create-order] unexpected error: " + (e && e.stack || e));
+      return res.status(500).json({ error: "تعذّر إنشاء الطلب، حاول مجدداً" });
+    }
+  }
+
   // Supabase "Send SMS" Auth Hook → deliver the login OTP over WhatsApp (Meta).
+
   // Configured in Supabase as an HTTPS hook pointing to
   //   /api/notify-order?action=auth-sms   with secret SEND_SMS_HOOK_SECRET.
   if (pq.action === "auth-sms") {
@@ -2117,7 +2408,44 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  // Merchant/Admin: manually re-send an order's WhatsApp/push notifications
+  // (Phase 1 order-system audit, spec §8/§16 — "إعادة إرسال الإشعار يدوياً").
+  // Re-reads the order + store from the DB (never re-derives price — the order
+  // is already saved) and re-runs the exact same send path create-order uses.
+  if (pq.action === "retry-order-notification") {
+    const orderId = String(body.id || pq.id || "").trim();
+    if (!orderId) return res.status(400).json({ error: "id required" });
+    const rows = await sbGet(`orders?id=eq.${encodeURIComponent(orderId)}&select=*&limit=1`);
+    const row = rows && rows[0];
+    if (!row) return res.status(404).json({ error: "order not found" });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    if (!isAdmin && !merchantOk(req, Number(row.store_id))) return res.status(403).json({ error: "unauthorized" });
+    const storeRows = await sbGet(`stores?id=eq.${row.store_id}&select=id,name,phone,whatsapp&limit=1`);
+    const store = storeRows && storeRows[0];
+    const dd = (row.delivery_details && typeof row.delivery_details === "object") ? row.delivery_details : {};
+    const orderForNotify = {
+      id: row.id, storeId: row.store_id, customer: row.customer, customerPhone: dd.phone || row.customer_phone || "",
+      total: row.total, fulfillment: dd.fulfillment || "delivery", address: dd.address || "", payment: dd.payment || "",
+      lineItems: dd.lineItems || [], scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || ""
+    };
+    let notifyResult = { skipped: true, reason: "whatsapp not configured" };
+    if (c.token && c.phoneId) notifyResult = await sendOrderWhatsapp(c, orderForNotify, store, null);
+    const anyOk = !!(notifyResult && (
+      (notifyResult.store && notifyResult.store.ok) ||
+      (notifyResult.customer && notifyResult.customer.ok) ||
+      (Array.isArray(notifyResult.admin) && notifyResult.admin.some(r2 => r2.ok))
+    ));
+    const patch = await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(orderId)}`, {
+      notification_status: notifyResult.skipped ? row.notification_status : (anyOk ? "sent" : "failed"),
+      notification_attempts: (Number(row.notification_attempts) || 0) + 1,
+      notification_last_attempt_at: new Date().toISOString(),
+      notification_last_error: notifyResult.skipped ? (notifyResult.reason || null) : (anyOk ? null : "no channel succeeded")
+    }, "return=minimal");
+    return res.status(200).json({ ok: true, sent: anyOk, results: notifyResult, saved: !!patch.ok });
+  }
+
   // Merchant/Admin: update an order's status using the service-role key.
+
   // Required because the anon client cannot UPDATE orders (RLS blocks non-auth users).
   if (pq.action === "update-order") {
     const orderId = String(body.id || "").trim();
