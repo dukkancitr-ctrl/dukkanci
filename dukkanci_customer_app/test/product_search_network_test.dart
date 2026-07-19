@@ -1,0 +1,78 @@
+@Tags(['network'])
+library;
+
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dukkanci_customer_app/core/config/app_config.dart';
+import 'package:dukkanci_customer_app/core/utils/arabic.dart';
+import 'package:dukkanci_customer_app/features/stores/data/store_repository.dart';
+
+/// Hits the REAL Supabase catalog (read-only) through the REAL supabase-dart
+/// client. This exists because the Arabic search path has one risk that no
+/// hermetic test can cover: the app has never before sent Arabic text to
+/// PostgREST as a filter value, so the client's URL construction and
+/// percent-encoding of an Arabic `ilike` pattern — plus the repeated-`or`
+/// AND behaviour — are only proven by an actual round trip.
+///
+/// Run with: flutter test test/product_search_network_test.dart
+void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    // flutter_test installs an HttpOverrides that 400s every request so widget
+    // tests can't hit the network. This suite deliberately needs the real one.
+    HttpOverrides.global = null;
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabaseAnonKey,
+      debug: false,
+    );
+  });
+
+  final repo = StoreRepository();
+
+  test('single Arabic term round-trips and every exact match is Arabic-correct', () async {
+    final candidates = await repo.searchProducts('شاورما');
+    expect(candidates, isNotEmpty, reason: 'Arabic ilike filter returned nothing — encoding or pattern is broken');
+
+    final terms = arabicSearchTerms('شاورما');
+    final exact = candidates.where((p) => matchesAllTerms('${p.name} ${p.category ?? ''}', terms)).toList();
+    expect(exact.length, greaterThan(100), reason: 'live catalog has 367 شاورما matches; got ${exact.length}');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('multi-term ANDs server-side and is order-independent', () async {
+    final terms = arabicSearchTerms('دجاج مشوي');
+    int exactCount(List<dynamic> rows) =>
+        rows.where((p) => matchesAllTerms('${p.name} ${p.category ?? ''}', terms)).length;
+
+    final forward = await repo.searchProducts('دجاج مشوي');
+    final reversed = await repo.searchProducts('مشوي دجاج');
+
+    expect(exactCount(forward), greaterThan(20));
+    expect(exactCount(forward), exactCount(reversed), reason: 'term order must not change results');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('deletion tolerance: "حمص" still finds products stored with a shadda', () async {
+    final candidates = await repo.searchProducts('حمص');
+    final withShadda = candidates.where((p) => p.name.contains('حمّص')).toList();
+    // Confirmed present in the live catalog: "حمّص", "حمّص بالقريدس".
+    // A literal `*حمص*` pattern cannot match these — only the *-joined one can.
+    expect(withShadda, isNotEmpty, reason: 'shadda rows missing — the *-join deletion tolerance regressed');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('spelling variance: typing "ارز" finds products stored as "أرز"', () async {
+    final candidates = await repo.searchProducts('ارز');
+    final withHamza = candidates.where((p) => p.name.contains('أرز')).toList();
+    expect(withHamza, isNotEmpty, reason: 'alef-variant folding regressed');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('a nonsense query returns nothing rather than everything', () async {
+    final candidates = await repo.searchProducts('زقزقزقزق');
+    final terms = arabicSearchTerms('زقزقزقزق');
+    final exact = candidates.where((p) => matchesAllTerms('${p.name} ${p.category ?? ''}', terms));
+    expect(exact, isEmpty);
+  }, timeout: const Timeout(Duration(minutes: 2)));
+}

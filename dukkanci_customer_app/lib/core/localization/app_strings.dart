@@ -39,6 +39,18 @@ class AppStrings {
   // البحث
   static const searchRecentTitle = 'عمليات بحث سابقة';
   static const searchClearAll = 'مسح الكل';
+  static const searchHint = 'ابحث عن متجر أو منتج...';
+  static const sectionProducts = 'المنتجات';
+  static const searchStoresMatch = 'مطابق لبحثك';
+  static const searchStoresInArea = 'ضمن منطقة التوصيل الحالية';
+  static const searchProductsEmpty = 'لا توجد منتجات مطابقة';
+  static const searchProductsEmptyHint = 'جرّب كلمة أخرى مثل اسم المنتج أو الصنف.';
+  static const searchStoresEmpty = 'لا توجد متاجر مطابقة';
+  static const searchProductsFailed = 'تعذّر تحميل المنتجات، تحقّق من الاتصال';
+  // صيغ العدّ تطابق حرفياً ما يعرضه الموقع في نفس الحالة (result-summary).
+  static String searchProductsCount(int count, {bool capped = false}) => '$count${capped ? '+' : ''} منتج';
+  static String searchStoresCount(int count) => '$count متجر';
+  static String searchResultsFor(String query) => 'نتائج البحث عن «$query»';
   static const voiceSearchListening = 'جارٍ الاستماع... تحدّث الآن';
   static const voiceSearchUnavailable = 'البحث الصوتي غير متاح على هذا الجهاز';
   static const voiceSearchNoPermission = 'يحتاج البحث الصوتي إذن الوصول إلى الميكروفون';

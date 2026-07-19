@@ -1,0 +1,9 @@
+# Declares the tags used by this project's tests.
+#
+# `network` marks suites that hit the LIVE Supabase catalog read-only. They are
+# fast and safe (no writes), but they need internet and real data, so exclude
+# them in offline/CI runs with:
+#
+#   flutter test -x network
+tags:
+  network:
