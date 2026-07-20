@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/cache/local_cache.dart';
+import '../../notifications/application/cart_sync_service.dart';
 import '../domain/cart_item.dart';
 
 /// Result of trying to add an item from a different store than what's
@@ -18,8 +19,17 @@ class CartState {
   int get itemCount => items.fold(0, (sum, i) => sum + i.quantity);
   bool get isEmpty => items.isEmpty;
 
+  /// ⚠ `storeId ?? this.storeId` وليس `storeId` — أُصلحت 2026-07-20.
+  ///
+  /// كانت مكتوبة `CartState(storeId: storeId, …)`، فأي استدعاء بلا تمرير المتجر
+  /// صراحةً كان **يُصفّر `storeId`**. النتيجة كانت عطلاً كاملاً في الشراء:
+  /// `updateQuantity`/`removeLine` تمحوان المتجر، ثم `_submit()` في شاشة الدفع
+  /// يبدأ بـ`if (cart.isEmpty || cart.storeId == null) return;` — أي أن زر
+  /// «تأكيد الطلب» كان لا يفعل شيئاً إطلاقاً وبلا أي رسالة خطأ بعد أي تغيير
+  /// كمية في السلة. لم يظهر العطل سابقاً لأن `addItem` تمرّر المتجر صراحةً،
+  /// فتبدو السلة سليمة حتى أول تعديل كمية.
   CartState copyWith({int? storeId, List<CartItem>? items}) =>
-      CartState(storeId: storeId, items: items ?? this.items);
+      CartState(storeId: storeId ?? this.storeId, items: items ?? this.items);
 }
 
 /// Enforces the ONE-STORE-PER-CART rule (spec section 14) — the single most
@@ -43,8 +53,19 @@ class CartController extends Notifier<CartState> {
 
   LocalCache get _cache => ref.read(localCacheProvider);
 
-  Future<void> _persist() async {
+  /// [emptiedStoreId] هو متجر السلة **قبل** التعديل. يلزم فقط حين يُحذف آخر
+  /// صنف فتُصفَّر `state.storeId` — بدونه لا نعود نعرف عن أي متجر نُبلّغ
+  /// خادم الإشعارات أن السلة أُفرغت.
+  Future<void> _persist({int? emptiedStoreId}) async {
+    _syncRemote(emptiedStoreId: emptiedStoreId);
     await _cache.saveCartJson(state.items.map((i) => i.toJson()).toList());
+  }
+
+  /// مزامنة ملخّصة (مؤجَّلة ٣ ثوانٍ) مع خادم الإشعارات لتذكير السلة
+  /// المتروكة. تُرسَل أسماء المنتجات والعدد والمجموع فقط — لا خيارات ولا
+  /// إضافات ولا ملاحظات (قرار خصوصية، انظر CartSyncService).
+  void _syncRemote({int? emptiedStoreId}) {
+    ref.read(cartSyncServiceProvider).schedule(state, emptiedStoreId: emptiedStoreId);
   }
 
   /// Returns [AddToCartResult.otherStoreConflict] instead of throwing so the
@@ -76,20 +97,28 @@ class CartController extends Notifier<CartState> {
       removeLine(lineKey);
       return;
     }
+    final previousStoreId = state.storeId;
     final next = state.items.map((i) => i.lineKey == lineKey ? i.copyWith(quantity: quantity) : i).toList();
     state = state.copyWith(items: next);
-    _persist();
+    // يُمرَّر متجر ما قبل التعديل احتياطاً لأن `CartState.copyWith` **لا
+    // تحافظ** على `storeId` حين لا يُمرَّر صراحةً (`storeId: storeId` بدل
+    // `storeId ?? this.storeId`) — علة قائمة في السلة قبل هذه الميزة، لكن
+    // أثرها هنا أن مزامنة السلة كانت ستفقد المتجر بعد أي تغيير كمية.
+    _persist(emptiedStoreId: previousStoreId);
   }
 
   void removeLine(String lineKey) {
+    final previousStoreId = state.storeId;
     final next = state.items.where((i) => i.lineKey != lineKey).toList();
     state = next.isEmpty ? const CartState() : state.copyWith(items: next);
-    _persist();
+    _persist(emptiedStoreId: previousStoreId);
   }
 
   void clear() {
+    final previousStoreId = state.storeId;
     state = const CartState();
     _cache.clearCart();
+    _syncRemote(emptiedStoreId: previousStoreId);
   }
 }
 

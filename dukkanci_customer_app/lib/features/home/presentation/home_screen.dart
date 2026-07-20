@@ -13,6 +13,7 @@ import '../../../core/widgets/shimmer_box.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../banners/presentation/app_home_banner_section.dart';
 import '../../location/application/location_controller.dart';
+import '../../notifications/application/notifications_controller.dart';
 import '../../stores/domain/store.dart';
 import '../domain/home_category.dart';
 import 'widgets/category_strip.dart';
@@ -30,6 +31,9 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final storesAsync = ref.watch(approvedStoresProvider);
     final locationLabel = ref.watch(locationControllerProvider)?.label;
+    // عدّاد غير المقروء يسقط لصفر عند التحميل أو الفشل، فلا يمكن لخدمة
+    // الإشعارات أن تُسقط الصفحة الرئيسية أو تعطّل تحميلها.
+    final unreadNotifications = ref.watch(unreadNotificationsCountProvider);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent),
       child: Scaffold(
@@ -38,7 +42,9 @@ class HomeScreen extends ConsumerWidget {
           onRefresh: () async => ref.invalidate(approvedStoresProvider),
           child: CustomScrollView(
             slivers: [
-              SliverToBoxAdapter(child: _HomeHeader(locationLabel: locationLabel)),
+              SliverToBoxAdapter(
+                child: _HomeHeader(locationLabel: locationLabel, unreadNotifications: unreadNotifications),
+              ),
               storesAsync.when(
                 loading: () => const SliverToBoxAdapter(child: _HomeLoading()),
                 error: (_, _) => SliverToBoxAdapter(
@@ -58,9 +64,10 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.locationLabel});
+  const _HomeHeader({required this.locationLabel, this.unreadNotifications = 0});
 
   final String? locationLabel;
+  final int unreadNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +107,23 @@ class _HomeHeader extends StatelessWidget {
                       ),
                       const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.white),
                     ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              PressScale(
+                onTap: () => context.push(AppRoutes.notifications),
+                child: Badge.count(
+                  count: unreadNotifications,
+                  isLabelVisible: unreadNotifications > 0,
+                  // الشارة الافتراضية حمراء، وهي غير مرئية تقريباً فوق هذا
+                  // الهيدر الأحمر — أصفر العلامة على نص داكن يقرأ بوضوح.
+                  backgroundColor: AppColors.yellow,
+                  textColor: AppColors.green950,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
+                    child: const Icon(Icons.notifications_rounded, size: 20, color: Colors.white),
                   ),
                 ),
               ),

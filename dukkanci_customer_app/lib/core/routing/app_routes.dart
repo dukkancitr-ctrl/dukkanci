@@ -27,6 +27,7 @@ class AppRoutes {
   static const checkout = '/checkout';
   static const orderDetail = '/order/:orderId';
   static const support = '/support';
+  static const notifications = '/notifications';
 
   static String storeDetailPath(String slugOrId) => '/store/$slugOrId';
   static String productDetailPath(String slugOrId, String productId) => '/store/$slugOrId/product/$productId';

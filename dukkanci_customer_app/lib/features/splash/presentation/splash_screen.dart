@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/providers.dart';
 import '../../../core/cache/local_cache.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../notifications/data/device_registrar.dart';
 
 /// Reference: a cream-background splash with an arched-doorway line-art
 /// illustration behind the logo, "Dukkanci Marketplace" wordmark, and a
@@ -16,16 +21,16 @@ import '../../../core/theme/app_text_styles.dart';
 /// silhouettes) rather than an approximation via image generation, since a
 /// generated image would NOT reliably reproduce the same shapes twice and
 /// this needs to render identically every launch.
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key, required this.localCache});
 
   final LocalCache localCache;
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerProviderStateMixin {
   bool _failed = false;
   late final AnimationController _fade = AnimationController(vsync: this, duration: AppMotion.slow)..forward();
 
@@ -33,6 +38,24 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _boot();
+    _registerDevice();
+  }
+
+  /// تسجيل الجهاز لدى خادم الإشعارات عند كل إقلاع (يولّد `device_uid` مرة
+  /// واحدة ثم يعيد استخدامه). **لا يُنتظَر عمداً**: الإقلاع يجب ألا يتأخر
+  /// جزءاً من الثانية بسبب نداء خلفي، وفشله مبتلَع داخل الطبقة نفسها.
+  ///
+  /// 🔌 هنا أيضاً يُستدعى `FcmAdapter.activate` عند تفعيل الإشعارات الفورية
+  /// لاحقاً — انظر خطوات التفعيل في `notifications/data/fcm_adapter.dart`.
+  void _registerDevice() {
+    unawaited(() async {
+      try {
+        final phone = await ref.read(authRepositoryProvider).verifiedPhone;
+        await ref.read(deviceRegistrarProvider).register(customerPhone: phone);
+      } catch (e) {
+        debugPrint('SplashScreen._registerDevice ignored: $e');
+      }
+    }());
   }
 
   @override

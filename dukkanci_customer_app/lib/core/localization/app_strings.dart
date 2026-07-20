@@ -52,6 +52,11 @@ class AppStrings {
   static String searchStoresCount(int count) => '$count متجر';
   static String searchResultsFor(String query) => 'نتائج البحث عن «$query»';
   static const voiceSearchListening = 'جارٍ الاستماع... تحدّث الآن';
+  // Idle label for the mic button. Kept separate from the listening text
+  // because the tooltip doubles as the screen-reader label: reusing
+  // voiceSearchListening announced "جارٍ الاستماع" on a button that was not
+  // in fact listening.
+  static const voiceSearchStart = 'البحث الصوتي';
   static const voiceSearchUnavailable = 'البحث الصوتي غير متاح على هذا الجهاز';
   static const voiceSearchNoPermission = 'يحتاج البحث الصوتي إذن الوصول إلى الميكروفون';
   static const voiceSearchNoSpeechDetected = 'لم يُسمع أي كلام، حاول مرة أخرى';
@@ -206,4 +211,50 @@ class AppStrings {
   static const supportWhatsappTitle = 'تواصل عبر واتساب';
   static const supportWhatsappSubtitle = 'أسرع طريقة للحصول على مساعدة';
   static const supportIssueTypesTitle = 'نوع المشكلة';
+
+  // الإشعارات
+  static const notificationsTitle = 'الإشعارات';
+  static const notificationsEmptyTitle = 'لا توجد إشعارات بعد';
+  static const notificationsEmptyBody = 'ستصلك هنا تحديثات طلباتك وأحدث العروض';
+  static const notificationsMarkAllRead = 'تعليم الكل كمقروء';
+  static const notificationsFailed = 'تعذّر تحميل الإشعارات، تحقّق من الاتصال';
+  static const notificationsUnreadBadge = 'جديد';
+  static const notificationsPrefTitle = 'تنبيهات الطلبات والعروض';
+  static const notificationsPrefOn = 'مُفعَّلة — ستصلك تحديثات طلبك والعروض الجديدة';
+  static const notificationsPrefOff = 'مُوقَفة — لن تصلك أي تنبيهات';
+
+  /// وقت نسبي بالعربية بصيغ المفرد/المثنى/الجمع الصحيحة
+  /// (دقيقة / دقيقتين / ٣-١٠ دقائق / ١١+ دقيقة) — العربية تميّز المثنى ولا
+  /// تكتفي بمفرد وجمع كالإنجليزية، فصيغة «قبل 2 دقائق» تقرأ كترجمة آلية.
+  ///
+  /// الأرقام غربية عمداً، اتساقاً مع بقية التطبيق (الأسعار، عدّادات البحث،
+  /// أرقام الطلبات) الذي لا يستخدم الأرقام الهندية في أي مكان.
+  static String relativeTime(DateTime? at) {
+    if (at == null) return '';
+    final diff = DateTime.now().difference(at);
+    // طابع زمني في المستقبل (انحراف ساعة الجهاز عن الخادم) يُعرض «الآن» بدل
+    // «قبل -٣ دقائق».
+    if (diff.isNegative || diff.inSeconds < 60) return 'الآن';
+    if (diff.inMinutes < 60) {
+      return _ago(diff.inMinutes, one: 'دقيقة', two: 'دقيقتين', few: 'دقائق', many: 'دقيقة');
+    }
+    if (diff.inHours < 24) {
+      return _ago(diff.inHours, one: 'ساعة', two: 'ساعتين', few: 'ساعات', many: 'ساعة');
+    }
+    if (diff.inDays < 30) {
+      return _ago(diff.inDays, one: 'يوم', two: 'يومين', few: 'أيام', many: 'يوماً');
+    }
+    final months = diff.inDays ~/ 30;
+    if (months < 12) {
+      return _ago(months, one: 'شهر', two: 'شهرين', few: 'أشهر', many: 'شهراً');
+    }
+    return _ago(diff.inDays ~/ 365, one: 'سنة', two: 'سنتين', few: 'سنوات', many: 'سنة');
+  }
+
+  static String _ago(int n, {required String one, required String two, required String few, required String many}) {
+    if (n == 1) return 'قبل $one';
+    if (n == 2) return 'قبل $two';
+    if (n <= 10) return 'قبل $n $few';
+    return 'قبل $n $many';
+  }
 }

@@ -2529,6 +2529,70 @@ module.exports = async (req, res) => {
     let push = { skipped: true };
     try { push = await pushOrderStatus(id, phoneKey(body.customerPhone), storeName, status, line); } catch (e) {}
 
+    // 1b) Customer notification inbox (kind='order') — the in-app bell on the
+    // website and in the Flutter app. Added 2026-07-20 with the notification
+    // system: a browser push reaches only a visitor who granted permission on
+    // that one browser, so without this row a customer opening the app sees an
+    // empty inbox and no record that «قيد التجهيز / خرج للتوصيل / تم التسليم»
+    // ever happened.
+    //
+    // Deliberately additive and fail-open: wrapped so a missing table (before
+    // migrations/20260720_notifications_system.sql is run) or any write error
+    // can never block the status update itself. Order delivery outranks its own
+    // notification — see the silent-order-loss incident in CLAUDE.md.
+    let inbox = { skipped: true };
+    try {
+      const custKey = phoneKey(body.customerPhone);
+      if (custKey) {
+        const r = await sbWrite("POST", "notifications", [{
+          customer_phone: custKey,
+          kind: "order",
+          title: `تحديث طلبك ${id}`,
+          body: `${storeName}: ${status}${line ? " — " + line : ""}`,
+          deep_link: "/orders",
+          order_id: id
+        }], "return=minimal");
+        inbox = r && r.ok ? { ok: true } : { ok: false, reason: "write failed" };
+      } else {
+        inbox = { skipped: true, reason: "no customer phone" };
+      }
+    } catch (e) { inbox = { ok: false, reason: e.message }; }
+
+    // 1c) FCM to the customer's mobile devices — this is what actually lights up
+    // the Android/iOS notification tray for «قيد التجهيز / خرج للتوصيل / تم
+    // التسليم». The browser push above only reaches a browser that granted
+    // permission; the inbox row above is only seen once the app is opened.
+    //
+    // No-ops cleanly until FCM_* credentials exist (see lib/fcm.js). Fail-open
+    // for the same reason as the inbox write: never block a status update.
+    let fcm = { skipped: true };
+    try {
+      const custKey = phoneKey(body.customerPhone);
+      const { fcmConfigured, sendOneFcm } = require("../lib/fcm");
+      if (!custKey) fcm = { skipped: true, reason: "no customer phone" };
+      else if (!fcmConfigured()) fcm = { skipped: true, reason: "fcm not configured" };
+      else {
+        const devices = await sbGet(`app_devices?customer_phone=eq.${encodeURIComponent(custKey)}&push_channel=eq.fcm&notifications_enabled=is.true&select=device_uid,push_token`);
+        const list = Array.isArray(devices) ? devices.filter(d => d.push_token) : [];
+        let sent = 0, dead = 0;
+        for (const d of list) {
+          const r = await sendOneFcm(d.push_token, {
+            title: `تحديث طلبك ${id}`,
+            body: `${storeName}: ${status}${line ? " — " + line : ""}`,
+            deepLink: "/orders",
+            tag: `order-${id}`
+          });
+          if (r.ok) sent++;
+          else if (r.gone) {
+            dead++;
+            await sbWrite("PATCH", `app_devices?device_uid=eq.${encodeURIComponent(d.device_uid)}`,
+              { push_token: null, push_channel: null }, "return=minimal");
+          }
+        }
+        fcm = { sent, devices: list.length, pruned: dead };
+      }
+    } catch (e) { fcm = { ok: false, reason: e.message }; }
+
     // 2) WhatsApp (only when the platform number is configured AND we have a phone).
     let whatsapp = { skipped: true, reason: "whatsapp not configured" };
     const custTo = toE164(body.customerPhone || "", c.cc);
@@ -2539,7 +2603,7 @@ module.exports = async (req, res) => {
         whatsapp = await sendWhatsapp(c, custTo, { template: c.tplStatus, params, text: `تحديث طلبك ${id} من ${storeName}: ${status}. ${line}` });
       }
     }
-    return res.status(200).json({ ok: true, id, push, whatsapp });
+    return res.status(200).json({ ok: true, id, push, whatsapp, inbox, fcm });
   }
 
   // Called once, right after a merchant self-registers via the public "join"

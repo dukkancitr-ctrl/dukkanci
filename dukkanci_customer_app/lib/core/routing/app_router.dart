@@ -10,6 +10,7 @@ import '../../features/checkout/presentation/checkout_screen.dart';
 import '../../features/favorites/presentation/favorites_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/location/presentation/location_picker_screen.dart';
+import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/orders/presentation/order_detail_screen.dart';
 import '../../features/orders/presentation/orders_screen.dart';
@@ -82,6 +83,7 @@ GoRouter buildRouter(LocalCache localCache) {
         builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['orderId']!),
       ),
       GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.support, builder: (c, s) => const SupportScreen()),
+      GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.notifications, builder: (c, s) => const NotificationsScreen()),
       GoRoute(parentNavigatorKey: rootNavigatorKey, path: AppRoutes.addresses, builder: (c, s) => const AddressesScreen()),
       GoRoute(
         parentNavigatorKey: rootNavigatorKey,

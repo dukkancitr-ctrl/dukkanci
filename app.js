@@ -341,6 +341,10 @@ const state = {
   // merchant/admin dashboards overwrite from the cloud).
   myOrders: JSON.parse(localStorage.getItem("dukkanci-my-orders") || "[]"),
   myOrdersFetched: false,
+  // Customer notification inbox (api/notifications.js). Loaded lazily on boot;
+  // null vs [] distinguishes "not fetched yet" from "fetched and empty".
+  customerNotifications: null,
+  customerNotifUnread: 0,
   reviewEligibility: {},  // storeId → { hasAnyOrder, hasReviewable, orderId } — checked lazily per store page visit
   storeFilter: "الكل",
   storeSort: "recommended",
@@ -489,6 +493,10 @@ const iconPaths = {
   dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   stars: '<path d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2Z"/><path d="M5 17l.8 2H8l-1.8 1.3.7 2.2L5 21l-1.9 1.5.7-2.2L2 19h2.2L5 17Z"/><path d="M19 17l.8 2H22l-1.8 1.3.7 2.2L19 21l-1.9 1.5.7-2.2L16 19h2.2L19 17Z"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  // Warning triangle. Added 2026-07-20 — there was no warning glyph at all, and
+  // icon() falls back to `box` for an unknown name *silently*, so asking for a
+  // missing icon renders a plausible-looking wrong shape with no console error.
+  alert: '<path d="M12 4 2.5 20h19L12 4Z"/><path d="M12 10v4"/><path d="M12 17.2v.1"/>',
   percent: '<circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="M18 6 6 18"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>'
 };
@@ -608,6 +616,10 @@ function saveState() {
   localStorage.setItem("dukkanci-complaints", JSON.stringify(state.customerComplaints));
   localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(state.deliverySettings));
   localStorage.setItem("dukkanci-store-locations", JSON.stringify(state.storeLocations));
+  // Mirror a SUMMARY of the cart to the server so an abandoned cart is a thing
+  // the platform can see. Debounced and content-deduped inside, so the many
+  // saveState() calls that don't touch the cart cost nothing.
+  if (typeof scheduleCartSync === "function") scheduleCartSync();
 }
 
 // ---- Local persistence for merchant catalog changes (no backend needed) ----
@@ -4482,6 +4494,7 @@ function dashboardSidebar(type, active) {
     ["orders", "receipt", "الطلبات"],
     ["messages", "whatsapp", "المحادثات"],
     ["campaigns", "megaphone", "الحملات"],
+    ["notifications", "bell", "الإشعارات"],
     ["media", "image", "مكتبة الصور"],
     ["catalog", "star", "مخزن الصور المشترك"],
     ["complaints", "megaphone", "الشكاوى"],
@@ -7882,6 +7895,287 @@ function saveBannerSettings(next) {
 // definitions (which come from site_settings) because stats live in a table
 // that may not exist yet — `enabled:false` means "migration not run", which the
 // UI must show honestly rather than rendering zeros that look like real data.
+// ══════════════════════ Admin: notifications & promo campaigns ══════════════
+// Server: api/notifications.js. Schema: migrations/20260720_notifications_system.sql.
+
+async function notifAdminApi(action, { method = "GET", id, body, params } = {}) {
+  const qs = new URLSearchParams({ action });
+  if (id) qs.set("id", id);
+  // Params go through URLSearchParams as separate keys — never appended onto
+  // the action string. Doing that encodes the '&' into the action value itself
+  // and the server matches no branch at all (a real bug hit on the campaigns
+  // tab and fixed on 2026-07-19).
+  if (params) Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") qs.set(k, v); });
+  try {
+    const r = await fetch(`/api/notifications?${qs}`, {
+      method,
+      headers: { "Content-Type": "application/json", "x-admin-token": state.adminKey || "" },
+      body: method === "POST" ? JSON.stringify(body || {}) : undefined
+    });
+    if (r.status === 403) { lockAdmin(); return null; }
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
+
+async function loadAdminNotifications() {
+  const [list, segs, settings] = await Promise.all([
+    notifAdminApi("list"),
+    notifAdminApi("segments", { params: state.notifSegmentStoreId ? { store_id: state.notifSegmentStoreId } : null }),
+    notifAdminApi("settings")
+  ]);
+  state.adminNotifCampaigns = (list && list.campaigns) || [];
+  state.adminNotifSegments = (segs && segs.segments) || [];
+  // setup_required means the SQL file hasn't been run. Surfaced explicitly
+  // rather than rendering zeros, which would read as "nobody to send to".
+  state.adminNotifSetupRequired = !!((list && list.setup_required) || (segs && segs.setup_required));
+  state.adminNotifVapid = !!(segs && segs.vapid);
+  state.adminNotifFcm = !!(segs && segs.fcm);
+  state.adminNotifSettings = (settings && settings.settings) || null;
+  render();
+}
+
+function notifStatusLabel(s) {
+  return { draft: "مسودة", scheduled: "مجدولة", building: "قيد البناء", ready: "جاهزة",
+           sending: "جارٍ الإرسال", paused: "متوقفة", done: "منتهية", canceled: "ملغاة" }[s] || s;
+}
+function notifStatusClass(s) {
+  return { done: "ok", sending: "warn", ready: "ok", paused: "warn", canceled: "bad", draft: "" }[s] || "";
+}
+
+const NOTIF_CHANNEL_LABEL = { inapp: "داخل التطبيق", webpush: "إشعار متصفح", fcm: "إشعار أندرويد", whatsapp: "واتساب" };
+
+function adminNotifications() {
+  const segs = state.adminNotifSegments || [];
+  const campaigns = state.adminNotifCampaigns || [];
+  const st = state.adminNotifSettings;
+  const draft = state.notifDraft || {};
+
+  if (state.adminNotifSetupRequired) {
+    return `<section class="admin-section">
+      <div class="setup-required-card">
+        ${icon("alert")}
+        <h3>نظام الإشعارات غير مُفعّل بعد</h3>
+        <p>جداول الإشعارات غير موجودة في قاعدة البيانات. شغّل هذا الملف مرة واحدة في
+           <strong>Supabase → SQL Editor</strong> ثم أعد تحميل الصفحة:</p>
+        <code>migrations/20260720_notifications_system.sql</code>
+        <p class="muted">الملف نفسه يُصلح أيضاً لوحة نقرات البانرات وحفظ تصنيفات المتاجر — كلاهما معطّل حالياً لنفس السبب.</p>
+      </div>
+    </section>`;
+  }
+
+  const segCards = segs.map(s => {
+    const blocked = s.needs_param;
+    const count = s.count;
+    const reach = s.reachable || {};
+    return `<button class="notif-seg-card ${draft.segment === s.key ? "active" : ""} ${blocked ? "blocked" : ""}"
+              data-action="notif-pick-segment" data-key="${escAttr(s.key)}">
+      <strong>${esc(s.label)}</strong>
+      <span class="notif-seg-count">${blocked ? "يحتاج تحديد متجر" : (count === null ? "—" : arCount(count, "شخص واحد", "شخصان", "أشخاص", "شخصاً"))}</span>
+      <small>${esc(s.desc)}</small>
+      ${blocked || count === null ? "" : `<span class="notif-seg-reach">
+        <i title="يمكن الوصول إليهم داخل التطبيق">تطبيق ${reach.inapp || 0}</i>
+        <i title="يمكن الوصول إليهم بإشعار متصفح">متصفح ${reach.webpush || 0}</i>
+        <i title="يمكن الوصول إليهم عبر واتساب">واتساب ${reach.whatsapp || 0}</i>
+      </span>`}
+    </button>`;
+  }).join("");
+
+  const selected = segs.find(s => s.key === draft.segment);
+  const chan = Array.isArray(draft.channels) ? draft.channels : ["inapp"];
+  // The honest reachability number for the chosen segment + channels. This is
+  // the figure that stops an admin composing a campaign that reaches nobody.
+  const reachTotal = selected && selected.reachable
+    ? Math.max(...chan.map(c => selected.reachable[c] || 0), 0) : 0;
+
+  return `<section class="admin-section notif-admin">
+
+    <div class="notif-settings-bar">
+      <div>
+        <strong>${icon("settings")} إعدادات الإرسال</strong>
+        <small>حواجز تمنع إزعاج العملاء — تُطبَّق على كل الحملات الترويجية تلقائياً.</small>
+      </div>
+      <label>ساعات الهدوء من
+        <input type="number" min="0" max="23" id="notif-quiet-start" value="${st ? st.quietHours.start : 22}">
+      </label>
+      <label>إلى
+        <input type="number" min="0" max="23" id="notif-quiet-end" value="${st ? st.quietHours.end : 9}">
+      </label>
+      <label>أقصى رسائل ترويجية للعميل يومياً
+        <input type="number" min="0" max="20" id="notif-max-day" value="${st ? st.maxPromoPerDay : 2}">
+      </label>
+      <button class="secondary-button" data-action="notif-save-settings">حفظ</button>
+    </div>
+    ${state.adminNotifVapid ? "" : `<p class="notif-warn">${icon("alert")} إشعارات المتصفح غير مُفعّلة (مفاتيح VAPID غير مضبوطة) — ستُتخطّى هذه القناة عند الإرسال.</p>`}
+    ${state.adminNotifFcm
+      ? `<p class="notif-warn notif-warn--ok">${icon("check")} إشعارات الجوال (Firebase) مُفعّلة — تصل شريط إشعارات أندرويد حتى والتطبيق مغلق.</p>`
+      : `<p class="notif-warn">${icon("alert")} إشعارات الجوال معطّلة: لم تُضبط مفاتيح Firebase على الخادم، فلن يصل الإشعار شريط الإشعارات — سيظهر فقط داخل التطبيق عند فتحه. القناة مبنية بالكامل وتُفعَّل بإضافة <code>FCM_SERVICE_ACCOUNT</code> و<code>google-services.json</code>.</p>`}
+
+    <h3 class="notif-h">١. اختر الشريحة</h3>
+    <div class="notif-seg-grid">${segCards}</div>
+    ${selected && selected.needs
+      ? `<div class="notif-param-row"><label>المتجر
+           <select id="notif-store-param" data-action="notif-store-param">
+             <option value="">— اختر متجراً —</option>
+             ${stores.filter(isStoreApproved).map(s => `<option value="${escAttr(s.id)}" ${String(state.notifSegmentStoreId) === String(s.id) ? "selected" : ""}>${esc(s.name)}</option>`).join("")}
+           </select></label></div>` : ""}
+
+    <h3 class="notif-h">٢. اكتب الرسالة</h3>
+    <div class="notif-compose">
+      <label>عنوان الإشعار<input id="notif-title" maxlength="200" value="${escAttr(draft.title || "")}" placeholder="مثال: خصم ٢٠٪ اليوم فقط"></label>
+      <label>نص الرسالة<textarea id="notif-body" maxlength="1000" rows="3" placeholder="تفاصيل مختصرة تشجّع العميل على الطلب">${esc(draft.body || "")}</textarea></label>
+      <label>رابط الفتح عند النقر<input id="notif-link" maxlength="500" value="${escAttr(draft.deep_link || "")}" placeholder="/offers أو /store/pasa-pizzeria-restaurant"></label>
+      <label>اسم الحملة (للإدارة فقط)<input id="notif-name" maxlength="200" value="${escAttr(draft.name || "")}" placeholder="حملة عروض الجمعة"></label>
+      <div class="notif-channels">
+        <span>قنوات الإرسال:</span>
+        ${["inapp", "webpush", "fcm", "whatsapp"].map(c => `
+          <label class="notif-chan"><input type="checkbox" data-action="notif-toggle-channel" data-chan="${c}" ${chan.includes(c) ? "checked" : ""}> ${NOTIF_CHANNEL_LABEL[c]}</label>`).join("")}
+      </div>
+      ${chan.includes("whatsapp") ? `
+        <p class="notif-warn">${icon("alert")} واتساب لا يرسل نصاً حراً — يتطلب قالباً معتمداً من Meta. عند تجهيز المستلمين تُنشأ حملة واتساب مرتبطة تلقائياً، وتُرسَل من تبويب «الحملات» بنفس المحرك المُجرَّب.</p>
+        <div class="notif-wa-row">
+          <label>اسم قالب واتساب<input id="notif-wa-template" maxlength="200" dir="ltr" value="${escAttr(draft.wa_template_name || "")}" placeholder="مثال: dukkanci_promo"></label>
+          <label>لغة القالب<input id="notif-wa-lang" maxlength="12" dir="ltr" value="${escAttr(draft.wa_template_lang || "ar")}"></label>
+        </div>` : ""}
+    </div>
+
+    <div class="notif-audience-bar">
+      ${selected
+        ? (reachTotal > 0
+            ? `<strong>${icon("users")} ستصل هذه الحملة إلى ${arCount(reachTotal, "شخص واحد", "شخصين", "أشخاص", "شخصاً")}</strong>`
+            : `<strong class="bad">${icon("alert")} لن تصل هذه الحملة إلى أحد بالقنوات المختارة</strong>`)
+        : `<span class="muted">اختر شريحة لعرض حجم الجمهور</span>`}
+      <div class="notif-actions">
+        <button class="secondary-button" data-action="notif-test-send" ${!draft.title ? "disabled" : ""}>${icon("bell")} جرّبها على جهازي</button>
+        <button class="primary-button" data-action="notif-create" ${!draft.title || !draft.segment || reachTotal === 0 ? "disabled" : ""}>${icon("check")} أنشئ الحملة</button>
+      </div>
+    </div>
+
+    <h3 class="notif-h">الحملات</h3>
+    ${campaigns.length ? `<div class="campaigns-table-wrap"><table class="admin-table">
+      <thead><tr><th>الحملة</th><th>الشريحة</th><th>القنوات</th><th>الحالة</th><th>أُرسلت</th><th>إجراءات</th></tr></thead>
+      <tbody>${campaigns.map(c => {
+        const total = Number(c.total_recipients) || 0;
+        const sent = Number(c.sent_count) || 0;
+        const pct = total ? Math.round((sent / total) * 100) : 0;
+        const segLabel = (segs.find(s => s.key === c.segment) || {}).label || c.segment;
+        return `<tr>
+          <td><strong>${esc(c.name || "")}</strong><br><small>${esc(c.title || "")}</small></td>
+          <td>${esc(segLabel)}</td>
+          <td>${(Array.isArray(c.channels) ? c.channels : []).map(x => esc(NOTIF_CHANNEL_LABEL[x] || x)).join("، ")}</td>
+          <td><span class="status-chip ${notifStatusClass(c.status)}">${esc(notifStatusLabel(c.status))}</span></td>
+          <td>${sent} / ${total}${total ? ` <small>(${pct}%)</small>` : ""}</td>
+          <td class="notif-row-actions">
+            ${c.status === "draft" ? `<button class="mini-button" data-action="notif-build" data-id="${escAttr(c.id)}">جهّز المستلمين</button>` : ""}
+            ${c.status === "ready" ? `<button class="mini-button ok" data-action="notif-start" data-id="${escAttr(c.id)}">ابدأ الإرسال</button>` : ""}
+            ${c.status === "sending" ? `<button class="mini-button" data-action="notif-pause" data-id="${escAttr(c.id)}">إيقاف مؤقت</button>` : ""}
+            ${c.status === "paused" ? `<button class="mini-button ok" data-action="notif-resume" data-id="${escAttr(c.id)}">استئناف</button>` : ""}
+            ${["draft", "ready", "paused"].includes(c.status) ? `<button class="mini-button bad" data-action="notif-delete" data-id="${escAttr(c.id)}">حذف</button>` : ""}
+          </td>
+        </tr>`;
+      }).join("")}</tbody></table></div>`
+      : `<div class="empty-managed">${icon("megaphone")}<p>لا توجد حملات بعد — اختر شريحة واكتب رسالتك أعلاه.</p></div>`}
+  </section>`;
+}
+
+// Reads the composer straight from the DOM so the live audience counter reflects
+// what is on screen, without a round-trip or a re-render on every keystroke.
+function notifReadDraft() {
+  const g = id => (document.getElementById(id) || {}).value || "";
+  const d = state.notifDraft || (state.notifDraft = {});
+  d.title = g("notif-title");
+  d.body = g("notif-body");
+  d.deep_link = g("notif-link");
+  d.name = g("notif-name") || d.title;
+  if (document.getElementById("notif-wa-template")) {
+    d.wa_template_name = g("notif-wa-template");
+    d.wa_template_lang = g("notif-wa-lang") || "ar";
+  }
+  return d;
+}
+
+async function notifCreateCampaign() {
+  const d = notifReadDraft();
+  if (!d.title || !d.segment) return showToast("اكتب عنواناً واختر شريحة أولاً");
+  const params = {};
+  if (state.notifSegmentStoreId) params.store_id = Number(state.notifSegmentStoreId);
+  const res = await notifAdminApi("create", {
+    method: "POST",
+    body: { ...d, segment_params: params, channels: d.channels || ["inapp"] }
+  });
+  if (!res || !res.ok) return showToast((res && res.error) || "تعذّر إنشاء الحملة");
+  showToast("أُنشئت الحملة — جهّز المستلمين لبدء الإرسال");
+  state.notifDraft = { channels: d.channels };
+  loadAdminNotifications();
+}
+
+async function notifBuild(id) {
+  showToast("جارٍ تجهيز قائمة المستلمين…");
+  const res = await notifAdminApi("build", { method: "POST", id });
+  if (!res || !res.ok) return showToast((res && res.error) === "setup_required" ? "شغّل ملف SQL أولاً" : "تعذّر التجهيز");
+  if (!res.total) return showToast("لا يوجد مستلمون مطابقون لهذه الشريحة");
+
+  // Report the WhatsApp bridge honestly. Silence here would let an admin assume
+  // the WhatsApp half went out when it never got created.
+  const wa = res.whatsapp;
+  if (wa && wa.created) {
+    showToast(`جاهزة: ${arCount(res.total, "مستلم واحد", "مستلمان", "مستلمين", "مستلماً")} — وأُنشئت حملة واتساب لـ${wa.phones} رقماً، أرسلها من تبويب «الحملات»`);
+  } else if (wa && wa.reason === "no_template") {
+    showToast("جُهّزت الإشعارات، لكن حملة واتساب لم تُنشأ: اكتب اسم قالب Meta المعتمد أولاً");
+  } else if (wa && wa.reason === "no_phones") {
+    showToast("جُهّزت الإشعارات، لكن لا أرقام هواتف في هذه الشريحة لإرسال واتساب");
+  } else if (wa && !wa.created) {
+    showToast("جُهّزت الإشعارات، لكن تعذّر إنشاء حملة واتساب المرتبطة");
+  } else {
+    showToast(`جاهزة: ${arCount(res.total, "مستلم واحد", "مستلمان", "مستلمين", "مستلماً")}`);
+  }
+  loadAdminNotifications();
+}
+
+// Drives send-batch one call at a time. A generation counter plus scheduling the
+// next tick only AFTER the previous await resolves keeps exactly one batch in
+// flight — the client half of the double-send defence (the server half is the
+// status=eq.pending guard inside claimBatch).
+let _notifPollGen = 0;
+function startNotifPoll(id) {
+  const gen = ++_notifPollGen;
+  const tick = async () => {
+    if (gen !== _notifPollGen) return;
+    const res = await notifAdminApi("send-batch", { method: "POST", id });
+    if (gen !== _notifPollGen) return;
+    if (!res) { stopNotifPoll(); return; }
+    if (res.paused === "quiet_hours") {
+      showToast(`ساعات الهدوء (الساعة ${res.local_hour}) — سيُستأنف الإرسال الساعة ${res.resume_at}`);
+      stopNotifPoll(); loadAdminNotifications(); return;
+    }
+    if (res.done) { showToast("انتهى إرسال الحملة"); stopNotifPoll(); loadAdminNotifications(); return; }
+    loadAdminNotifications();
+    setTimeout(tick, 2500);
+  };
+  tick();
+}
+function stopNotifPoll() { _notifPollGen++; }
+
+async function notifTestSend() {
+  const d = notifReadDraft();
+  const uid = getDeviceUid();
+  if (!uid) return showToast("تعذّر تحديد هذا الجهاز");
+  await registerDevice();
+  const res = await notifAdminApi("test-send", { method: "POST", body: { ...d, device_uid: uid } });
+  if (!res || !res.ok) return showToast("تعذّر الإرسال التجريبي");
+  showToast(res.push && res.push.ok ? "أُرسل إشعار تجريبي لهذا الجهاز" : "أُضيف للصندوق — فعّل إشعارات المتصفح لتصلك كإشعار منبثق");
+  loadCustomerNotifications(true);
+}
+
+async function notifSaveSettings() {
+  const g = id => Number((document.getElementById(id) || {}).value);
+  const res = await notifAdminApi("save-settings", {
+    method: "POST",
+    body: { quietStart: g("notif-quiet-start"), quietEnd: g("notif-quiet-end"), maxPromoPerDay: g("notif-max-day") }
+  });
+  showToast(res && res.ok ? "حُفظت الإعدادات" : "تعذّر الحفظ");
+  if (res && res.ok) state.adminNotifSettings = res.settings;
+}
+
 function loadAdminBannerStats(days) {
   const range = days || (state.adminBannerStats && state.adminBannerStats.days) || 30;
   state.adminBannerStats = { ...(state.adminBannerStats || {}), loading: true, days: range };
@@ -9086,8 +9380,8 @@ function renderAdmin() {
     state._adminOrdersFetched = true;
     loadOrdersFromSupabase().then(ok => { if (ok) render(); });
   }
-  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, storeCategories: adminStoreCategories, credentials: adminCredentials, content: adminContent, banners: adminBanners, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
-  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], storeCategories: ["تصنيفات المتاجر", "تجاوز يدوي لترتيب/دمج تصنيفات منتجات أي متجر — فوق الترتيب التلقائي"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], banners: ["إدارة البانرات", "أضِف بانرات بصور وروابط، حدّد مكان وفترة ظهور كل بانر وعددها، وقِس نقراتها"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
+  const content = { overview: adminOverview, stores: adminStores, categories: adminCategoriesSection, products: adminProducts, customers: adminCustomers, orders: adminOrders, messages: adminMessages, campaigns: adminCampaigns, notifications: adminNotifications, media: adminMedia, catalog: adminCatalog, complaints: adminComplaints, coupons: adminCoupons, delivery: adminDeliveryZones, storeCategories: adminStoreCategories, credentials: adminCredentials, content: adminContent, banners: adminBanners, integrations: adminIntegrations, marketing: adminMarketing, fbads: adminFbAds, ai: adminAI }[state.adminTab]();
+  const titles = { overview: ["نظرة عامة", "مرحباً بك في مركز إدارة دكانجي"], stores: ["إدارة المتاجر", "راجع المتاجر والاشتراكات وحالات النشاط"], categories: ["إدارة التصنيفات", "أضف أو عدّل أو احذف أو أخفِ تصنيفات المتاجر — تظهر في الرئيسية وفلتر المتاجر ونموذج انضمام التجار"], products: ["إدارة المنتجات", "أظهر أو أخفِ أي منتج وعدّل اسمه وسعره"], customers: ["إدارة العملاء", "بيانات العملاء وسجل طلباتهم"], orders: ["كل الطلبات", "تابع الطلبات وتدخل عند الحاجة"], messages: ["محادثات العملاء", "ردّ على رسائل واتساب من نفس رقم المنصة"], campaigns: ["حملات واتساب", "أرسل رسائل ترويجية للعملاء عبر رقم المنصة (2000 رسالة/يوم)"], notifications: ["الإشعارات والحملات المُستهدَفة", "أرسل إشعارات ترويجية لشريحة محددة من العملاء — من نزّل التطبيق ولم يطلب، من ترك سلته، العملاء الخاملون وغيرها"], media: ["مكتبة الصور", "ارفع صور الحملات واحصل على روابط مباشرة لاستخدامها في أي مكان"], catalog: ["مخزن الصور المشترك", "راجع واعتمد أو ارفض عناصر مخزن الصور قبل ظهورها لمتاجر السوبر ماركت الأخرى"], complaints: ["إدارة الشكاوى", "تابع شكاوى العملاء حتى الحل"], coupons: ["الكوبونات", "أنشئ وأدر أكواد الخصم — لمتجر واحد أو لكل المتاجر"], delivery: ["مناطق التوصيل", "أسعار توصيل ثابتة لمجمعات ومناطق محددة لكل متجر"], storeCategories: ["تصنيفات المتاجر", "تجاوز يدوي لترتيب/دمج تصنيفات منتجات أي متجر — فوق الترتيب التلقائي"], credentials: ["حسابات المتاجر", "اسم المستخدم (الهاتف) وكلمة المرور لكل متجر — تُسلَّم بعد دفع الاشتراك"], content: ["إدارة المحتوى", "تحكم في الصفحة الرئيسية والعروض والخطط"], banners: ["إدارة البانرات", "أضِف بانرات بصور وروابط، حدّد مكان وفترة ظهور كل بانر وعددها، وقِس نقراتها"], integrations: ["التكاملات", "GA4 وGoogle Ads وMeta Pixel وبقية بيكسلات التتبع والإعلان"], marketing: ["التتبع والبيانات التسويقية", "الزوّار والتحويلات ومصادر الزيارات والحملات لكل متجر"], fbads: ["استهداف فيسبوك", "قارن موقع أي محل بالمجمعات السكنية حسب المنطقة — مسافة، وقت، وتقدير تكلفة توصيل. قاعدة بيانات مستقلة تماماً عن متاجر الموقع"], ai: ["إدارة الذكاء الاصطناعي", "مفاتيح المزوّدين، المزوّد النشط لكل ميزة، والاستهلاك"] };
   const [title, subtitle] = titles[state.adminTab];
   return `<div class="dashboard-shell admin-shell">${dashboardSidebar("admin", state.adminTab)}<main class="dashboard-main"><header class="dashboard-header"><div class="dashboard-heading"><span class="mobile-dashboard-label">لوحة الإدارة</span><div class="dashboard-title-row"><h1>${title}</h1></div><p>${subtitle}</p></div><div class="dashboard-header__actions"><span class="dashboard-date">${icon("calendar")} ${dashboardDate()}</span><button class="icon-button" data-action="admin-enable-push" aria-label="تفعيل إشعارات الطلبات الجديدة" title="تفعيل إشعارات الطلبات الجديدة">${icon("bell")}<b></b></button><button class="view-store" data-action="route-home">${icon("eye")} عرض الموقع</button></div></header><div class="dashboard-content">${content}</div></main></div>`;
 }
@@ -12750,6 +13044,10 @@ document.addEventListener("click", event => {
   if (!target) return;
   const action = target.dataset.action;
   if (action === "open-cart") openCart();
+  // ── Customer notification centre ──
+  if (action === "open-notifications") { loadCustomerNotifications(true); openNotificationsModal(); }
+  if (action === "notif-mark-all") markAllNotificationsRead();
+  if (action === "notif-open") openNotificationTarget(target.dataset.id, target.dataset.link);
   if (action === "ask-dukkanci-quick-prompt") { state.askDukkanci.message = target.dataset.prompt; render(); }
   if (action === "ask-dukkanci-toggle-dessert") { state.askDukkanci.includeDessert = !state.askDukkanci.includeDessert; render(); }
   if (action === "ask-dukkanci-toggle-drinks") { state.askDukkanci.includeDrinks = !state.askDukkanci.includeDrinks; render(); }
@@ -13331,9 +13629,48 @@ document.addEventListener("click", event => {
     if (target.dataset.tab === "ai" && !state.adminAI) loadAdminAI();
     if (target.dataset.tab === "fbads" && state.fbadsCompounds == null) loadFbAdsBootstrap();
     if (target.dataset.tab === "banners" && !state.adminBannerStats) loadAdminBannerStats(30);
+    if (target.dataset.tab !== "notifications") stopNotifPoll();
+    if (target.dataset.tab === "notifications" && !state.adminNotifCampaigns) loadAdminNotifications();
     if (target.dataset.tab !== "fbads") { fbadsMap = null; fbadsMapEl = null; state._fbadsMapSig = null; }
     render();
   }
+  // ── Notification campaign actions ──
+  if (action === "notif-pick-segment") {
+    notifReadDraft();                       // keep what's typed before re-render
+    state.notifDraft.segment = target.dataset.key;
+    render();
+  }
+  if (action === "notif-toggle-channel") {
+    notifReadDraft();
+    const d = state.notifDraft;
+    const set = new Set(Array.isArray(d.channels) ? d.channels : ["inapp"]);
+    const c = target.dataset.chan;
+    set.has(c) ? set.delete(c) : set.add(c);
+    d.channels = [...set];
+    render();
+  }
+  if (action === "notif-create") notifCreateCampaign();
+  if (action === "notif-build") notifBuild(target.dataset.id);
+  if (action === "notif-start") {
+    notifAdminApi("start", { method: "POST", id: target.dataset.id })
+      .then(() => { loadAdminNotifications(); startNotifPoll(target.dataset.id); });
+  }
+  if (action === "notif-pause") {
+    stopNotifPoll();
+    notifAdminApi("pause", { method: "POST", id: target.dataset.id }).then(loadAdminNotifications);
+  }
+  if (action === "notif-resume") {
+    notifAdminApi("resume", { method: "POST", id: target.dataset.id })
+      .then(() => { loadAdminNotifications(); startNotifPoll(target.dataset.id); });
+  }
+  if (action === "notif-delete") {
+    if (confirm("حذف هذه الحملة نهائياً؟")) {
+      notifAdminApi("delete", { method: "POST", id: target.dataset.id }).then(loadAdminNotifications);
+    }
+  }
+  if (action === "notif-test-send") notifTestSend();
+  if (action === "notif-save-settings") notifSaveSettings();
+
   // ── Facebook ads targeting actions ──
   if (action === "fbads-region") { fbadsSwitchRegion(target.dataset.slug); }
   if (action === "fbads-toggle-region-form") { state.fbadsRegionFormOpen = !state.fbadsRegionFormOpen; render(); }
@@ -14055,6 +14392,14 @@ document.addEventListener("keydown", event => {
 });
 
 document.addEventListener("change", event => {
+  // Store picker for the store_customers segment — changing it re-resolves the
+  // segment server-side so the live audience count reflects the chosen store.
+  if (event.target.id === "notif-store-param") {
+    notifReadDraft();
+    state.notifSegmentStoreId = event.target.value || null;
+    loadAdminNotifications();
+    return;
+  }
   if (event.target.id === "img-file-input") {
     const file = event.target.files && event.target.files[0];
     if (file) uploadCampaignImage(file);
@@ -15060,6 +15405,12 @@ document.addEventListener("submit", async event => {
       state.checkoutLocation = null;
       state.checkoutSelectedAddressId = null;
       saveState(); updateCartBadges();
+      // The cart became an order — retire the snapshot so this customer is never
+      // sent a "you left something in your cart" reminder for what they just bought.
+      markCartConverted();
+      // The phone is now known for this device, which moves it out of the
+      // "installed but never ordered" segment on the next campaign build.
+      registerDevice();
       showModal(`<div class="success-animation">${icon("check")}</div><h2>تم إرسال طلبك بنجاح</h2>
         <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
         <div class="order-success-summary">
@@ -15460,6 +15811,260 @@ async function disablePush() {
   } catch (e) {}
 }
 
+// ══════════════════════ Notification system (customer side) ═════════════════
+// Device registry + cart snapshots + the customer notification inbox.
+// Server: api/notifications.js. Schema: migrations/20260720_notifications_system.sql.
+//
+// Why the device registry exists at all: before it, the platform had no record
+// that anyone had ever installed anything. `orders.source` was 'web' on 13 of 13
+// rows and `tracking_events.event_source` was 'web' on 7,661 of 7,661, so "who
+// installed the app but never ordered" was not a hard question — it was an
+// unanswerable one. Same for carts: they lived only in localStorage, so the
+// server could not know a cart existed, let alone that it was abandoned.
+//
+// Everything here fails silently and never blocks the storefront. A customer
+// must never see a checkout break because a notification endpoint was down.
+
+const DEVICE_UID_KEY = "dukkanci-device-uid";
+
+// Stable install id, generated once and kept forever. 128 bits of randomness
+// because this value is the read key for the customer's own inbox — it must not
+// be guessable by a third party. (Same reasoning as an order's public_token.)
+function getDeviceUid() {
+  let uid = "";
+  try { uid = localStorage.getItem(DEVICE_UID_KEY) || ""; } catch (e) { return null; }
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(uid)) {
+    const buf = new Uint8Array(16);
+    (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(buf) : buf.forEach((_, i) => buf[i] = Math.floor(Math.random() * 256));
+    uid = Array.from(buf).map(b => b.toString(16).padStart(2, "0")).join("");
+    try { localStorage.setItem(DEVICE_UID_KEY, uid); } catch (e) { return null; }
+  }
+  return uid;
+}
+
+// 'pwa' matters: an installed PWA is an app install for targeting purposes even
+// though it runs in a browser engine, so it belongs in the same segment as the
+// native builds rather than with casual web traffic.
+function detectPlatform() {
+  try {
+    if (window.Capacitor && window.Capacitor.getPlatform) {
+      const p = window.Capacitor.getPlatform();
+      if (p === "android" || p === "ios") return p;
+    }
+    const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone;
+    return standalone ? "pwa" : "web";
+  } catch (e) { return "web"; }
+}
+
+async function notifApi(action, body) {
+  try {
+    const r = await fetch(`/api/notifications?action=${encodeURIComponent(action)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    });
+    if (!r.ok) return null;
+    return await r.json().catch(() => null);
+  } catch (e) { return null; }
+}
+
+async function registerDevice() {
+  const uid = getDeviceUid();
+  if (!uid) return;
+  const payload = {
+    device_uid: uid,
+    platform: detectPlatform(),
+    locale: "ar",
+    customer_phone: state.verifiedPhone || (state.customerProfile && state.customerProfile.phone) || null
+  };
+  // Link this device to its browser push subscription when one exists, so a
+  // campaign can reach it without a second lookup path.
+  try {
+    if (pushSupported()) {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub && sub.endpoint) { payload.push_channel = "webpush"; payload.push_endpoint = sub.endpoint; }
+    }
+  } catch (e) {}
+  await notifApi("register-device", payload);
+}
+
+// ── Cart snapshot ───────────────────────────────────────────────────────────
+// Debounced hard: saveState() runs on every quantity tap, and a request per tap
+// would be both wasteful and a worse signal (we want the settled cart, not each
+// keystroke of it).
+let _cartSyncTimer = null;
+let _lastCartSig = "";
+
+function scheduleCartSync() {
+  if (_cartSyncTimer) clearTimeout(_cartSyncTimer);
+  _cartSyncTimer = setTimeout(() => { _cartSyncTimer = null; syncCartSnapshot(); }, 4000);
+}
+
+async function syncCartSnapshot() {
+  const uid = getDeviceUid();
+  if (!uid) return;
+  const cart = Array.isArray(state.cart) ? state.cart : [];
+
+  // SUMMARY ONLY — deliberate privacy decision: store, count, subtotal and
+  // product names. No options, no addons, no customer notes, no address. Enough
+  // for «سلتك تنتظرك في {المتجر}» and an abandoned-value report, nothing more.
+  const first = cart[0];
+  const store = first ? getStore(first.storeId) : null;
+  const sig = JSON.stringify(cart.map(i => [i.id, i.qty]));
+  if (sig === _lastCartSig) return;           // nothing actually changed
+  _lastCartSig = sig;
+
+  await notifApi("cart-sync", {
+    device_uid: uid,
+    store_id: store ? store.id : null,
+    store_name: store ? store.name : null,
+    item_count: cart.reduce((n, i) => n + (Number(i.qty) || 1), 0),
+    subtotal: cart.reduce((n, i) => n + (Number(i.price) || 0) * (Number(i.qty) || 1), 0),
+    item_names: cart.map(i => i.name).filter(Boolean).slice(0, 20),
+    customer_phone: state.verifiedPhone || (state.customerProfile && state.customerProfile.phone) || null
+  });
+}
+
+// Called once an order is actually placed, so the cart stops qualifying as
+// abandoned. Without this the customer gets a "you left something behind" push
+// minutes after they bought it — the single most common way this feature
+// embarrasses a marketplace.
+async function markCartConverted() {
+  const uid = getDeviceUid();
+  if (!uid) return;
+  // Cancel any pending sync and pre-seed the signature with the now-empty cart.
+  // Without this the post-order saveState() schedules an "empty cart" sync that
+  // lands seconds later and overwrites status='converted' with 'dismissed' —
+  // harmless for targeting (both are excluded) but it would erase every
+  // conversion from the abandoned-vs-converted report.
+  if (_cartSyncTimer) { clearTimeout(_cartSyncTimer); _cartSyncTimer = null; }
+  _lastCartSig = "[]";
+  await notifApi("cart-converted", { device_uid: uid });
+}
+
+// ── Customer inbox ──────────────────────────────────────────────────────────
+
+async function loadCustomerNotifications(silent) {
+  const uid = getDeviceUid();
+  if (!uid) return;
+  const res = await notifApi("inbox", {
+    device_uid: uid,
+    customer_phone: state.verifiedPhone || (state.customerProfile && state.customerProfile.phone) || null
+  });
+  if (!res || !res.ok) return;
+  state.customerNotifications = Array.isArray(res.items) ? res.items : [];
+  state.customerNotifUnread = Number(res.unread) || 0;
+  updateNotifBadge();
+  if (!silent && state._notifModalOpen) openNotificationsModal();
+}
+
+function updateNotifBadge() {
+  const n = Number(state.customerNotifUnread) || 0;
+  document.querySelectorAll("[data-notif-badge]").forEach(el => {
+    el.textContent = n > 99 ? "99+" : String(n);
+    el.hidden = n === 0;
+  });
+}
+
+// Arabic-Indic digits, matching the ar-EG date fallback at the end of
+// notifRelativeTime — mixing ٥ and 5 inside one timestamp column looks broken.
+const arDigits = n => String(n).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]);
+
+// Arabic number agreement. Unlike English, the noun changes with the count:
+// 1 = singular, 2 = dual (its own form), 3–10 = plural, 11+ = singular again.
+// "قبل 5 دقيقة" is not a typo to a reader — it is visibly wrong grammar, and
+// this string sits on every row of the inbox.
+function arCount(n, one, two, few, many) {
+  if (n === 1) return one;
+  if (n === 2) return two;
+  if (n >= 3 && n <= 10) return `${arDigits(n)} ${few}`;
+  return `${arDigits(n)} ${many}`;
+}
+
+function notifRelativeTime(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return "الآن";
+  if (mins < 60) return `قبل ${arCount(mins, "دقيقة", "دقيقتين", "دقائق", "دقيقة")}`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `قبل ${arCount(hours, "ساعة", "ساعتين", "ساعات", "ساعة")}`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `قبل ${arCount(days, "يوم", "يومين", "أيام", "يوماً")}`;
+  return new Date(t).toLocaleDateString("ar-EG", { day: "numeric", month: "long" });
+}
+
+const NOTIF_KIND_ICON = { order: "receipt", promo: "percent", system: "bell" };
+
+function openNotificationsModal() {
+  state._notifModalOpen = true;
+  const items = Array.isArray(state.customerNotifications) ? state.customerNotifications : [];
+
+  // Every field below is server-stored and admin-authored, so it is escaped on
+  // the way into the template — the same discipline applied across app.js after
+  // the stored-XSS fix of 2026-07-20.
+  // Reuses the .notif-list / .notif-icon / .notif-body / .unread structure the
+  // merchant notification modal already defines (app.js openMerchantNotifications),
+  // so this inherits existing styling instead of introducing a parallel one.
+  const body = items.length
+    ? `<ul class="notif-list notif-list--customer">${items.map(n => `
+        <li class="${n.read_at ? "" : "unread"}">
+          <button class="notif-row" data-action="notif-open" data-id="${escAttr(n.id)}" data-link="${escAttr(n.deep_link || "")}">
+            <span class="notif-icon">${icon(NOTIF_KIND_ICON[n.kind] || "bell")}</span>
+            <div class="notif-body">
+              <strong>${esc(n.title || "")}</strong>
+              ${n.body ? `<small>${esc(n.body)}</small>` : ""}
+              <time>${esc(notifRelativeTime(n.created_at))}</time>
+            </div>
+          </button>
+        </li>`).join("")}</ul>`
+    : `<div class="empty-managed">${icon("bell")}<p>لا توجد إشعارات بعد — ستصلك هنا تحديثات طلباتك وأحدث العروض.</p></div>`;
+
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <span class="section-kicker">حسابي</span>
+    <h2>${icon("bell")} الإشعارات</h2>
+    ${state.customerNotifUnread ? '<button class="link-button notif-mark-all" data-action="notif-mark-all">تعليم الكل كمقروء</button>' : ""}
+    ${body}
+  `, "notif-modal");
+}
+
+async function markAllNotificationsRead() {
+  const uid = getDeviceUid();
+  if (!uid) return;
+  (state.customerNotifications || []).forEach(n => { if (!n.read_at) n.read_at = new Date().toISOString(); });
+  state.customerNotifUnread = 0;
+  updateNotifBadge();
+  openNotificationsModal();
+  await notifApi("mark-read", { device_uid: uid });
+}
+
+async function openNotificationTarget(id, link) {
+  const uid = getDeviceUid();
+  const n = (state.customerNotifications || []).find(x => String(x.id) === String(id));
+  if (n && !n.read_at) {
+    n.read_at = new Date().toISOString();
+    state.customerNotifUnread = Math.max(0, (state.customerNotifUnread || 0) - 1);
+    updateNotifBadge();
+    if (uid) notifApi("mark-read", { device_uid: uid, ids: [Number(id)] });
+  }
+  // Only follow internal paths. A deep link is admin-authored, but treating it
+  // as a trusted URL would turn the notification centre into an open redirect.
+  if (link && /^\/[^/\\]/.test(link)) { closeModal(); navigate(link); }
+  else openNotificationsModal();
+}
+
+function initNotifications() {
+  registerDevice();
+  loadCustomerNotifications(true);
+  // Refresh when a backgrounded tab comes forward — the same staleness logic the
+  // catalog already uses.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadCustomerNotifications(true);
+  });
+}
+
 // ─────────────────── Merchant order alert: ring + status nudge ───────────────
 // The order webhook can't push into an already-open browser tab, so the open
 // dashboard polls. On a NEW order we play a distinctive looping chime + show a
@@ -15619,6 +16224,7 @@ initCatalog();
 initAuth();
 initUserLocation();
 initInstallPrompt();
+initNotifications();
 
 // Keep the storefront in sync with admin/store-owner edits without a full realtime
 // subscription: re-pull the catalog whenever a backgrounded tab regains focus

@@ -19,6 +19,7 @@ class LocalCache {
   static const _kMyOrderIds = 'dk_my_order_ids';
   static const _kAddressesJson = 'dk_addresses_json';
   static const _kRecentSearches = 'dk_recent_searches';
+  static const _kDeviceUid = 'dk_device_uid';
 
   bool get onboardingSeen => _prefs.getBool(_kOnboardingSeen) ?? false;
   Future<void> setOnboardingSeen() => _prefs.setBool(_kOnboardingSeen, true);
@@ -28,6 +29,16 @@ class LocalCache {
 
   bool get notificationsEnabled => _prefs.getBool(_kNotificationsEnabled) ?? false;
   Future<void> setNotificationsEnabled(bool v) => _prefs.setBool(_kNotificationsEnabled, v);
+
+  /// معرّف هذا التثبيت — يُولَّد **مرة واحدة** (UUID v4) ثم يُعاد استخدامه
+  /// للأبد، وهو مفتاح الربط في كل نداءات `/api/notifications`
+  /// (device_uid). لا يُشتقّ من أي معرّف عتاد (ANDROID_ID / IMEI وما شابه)
+  /// عمداً: معرّف عشوائي خاص بالتطبيق يُمحى بإلغاء تثبيته يكفي تماماً لتذكير
+  /// السلة المتروكة وصندوق الإشعارات، ولا يسمح بتتبّع الجهاز عبر التطبيقات.
+  ///
+  /// التوليد نفسه يعيش في `DeviceRegistrar` — هذه الطبقة تخزّن فقط.
+  String? get deviceUid => _prefs.getString(_kDeviceUid);
+  Future<void> setDeviceUid(String uid) => _prefs.setString(_kDeviceUid, uid);
 
   /// Cart is persisted as raw JSON (list of {productId, storeId, qty,
   /// selectedOptions, addons, notes}) — kept deliberately loose here; the

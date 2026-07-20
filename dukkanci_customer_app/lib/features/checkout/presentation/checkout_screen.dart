@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,8 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../addresses/application/addresses_controller.dart';
 import '../../addresses/domain/saved_address.dart';
 import '../../cart/application/cart_controller.dart';
+import '../../notifications/application/cart_sync_service.dart';
+import '../../notifications/data/device_registrar.dart';
 import '../../stores/presentation/store_screen.dart';
 import '../domain/order.dart';
 
@@ -186,6 +190,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final orderId = await ref.read(orderRepositoryProvider).submit(draft);
       await ref.read(localCacheProvider).addMyOrderId(orderId);
       ref.read(cartControllerProvider.notifier).clear();
+      // السلة تحوّلت لطلب فعلي. يجب أن يأتي **بعد** clear() مباشرة: الأخير
+      // يجدول مزامنة «سلة فارغة» بعد ٣ ثوانٍ، و markConverted يلغيها — لولا
+      // هذا الترتيب لهبطت تلك المزامنة بعد التحويل فبدا للخادم أن الزبون
+      // هجر سلته، وقد يرسل له تذكيراً بسلة اشترى منها للتو.
+      ref.read(cartSyncServiceProvider).markConverted();
+      // صار الرقم معروفاً ومُتحقَّقاً منه (أو مرّ عبر مسار واتساب المعطّل) —
+      // أعد تسجيل الجهاز به ليربط الخادم إشعارات هذا الطلب بهذا الجهاز.
+      unawaited(ref.read(deviceRegistrarProvider).register(customerPhone: phone));
       if (!mounted) return;
       context.go(AppRoutes.orderDetailPath(orderId));
     } catch (e) {
