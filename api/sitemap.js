@@ -123,12 +123,16 @@ function sitemapPages(res) {
   const today = new Date().toISOString().slice(0, 10);
   const pages = [
     ["/", "1.0", "daily"],
-    ["/why-dukkanci", "0.9", "monthly"],
-    ["/features", "0.8", "monthly"],
     ["/stores", "0.9", "daily"],
     ["/dalil", "0.9", "daily"],
-    ["/offers", "0.8", "daily"],
+    ["/offers", "0.9", "daily"],
+    ["/regions", "0.8", "weekly"],
+    ["/why-dukkanci", "0.9", "monthly"],
+    ["/merchants", "0.8", "monthly"],
+    ["/features", "0.8", "monthly"],
+    ["/ask-dukkanci", "0.7", "monthly"],
     ["/about", "0.5", "monthly"],
+    ["/contact", "0.5", "monthly"],
     ["/faq", "0.5", "monthly"],
     ["/terms", "0.3", "yearly"]
   ];

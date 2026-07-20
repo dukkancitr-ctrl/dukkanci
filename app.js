@@ -3156,7 +3156,7 @@ ${paidHeroStrip}
       <div class="container">
         <div class="section-heading">
           <div><span class="section-kicker">اختيارات يحبها الجيران</span><h2>متاجر قريبة منك الآن</h2></div>
-          <a href="#stores" data-route="stores">استكشف الكل ${icon("arrowLeft")}</a>
+          <a href="/stores" data-route="stores">استكشف الكل ${icon("arrowLeft")}</a>
         </div>
         ${openStoresCount ? `<div class="live-activity-pill"><span class="live-dot"></span> متاجر مفتوحة الآن: ${openStoresCount.toLocaleString("ar")}</div>` : ""}
         <div class="store-grid">${featuredStores.map(nearbyStoreCard).join("")}</div>
@@ -3211,7 +3211,7 @@ ${paidHeroStrip}
       <div class="container">
         <div class="section-heading">
           <div><span class="section-kicker">تسوّق حسب رغبتك</span><h2>ماذا تحتاج اليوم؟</h2></div>
-          <a href="#stores" data-route="stores">عرض كل المتاجر ${icon("arrowLeft")}</a>
+          <a href="/stores" data-route="stores">عرض كل المتاجر ${icon("arrowLeft")}</a>
         </div>
         <div class="category-grid">
           ${homeCategoriesOrdered().map(c => categoryCard(c.name, c.image, c.caption)).join("")}
@@ -4142,7 +4142,7 @@ function renderStorePage(id) {
   return `
     <section class="store-page-head">
       <div class="container">
-        <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="#stores" data-route="stores">المتاجر</a><span>/</span><strong>${esc(store.name)}</strong></div>
+        <div class="breadcrumbs"><a href="#home" data-route="home">الرئيسية</a><span>/</span><a href="/stores" data-route="stores">المتاجر</a><span>/</span><strong>${esc(store.name)}</strong></div>
         <div class="store-cover ${store.sourceBranded ? "source-branded-store-cover" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}-cover` : ""}">
           <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
           <div class="store-cover__gradient"></div>
@@ -9617,8 +9617,15 @@ function updateHead(route, id) {
   } else if (route === "category" && id && CATEGORY_MAP[id]) {
     title = `${CATEGORY_MAP[id]} | دكانجي`;
     desc = `تصفّح ${CATEGORY_MAP[id]} في إسطنبول على دكانجي واطلب أونلاين بتوصيل سريع.`;
-  } else if (route === "stores") { title = "كل المتاجر والمطاعم | دكانجي"; desc = "تصفّح متاجر ومطاعم حيك في إسطنبول واطلب أونلاين."; }
-  else if (route === "offers") { title = "العروض والخصومات | دكانجي"; desc = "أحدث عروض وخصومات متاجر ومطاعم الحي."; }
+  }
+  // العناوين أدناه **يجب** أن تطابق حرفياً عناوين القشور الخادمية المقابلة
+  // (api/stores.js, api/offers.js, api/regions.js, api/contact.js): الزاحف يقرأ
+  // عنوان القشرة في التمريرة الأولى ثم عنوان JS بعد التصيير، فاختلافهما إشارة
+  // متضاربة تُضعف ترشيح الصفحة كرابط فرعي (sitelink).
+  else if (route === "stores") { title = "اطلب من المتاجر — كل متاجر ومطاعم حيّك في إسطنبول | دكانجي"; desc = "تصفّح كل متاجر ومطاعم دكانجي في إسطنبول: مطاعم، سوبرماركت، ملاحم، حلويات، مكسرات وبهارات — واطلب أونلاين مع توصيل من متجر حيّك."; }
+  else if (route === "offers") { title = "عروض دكانجي — خصومات متاجر ومطاعم حيّك في إسطنبول"; desc = "أحدث العروض والخصومات الحقيقية من متاجر ومطاعم دكانجي في إسطنبول — أسعار قبل وبعد الخصم، محدّثة من المتاجر مباشرة."; }
+  else if (route === "regions") { title = "المتاجر حسب المنطقة — مطاعم ومتاجر حيّك في إسطنبول | دكانجي"; desc = "اختر منطقتك في إسطنبول — إسنيورت، باشاك شهير، بيليك دوزو، الفاتح، أفجلار وغيرها — وتصفّح المتاجر والمطاعم العربية القريبة منك على دكانجي."; }
+  else if (route === "contact") { title = "تواصل معنا | دكانجي"; desc = "تواصل مع فريق دكانجي عبر واتساب أو البريد الإلكتروني — دعم العملاء، استفسارات المتاجر، والشراكات التجارية في إسطنبول."; }
   else if (route === "join") { title = "انضم كتاجر — أنشئ متجرك | دكانجي"; desc = "أنشئ متجرك على دكانجي وابدأ باستقبال طلبات عملاء حيك في إسطنبول."; }
   else if (route === "why-dukkanci") { title = "لماذا دكانجي؟ اطلب من المتاجر العربية القريبة منك بدون عمولة على المنتجات"; desc = "تعرف على دكانجي، المنصة التي تجمع المتاجر العربية القريبة منك في مكان واحد، مع أسعار واضحة، بدون عمولة إضافية على المنتجات، وتقييمات تساعدك على الطلب بثقة."; }
   else if (route === "ask-dukkanci") { title = "اسأل دكانجي — مساعد اختيار الطلب | دكانجي"; desc = "قل لنا عدد الأشخاص وميزانيتك، ودكانجي يرتب لك اقتراح طلب متكامل من متجر حقيقي بسعر وتوصيل حقيقيين."; }
@@ -9652,7 +9659,7 @@ function updateHead(route, id) {
   // #terms render home too), so only mark real content routes indexable — everything
   // else gets noindex so junk URLs aren't indexed as duplicate-home soft-404s.
   // /dalil/compare (وأي مسار فرعي مجهول تحت /dalil) يبقى noindex عمداً.
-  const indexableRoute = ["home", "stores", "offers", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci", "ask-dukkanci", "dalil"].includes(route) && !(route === "dalil" && id);
+  const indexableRoute = ["home", "stores", "offers", "regions", "store", "product", "category", "about", "contact", "faq", "terms", "why-dukkanci", "ask-dukkanci", "dalil"].includes(route) && !(route === "dalil" && id);
   setMetaTag('meta[name="robots"]', "content", indexableRoute ? "index,follow" : "noindex,follow");
   setMetaTag('meta[property="og:title"]', "content", title);
   setMetaTag('meta[property="og:description"]', "content", desc);
@@ -10063,6 +10070,52 @@ function renderDalilComparePage() {
 }
 
 const CATEGORY_MAP = (typeof CATEGORY_SLUGS !== "undefined") ? CATEGORY_SLUGS : {};
+
+// ═══════════════════ «المتاجر حسب المنطقة» — /regions ═══════════════════
+// محور يربط صفحات المناطق (/dalil?region=<slug>). قبل هذه الصفحة كانت الثلاث
+// عشرة صفحة منطقة **يتيمة**: مرشِّح المنطقة داخل «دليل دكانجي» قائمة منسدلة لا
+// روابط، فلم يكن لأي منها رابط داخلي واحد في الموقع رغم إدراجها في sitemap منذ
+// 2026-07-12 — وغوغل يعتمد على الروابط الداخلية لا على sitemap وحده.
+// القشرة الخادمية المقابلة: api/regions.js — أي تعديل هنا يجب أن ينعكس هناك
+// (تكافؤ محتوى).
+function renderRegionsPage() {
+  const visible = stores.filter(s => isStoreApproved(s) && s.open !== false);
+  const counts = new Map();
+  visible.forEach(s => {
+    const slug = dalilRegionOf(s).slug;
+    counts.set(slug, (counts.get(slug) || 0) + 1);
+  });
+  // منطقة بلا متجر لا تُعرض: بطاقة تقود لصفحة فارغة تجربة سيئة وإشارة جودة سيئة.
+  const listed = DALIL_REGION_LIST
+    .map(r => ({ ...r, count: counts.get(r.slug) || 0 }))
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+  const otherCount = counts.get(DALIL_FALLBACK_REGION.slug) || 0;
+
+  return `
+    <section class="page-hero compact"><div class="container">
+      <h1>المتاجر حسب المنطقة</h1>
+      <p>اختر منطقتك في إسطنبول لتصفّح المتاجر والمطاعم القريبة منك.</p>
+    </div></section>
+    <section class="section"><div class="container">
+      ${listed.length ? `<div class="regions-grid">
+        ${listed.map(r => `
+          <a class="region-card" href="/dalil?region=${escAttr(r.slug)}">
+            <span class="region-card__icon">${icon("pin")}</span>
+            <span class="region-card__body">
+              <b>${esc(r.label)}</b>
+              <small>${r.count} ${r.count === 1 ? "متجر" : "متجراً"}</small>
+            </span>
+          </a>`).join("")}
+      </div>` : renderEmpty("لم تُحمَّل المناطق بعد", "جارٍ تحميل المتاجر — أعد المحاولة بعد لحظات.", "تصفّح كل المتاجر", "stores")}
+      ${otherCount ? `<p class="dalil-note">${icon("shield")} بالإضافة إلى ${otherCount} متجراً في مناطق أخرى من إسطنبول — تجدها ضمن <a href="/stores">كل المتاجر</a>.</p>` : ""}
+      <div class="dalil-foot-links">
+        <a href="/stores">اطلب من المتاجر</a>
+        <a href="/offers">عروض دكانجي</a>
+        <a href="/dalil">دليل المطاعم والمتاجر</a>
+      </div>
+    </div></section>`;
+}
 
 function renderStaticPage(titleAr, icon1, lines) {
   return `
@@ -11308,6 +11361,7 @@ function render() {
     admin: renderAdmin,
     checkout: renderCheckout,
     about: renderAboutPage,
+    regions: renderRegionsPage,
     contact: renderContactPage,
     faq: renderFaqPage,
     terms: renderTermsPage,
@@ -13020,7 +13074,7 @@ document.addEventListener("click", event => {
   if (!href || a.target === "_blank" || /^(https?:|tel:|mailto:|wa\.me)/i.test(href)) return;
   if (href.startsWith("#")) {
     const routeName = href.replace(/^#/, "") || "home";
-    const knownRoutes = new Set(["home", "join", "stores", "offers", "store", "product", "category", "orders", "merchant", "admin", "checkout", "about", "contact", "faq", "terms", "dalil"]);
+    const knownRoutes = new Set(["home", "join", "stores", "offers", "regions", "store", "product", "category", "orders", "merchant", "admin", "checkout", "about", "contact", "faq", "terms", "dalil"]);
     if (!knownRoutes.has(routeName)) return; // let browser handle unknown hashes (footer links, anchors)
     event.preventDefault(); navigate(routeName); return;
   }

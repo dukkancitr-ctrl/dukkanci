@@ -1825,7 +1825,7 @@ img {
 /* ── 4-column links grid ── */
 .footer-grid {
   display: grid;
-  grid-template-columns: 1.7fr 1fr 1fr 1.3fr;
+  grid-template-columns: 1.7fr 1fr 1fr 1fr 1.3fr;
   gap: 32px 48px;
   padding: 48px 0;
   align-items: start;
@@ -13114,3 +13114,57 @@ tbody tr:hover {
 .notif-wa-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .notif-wa-row label { flex: 1; min-width: 180px; }
 .notif-warn--ok { background: var(--green-50); border-inline-start-color: var(--green-700); color: var(--green-900); }
+
+/* ── «المتاجر حسب المنطقة» (/regions) ──────────────────────────────────────
+   بطاقات المناطق. الرموز مطابقة لـ.dalil-card عمداً (نفس عائلة الصفحات) —
+   ولا تُستخدم هنا --accent/--bg/--text/--radius لأنها غير معرَّفة في المشروع
+   إطلاقاً رغم ورودها في كتل أقدم؛ راجع سطر 2026-07-19 في سجل الإصلاحات. */
+.regions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.region-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(35, 31, 32, 0.04);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.region-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--green-700);
+  box-shadow: var(--shadow-hover);
+}
+
+.region-card__icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  background: var(--green-50);
+  color: var(--green-700);
+  display: grid;
+  place-items: center;
+}
+
+.region-card__icon svg { width: 20px; height: 20px; }
+
+.region-card__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.region-card__body b { font-size: 0.98rem; color: var(--ink); }
+.region-card__body small { font-size: 0.82rem; color: var(--muted); }
+
+@media (max-width: 640px) {
+  .regions-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .region-card { padding: 12px; gap: 10px; }
+  .region-card__icon { width: 34px; height: 34px; flex-basis: 34px; }
+  .region-card__body b { font-size: 0.9rem; }
+}
