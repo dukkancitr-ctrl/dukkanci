@@ -91,5 +91,18 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!-- Voice search: REQUIRED, not optional. Android 11+ package
+             visibility hides every other app's services by default, and this
+             app targets SDK 36. Without this entry
+             SpeechRecognizer.isRecognitionAvailable() sees zero services
+             (it resolves via queryIntentServices(RecognitionService)), so
+             speech_to_text's initialize() fails with recognizerNotAvailable
+             on real phones that recognize Arabic perfectly well — the mic
+             button dies before it ever reaches listen(). Required by the
+             plugin's own README for targetSdkVersion >= 30. Never remove. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
     </queries>
 </manifest>

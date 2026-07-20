@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../localization/app_strings.dart';
@@ -20,6 +21,12 @@ import '../theme/app_colors.dart';
 /// this just attempts `listen(localeId: 'ar')` directly (same as the
 /// website's `lang='ar'`) and only shows an honest failure message if the
 /// listen attempt itself actually errors.
+///
+/// REQUIRES the `android.speech.RecognitionService` entry in the app's
+/// `<queries>` block (see AndroidManifest.xml). This app targets SDK 36, and
+/// Android 11+ package visibility hides other apps' services by default, so
+/// without that entry `initialize()` below fails with `recognizerNotAvailable`
+/// on every phone regardless of how well it recognizes Arabic.
 class VoiceSearchButton extends StatefulWidget {
   const VoiceSearchButton({super.key, required this.onResult});
 
@@ -70,53 +77,97 @@ class _VoiceSearchButtonState extends State<VoiceSearchButton> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
   }
 
-  Future<void> _startListening() async {
-    if (!_speechEnabled) {
-      final available = await _speech.initialize(
+  /// Prepares the recognizer, returning false (after telling the customer why)
+  /// if it can't be used.
+  ///
+  /// Both `initialize` and `listen` reach Dart over a MethodChannel, so a
+  /// native failure such as `recognizerNotAvailable` arrives as a *thrown*
+  /// PlatformException, not as a `false` return value. Unguarded, that
+  /// exception escapes the async gap and the mic button silently does nothing
+  /// whatsoever — no snackbar, no state change, nothing the customer can act
+  /// on. A `false` return means something different: the OS refused the
+  /// microphone permission.
+  Future<bool> _ensureSpeechReady() async {
+    if (_speechEnabled) return true;
+    final bool available;
+    try {
+      available = await _speech.initialize(
         onStatus: (status) {
           if ((status == 'done' || status == 'notListening') && mounted) {
             setState(() => _listening = false);
           }
         },
         onError: _handleListenError,
+        // Turn off the plugin's Bluetooth headset support: with it enabled the
+        // plugin also requests BLUETOOTH_CONNECT, which this app deliberately
+        // never declares, so Android silently auto-denies it on every tap.
+        // Routing search dictation through a headset buys this app nothing.
+        options: [stt.SpeechToText.androidNoBluetooth],
       );
-      if (!mounted) return;
-      if (!available) {
-        _showMessage(AppStrings.voiceSearchNoPermission);
-        return;
-      }
-      _speechEnabled = true;
+    } on PlatformException catch (e) {
+      // recognizerNotAvailable = the device genuinely ships no speech service
+      // (e.g. a ROM without Google's app). Anything else may well succeed on a
+      // retry, so don't tell the customer it's permanently unavailable.
+      _showMessage(e.code == 'recognizerNotAvailable'
+          ? AppStrings.voiceSearchUnavailable
+          : AppStrings.somethingWentWrong);
+      return false;
+    } catch (_) {
+      _showMessage(AppStrings.somethingWentWrong);
+      return false;
     }
+    if (!mounted) return false;
+    if (!available) {
+      _showMessage(AppStrings.voiceSearchNoPermission);
+      return false;
+    }
+    _speechEnabled = true;
+    return true;
+  }
+
+  Future<void> _startListening() async {
+    if (!await _ensureSpeechReady()) return;
+    if (!mounted) return;
 
     setState(() => _listening = true);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(AppStrings.voiceSearchListening), duration: const Duration(seconds: 15)));
 
-    await _speech.listen(
-      listenOptions: stt.SpeechListenOptions(
-        localeId: 'ar',
-        listenFor: Duration(seconds: 15),
-        pauseFor: Duration(seconds: 3),
-      ),
-      onResult: (result) {
-        if (!result.finalResult) return;
-        final text = result.recognizedWords.trim();
-        if (mounted) setState(() => _listening = false);
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        if (text.isEmpty) {
-          _showMessage(AppStrings.voiceSearchNoSpeechDetected);
-        } else {
-          widget.onResult(text);
-        }
-      },
-    );
+    try {
+      await _speech.listen(
+        listenOptions: stt.SpeechListenOptions(
+          localeId: 'ar',
+          listenFor: const Duration(seconds: 15),
+          pauseFor: const Duration(seconds: 3),
+        ),
+        onResult: (result) {
+          if (!result.finalResult) return;
+          if (!mounted) return;
+          final text = result.recognizedWords.trim();
+          setState(() => _listening = false);
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          if (text.isEmpty) {
+            _showMessage(AppStrings.voiceSearchNoSpeechDetected);
+          } else {
+            widget.onResult(text);
+          }
+        },
+      );
+    } catch (_) {
+      // Without this the "جارٍ الاستماع" snackbar would sit there for its full
+      // 15 seconds on top of a session that already died.
+      if (!mounted) return;
+      setState(() => _listening = false);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showMessage(AppStrings.voiceSearchUnavailable);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      tooltip: AppStrings.voiceSearchListening,
+      tooltip: _listening ? AppStrings.voiceSearchListening : AppStrings.voiceSearchStart,
       icon: AnimatedSwitcher(
         duration: const Duration(milliseconds: 150),
         child: _listening
