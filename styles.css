@@ -1101,6 +1101,30 @@ img {
   color: #f5dca0;
 }
 
+.nationwide-badge {
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  z-index: 1;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(140, 200, 255, 0.5);
+  border-radius: 20px;
+  background: rgba(12, 58, 110, 0.9);
+  color: #d7ecff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  backdrop-filter: blur(8px);
+}
+
+.nationwide-badge .icon {
+  width: 14px;
+  height: 14px;
+}
+
 .status-badge.open {
   background: #eef9f1;
   color: #287a4d;
@@ -3096,6 +3120,17 @@ img {
 }
 
 .official-branch-badge.large {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.store-cover .nationwide-badge {
+  left: 20px;
+  top: 20px;
+}
+
+.nationwide-badge.large {
   min-height: 38px;
   padding: 8px 14px;
   font-size: 12px;
@@ -9580,6 +9615,20 @@ tbody tr:hover {
   }
 
   .official-branch-badge .icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .nationwide-badge {
+    left: 8px;
+    top: 8px;
+    min-height: 22px;
+    padding: 3px 7px;
+    font-size: 8.5px;
+    gap: 4px;
+  }
+
+  .nationwide-badge .icon {
     width: 11px;
     height: 11px;
   }

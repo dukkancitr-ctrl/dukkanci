@@ -2043,6 +2043,25 @@ function estimateDeliveryQuote(store, address) {
   const oneWayKm = Math.max(0.5, haversineKm(origin, address) * 1.28);
   const roundTripKm = oneWayKm * 2;
   const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
+  const exceedsMaxDistance = roundTripKm > settings.maxRoundTripKm;
+  // A store may ship out-of-range orders nationwide by cargo courier instead of
+  // refusing them outright — a flat fee replaces the per-km one and the "exceeds
+  // range" gate never fires downstream (cartTotals/checkout submit both key off
+  // exceedsMaxDistance alone), so this is the ONLY place nationwide shipping needs
+  // wiring in. See hasNationwideShipping() for the store-card/page badge.
+  if (exceedsMaxDistance && settings.nationwideFlatFee > 0) {
+    return {
+      storeId: store.id,
+      addressId: address.id,
+      oneWayKm,
+      roundTripKm,
+      routeMinutes,
+      estimatedMinutes: settings.prepMinutes + routeMinutes,
+      fee: settings.nationwideFlatFee,
+      provider: "nationwide",
+      exceedsMaxDistance: false
+    };
+  }
   const rawFee = Math.round(roundTripKm * settings.ratePerKm);
   return {
     storeId: store.id,
@@ -2055,8 +2074,15 @@ function estimateDeliveryQuote(store, address) {
     fee: normalizeDeliveryFee(rawFee),
     ratePerKm: settings.ratePerKm,
     provider: "estimate",
-    exceedsMaxDistance: roundTripKm > settings.maxRoundTripKm
+    exceedsMaxDistance
   };
+}
+
+// Store ships out-of-local-range orders nationwide by cargo (flat fee), instead of
+// refusing them — surfaced as a badge near the store name/card. Single source of
+// truth is deliverySettings itself (no separate store-object flag to keep in sync).
+function hasNationwideShipping(store) {
+  return Number(getDeliverySettings(store.id)?.nationwideFlatFee) > 0;
 }
 
 function renderZoneRow(z, i) {
@@ -2676,6 +2702,7 @@ function storeCard(store) {
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}" loading="lazy">
         <span class="status-badge ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح" : "مغلق الآن"}</span>
+        ${hasNationwideShipping(store) ? `<span class="nationwide-badge">${icon("box")} توصيل لكل الولايات</span>` : ""}
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
         ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${esc(store.offer)}</span>` : ""}
       </button>
@@ -2952,6 +2979,7 @@ function nearbyStoreCard(store) {
       <button class="store-card__image" data-action="open-store" data-id="${store.id}">
         <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}" loading="lazy">
         <span class="status-badge ${open ? "open" : "closed"}">${open ? "مفتوح" : "مغلق الآن"}</span>
+        ${hasNationwideShipping(store) ? `<span class="nationwide-badge">${icon("box")} توصيل لكل الولايات</span>` : ""}
         ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
         ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${esc(store.offer)}</span>` : ""}
       </button>
@@ -4149,6 +4177,7 @@ function renderStorePage(id) {
           <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
           <div class="store-cover__gradient"></div>
           <span class="status-badge large ${isStoreOpenNow(store) ? "open" : "closed"}">${isStoreOpenNow(store) ? "مفتوح ويستقبل الطلبات" : "مغلق الآن"}</span>
+          ${hasNationwideShipping(store) ? `<span class="nationwide-badge large">${icon("box")} توصيل لكل الولايات التركية</span>` : ""}
           ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge large">${icon("shield")} فرع رسمي موثق</span>` : store.officialStore ? `<span class="official-branch-badge large ${store.brandTheme || ""}">${icon("shield")} متجر رسمي موثق</span>` : ""}
         </div>
         ${store.subscriptionActive === false ? `<div class="store-closed-banner review-note" style="margin:12px 0">${icon("shield")} <span><strong>هذا المتجر لا يستقبل طلبات حالياً.</strong><small>اشتراك المتجر منتهٍ — يمكنك تصفّح المنتجات، وسيعود الطلب فور تجديد المتجر لاشتراكه.</small></span></div>` : ""}
@@ -9409,6 +9438,13 @@ function renderDeliveryQuoteDetails(store, quote, status = "") {
   }
   if (quote.exceedsMaxDistance) {
     return `<div class="delivery-calculator warning">${icon("map")}<div><strong>العنوان خارج نطاق التوصيل</strong><p>المسافة ذهاباً وإياباً ${formatDistance(quote.roundTripKm)}، والحد الأقصى لهذا المتجر ${formatDistance(settings.maxRoundTripKm)}.</p></div></div>`;
+  }
+  if (quote.provider === "nationwide") {
+    return `
+      <div class="delivery-calculator">
+        <div class="delivery-calculator__head"><span>${icon("box")}</span><div><strong>شحن عبر شركة الشحن (كارجو)</strong><p>عنوانك خارج نطاق التوصيل المحلي، فيُشحن طلبك عبر شركة شحن لعموم الولايات التركية برسم ثابت.</p></div><b>${money(quote.fee)}</b></div>
+      </div>
+    `;
   }
   const source = quote.provider === "google" ? "مسار مباشر من خرائط Google" : "تقدير أولي يُحدّث عبر خرائط Google";
   return `

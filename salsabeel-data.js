@@ -88,8 +88,12 @@ const salsabeelProducts = (salsabeelProductCatalog.length ? salsabeelProductCata
   storeId: salsabeelStore.id
 }));
 
+// nationwideFlatFee: out-of-Istanbul orders (beyond maxRoundTripKm) ship by cargo
+// courier at this flat rate instead of being refused — see hasNationwideShipping()
+// and the "nationwide" quote branch in estimateDeliveryQuote()/app.js. Amount set
+// by the merchant to cover a real Yurtiçi/Aras-style parcel of glass jars.
 const salsabeelDeliverySettings = {
-  [salsabeelStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
+  [salsabeelStore.id]: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120, nationwideFlatFee: 350 }
 };
 
 if (typeof module !== "undefined" && module.exports) {
