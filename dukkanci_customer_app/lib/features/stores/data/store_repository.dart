@@ -98,4 +98,40 @@ class StoreRepository {
       throw Failure.network();
     }
   }
+
+  /// Products reachable only through a curated synonym — the dialect/Turkish/
+  /// brand aliases the website matches via `product_synonyms`.
+  ///
+  /// This is what lets a Turkish speaker type "döner" and get "شاورما", or a
+  /// shopper type "Dove" and reach a product whose name never says it. Measured
+  /// on live data: ~3,000 products carry a synonym that appears nowhere in
+  /// their own name or category.
+  ///
+  /// One request, not two: `product_synonyms!inner(...)` makes PostgREST do the
+  /// join, so the filter on the child table selects parent rows directly.
+  ///
+  /// Matching is EXACT per array element (see [synonymMatchCandidates] for why
+  /// no pattern operator exists here), so unlike [searchProducts] these rows
+  /// are already answers — the caller must NOT re-filter them against
+  /// name/category, since by definition the term isn't there.
+  ///
+  /// Fails soft: synonyms are an enhancement, so a failure here must never
+  /// take down the main name/category results.
+  Future<List<Product>> searchProductsBySynonym(String query, {int limit = 200}) async {
+    final candidates = synonymMatchCandidates(query);
+    if (candidates.isEmpty) return [];
+    try {
+      final rows = await supabase
+          .from('products')
+          .select('*, product_synonyms!inner(product_id)')
+          .eq('available', true)
+          .eq('product_synonyms.status', 'done')
+          .overlaps('product_synonyms.synonyms', candidates)
+          .limit(limit);
+      return (rows as List).map((r) => Product.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+    } catch (e, st) {
+      debugPrint('StoreRepository.searchProductsBySynonym ignored: $e\n$st');
+      return [];
+    }
+  }
 }

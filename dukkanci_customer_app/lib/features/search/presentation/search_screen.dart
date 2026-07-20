@@ -65,6 +65,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// Server-side candidates for [_query] — a deliberate superset, narrowed to
   /// exact matches by [_productHits]. Null means "not searched yet".
   List<Product>? _productCandidates;
+
+  /// Products matched through a curated synonym (e.g. "döner" → شاورما).
+  /// Already exact — deliberately NOT re-filtered against name/category,
+  /// because the whole point is that the term does not appear there.
+  List<Product> _synonymMatches = const [];
   bool _productsLoading = false;
   bool _productsFailed = false;
 
@@ -121,6 +126,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (query.isEmpty) {
       setState(() {
         _productCandidates = null;
+        _synonymMatches = const [];
         _productsLoading = false;
         _productsFailed = false;
       });
@@ -130,13 +136,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _productsLoading = true;
       _productsFailed = false;
     });
+    final repo = ref.read(storeRepositoryProvider);
     try {
-      final results = await ref.read(storeRepositoryProvider).searchProducts(query);
+      // Fired together: the synonym lookup is a separate query, and making it
+      // wait on the main one would double the time to first result.
+      final results = await (
+        repo.searchProducts(query),
+        repo.searchProductsBySynonym(query),
+      ).wait;
       // Typing is debounced, not serialised — a slower earlier request must
       // never overwrite the results of the query the user is actually on.
       if (!mounted || query != _query) return;
       setState(() {
-        _productCandidates = results;
+        _productCandidates = results.$1;
+        _synonymMatches = results.$2;
         _productsLoading = false;
       });
     } catch (_) {
@@ -164,11 +177,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final storeById = {for (final s in stores) s.id: s};
 
     final hits = <_ProductHit>[];
-    for (final product in candidates) {
+    final seen = <int>{};
+    void add(Product product) {
+      if (!seen.add(product.id)) return; // a product can match by name AND synonym
       final store = storeById[product.storeId];
-      if (store == null) continue;
-      if (!matchesAllTerms('${product.name} ${product.category ?? ''}', terms)) continue;
+      if (store == null) return;
       hits.add(_ProductHit(product, store));
+    }
+
+    for (final product in candidates) {
+      if (!matchesAllTerms('${product.name} ${product.category ?? ''}', terms)) continue;
+      add(product);
+    }
+    // Synonym hits come last: a product whose own name matches is the more
+    // literal answer, so it should not be pushed down by an alias match.
+    for (final product in _synonymMatches) {
+      add(product);
     }
     return hits;
   }

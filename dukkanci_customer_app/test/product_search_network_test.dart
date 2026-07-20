@@ -69,6 +69,26 @@ void main() {
     expect(withHamza, isNotEmpty, reason: 'alef-variant folding regressed');
   }, timeout: const Timeout(Duration(minutes: 2)));
 
+  test('synonyms: Turkish "döner" reaches Arabic شاورما products', () async {
+    final hits = await repo.searchProductsBySynonym('döner');
+    expect(hits, isNotEmpty, reason: 'the !inner join or the status filter regressed');
+    // The whole point: the matched term is NOT in the product's own text.
+    final aliasOnly = hits.where((p) => !'${p.name} ${p.category ?? ''}'.toLowerCase().contains('döner'));
+    expect(aliasOnly, isNotEmpty, reason: 'synonyms added nothing over a plain name search');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('synonyms: lowercase "dove" still matches the stored "Dove"', () async {
+    // Array containment is case-sensitive — this passes only because
+    // synonymMatchCandidates sends the capitalised variant too.
+    final hits = await repo.searchProductsBySynonym('dove');
+    expect(hits, isNotEmpty, reason: 'case variants regressed; cs.{dove} alone matches nothing');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('synonyms fail soft and never take down the main results', () async {
+    final hits = await repo.searchProductsBySynonym('زقزقزقزق');
+    expect(hits, isEmpty);
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('a nonsense query returns nothing rather than everything', () async {
     final candidates = await repo.searchProducts('زقزقزقزق');
     final terms = arabicSearchTerms('زقزقزقزق');

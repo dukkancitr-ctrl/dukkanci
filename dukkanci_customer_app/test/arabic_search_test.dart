@@ -92,6 +92,42 @@ void main() {
     });
   });
 
+  group('synonymMatchCandidates', () {
+    test('covers case, because array containment is case-sensitive', () {
+      // Live check: cs.{Dove} matches, cs.{dove} returns nothing.
+      final c = synonymMatchCandidates('dove');
+      expect(c, contains('dove'));
+      expect(c, contains('Dove'));
+      expect(c, contains('DOVE'));
+    });
+
+    test('title-cases each word, for stored forms like "Bukhari Pilav"', () {
+      expect(synonymMatchCandidates('bukhari pilav'), contains('Bukhari Pilav'));
+    });
+
+    test('expands Arabic spellings so typed ه reaches stored ة', () {
+      final c = synonymMatchCandidates('قهوه');
+      expect(c, contains('قهوه'));
+      expect(c, contains('قهوة'));
+    });
+
+    test('expands alef variants', () {
+      expect(synonymMatchCandidates('ارز'), contains('أرز'));
+    });
+
+    test('is hard-bounded so a long ambiguous query cannot explode', () {
+      // Every letter here is ambiguous; unbounded expansion would be 4*2*3*2*4…
+      final c = synonymMatchCandidates('اهيواهيو', max: 24);
+      expect(c.length, lessThanOrEqualTo(24));
+      expect(c, isNotEmpty);
+    });
+
+    test('empty / whitespace query yields no candidates', () {
+      expect(synonymMatchCandidates('   '), isEmpty);
+      expect(synonymMatchCandidates(''), isEmpty);
+    });
+  });
+
   group('arabicSearchTerms', () {
     test('splits on whitespace and drops empties', () {
       expect(arabicSearchTerms('  دجاج   مشوي '), ['دجاج', 'مشوي']);
