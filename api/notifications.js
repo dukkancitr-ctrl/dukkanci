@@ -171,30 +171,33 @@ async function sbWrite(method, path, body, prefer = "return=representation") {
   } catch (e) { return { ok: false, status: 0, error: e.message }; }
 }
 
-// Call a set-returning Postgres function, paging with Range.
+// Call a set-returning Postgres function, paging past db-max-rows.
 //
-// ⚠ RPC responses are capped by db-max-rows exactly like table reads. Without
-// this paging the wa_contacts segment would resolve to 1,000 of 6,334 numbers
-// and look completely healthy while silently excluding 84% of the audience.
+// ⚠ Fixed 2026-07-20 after a production check caught it red-handed: `Range`
+// headers (the correct mechanism for a table read) are SILENTLY IGNORED on an
+// RPC call — PostgREST just returns the same first 1,000 rows on every "page",
+// so the old loop looped forever re-fetching page 1 until it hit its own `max`
+// safety stop. Verified live against wa_contacts (6,332 real rows): the
+// Range-header version returned 200,000 rows that were 1,000 distinct phone
+// numbers repeated — exactly the kind of "looks complete, is 16%" result this
+// function exists to prevent. `?limit=&offset=` on the RPC URL is what
+// PostgREST actually honours for functions; confirmed live that consecutive
+// pages return disjoint rows and the full run recovers all 6,332.
 async function sbRpcAll(fn, args, max = 200000) {
   const { url, key } = sb();
   const PAGE = 1000;
   const out = [];
-  for (let from = 0; from < max; from += PAGE) {
+  for (let offset = 0; offset < max; offset += PAGE) {
     let rows;
     try {
-      const r = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      const r = await fetch(`${url}/rest/v1/rpc/${fn}?limit=${PAGE}&offset=${offset}`, {
         method: "POST",
-        headers: {
-          apikey: key, Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "Range-Unit": "items", Range: `${from}-${from + PAGE - 1}`
-        },
+        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify(args || {})
       });
       if (!r.ok) {
         const t = await r.text().catch(() => "");
-        if (from === 0) return { error: t, missing: isMissingSchema(t) };
+        if (offset === 0) return { error: t, missing: isMissingSchema(t) };
         break;
       }
       rows = await r.json().catch(() => null);
