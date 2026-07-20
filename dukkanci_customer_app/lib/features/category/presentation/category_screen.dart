@@ -49,7 +49,8 @@ class CategoryScreen extends ConsumerWidget {
           final List<Store> list;
           switch (categoryKey) {
             case 'offers':
-              list = all.where((s) => s.hasOffer).toList();
+              final discounted = ref.watch(discountedStoreIdsProvider).value ?? const <int>{};
+              list = all.where((s) => s.hasAnyOffer(discounted)).toList();
             case 'popular':
               list = [...all]..sort((a, b) {
                   final r = b.rating.compareTo(a.rating);

@@ -206,7 +206,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       list = list.where((s) => matchesAllTerms('${s.name} ${s.category}', terms)).toList();
     }
     if (_activeFilters.contains(_Filter.openNow)) list = list.where((s) => s.open).toList();
-    if (_activeFilters.contains(_Filter.offers)) list = list.where((s) => s.hasOffer).toList();
+    if (_activeFilters.contains(_Filter.offers)) {
+      final discounted = ref.read(discountedStoreIdsProvider).value ?? const <int>{};
+      list = list.where((s) => s.hasAnyOffer(discounted)).toList();
+    }
 
     final location = ref.read(locationControllerProvider);
     if (_activeFilters.contains(_Filter.nearest) && location != null) {

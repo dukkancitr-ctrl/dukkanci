@@ -31,6 +31,15 @@ final approvedStoresProvider = FutureProvider.autoDispose<List<Store>>((ref) {
   return ref.read(storeRepositoryProvider).fetchApprovedStores();
 });
 
+/// Stores that currently have a genuinely discounted product, which the
+/// `stores.has_offer` flag does not reliably record — see
+/// [Store.hasAnyOffer]. Read it with `.value ?? const <int>{}` so a
+/// pending/failed load simply falls back to the flag instead of emptying the
+/// offers rail.
+final discountedStoreIdsProvider = FutureProvider.autoDispose<Set<int>>((ref) {
+  return ref.read(storeRepositoryProvider).fetchStoreIdsWithDiscountedProducts();
+});
+
 final orderRepositoryProvider = Provider<OrderRepository>((ref) {
   return OrderRepository(ref.read(apiClientProvider));
 });

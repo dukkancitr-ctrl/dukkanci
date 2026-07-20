@@ -53,7 +53,12 @@ class HomeScreen extends ConsumerWidget {
                     child: AppErrorView(onRetry: () => ref.invalidate(approvedStoresProvider)),
                   ),
                 ),
-                data: (stores) => SliverToBoxAdapter(child: _HomeBody(stores: stores)),
+                data: (stores) => SliverToBoxAdapter(
+                  child: _HomeBody(
+                    stores: stores,
+                    discountedStoreIds: ref.watch(discountedStoreIdsProvider).value ?? const <int>{},
+                  ),
+                ),
               ),
             ],
           ),
@@ -160,9 +165,14 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _HomeBody extends StatelessWidget {
-  const _HomeBody({required this.stores});
+  const _HomeBody({required this.stores, required this.discountedStoreIds});
 
   final List<Store> stores;
+
+  /// Stores with a genuinely discounted product — the `has_offer` flag alone
+  /// misses several (see [Store.hasAnyOffer]). Watched by the parent so this
+  /// stays a plain StatelessWidget like the rest of the home tree.
+  final Set<int> discountedStoreIds;
 
   /// Paid header placement — the same four merchant-paid stores as the
   /// website's PAID_PRIORITY_STORE_IDS (app.js): مطعم الخوالي، باشا بيتزريا،
@@ -190,7 +200,7 @@ class _HomeBody extends StatelessWidget {
     }
 
     final categories = HomeCategory.all.where((c) => stores.any(c.matches)).toList();
-    final offers = stores.where((s) => s.hasOffer).toList();
+    final offers = stores.where((s) => s.hasAnyOffer(discountedStoreIds)).toList();
     final popular = [...stores]
       ..sort((a, b) {
         final r = b.rating.compareTo(a.rating);

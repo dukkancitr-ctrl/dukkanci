@@ -74,6 +74,19 @@ class Store {
   /// preview.
   bool get isPubliclyVisible => approvalStatus == 'approved' || approvalStatus.isEmpty;
 
+  /// Whether the store belongs in «عروض وخصومات».
+  ///
+  /// Two independent things count as an offer, and checking only the first is
+  /// the bug this replaced: [hasOffer] is the merchant's banner flag, while
+  /// [discountedStoreIds] comes from products that are genuinely marked down
+  /// (see StoreRepository.fetchStoreIdsWithDiscountedProducts). Stores like
+  /// باشا بيتزريا carry real discounts with the flag left false.
+  ///
+  /// Passing an empty set degrades to the old flag-only behaviour, which is
+  /// what should happen while the id set is still loading — never fewer
+  /// results than before, only more.
+  bool hasAnyOffer(Set<int> discountedStoreIds) => hasOffer || discountedStoreIds.contains(id);
+
   factory Store.fromJson(Map<String, dynamic> json) {
     final paymentMethodsJson = json['payment_methods'];
     final categorySettingsJson = json['category_settings'];

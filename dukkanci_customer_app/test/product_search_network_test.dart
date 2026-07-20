@@ -89,6 +89,22 @@ void main() {
     expect(hits, isEmpty);
   }, timeout: const Timeout(Duration(minutes: 2)));
 
+  test('offers: discounted-store ids include stores whose has_offer flag is false', () async {
+    final ids = await repo.fetchStoreIdsWithDiscountedProducts();
+    expect(ids, isNotEmpty);
+    // باشا بيتزريا: 30 discounted pizzas, has_offer = false in the DB. It is
+    // the store the user reported missing from «عروض وخصومات».
+    expect(ids, contains(56), reason: 'store 56 has real discounts; the offers rail would miss it again');
+
+    // And the flag-only view really is narrower — proving the fix adds stores
+    // rather than just reshuffling them.
+    final stores = await repo.fetchApprovedStores();
+    final flagged = stores.where((s) => s.hasOffer).map((s) => s.id).toSet();
+    final gained = stores.where((s) => !s.hasOffer && ids.contains(s.id));
+    expect(gained, isNotEmpty, reason: 'expected stores discoverable only via product discounts');
+    expect(flagged.contains(56), isFalse, reason: 'if 56 got flagged upstream, this test needs a new example');
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('a nonsense query returns nothing rather than everything', () async {
     final candidates = await repo.searchProducts('زقزقزقزق');
     final terms = arabicSearchTerms('زقزقزقزق');

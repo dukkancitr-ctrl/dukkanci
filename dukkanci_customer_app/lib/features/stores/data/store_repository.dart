@@ -99,6 +99,45 @@ class StoreRepository {
     }
   }
 
+  /// Ids of stores that actually have a discounted product right now.
+  ///
+  /// `stores.has_offer` is a merchant-authored banner flag, NOT a record of
+  /// real price cuts, and the two disagree badly: measured live, 422 products
+  /// across 17 stores are discounted, yet 6 of those stores have
+  /// `has_offer = false` — including باشا بيتزريا with 30 discounted pizzas.
+  /// Relying on the flag alone (as this app used to) hid every one of them
+  /// from «عروض وخصومات», which is what the website never did: it derives
+  /// offers from products, because it holds the whole catalog in memory.
+  ///
+  /// Only `store_id/price/old_price` are selected, so even the full result is
+  /// a few hundred tiny rows; it is still paged, because discounts grow.
+  Future<Set<int>> fetchStoreIdsWithDiscountedProducts() async {
+    try {
+      final ids = <int>{};
+      for (var from = 0; ; from += 1000) {
+        final rows = await supabase
+            .from('products')
+            .select('store_id, price, old_price')
+            .eq('available', true)
+            .not('old_price', 'is', null)
+            .range(from, from + 999) as List;
+        for (final r in rows) {
+          final row = Map<String, dynamic>.from(r as Map);
+          final price = (row['price'] as num?)?.toDouble() ?? 0;
+          final oldPrice = (row['old_price'] as num?)?.toDouble();
+          // A real discount only — some rows carry an old_price that is not
+          // actually higher, and the website ignores those too.
+          if (oldPrice != null && oldPrice > price) ids.add(row['store_id'] as int);
+        }
+        if (rows.length < 1000) break;
+      }
+      return ids;
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchStoreIdsWithDiscountedProducts ignored: $e\n$st');
+      return const {}; // fall back to the has_offer flag alone
+    }
+  }
+
   /// Products reachable only through a curated synonym — the dialect/Turkish/
   /// brand aliases the website matches via `product_synonyms`.
   ///
