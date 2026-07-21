@@ -10214,10 +10214,21 @@ function renderWhyDukkanciPage() {
     ["star", "المتاجر يتم تقييمها حسب تجربة العملاء"]
   ];
   const problems = [
-    ["phone", "السؤال عن الأسعار", "تنتقل بين أكثر من محل تسأل عن سعر كل صنف."],
-    ["box", "التأكد من التوفر", "تتأكد إن كان المنتج متوفراً قبل أن تطلبه."],
-    ["eye", "طلب الصور", "تطلب صور المنتجات لتعرف ما الذي ستستلمه فعلاً."],
-    ["clock", "انتظار الردود", "تنتظر رداً قد يتأخر، وتعيد السؤال من جديد."]
+    ["phone", "تنتقل بين أكثر من محل تسأل عن سعر كل صنف."],
+    ["box", "تتأكد إن كان المنتج متوفراً قبل أن تطلبه."],
+    ["eye", "تطلب صور المنتجات لتعرف ما الذي ستستلمه فعلاً."],
+    ["clock", "تنتظر رداً قد يتأخر، وتعيد السؤال من جديد."]
+  ];
+  const goodList = [
+    "منتجات وأسعار ظاهرة أمامك، بلا عمولة إضافية على المنتجات",
+    "أكثر من متجر وفئة في مكان واحد",
+    "تقييمات تساعدك على الاختيار بثقة",
+    "سلة واضحة، ومتابعة عند وجود مشكلة"
+  ];
+  const clarityPoints = [
+    ["سعر المتجر هو ما تدفعه", "دكانجي لا يضيف أي عمولة على أسعار المنتجات؛ السعر الذي تراه هو سعر المتجر."],
+    ["رسوم التوصيل ظاهرة مسبقاً", "تظهر رسوم التوصيل بوضوح قبل أن تؤكد طلبك، بلا مفاجآت."],
+    ["لا رسوم بعد الإرسال", "ما تراه في السلة هو المجموع النهائي — لا رسوم مفاجئة بعد تأكيد الطلب."]
   ];
   const ratingPoints = [
     ["star", "تقييم حسب تجربة العملاء", "ترتيب المتاجر يتأثر بتجارب من طلبوا فعلاً، لا بشكل عشوائي."],
@@ -10242,14 +10253,6 @@ function renderWhyDukkanciPage() {
     ["تنظيم التجربة", "رسائل متفرقة يصعب متابعتها", "طلب منظّم بخطوات واضحة وسلة مرتّبة"],
     ["عند وجود مشكلة", "تتابع وحدك مع المتجر", "دكانجي يساعد في متابعة المشاكل الواضحة حسب الحالة"]
   ];
-  const assurances = [
-    "السعر ظاهر أمامك قبل الطلب.",
-    "المتجر الذي تطلب منه واضح ومعروف.",
-    "المنتجات وتفاصيلها واضحة.",
-    "رسوم التوصيل تظهر قبل التأكيد.",
-    "يمكنك مراجعة السلة قبل الإرسال.",
-    "يمكنك تقييم التجربة بعد الاستلام."
-  ];
   const faqs = [
     ["هل دكانجي يزيد سعر المنتجات؟", "لا. دكانجي لا يضيف عمولة على أسعار المنتجات؛ السعر الذي تراه هو سعر المتجر. أما رسوم التوصيل فتظهر بوضوح قبل تأكيد الطلب."],
     ["هل المتاجر على دكانجي موثوقة؟", "المتاجر يتم تقييمها حسب تجربة العملاء، وتجارب الطلبات السابقة تساعدك على الاختيار. كما يساعد دكانجي في متابعة المشاكل الواضحة مع المتجر حسب الحالة."],
@@ -10257,6 +10260,7 @@ function renderWhyDukkanciPage() {
     ["هل أستطيع الطلب من أكثر من فئة؟", "نعم، يجمع دكانجي مطاعم وسوبرماركت وملاحم وحلويات وقهوة ومكسرات ومتاجر يومية، فتتصفح الفئات التي تناسبك في مكان واحد."],
     ["لماذا أستخدم دكانجي بدل واتساب؟", "لأن دكانجي يعرض المنتجات والأسعار بوضوح، يجمع أكثر من متجر في مكان واحد، يضيف تقييمات تساعدك على الاختيار، وينظّم تجربة الطلب من السلة حتى الاستلام."]
   ];
+  const cats = homeCategoriesOrdered();
   return `
     <div class="why-page">
       <!-- 1) Hero -->
@@ -10264,8 +10268,8 @@ function renderWhyDukkanciPage() {
         <div class="container why-hero__grid">
           <div class="why-hero__content">
             <span class="eyebrow"><span></span> لماذا دكانجي؟</span>
-            <h1>اطلب من المتاجر العربية القريبة منك <em>بثقة</em></h1>
-            <p>دكانجي يجمع لك المطاعم، السوبرماركت، الملاحم، الحلويات، والمتاجر العربية في مكان واحد، لتطلب بسهولة، بسعر واضح، وبدون عمولة إضافية من دكانجي على أسعار المنتجات.</p>
+            <h1>خُذ حاجتك من متجر حيّك، <em class="why-mark">بسعرٍ واضح</em> وبلا عمولة</h1>
+            <p>دكانجي يجمع لك المطاعم، السوبرماركت، الملاحم، الحلويات، والمتاجر العربية في مكان واحد، لتطلب بسهولة، وتعرف السعر ورسوم التوصيل قبل أن تؤكد.</p>
             <div class="why-hero__actions">
               <a class="primary-button large" href="/stores" data-route="stores">${icon("bag")} ابدأ الطلب الآن</a>
               <a class="secondary-button large" href="/stores" data-route="stores">${icon("store")} شاهد المتاجر القريبة منك</a>
@@ -10274,51 +10278,74 @@ function renderWhyDukkanciPage() {
               ${trust.map(([ic, t]) => `<li>${icon(ic)} <span>${t}</span></li>`).join("")}
             </ul>
           </div>
-          <!-- Illustrative Dukkanci order-summary mock: reinforces price clarity -->
-          <div class="why-hero__visual" aria-hidden="true">
-            <div class="why-mock">
+          <!-- Illustrative order-summary card (example numbers, clearly labeled): reinforces price clarity -->
+          <div class="why-hero__visual">
+            <div class="why-mock why-mock--receipt">
+              <span class="why-mock__badge">${icon("check")} السعر الذي تراه = سعر المتجر</span>
               <div class="why-mock__head">
                 <span class="why-mock__avatar">${icon("store")}</span>
-                <div><strong>متجر حيّك</strong><small>${icon("star")} تقييم العملاء</small></div>
+                <div><strong>متجر حيّك</strong><small>مثال توضيحي لملخّص الطلب</small></div>
               </div>
               <div class="why-mock__rows">
-                <div class="why-mock__row"><span>منتجات الطلب</span><b>٢ صنف</b></div>
-                <div class="why-mock__row"><span>سعر المنتجات</span><b>واضح من المتجر</b></div>
-                <div class="why-mock__row"><span>رسوم التوصيل</span><b>تظهر قبل التأكيد</b></div>
-                <div class="why-mock__row"><span>عمولة دكانجي على المنتجات</span><b class="ok">لا توجد</b></div>
+                <div class="why-mock__row"><span>سعر المنتجات</span><b>248٫00 ₺</b></div>
+                <div class="why-mock__row"><span>رسوم التوصيل <i>(ظاهرة مسبقاً)</i></span><b>15٫00 ₺</b></div>
+                <div class="why-mock__row why-mock__row--zero"><span>${icon("check")} عمولة دكانجي على المنتجات</span><b>صِفر</b></div>
               </div>
-              <div class="why-mock__total"><span>الإجمالي قبل التأكيد</span><strong>كل شيء واضح</strong></div>
-              <div class="why-mock__cta">${icon("check")} راجع طلبك قبل الإرسال</div>
+              <div class="why-mock__total"><span>المجموع قبل التأكيد</span><strong>263٫00 ₺</strong></div>
+              <p class="why-mock__foot">لا رسوم مفاجئة بعد الإرسال — تراجع السلة وتؤكّد وأنت مطمئن.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 2) Problem -->
+      <!-- 2) Category strip (static — swipe/scroll only, no auto-motion) -->
+      <nav class="why-catstrip" aria-label="فئات دكانجي">
+        <div class="container why-catstrip__row">
+          ${cats.map(c => `<button class="why-catstrip__pill" data-action="category" data-category="${escAttr(c.name)}">${esc(c.name)}</button>`).join("")}
+        </div>
+      </nav>
+
+      <!-- 3) Problem vs Solution -->
       <section class="section why-block">
         <div class="container">
-          <div class="section-heading centered"><div><span class="section-kicker">قبل دكانجي</span><h2>تعبت من البحث بين المحلات والطلبات على واتساب؟</h2></div></div>
-          <p class="why-lead">دكانجي يختصر عليك فوضى السؤال عن الأسعار والتوفر والصور وانتظار الردود، ويجمع المتاجر القريبة منك بمكان واحد منظّم.</p>
-          <div class="why-grid why-grid--4">
-            ${problems.map(([ic, t, d]) => `<article class="why-card"><span class="why-card__icon">${icon(ic)}</span><strong>${t}</strong><p>${d}</p></article>`).join("")}
+          <div class="section-heading centered"><div><span class="section-kicker">المشكلة</span><h2>تعبت من فوضى الطلب على واتساب؟</h2></div></div>
+          <p class="why-lead">السؤال عن الأسعار، انتظار الردود، صور ناقصة، ولا سجلّ لطلبك. دكانجي يختصر الفوضى ويجمع متاجر حيّك في مكان واحد منظّم.</p>
+          <div class="why-vs">
+            <div class="why-vs__card why-vs__card--bad">
+              <span class="why-vs__tag">الطريقة القديمة</span>
+              <h3>على واتساب مباشرة</h3>
+              <ul>${problems.map(([ic, d]) => `<li>${icon(ic)} <span>${d}</span></li>`).join("")}</ul>
+            </div>
+            <div class="why-vs__mid" aria-hidden="true">${icon("arrowLeft")}</div>
+            <div class="why-vs__card why-vs__card--good">
+              <span class="why-vs__tag">مع دكانجي</span>
+              <h3>تجربة منظّمة</h3>
+              <ul>${goodList.map(t => `<li>${icon("check")} <span>${t}</span></li>`).join("")}</ul>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- 3) Price (emphasized) -->
-      <section class="section why-price">
-        <div class="container">
-          <div class="section-heading centered"><div><span class="section-kicker light">النقطة الأهم</span><h2>الأسعار واضحة… بدون عمولة إضافية من دكانجي على المنتجات</h2></div></div>
-          <div class="why-price__cards">
-            <article class="why-price__card"><span class="why-price__icon">${icon("check")}</span><strong>بدون عمولة على المنتجات</strong><p>دكانجي لا يضيف عمولة على أسعار المنتجات؛ السعر الذي تراه هو سعر المتجر.</p></article>
-            <article class="why-price__card"><span class="why-price__icon">${icon("bike")}</span><strong>التوصيل قبل التأكيد</strong><p>رسوم التوصيل تظهر بوضوح قبل أن تؤكد طلبك.</p></article>
-            <article class="why-price__card"><span class="why-price__icon">${icon("shield")}</span><strong>بلا رسوم مخفية</strong><p>لا توجد رسوم مفاجئة بعد إرسال الطلب.</p></article>
+      <!-- 4) Pricing clarity -->
+      <section class="section why-clarity">
+        <div class="container why-clarity__grid">
+          <div class="why-clarity__copy">
+            <span class="eyebrow">وضوح الأسعار</span>
+            <h2>الأسعار واضحة… <em class="why-mark">بلا عمولة</em> من دكانجي على المنتجات</h2>
+            <div class="why-clarity__list">
+              ${clarityPoints.map(([t, d], i) => `<div class="why-clarity__item"><span class="why-clarity__num">${i + 1}</span><div><strong>${t}</strong><p>${d}</p></div></div>`).join("")}
+            </div>
+          </div>
+          <div class="why-zero" aria-hidden="true">
+            <span class="why-zero__num">٠</span>
+            <strong>عمولة دكانجي على أسعار المنتجات</strong>
+            <p>السعر الذي تراه أمام المنتج هو سعر المتجر نفسه — بلا أي إضافة.</p>
           </div>
         </div>
       </section>
 
-      <!-- 4) Store ratings -->
-      <section class="section why-block">
+      <!-- 5) Store ratings -->
+      <section class="section why-block why-block--soft">
         <div class="container">
           <div class="section-heading centered"><div><span class="section-kicker">ثقة بالمتاجر</span><h2>المتاجر لا تظهر عشوائياً… التجربة يتم تقييمها</h2></div></div>
           <div class="why-grid why-grid--3">
@@ -10327,8 +10354,8 @@ function renderWhyDukkanciPage() {
         </div>
       </section>
 
-      <!-- 5) How it works -->
-      <section class="section why-block why-block--soft">
+      <!-- 6) How it works -->
+      <section class="section why-block">
         <div class="container">
           <div class="section-heading centered"><div><span class="section-kicker">خطوة بخطوة</span><h2>كيف يعمل دكانجي؟</h2></div></div>
           <ol class="why-steps">
@@ -10337,8 +10364,8 @@ function renderWhyDukkanciPage() {
         </div>
       </section>
 
-      <!-- 6) First order without worry -->
-      <section class="section why-block">
+      <!-- 7) First order without worry -->
+      <section class="section why-block why-block--soft">
         <div class="container">
           <div class="why-firstorder">
             <span class="why-firstorder__icon">${icon("shield")}</span>
@@ -10350,8 +10377,8 @@ function renderWhyDukkanciPage() {
         </div>
       </section>
 
-      <!-- 7) Dukkanci vs direct WhatsApp -->
-      <section class="section why-block why-block--soft">
+      <!-- 8) Dukkanci vs direct WhatsApp -->
+      <section class="section why-block">
         <div class="container">
           <div class="section-heading centered"><div><span class="section-kicker">مقارنة</span><h2>لماذا أطلب عبر دكانجي بدل التواصل المباشر مع المتجر؟</h2></div></div>
           <div class="why-compare" role="table" aria-label="مقارنة بين الطلب المباشر عبر واتساب والطلب عبر دكانجي">
@@ -10370,23 +10397,13 @@ function renderWhyDukkanciPage() {
         </div>
       </section>
 
-      <!-- 8) Categories (real, clickable) -->
-      <section class="section why-block">
+      <!-- 9) Categories (real, clickable) -->
+      <section class="section why-block why-block--soft">
         <div class="container">
           <div class="section-heading centered"><div><span class="section-kicker">سوق متكامل</span><h2>كل ما يحتاجه حيّك في مكان واحد</h2></div></div>
           <div class="category-grid why-categories">
-            ${homeCategoriesOrdered().map(c => categoryCard(c.name, c.image, c.caption)).join("")}
+            ${cats.map(c => categoryCard(c.name, c.image, c.caption)).join("")}
           </div>
-        </div>
-      </section>
-
-      <!-- 9) Reassurance checklist -->
-      <section class="section why-block why-block--soft">
-        <div class="container">
-          <div class="section-heading centered"><div><span class="section-kicker">شفافية</span><h2>قبل أن تؤكد طلبك… كل شيء واضح</h2></div></div>
-          <ul class="why-assure">
-            ${assurances.map(a => `<li>${icon("check")} <span>${a}</span></li>`).join("")}
-          </ul>
         </div>
       </section>
 
@@ -10394,7 +10411,7 @@ function renderWhyDukkanciPage() {
       <section class="section why-block">
         <div class="container why-faq">
           <div class="section-heading centered"><div><span class="section-kicker">أسئلة شائعة</span><h2>أسئلة قبل أول طلب</h2></div></div>
-          ${faqs.map(([q, a]) => `<details class="why-faq__item"><summary>${q}</summary><p>${a}</p></details>`).join("")}
+          ${faqs.map(([q, a], i) => `<details class="why-faq__item"${i === 0 ? " open" : ""}><summary><span>${q}</span></summary><p>${a}</p></details>`).join("")}
         </div>
       </section>
 
@@ -10407,6 +10424,7 @@ function renderWhyDukkanciPage() {
             <a class="primary-button large" href="/stores" data-route="stores">${icon("bag")} ابدأ الطلب الآن</a>
             <a class="secondary-button large" href="/stores" data-route="stores">${icon("store")} استعرض المتاجر</a>
           </div>
+          <a class="why-cta__wa" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("مرحباً، عندي سؤال عن دكانجي")}" target="_blank" rel="noopener">${icon("whatsapp")} أو تواصل معنا مباشرة عبر واتساب</a>
         </div>
       </section>
     </div>
