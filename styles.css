@@ -647,11 +647,11 @@ img {
 .coupon-box { margin: 4px 0 12px; }
 .coupon-row { display: flex; gap: 8px; align-items: center; }
 .coupon-row input {
-  flex: 1; min-width: 0; height: 42px; padding: 0 14px;
-  border: 1.5px solid #d4ccc9; border-radius: 10px; background: #fff;
+  flex: 1; min-width: 0; height: 44px; padding: 0 14px;
+  border: 2px solid var(--orange); border-radius: 12px; background: #fff;
   color: var(--ink); outline: 0;
 }
-.coupon-row input:focus { border-color: var(--green-600, #1f9d57); }
+.coupon-row input:focus { border-color: var(--orange-dark); }
 .coupon-row .secondary-button.compact { height: 42px; padding: 0 18px; white-space: nowrap; }
 .coupon-applied {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -4432,6 +4432,37 @@ img {
   text-align: center;
 }
 
+/* Same bug the merchant login card had (see the input:not scoped rule further
+   down): the customer login/signup modal's <input> fields carry no class of
+   their own beyond `.input-label`, which has no base styling anywhere in the
+   sheet, so they rendered as the browser's raw UA-default box. This is the
+   single most-used public form on the site — every customer who signs in or
+   creates an account hits it. */
+.auth-modal .input-label > input,
+.auth-modal .pw-input input,
+.auth-modal select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 15px;
+  border: 2px solid var(--orange);
+  border-radius: 15px;
+  background: #fff;
+  font-size: 14px;
+  outline: 0;
+}
+
+.auth-modal .pw-input input {
+  /* padding-left comes from the shared .pw-input input rule (62px, for the
+     eye-icon chip) — don't reset it back to 15px here. */
+  padding-right: 15px;
+}
+
+.auth-modal .input-label > input:focus,
+.auth-modal .pw-input input:focus,
+.auth-modal select:focus {
+  border-color: var(--orange-dark);
+}
+
 .auth-logo {
   margin: 0 auto 16px;
 }
@@ -4506,7 +4537,10 @@ img {
   transform: translateX(50%);
 }
 
-/* Password field with a show/hide toggle */
+/* Password field with a show/hide toggle. Every consumer of this pair
+   (customer login/signup modal, join-merchant modal, merchant login card) is a
+   public-facing form, so the shared base can carry the orange chip + divider
+   look directly instead of needing a per-form scoped copy. */
 .pw-input {
   position: relative;
   display: flex;
@@ -4515,26 +4549,38 @@ img {
 .pw-input input {
   flex: 1;
   width: 100%;
-  padding-left: 44px;
+  /* !important: this has to win over any more-specific per-form border rule
+     (id-scoped or card-scoped) that sets `padding` as a shorthand, or the eye
+     icon ends up drawn on top of the typed text instead of beside it. */
+  padding-left: 62px !important;
 }
 .pw-toggle {
   position: absolute;
   left: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border: 0;
-  background: transparent;
-  color: var(--muted);
+  background: var(--orange-soft);
+  color: var(--orange);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 12px;
 }
-.pw-toggle:hover { background: rgba(0,0,0,.05); }
-.pw-toggle.is-on { color: var(--red, #e30613); }
-.pw-toggle svg { width: 20px; height: 20px; }
+.pw-toggle::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  margin-right: 9px;
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+}
+.pw-toggle:hover { background: #ffe9c4; }
+.pw-toggle.is-on { color: var(--orange-dark); }
+.pw-toggle svg { width: 19px; height: 19px; }
 
 /* Sign in / sign up switch + forgot-password links */
 .auth-switch {
@@ -4597,9 +4643,9 @@ img {
 }
 
 .phone-input {
-  height: 48px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  height: 50px;
+  border: 2px solid var(--orange);
+  border-radius: 15px;
   display: flex;
   align-items: center;
   /* Numbers always read left-to-right, regardless of page language, so the
@@ -5148,6 +5194,32 @@ p.success-note.order-closed-note {
 
 .account-form .wide {
   grid-column: 1 / -1;
+}
+
+/* `.account-form`/`.modal-form` are shared with internal admin/merchant-dashboard
+   tool forms (banners, categories, coupons, products…), so the plain grey
+   border there is left alone. These three forms are the only ones a regular
+   customer fills in outside the merchant login card, so they're the ones that
+   get the same orange design — scoped by id, not by the shared classes. */
+#customer-profile-form input:not([type="checkbox"]),
+#customer-profile-form select,
+#customer-complaint-form input,
+#customer-complaint-form select,
+#customer-complaint-form textarea,
+#profile-setup-form .form-grid input,
+#profile-setup-form .form-grid select {
+  border: 2px solid var(--orange);
+  border-radius: 15px;
+}
+
+#customer-profile-form input:focus,
+#customer-profile-form select:focus,
+#customer-complaint-form input:focus,
+#customer-complaint-form select:focus,
+#customer-complaint-form textarea:focus,
+#profile-setup-form .form-grid input:focus,
+#profile-setup-form .form-grid select:focus {
+  border-color: var(--orange-dark);
 }
 
 .notification-setting {
@@ -6291,8 +6363,8 @@ p.success-note.order-closed-note {
 }
 
 .join-modal .pw-input input[name="password"] {
-  padding-left: 44px;
-  padding-right: 44px;
+  padding-left: 62px;
+  padding-right: 14px;
 }
 .join-modal .field-hint { margin-top: 7px; }
 
@@ -6321,8 +6393,8 @@ p.success-note.order-closed-note {
 .join-modal .form-grid select {
   min-height: 48px;
   padding: 0 14px;
-  border: 1.5px solid rgba(35, 31, 32, 0.13);
-  border-radius: 12px;
+  border: 2px solid var(--orange);
+  border-radius: 15px;
   font-size: 14px;
   font-family: inherit;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -6330,14 +6402,14 @@ p.success-note.order-closed-note {
 
 .join-modal .form-grid input:hover,
 .join-modal .form-grid select:hover {
-  border-color: rgba(35, 31, 32, 0.22);
+  border-color: var(--orange-dark);
 }
 
 .join-modal .form-grid input:focus,
 .join-modal .form-grid select:focus {
   outline: 0;
-  border-color: var(--green-800);
-  box-shadow: 0 0 0 4px rgba(227, 6, 19, 0.08);
+  border-color: var(--orange-dark);
+  box-shadow: 0 0 0 4px rgba(242, 162, 58, 0.16);
 }
 
 .join-modal .form-grid select {
@@ -7771,24 +7843,23 @@ tr:last-child td {
   border-color: var(--orange-dark);
 }
 
-/* Decorative leading icon chip — phone icon on the username field, mirrors the
-   existing show/hide eye button on the password field so both look the same. */
-.merchant-auth__card .field-icon {
+/* Decorative leading icon chip — phone icon on phone/username fields, matching
+   the eye-toggle button on password fields (.pw-toggle, styled globally below).
+   Shared unscoped component: used across every public form this design now
+   covers (merchant login, the pre-cart "أكمل بياناتك" gate, account profile),
+   not just the merchant login card it first shipped on. */
+.field-icon {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.merchant-auth__card .field-icon input {
-  padding-left: 62px;
+.field-icon input {
+  /* !important for the same reason as .pw-input input above. */
+  padding-left: 62px !important;
 }
 
-.merchant-auth__card .pw-input input {
-  padding-left: 62px;
-}
-
-.merchant-auth__card .field-icon__box,
-.merchant-auth__card .pw-toggle {
+.field-icon__box {
   position: absolute;
   left: 6px;
   top: 50%;
@@ -7803,8 +7874,7 @@ tr:last-child td {
   border: 0;
 }
 
-.merchant-auth__card .field-icon__box::before,
-.merchant-auth__card .pw-toggle::before {
+.field-icon__box::before {
   content: "";
   position: absolute;
   right: 100%;
@@ -7814,18 +7884,9 @@ tr:last-child td {
   background: var(--line);
 }
 
-.merchant-auth__card .field-icon__box .icon,
-.merchant-auth__card .pw-toggle .icon {
+.field-icon__box .icon {
   width: 19px;
   height: 19px;
-}
-
-.merchant-auth__card .pw-toggle:hover {
-  background: #ffe9c4;
-}
-
-.merchant-auth__card .pw-toggle.is-on {
-  color: var(--orange-dark);
 }
 
 .merchant-auth__card .primary-button,
@@ -12089,12 +12150,12 @@ tbody tr:hover {
 .addr2-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .addr2-row2:last-child { margin-bottom: 0; }
 .addr2 input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
-  width: 100%; padding: 12px 13px; border-radius: var(--radius-sm);
-  border: 1.5px solid var(--line); background: var(--cream);
+  width: 100%; padding: 12px 13px; border-radius: 15px;
+  border: 2px solid var(--orange); background: var(--cream);
   font-family: var(--font-body); font-size: 14px; font-weight: 700; color: var(--ink); outline: none; transition: 0.15s;
 }
 .addr2 input::placeholder { color: var(--muted); font-weight: 700; }
-.addr2 input:focus { border-color: var(--green-800); background: #fff; }
+.addr2 input:focus { border-color: var(--orange-dark); background: #fff; }
 .addr2 .addr2-field-full { margin-bottom: 10px; }
 .addr2-optional { position: relative; margin-bottom: 10px; }
 .addr2-optional > span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--muted); pointer-events: none; background: var(--cream); padding: 0 4px; }

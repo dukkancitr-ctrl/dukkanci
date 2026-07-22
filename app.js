@@ -4405,7 +4405,7 @@ function renderCustomerProfile() {
       <div class="account-card__heading"><span class="account-card__icon">${icon("user")}</span><div><h2>البيانات الشخصية</h2><p>تُستخدم هذه البيانات لتأكيد الطلبات والتواصل معك.</p></div></div>
       <form id="customer-profile-form" class="account-form">
         <label><span>الاسم الكامل</span><input name="name" value="${profile.name}" required></label>
-        <label><span>رقم واتساب</span><input name="phone" value="${profile.phone}" dir="ltr" required></label>
+        <label><span>رقم واتساب</span><div class="field-icon"><input name="phone" value="${profile.phone}" dir="ltr" required><span class="field-icon__box">${icon("phone")}</span></div></label>
         <label class="wide"><span>البريد الإلكتروني</span><input name="email" type="email" value="${profile.email}" dir="ltr" required></label>
         <label class="notification-setting wide"><input name="notifications" type="checkbox" ${profile.notifications ? "checked" : ""}><span></span><div><strong>إشعارات حالة الطلب</strong><small>استلام تحديثات الطلبات والعروض المهمة.</small></div></label>
         <div class="account-form__actions wide"><button type="reset" class="secondary-button">إلغاء التغييرات</button><button type="submit" class="primary-button">${icon("check")} حفظ البيانات</button></div>
@@ -12347,7 +12347,7 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes, addons) {
     <form id="profile-setup-form" class="modal-form" data-pid="${pendingProductId || ""}" data-qty="${qty || 1}" data-opts="${escAttr(JSON.stringify(opts || []))}" data-notes="${escAttr(notes || "")}" data-addons="${escAttr(JSON.stringify(addons || []))}">
       <div class="form-grid">
         <label><span>الاسم الكامل <i class="req">*</i></span><input name="name" required value="${escAttr(p.name || "")}" placeholder="الاسم الكامل"></label>
-        <label><span>رقم الواتساب <i class="req">*</i></span><input name="phone" type="tel" inputmode="tel" required dir="ltr" value="${escAttr(p.phone || "")}" placeholder="+90 555 000 00 00"></label>
+        <label><span>رقم الواتساب <i class="req">*</i></span><div class="field-icon"><input name="phone" type="tel" inputmode="tel" required dir="ltr" value="${escAttr(p.phone || "")}" placeholder="+90 555 000 00 00"><span class="field-icon__box">${icon("phone")}</span></div></label>
       </div>
       ${zoneBlock}
       <div id="zone-address-fields" class="addr2" ${isZone ? "" : 'style="display:none"'}>
