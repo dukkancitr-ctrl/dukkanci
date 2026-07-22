@@ -7730,8 +7730,10 @@ tr:last-child td {
 
 .merchant-auth__card > p {
   color: var(--muted);
-  font-size: 13px;
-  margin-bottom: 18px;
+  font-weight: 500;
+  font-size: 13.5px;
+  line-height: 1.75;
+  margin-bottom: 20px;
 }
 
 .merchant-auth__card .input-label {
@@ -7831,6 +7833,237 @@ tr:last-child td {
 .merchant-auth__demo .text-button {
   margin-top: 6px;
   align-self: center;
+}
+
+/* /merchant auth screens — brand panel + card, split layout. See merchantAuthShell()
+   in app.js. Route hides the site header/footer (.dashboard-view), so this is the
+   only visual context a merchant gets before logging in. */
+@keyframes merchantFadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes merchantCardIn {
+  from { opacity: 0; transform: translateY(18px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes merchantFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-14px, 18px) scale(1.06); }
+}
+
+@keyframes merchantSpin {
+  to { transform: rotate(360deg); }
+}
+
+.merchant-portal {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) 1fr;
+  background: var(--cream);
+}
+
+.merchant-portal .merchant-auth {
+  min-height: 100vh;
+}
+
+.merchant-portal__aside {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 48px 34px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(242, 162, 58, 0.28), transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(227, 6, 19, 0.35), transparent 40%),
+    linear-gradient(165deg, var(--green-950), var(--green-900) 60%, #33090d);
+  color: #fff;
+}
+
+.merchant-portal__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(46px);
+  pointer-events: none;
+  animation: merchantFloat 10s ease-in-out infinite;
+}
+
+.merchant-portal__blob--1 {
+  width: 220px;
+  height: 220px;
+  top: -60px;
+  inset-inline-start: -60px;
+  background: rgba(242, 162, 58, 0.35);
+}
+
+.merchant-portal__blob--2 {
+  width: 260px;
+  height: 260px;
+  bottom: -90px;
+  inset-inline-end: -80px;
+  background: rgba(227, 6, 19, 0.3);
+  animation-delay: -4s;
+  animation-duration: 13s;
+}
+
+.merchant-portal__aside-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  animation: merchantFadeUp .6s ease both;
+}
+
+.merchant-portal__mark {
+  width: 58px;
+  height: 58px;
+  padding: 3px;
+  border-radius: 18px;
+  background: #fff8f4;
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  margin-bottom: 18px;
+}
+
+.merchant-portal__mark img {
+  filter: none;
+}
+
+.merchant-portal__aside-inner h1 {
+  font-size: 26px;
+  margin: 0 0 10px;
+  color: #fff;
+}
+
+.merchant-portal__lead {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 0 0 20px;
+  max-width: 320px;
+}
+
+.merchant-portal__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 30px;
+  animation: merchantFadeUp .6s ease .1s both;
+}
+
+.merchant-portal__stat .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--orange);
+}
+
+.merchant-portal__stat strong {
+  color: var(--orange);
+  font-weight: 800;
+}
+
+.merchant-portal__points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.merchant-portal__points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  animation: merchantFadeUp .55s ease both;
+  animation-delay: calc(var(--i) * 0.09s + .18s);
+}
+
+.merchant-portal__point-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--orange);
+  transition: transform .25s, background .25s;
+}
+
+.merchant-portal__points li:hover .merchant-portal__point-icon {
+  transform: translateY(-2px) scale(1.05);
+  background: rgba(242, 162, 58, 0.22);
+}
+
+.merchant-portal__point-icon .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.merchant-portal__points li strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.merchant-portal__points li span {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.merchant-portal .merchant-auth__card {
+  animation: merchantCardIn .6s cubic-bezier(.2, .82, .32, 1) .05s both;
+}
+
+.merchant-auth__spinner {
+  width: 30px;
+  height: 30px;
+  margin: 18px auto 2px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--green-800);
+  animation: merchantSpin .8s linear infinite;
+}
+
+@media (max-width: 900px) {
+  .merchant-portal {
+    grid-template-columns: 1fr;
+  }
+  .merchant-portal .merchant-auth {
+    min-height: auto;
+  }
+  .merchant-portal__aside {
+    padding: 30px 22px 26px;
+  }
+  .merchant-portal__aside-inner h1 {
+    font-size: 22px;
+  }
+  .merchant-portal__lead {
+    max-width: none;
+    margin-bottom: 16px;
+  }
+  .merchant-portal__stat {
+    margin-bottom: 0;
+  }
+  .merchant-portal__points {
+    display: none;
+  }
 }
 
 .toggle {
