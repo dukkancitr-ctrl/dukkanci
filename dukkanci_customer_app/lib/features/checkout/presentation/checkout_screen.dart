@@ -52,6 +52,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   bool _awaitingOtp = false;
   String? _orderId;
   String? _error;
+  // Carries the picked address's structured Turkish fields + lat/lng forward
+  // to the order snapshot (spec §11) — the two text controllers above stay
+  // editable free text (customer can still tweak them at checkout time),
+  // this is the authoritative structured copy.
+  SavedAddress? _selectedAddress;
 
   @override
   void initState() {
@@ -67,8 +72,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   void _applyAddress(SavedAddress address) {
-    _addressController.text = address.addressText;
-    _addressDetailsController.text = address.addressDetails;
+    _selectedAddress = address;
+    _addressController.text = address.formattedAddress;
+    _addressDetailsController.text = address.detailsLine;
     if (address.recipientName.isNotEmpty) _nameController.text = address.recipientName;
     if (address.recipientPhone.isNotEmpty) _phoneController.text = address.recipientPhone;
   }
@@ -171,6 +177,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (_notesController.text.trim().isNotEmpty) _notesController.text.trim(),
       if (!_isPickup && _leaveAtDoor) 'يرجى ترك الطلب عند الباب دون الحاجة لمقابلتي',
     ];
+    final addressDetails = _addressDetailsController.text.trim();
+    final selected = _selectedAddress;
     final draft = OrderDraft(
       id: _orderId!,
       storeId: cart.storeId!,
@@ -180,7 +188,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       contactPhone: phone,
       isPickup: _isPickup,
       addressText: _addressController.text.trim(),
-      addressDetails: _addressDetailsController.text.trim(),
+      addressDetails: addressDetails,
+      structuredAddress: selected?.toJson(),
+      fullAddressTr: selected?.fullAddressTr ?? '',
       paymentMethod: _paymentMethod,
       notes: noteParts.isEmpty ? null : noteParts.join(' — '),
       createdAt: DateTime.now(),
@@ -283,6 +293,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         TextField(
                           controller: _addressDetailsController,
                           decoration: const InputDecoration(labelText: AppStrings.addressDetailsLabel, hintText: AppStrings.addressDetailsHint),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Row(
+                          children: [
+                            Icon(Icons.place_rounded, size: 16, color: (_selectedAddress?.hasLocation ?? false) ? AppColors.green800 : AppColors.muted),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                (_selectedAddress?.hasLocation ?? false) ? AppStrings.addrLocationReady : AppStrings.addrLocationMissing,
+                                style: AppTextStyles.caption.copyWith(color: (_selectedAddress?.hasLocation ?? false) ? AppColors.green800 : AppColors.muted),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: AppSpacing.md),
                         _LeaveAtDoorRow(value: _leaveAtDoor, onChanged: (v) => setState(() => _leaveAtDoor = v)),
@@ -629,7 +652,7 @@ class _SavedAddressSheet extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     leading: const CircleAvatar(radius: 18, backgroundColor: AppColors.green50, child: Icon(Icons.location_on_rounded, color: AppColors.green800, size: 18)),
                     title: Text(a.label.isEmpty ? AppStrings.myAddresses : a.label, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
-                    subtitle: Text(a.addressText, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.bodyMuted),
+                    subtitle: Text(a.formattedAddress, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.bodyMuted),
                     onTap: () => Navigator.of(context).pop(a),
                   );
                 },

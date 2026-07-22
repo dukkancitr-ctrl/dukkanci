@@ -12161,9 +12161,59 @@ tbody tr:hover {
 .addr2-optional > span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--muted); pointer-events: none; background: var(--cream); padding: 0 4px; }
 .address-card-phone { direction: ltr; display: inline-block; color: var(--muted); }
 
+/* — Turkish administrative address form: İl/İlçe/Mahalle searchable combos — */
+.trf-map-hint { font-size: 11.5px; color: var(--muted); margin: -4px 0 12px; display: flex; align-items: center; gap: 5px; }
+.trf-map-hint .icon { width: 13px; height: 13px; flex-shrink: 0; }
+.trf-combo { position: relative; margin-bottom: 10px; }
+.trf-combo-label { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
+.trf-combo-input-wrap {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  border: 2px solid var(--orange); border-radius: 15px; background: var(--cream);
+  padding: 11px 13px; transition: 0.15s;
+}
+.trf-combo-input-wrap:focus-within { border-color: var(--orange-dark); background: #fff; }
+.trf-combo-input-wrap > .icon { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+.trf-combo-input { border: none; background: transparent; outline: none; flex: 1; min-width: 0; font-family: var(--font-body); font-size: 14px; font-weight: 700; color: var(--ink); }
+.trf-combo-input::placeholder { color: var(--muted); font-weight: 700; }
+.trf-combo.is-disabled .trf-combo-input-wrap { opacity: 0.55; }
+.trf-combo-results {
+  position: absolute; top: calc(100% + 6px); right: 0; left: 0; z-index: 65;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md); overflow-y: auto; max-height: 220px;
+}
+.trf-combo-results button {
+  display: block; width: 100%; text-align: right; background: none; border: none;
+  border-bottom: 1px solid var(--line); padding: 10px 14px;
+  font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer;
+}
+.trf-combo-results button:last-child { border-bottom: none; }
+.trf-combo-results button:hover:not([disabled]) { background: var(--green-50); }
+.trf-combo-results button[disabled] { color: var(--muted); cursor: default; }
+.trf-combo-results button.trf-manual-opt { color: var(--green-800); display: flex; align-items: center; gap: 6px; }
+.trf-manual-neighborhood { margin-bottom: 10px; padding: 10px; border: 1.5px dashed var(--line); border-radius: var(--radius-sm); }
+.trf-manual-neighborhood input { margin-bottom: 6px; }
+.trf-manual-neighborhood small { color: var(--muted); font-size: 11px; line-height: 1.5; display: block; }
+.trf-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.trf-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.addr2 select,
+.addr2 textarea {
+  width: 100%; padding: 12px 13px; border-radius: 15px;
+  border: 2px solid var(--orange); background: var(--cream);
+  font-family: var(--font-body); font-size: 14px; font-weight: 700; color: var(--ink); outline: none; transition: 0.15s;
+}
+.addr2 select:focus, .addr2 textarea:focus { border-color: var(--orange-dark); background: #fff; }
+.addr2 textarea.trf-note { min-height: 64px; resize: vertical; font-weight: 500; margin-bottom: 10px; }
+.trf-checkbox-row {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink);
+  margin: -2px 0 10px; cursor: pointer; direction: ltr; justify-content: flex-end;
+}
+.trf-checkbox-row input { width: auto; }
+
 @media (max-width: 640px) {
   .addr2-map-wrap { height: 190px; }
   .addr2-row3 { gap: 8px; }
+  .trf-row3 { grid-template-columns: 1fr 1fr; }
+  .trf-row3 input:last-child { grid-column: span 2; }
 }
 
 /* ── "استهداف فيسبوك" — Facebook ads geo-targeting tool ── */

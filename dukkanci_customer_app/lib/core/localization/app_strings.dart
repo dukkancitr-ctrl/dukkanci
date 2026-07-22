@@ -202,6 +202,46 @@ class AppStrings {
   static const useSavedAddress = 'استخدام عنوان محفوظ';
   static const savedAddressSheetTitle = 'اختر عنوان التوصيل';
   static const manageAddresses = 'إدارة العناوين';
+  // نموذج العنوان المهيكل (نفس حقول الموقع) + رابط خرائط Google
+  static const addrSectionLocation = 'İl / İlçe / Mahalle';
+  static const addrSectionRoad = 'Cadde / Sokak';
+  static const addrSectionUnit = 'تفاصيل رقم الوحدة';
+  static const addrSectionContact = 'معلومات التواصل';
+  static const addrProvinceLabel = 'İl *';
+  static const addrProvinceHint = 'İl seçin';
+  static const addrDistrictLabel = 'İlçe *';
+  static const addrDistrictHintDisabled = 'Önce İl seçin';
+  static const addrDistrictHint = 'İlçe seçin';
+  static const addrNeighborhoodLabel = 'Mahalle / Köy *';
+  static const addrNeighborhoodHintDisabled = 'Önce İlçe seçin';
+  static const addrNeighborhoodHint = 'Mahalle / Köy seçin';
+  static const addrNeighborhoodManualOption = 'Listede yok — yazayım';
+  static const addrNeighborhoodManualHint = 'Mahalle veya köy adını yazın';
+  static const addrNeighborhoodManualNote = 'سيُراجَع هذا الاسم لاحقاً من فريق دكانجي لإضافته للقائمة الرسمية.';
+  static const addrRoadNameHint = 'Cadde / Sokak Adı';
+  static const addrSiteNameHint = 'Site Adı (اختياري)';
+  static const addrBuildingNameHint = 'Bina / Apartman Adı (اختياري)';
+  static const addrBlockHint = 'Blok (اختياري، مثال: B أو 4A)';
+  static const addrExternalDoorHint = 'Dış Kapı No *';
+  static const addrInternalDoorHint = 'İç Kapı No';
+  static const addrNoInternalDoor = 'İç Kapı Numarası Yok';
+  static const addrFloorHint = 'Kat';
+  static const addrPostalCodeHint = 'Posta Kodu (اختياري)';
+  static const addrNoteLabel = 'وصف إضافي للعنوان';
+  static const addrNoteHint = 'Adres Tarifi — وصف إضافي يساعد المندوب على الوصول';
+  static const addrMapHint = 'Lütfen konumu bina girişine yerleştirin';
+  static const addrLocationReady = 'الموقع محدَّد على الخريطة';
+  static const addrLocationMissing = 'يلزم تحديد الموقع على الخريطة لحساب التوصيل';
+  // Validation — Turkish literals per the address spec (§14), the only
+  // Turkish-language user-facing strings in an otherwise-Arabic app: they're
+  // specific to this form, matching the spec's requested exact text.
+  static const addrErrProvince = 'Lütfen il seçin.';
+  static const addrErrDistrict = 'Lütfen ilçe seçin.';
+  static const addrErrNeighborhood = 'Lütfen mahalle veya köy seçin.';
+  static const addrErrRoad = 'Lütfen cadde veya sokak adını yazın.';
+  static const addrErrExternalDoor = 'Lütfen dış kapı numarasını girin.';
+  static const addrErrInternalDoor = 'Lütfen iç kapı numarasını girin veya numara olmadığını belirtin.';
+  static const addrErrLocation = 'Lütfen bina girişini haritada işaretleyin.';
 
   // طلباتي
   static const reorderCta = 'اطلب مرة أخرى';

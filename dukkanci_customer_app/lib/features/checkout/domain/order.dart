@@ -47,6 +47,13 @@ class OrderDraft {
   final bool isPickup;
   final String addressText;
   final String addressDetails;
+  // Additive Turkish-address snapshot (order_addresses spec §11): freezes the
+  // structured İl/İlçe/Mahalle + road/building/door-number fields and the
+  // full assembled Turkish text at order time, so a later edit to the saved
+  // address never changes an old order's record. Purely additive — the two
+  // string fields above are unchanged, matching app.js's newOrder object.
+  final Map<String, dynamic>? structuredAddress;
+  final String fullAddressTr;
   final PaymentMethod paymentMethod;
   final String? notes;
   final DateTime createdAt;
@@ -61,6 +68,8 @@ class OrderDraft {
     this.isPickup = false,
     this.addressText = '',
     this.addressDetails = '',
+    this.structuredAddress,
+    this.fullAddressTr = '',
     required this.paymentMethod,
     this.notes,
     required this.createdAt,
@@ -97,6 +106,8 @@ class OrderDraft {
         'time': 'الآن',
         'items': items.length,
         'addressDetails': isPickup ? '' : addressDetails,
+        'structuredAddress': isPickup ? null : structuredAddress,
+        'fullAddressTr': isPickup ? '' : fullAddressTr,
         'notes': notes ?? '',
         'substitution': '',
         'scheduleDay': '',
@@ -123,6 +134,8 @@ class OrderDraft {
           'fulfillment': isPickup ? 'pickup' : 'delivery',
           'address': isPickup ? '' : addressText,
           'addressDetails': isPickup ? '' : addressDetails,
+          'structuredAddress': isPickup ? null : structuredAddress,
+          'fullAddressTr': isPickup ? '' : fullAddressTr,
           'lineItems': lineItemsJson,
           'notes': notes ?? '',
           'substitution': '',

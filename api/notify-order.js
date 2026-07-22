@@ -1810,6 +1810,7 @@ module.exports = async (req, res) => {
         delivery_details: {
           quote: deliveryMeta, phone: customerPhone, phoneKey: customerPhone.replace(/\D/g, ""),
           fulfillment, address: String(body.address || "").slice(0, 300), addressDetails: String(body.addressDetails || "").slice(0, 300),
+          structuredAddress: body.structuredAddress || null, fullAddressTr: String(body.fullAddressTr || "").slice(0, 600),
           lineItems, notes: String(body.notes || "").slice(0, 500), substitution: String(body.substitution || "").slice(0, 200),
           payment: String(body.payment || "نقداً عند التسليم").slice(0, 60),
           scheduleDay: String(body.scheduleDay || "").slice(0, 40), scheduleTime: String(body.scheduleTime || "").slice(0, 40),
@@ -2946,6 +2947,11 @@ module.exports = async (req, res) => {
         fulfillment: order.fulfillment || "delivery",
         address: order.address || "",
         addressDetails: b.addressDetails || "",
+        // Additive Turkish-address snapshot — see app.js pushOrderCloud comment.
+        // Passthrough only, never required: legacy clients omitting these fields
+        // still save exactly as before.
+        structuredAddress: b.structuredAddress || null,
+        fullAddressTr: b.fullAddressTr || "",
         lineItems: order.lineItems || [],
         notes: b.notes || "",
         substitution: b.substitution || "",

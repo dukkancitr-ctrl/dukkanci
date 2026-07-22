@@ -1071,6 +1071,8 @@ function pushOrderCloud(order, opts = {}) {
       fulfillment: order.fulfillment || "delivery",
       address: order.address || "",
       addressDetails: order.addressDetails || "",
+      structuredAddress: order.structuredAddress || null,
+      fullAddressTr: order.fullAddressTr || "",
       lineItems: order.lineItems || [],
       notes: order.notes || "",
       substitution: order.substitution || "",
@@ -1144,7 +1146,9 @@ function notifyOrderWhatsapp(order) {
         fulfillment: order.fulfillment, address: order.address,
         payment: order.payment, lineItems: order.lineItems,
         status: order.status, time: order.time, items: order.items,
-        addressDetails: order.addressDetails, notes: order.notes,
+        addressDetails: order.addressDetails,
+        structuredAddress: order.structuredAddress, fullAddressTr: order.fullAddressTr,
+        notes: order.notes,
         substitution: order.substitution, scheduleDay: order.scheduleDay,
         scheduleTime: order.scheduleTime, closedWhenOrdered: order.closedWhenOrdered,
         createdAt: order.createdAt, deliveryQuote: order.deliveryDetails,
@@ -4420,8 +4424,8 @@ function renderCustomerAddresses() {
     <div class="address-grid">
       ${state.customerAddresses.map(address => `
         <article class="address-card ${address.isDefault ? "default" : ""}">
-          <div class="address-card__top"><span class="address-icon">${icon(address.label === "العمل" ? "store" : "home")}</span><div><strong>${address.label}</strong>${address.isDefault ? '<small>العنوان الافتراضي</small>' : ""}</div></div>
-          <p>${address.address}</p><small>${address.details}</small>
+          <div class="address-card__top"><span class="address-icon">${icon(address.label === "العمل" ? "store" : "home")}</span><div><strong>${escAttr(address.label)}</strong>${address.isDefault ? '<small>العنوان الافتراضي</small>' : ""}</div></div>
+          <p style="white-space:pre-line">${escAttr(address.fullAddressTr || [address.address, address.details].filter(Boolean).join("\n"))}</p>
           ${address.contactPhone ? `<small class="address-card-phone" dir="ltr">${escAttr(address.contactPhone)}</small>` : ""}
           <span class="address-location-status ${address.lat && address.lng ? "ready" : ""}">${icon("pin")} ${address.lat && address.lng ? "الموقع محدد لحساب التوصيل" : "يلزم تحديد الموقع لحساب المسافة"}</span>
           <div class="address-card__actions">
@@ -11646,6 +11650,166 @@ function reorderCustomerOrder(orderId) {
   `, "confirm-modal");
 }
 
+// ─────────── Turkish administrative address system (İl / İlçe / Mahalle-Köy) ───────────
+// tr_provinces/tr_districts/tr_neighborhoods are public read-only reference
+// tables (official TÜİK/İçişleri Bakanlığı names, see migrations/20260722_
+// turkish_address_system.sql). Every province/district/neighborhood value
+// shown or stored here is the REAL Turkish name — never translated to
+// Arabic — even though the surrounding form labels stay Arabic like the
+// rest of the site's UI.
+const ROAD_TYPES = ["Cadde", "Sokak", "Bulvar", "Meydan", "Yol", "Küme Evleri", "Mevki", "Diğer"];
+const ROAD_TYPE_SUFFIX = { "Cadde": "Caddesi", "Sokak": "Sokağı", "Bulvar": "Bulvarı", "Meydan": "Meydanı", "Yol": "Yolu", "Küme Evleri": "Küme Evleri", "Mevki": "Mevkii", "Diğer": "" };
+
+function normTrSearch(s) {
+  return String(s || "")
+    .replace(/İ/g, "I").replace(/ı/g, "i")
+    .replace(/Ş/g, "S").replace(/ş/g, "s")
+    .replace(/Ğ/g, "G").replace(/ğ/g, "g")
+    .replace(/Ü/g, "U").replace(/ü/g, "u")
+    .replace(/Ö/g, "O").replace(/ö/g, "o")
+    .replace(/Ç/g, "C").replace(/ç/g, "c")
+    .toUpperCase().trim();
+}
+
+// "Cadde"+"Atatürk" → "Atatürk Caddesi"; guards against double-suffixing when
+// the customer already typed the suffix (or a fully custom "Diğer" string).
+function composeRoadText(roadType, roadName) {
+  const name = (roadName || "").trim();
+  if (!name) return "";
+  const suffix = ROAD_TYPE_SUFFIX[roadType];
+  if (!suffix) return name;
+  const lower = name.toLowerCase();
+  if (lower.endsWith(suffix.toLowerCase()) || lower.endsWith(String(roadType).toLowerCase())) return name;
+  return `${name} ${suffix}`;
+}
+
+// Assembles the final Turkish-only address (spec: İl §7) — the single source
+// of truth for display everywhere (checkout, account, order snapshot).
+// Missing fields are dropped cleanly, never left as stray commas/spaces.
+function composeFullAddressTr(s) {
+  if (!s) return "";
+  const line1 = [s.neighborhoodName, composeRoadText(s.roadType, s.roadName)].filter(Boolean).join(", ");
+  const line2 = [s.siteName, s.buildingName, s.block ? `${s.block} Blok` : ""].filter(Boolean).join(", ");
+  const line3 = [
+    s.externalDoorNo ? `Dış Kapı No: ${s.externalDoorNo}` : "",
+    (s.hasInternalDoor !== false && s.internalDoorNo) ? `İç Kapı No: ${s.internalDoorNo}` : "",
+    s.floor ? `Kat: ${s.floor}` : ""
+  ].filter(Boolean).join(", ");
+  const line4 = [[s.districtName, s.provinceName].filter(Boolean).join(" / "), s.postalCode].filter(Boolean).join(", ");
+  return [line1, line2, line3, line4].filter(Boolean).join(",\n");
+}
+
+const trLocationCache = { provinces: null, districtsByProvince: new Map(), neighborhoodsByDistrict: new Map() };
+
+async function fetchTrProvinces() {
+  // Cache only a SUCCESSFUL fetch — caching an error/empty result here would
+  // permanently lock the combo to "no results" for the rest of the page's
+  // life (`[]` is truthy, so a naive `if (cache)` guard treats one transient
+  // failure, e.g. supabaseClient not ready yet, as "already fetched forever").
+  if (trLocationCache.provinces) return trLocationCache.provinces;
+  const sb = window.supabaseClient;
+  if (!sb) return [];
+  try {
+    const { data, error } = await sb.from("tr_provinces").select("id,name_tr,search_name").order("name_tr");
+    if (error) return [];
+    trLocationCache.provinces = data || [];
+  } catch (e) { return []; }
+  return trLocationCache.provinces;
+}
+async function fetchTrDistricts(provinceId) {
+  if (!provinceId) return [];
+  if (trLocationCache.districtsByProvince.has(provinceId)) return trLocationCache.districtsByProvince.get(provinceId);
+  const sb = window.supabaseClient;
+  if (!sb) return [];
+  let rows;
+  try {
+    const { data, error } = await sb.from("tr_districts").select("id,name_tr,search_name").eq("province_id", provinceId).order("name_tr");
+    if (error) return [];
+    rows = data || [];
+  } catch (e) { return []; }
+  trLocationCache.districtsByProvince.set(provinceId, rows);
+  return rows;
+}
+async function fetchTrNeighborhoods(districtId) {
+  if (!districtId) return [];
+  if (trLocationCache.neighborhoodsByDistrict.has(districtId)) return trLocationCache.neighborhoodsByDistrict.get(districtId);
+  const sb = window.supabaseClient;
+  if (!sb) return [];
+  let rows;
+  try {
+    const { data, error } = await sb.from("tr_neighborhoods").select("id,name_tr,search_name,settlement_type").eq("district_id", districtId).order("name_tr");
+    if (error) return [];
+    rows = data || [];
+  } catch (e) { return []; }
+  trLocationCache.neighborhoodsByDistrict.set(districtId, rows);
+  return rows;
+}
+
+// Best-effort match of a free-text Google reverse-geocode name against our
+// reference table, to auto-select the combos from a dropped map pin — never
+// blocks: returns null when nothing matches confidently, leaving the combos
+// for the customer to pick manually (spec §6 flow still works either way).
+function matchTrRow(rows, name) {
+  if (!name || !rows.length) return null;
+  const q = normTrSearch(name);
+  return rows.find(r => r.search_name === q)
+    || rows.find(r => r.search_name.startsWith(q) || q.startsWith(r.search_name))
+    || null;
+}
+
+// Renders one searchable "combo" field: a text input that shows a live,
+// Turkish-accent-insensitive filtered dropdown of options below it. Reused
+// for İl / İlçe / Mahalle-Köy so a customer typing plain "Basaksehir" on a
+// keyboard with no Turkish keys still finds "Başakşehir" (spec §12).
+function trComboHTML(id, label, placeholder, value, disabled) {
+  return `
+    <div class="trf-combo${disabled ? " is-disabled" : ""}" id="${id}-wrap">
+      <label class="trf-combo-label">${label}</label>
+      <div class="trf-combo-input-wrap">
+        ${icon("search")}
+        <input type="text" id="${id}-input" class="trf-combo-input" placeholder="${escAttr(placeholder)}" value="${escAttr(value || "")}" autocomplete="off" ${disabled ? "disabled" : ""}>
+      </div>
+      <div class="trf-combo-results" id="${id}-results" hidden></div>
+    </div>`;
+}
+
+// Wires a combo rendered by trComboHTML(): lazy-loads its option rows once
+// (getRows), then filters them client-side on every keystroke. `allowManual`
+// adds a "Listede yok" row at the end (used only for the Mahalle/Köy combo).
+function wireTrCombo(id, { getRows, onPick, allowManual }) {
+  const input = document.getElementById(`${id}-input`);
+  const results = document.getElementById(`${id}-results`);
+  if (!input || !results) return;
+  let allRows = null;
+  const renderList = () => {
+    const q = normTrSearch(input.value);
+    const filtered = q ? allRows.filter(r => r.search_name.includes(q)) : allRows;
+    const shown = filtered.slice(0, 80);
+    const rowsHtml = shown.map(r => `<button type="button" data-id="${r.id}" data-name="${escAttr(r.name_tr)}" data-settlement="${escAttr(r.settlement_type || "")}">${escAttr(r.name_tr)}</button>`).join("");
+    const manualBtn = allowManual ? `<button type="button" class="trf-manual-opt" data-manual="1">${icon("plus")} Listede yok — yazayım</button>` : "";
+    results.innerHTML = rowsHtml
+      ? (rowsHtml + manualBtn)
+      : (`<button type="button" disabled>Sonuç bulunamadı</button>` + manualBtn);
+    results.hidden = false;
+  };
+  const openList = async () => {
+    if (allRows === null) allRows = await getRows();
+    renderList();
+  };
+  input.addEventListener("focus", openList);
+  input.addEventListener("input", () => { if (allRows !== null) renderList(); else openList(); });
+  input.addEventListener("blur", () => setTimeout(() => { if (results) results.hidden = true; }, 180));
+  results.addEventListener("mousedown", e => e.preventDefault()); // keep input focus so the click registers before blur hides the list
+  results.addEventListener("click", e => {
+    if (e.target.closest("[data-manual]")) { results.hidden = true; onPick(null, { manual: true }); return; }
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    input.value = btn.dataset.name;
+    results.hidden = true;
+    onPick({ id: Number(btn.dataset.id), name: btn.dataset.name, settlementType: btn.dataset.settlement || "mahalle" });
+  });
+}
+
 // ─────────── Address flow V2: picker (عناويني) + map-based details (تفاصيل العنوان) ───────────
 
 // Home-style labels get a home icon, work-style ones a store icon.
@@ -11665,7 +11829,7 @@ function renderCheckoutAddressBox(selectedAddressId) {
   return `
     <div class="addr-selected">
       <span class="addr-pick-icon">${isCurrent ? icon("pin") : addressIconFor(a.label)}</span>
-      <div><strong>${escAttr(a.label)}</strong><small>${escAttr(a.address)}${a.details ? ` — ${escAttr(a.details)}` : ""}</small></div>
+      <div><strong>${escAttr(a.label)}</strong><small style="white-space:pre-line">${escAttr(a.fullAddressTr || [a.address, a.details].filter(Boolean).join(" — "))}</small></div>
       <button type="button" class="text-button" data-action="open-address-picker">تغيير</button>
     </div>`;
 }
@@ -11695,7 +11859,7 @@ function openAddressPickerModal() {
   const rows = state.customerAddresses.map(a => `
     <button type="button" class="addr-pick-item ${String(selectedId) === String(a.id) ? "checked" : ""}" data-action="pick-checkout-address" data-id="${a.id}">
       <span class="addr-pick-icon">${addressIconFor(a.label)}</span>
-      <span class="addr-pick-body"><strong>${escAttr(a.label)}</strong><small>${escAttr(a.address)}${a.details ? `<br>${escAttr(a.details)}` : ""}</small>${a.contactPhone ? `<em dir="ltr">${escAttr(a.contactPhone)}</em>` : ""}</span>
+      <span class="addr-pick-body"><strong>${escAttr(a.label)}</strong><small style="white-space:pre-line">${escAttr(a.fullAddressTr || [a.address, a.details].filter(Boolean).join("\n"))}</small>${a.contactPhone ? `<em dir="ltr">${escAttr(a.contactPhone)}</em>` : ""}</span>
       <span class="addr-pick-radio"></span>
     </button>`).join("");
   const currentRow = current ? `
@@ -11717,15 +11881,20 @@ function openAddressPickerModal() {
   `, "address-picker-modal");
 }
 
-// Screen B — «تفاصيل العنوان»: search + OSM map with a fixed center pin that
-// reverse-geocodes into the same structured Turkish fields the merchant receives.
+// Screen B — «تفاصيل العنوان»: Google map pin (assist + optional auto-match)
+// on top of the full Turkish administrative form — İl → İlçe → Mahalle/Köy
+// cascading combos, then road/site/building/block/door-number/floor/postal
+// fields, in the exact order the Turkish address spec requires. Every value
+// the customer picks or types here is Turkish; only the field LABELS are
+// Arabic, matching the rest of the site's UI language.
 function openAddressModal(addressId = null) {
   const address = state.customerAddresses.find(item => item.id === Number(addressId));
   const profile = state.customerProfile || {};
   const s = address?.structured || {};
-  const resolvedText = address?.address
-    ? `${s.sokak ? s.sokak + "، " : ""}${address.address}`
+  const resolvedText = address
+    ? (composeFullAddressTr(s).split("\n")[0] || "حرّك الخريطة لتحديد موقع مدخل البناء بدقة")
     : "حرّك الخريطة لتحديد موقع مدخل البناء بدقة";
+  const isManualNeighborhood = s.settlementSource === "manual";
   showModal(`
     <button class="modal-close" data-action="close-modal">${icon("close")}</button>
     <span class="section-kicker">${address ? "تعديل العنوان" : "عنوان جديد"}</span>
@@ -11741,45 +11910,198 @@ function openAddressModal(addressId = null) {
         <div class="addr2-map-pin">${ADDR_PIN_SVG}</div>
         <button type="button" class="addr2-locate-btn" data-action="capture-address-location" title="استخدام موقعي الحالي" aria-label="استخدام موقعي الحالي">${icon("pin")}</button>
       </div>
-      <div class="addr2-resolved">
-        <span class="addr2-resolved-pin">${ADDR_PIN_SVG}</span>
-        <span class="addr2-resolved-text" id="addr2-resolved-text">${escAttr(resolvedText)}</span>
-        <button type="button" class="addr2-edit-pencil" data-action="addr2-toggle-manual" title="تعديل يدوي">${icon("edit")}</button>
-      </div>
+      <p class="trf-map-hint">${icon("pin")} ضع الدبوس على مدخل البناء بالضبط <span dir="ltr" lang="tr">(Lütfen konumu bina girişine yerleştirin)</span></p>
       <input type="hidden" name="lat" value="${address?.lat || ""}">
       <input type="hidden" name="lng" value="${address?.lng || ""}">
-      <div id="addr2-manual" class="addr2-manual" hidden>
-        <div class="addr2-row2">
-          <input name="sf_il" placeholder="المدينة (İl)" value="${escAttr(s.il || "إسطنبول")}">
-          <input name="sf_ilce" placeholder="المنطقة (İlçe)" value="${escAttr(s.ilce || "")}">
-        </div>
-        <div class="addr2-row2">
-          <input name="sf_mahalle" placeholder="المحلة (Mahalle)" value="${escAttr(s.mahalle || "")}">
-          <input name="sf_sokak" placeholder="الشارع (Cadde/Sokak)" value="${escAttr(s.sokak || "")}">
-        </div>
+      <input type="hidden" id="trf-province-id" name="trf_province_id" value="${s.provinceId || ""}">
+      <input type="hidden" id="trf-province-name" name="trf_province_name" value="${escAttr(s.provinceName || "")}">
+      <input type="hidden" id="trf-district-id" name="trf_district_id" value="${s.districtId || ""}">
+      <input type="hidden" id="trf-district-name" name="trf_district_name" value="${escAttr(s.districtName || "")}">
+      <input type="hidden" id="trf-neighborhood-id" name="trf_neighborhood_id" value="${s.neighborhoodId || ""}">
+      <input type="hidden" id="trf-neighborhood-name" name="trf_neighborhood_name" value="${escAttr(s.neighborhoodName || "")}">
+      <input type="hidden" id="trf-settlement-type" name="trf_settlement_type" value="${escAttr(s.settlementType || "mahalle")}">
+      <input type="hidden" id="trf-settlement-source" name="trf_settlement_source" value="${escAttr(s.settlementSource || "db")}">
+
+      <p class="addr2-section-label">İl / İlçe / Mahalle</p>
+      ${trComboHTML("trf-il", "İl *", "İl seçin", s.provinceName)}
+      ${trComboHTML("trf-ilce", "İlçe *", "Önce İl seçin", s.districtName, !s.provinceId)}
+      ${trComboHTML("trf-mahalle", "Mahalle / Köy *", "Önce İlçe seçin", isManualNeighborhood ? "" : s.neighborhoodName, !s.districtId)}
+      <div class="trf-manual-neighborhood" id="trf-manual-neighborhood" ${isManualNeighborhood ? "" : "hidden"}>
+        <input type="text" id="trf-manual-neighborhood-input" name="trf_manual_neighborhood_name" placeholder="Mahalle veya köy adını yazın" value="${escAttr(s.manualSettlementName || (isManualNeighborhood ? s.neighborhoodName : "") || "")}">
+        <small>سيُراجَع هذا الاسم لاحقاً من فريق دكانجي لإضافته للقائمة الرسمية.</small>
       </div>
+
+      <p class="addr2-section-label">Cadde / Sokak</p>
+      <div class="trf-row2">
+        <select id="trf-road-type" name="trf_road_type">
+          ${ROAD_TYPES.map(t => `<option value="${escAttr(t)}" ${s.roadType === t ? "selected" : (!s.roadType && t === "Cadde" ? "selected" : "")}>${escAttr(t)}</option>`).join("")}
+        </select>
+        <input type="text" id="trf-road-name" name="trf_road_name" placeholder="Cadde / Sokak Adı" value="${escAttr(s.roadName || "")}">
+      </div>
+
+      <div class="trf-row2">
+        <input type="text" name="trf_site_name" placeholder="Site Adı (اختياري)" value="${escAttr(s.siteName || "")}">
+        <input type="text" name="trf_building_name" placeholder="Bina / Apartman Adı (اختياري)" value="${escAttr(s.buildingName || "")}">
+      </div>
+      <input type="text" class="addr2-field-full" name="trf_block" placeholder="Blok (اختياري، مثال: B أو 4A)" value="${escAttr(s.block || "")}">
+
+      <p class="addr2-section-label">تفاصيل رقم الوحدة</p>
+      <div class="trf-row3">
+        <input type="text" name="trf_external_door_no" placeholder="Dış Kapı No *" value="${escAttr(s.externalDoorNo || "")}" required>
+        <input type="text" id="trf-internal-door-no" name="trf_internal_door_no" placeholder="İç Kapı No" value="${escAttr(s.internalDoorNo || "")}" ${s.hasInternalDoor === false ? "disabled" : ""}>
+        <input type="text" name="trf_floor" placeholder="Kat" value="${escAttr(s.floor || "")}">
+      </div>
+      <label class="trf-checkbox-row"><input type="checkbox" id="trf-no-internal-door" name="trf_no_internal_door" ${s.hasInternalDoor === false ? "checked" : ""}><span></span>İç Kapı Numarası Yok</label>
+
+      <div class="trf-row2">
+        <input type="text" name="trf_postal_code" placeholder="Posta Kodu (اختياري)" inputmode="numeric" maxlength="5" value="${escAttr(s.postalCode || "")}">
+      </div>
+      <textarea class="addr2-field-full trf-note" name="trf_address_note" placeholder="Adres Tarifi — وصف إضافي يساعد المندوب على الوصول" maxlength="250">${escAttr(s.addressNote || address?.note || "")}</textarea>
+
+      <div class="addr2-resolved" id="trf-preview-box">
+        <span class="addr2-resolved-pin">${ADDR_PIN_SVG}</span>
+        <span class="addr2-resolved-text" id="addr2-resolved-text" style="white-space:pre-line">${escAttr(resolvedText)}</span>
+      </div>
+
       ${(() => { const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone || "")}">`; })()}
-      <p class="addr2-section-label">تفاصيل العنوان</p>
-      <div class="addr2-row3">
-        <input name="sf_bina" placeholder="رقم المبنى *" value="${escAttr(s.bina || "")}" required>
-        <input name="sf_kat" placeholder="الطابق" value="${escAttr(s.kat || "")}" inputmode="numeric">
-        <input name="sf_daire" placeholder="رقم الشقة *" value="${escAttr(s.daire || "")}" required>
-      </div>
+
       <input class="addr2-field-full" name="label" placeholder="اسم العنوان (مثال: المنزل، العمل) *" value="${escAttr(address?.label || "")}" required>
-      <div class="addr2-optional">
-        <input name="note" placeholder="وصف إضافي للعنوان" value="${escAttr(address?.note || "")}">
-        <span>اختياري</span>
-      </div>
       <p class="addr2-section-label">معلومات التواصل</p>
       <div class="addr2-row2">
         <input name="contactName" placeholder="الاسم" autocomplete="name" value="${escAttr(address?.contactName ?? profile.name ?? "")}">
         <input name="contactPhone" type="tel" inputmode="tel" dir="ltr" placeholder="+90 5__ ___ __ __" value="${escAttr(address?.contactPhone ?? profile.phone ?? "")}">
       </div>
       <label class="notification-setting"><input name="isDefault" type="checkbox" ${address?.isDefault ? "checked" : ""}><span></span><div><strong>استخدامه كعنوان افتراضي</strong><small>سيظهر أولًا عند إتمام الطلب.</small></div></label>
-      <button class="primary-button full" type="submit">${icon("check")} حفظ العنوان</button>
+      <button class="primary-button full" type="submit">${icon("check")} Adresi Kaydet</button>
     </form>
   `, "address-modal addr2-modal");
   initAddressMapModal(address);
+  initTrAddressCombos(s);
+}
+
+// Wires the three cascading combos + manual-neighborhood fallback + the live
+// Turkish address preview. Selecting a province clears any stale district/
+// neighborhood from a previous selection (spec §3: "changing İl must drop
+// the previously chosen İlçe/Mahalle").
+function initTrAddressCombos(initial) {
+  const form = document.getElementById("customer-address-form");
+  if (!form) return;
+
+  const ilceWrap = document.getElementById("trf-ilce-wrap");
+  const ilceInput = document.getElementById("trf-ilce-input");
+  const mahalleWrap = document.getElementById("trf-mahalle-wrap");
+  const mahalleInput = document.getElementById("trf-mahalle-input");
+  const manualBox = document.getElementById("trf-manual-neighborhood");
+
+  const setHidden = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ""; };
+
+  const resetDistrictAndNeighborhood = () => {
+    setHidden("trf-district-id", ""); setHidden("trf-district-name", "");
+    setHidden("trf-neighborhood-id", ""); setHidden("trf-neighborhood-name", "");
+    setHidden("trf-settlement-type", "mahalle"); setHidden("trf-settlement-source", "db");
+    if (ilceInput) ilceInput.value = "";
+    if (mahalleInput) mahalleInput.value = "";
+    trLocationCache.neighborhoodsByDistrict = trLocationCache.neighborhoodsByDistrict; // no-op, cache stays keyed by id
+  };
+  const resetNeighborhood = () => {
+    setHidden("trf-neighborhood-id", ""); setHidden("trf-neighborhood-name", "");
+    setHidden("trf-settlement-type", "mahalle"); setHidden("trf-settlement-source", "db");
+    if (mahalleInput) mahalleInput.value = "";
+    if (manualBox) manualBox.hidden = true;
+  };
+
+  wireTrCombo("trf-il", {
+    getRows: fetchTrProvinces,
+    onPick: (row) => {
+      setHidden("trf-province-id", row.id); setHidden("trf-province-name", row.name);
+      resetDistrictAndNeighborhood();
+      if (ilceWrap) ilceWrap.classList.remove("is-disabled");
+      if (ilceInput) ilceInput.disabled = false;
+      if (mahalleWrap) mahalleWrap.classList.add("is-disabled");
+      if (mahalleInput) mahalleInput.disabled = true;
+      updateTrAddressPreview();
+    }
+  });
+  wireTrCombo("trf-ilce", {
+    getRows: () => fetchTrDistricts(Number(document.getElementById("trf-province-id")?.value) || null),
+    onPick: (row) => {
+      setHidden("trf-district-id", row.id); setHidden("trf-district-name", row.name);
+      resetNeighborhood();
+      if (mahalleWrap) mahalleWrap.classList.remove("is-disabled");
+      if (mahalleInput) mahalleInput.disabled = false;
+      updateTrAddressPreview();
+    }
+  });
+  wireTrCombo("trf-mahalle", {
+    getRows: () => fetchTrNeighborhoods(Number(document.getElementById("trf-district-id")?.value) || null),
+    allowManual: true,
+    onPick: (row, opts) => {
+      if (opts?.manual) {
+        setHidden("trf-neighborhood-id", ""); setHidden("trf-neighborhood-name", "");
+        setHidden("trf-settlement-type", "manual"); setHidden("trf-settlement-source", "manual");
+        if (mahalleInput) mahalleInput.value = "";
+        if (manualBox) { manualBox.hidden = false; document.getElementById("trf-manual-neighborhood-input")?.focus(); }
+      } else {
+        setHidden("trf-neighborhood-id", row.id); setHidden("trf-neighborhood-name", row.name);
+        setHidden("trf-settlement-type", row.settlementType || "mahalle"); setHidden("trf-settlement-source", "db");
+        if (manualBox) manualBox.hidden = true;
+      }
+      updateTrAddressPreview();
+    }
+  });
+
+  // İlçe combo needs to look up the currently-selected province at query time
+  // (not just at wire-time), which fetchTrDistricts above already does by
+  // re-reading the hidden input; nothing else to wire here.
+
+  form.addEventListener("input", updateTrAddressPreview);
+  form.addEventListener("change", (e) => {
+    if (e.target.id === "trf-no-internal-door") {
+      const doorInput = document.getElementById("trf-internal-door-no");
+      if (doorInput) { doorInput.disabled = e.target.checked; if (e.target.checked) doorInput.value = ""; }
+    }
+    updateTrAddressPreview();
+  });
+
+  updateTrAddressPreview();
+}
+
+// Reads the live form state into the same shape composeFullAddressTr()
+// expects, and refreshes the read-only preview line under the form.
+function readTrAddressFormState(form) {
+  const fd = new FormData(form);
+  const settlementSource = fd.get("trf_settlement_source") || "db";
+  const manualName = (fd.get("trf_manual_neighborhood_name") || "").trim();
+  return {
+    provinceId: Number(fd.get("trf_province_id")) || null,
+    provinceName: (fd.get("trf_province_name") || "").trim(),
+    districtId: Number(fd.get("trf_district_id")) || null,
+    districtName: (fd.get("trf_district_name") || "").trim(),
+    neighborhoodId: settlementSource === "manual" ? null : (Number(fd.get("trf_neighborhood_id")) || null),
+    neighborhoodName: settlementSource === "manual" ? manualName : (fd.get("trf_neighborhood_name") || "").trim(),
+    manualSettlementName: settlementSource === "manual" ? manualName : "",
+    settlementType: fd.get("trf_settlement_type") || "mahalle",
+    settlementSource,
+    roadType: fd.get("trf_road_type") || "Cadde",
+    roadName: (fd.get("trf_road_name") || "").trim(),
+    siteName: (fd.get("trf_site_name") || "").trim(),
+    buildingName: (fd.get("trf_building_name") || "").trim(),
+    block: (fd.get("trf_block") || "").trim(),
+    externalDoorNo: (fd.get("trf_external_door_no") || "").trim(),
+    hasInternalDoor: fd.get("trf_no_internal_door") === "on" ? false : true,
+    internalDoorNo: fd.get("trf_no_internal_door") === "on" ? "" : (fd.get("trf_internal_door_no") || "").trim(),
+    floor: (fd.get("trf_floor") || "").trim(),
+    postalCode: (fd.get("trf_postal_code") || "").trim(),
+    addressNote: (fd.get("trf_address_note") || "").trim()
+  };
+}
+function updateTrAddressPreview() {
+  const form = document.getElementById("customer-address-form");
+  const textEl = document.getElementById("addr2-resolved-text");
+  if (!form || !textEl) return;
+  const s = readTrAddressFormState(form);
+  const composed = composeFullAddressTr(s);
+  textEl.textContent = composed || "حرّك الخريطة أو أكمل الحقول لمعاينة العنوان";
 }
 
 function openComplaintDetails(complaintId) {
@@ -12016,8 +12338,12 @@ async function googleSearchPlaces(query) {
 let addr2Map = null;          // live google.maps.Map instance while the modal is open
 let addr2CommitToken = 0;     // guards overlapping reverse-geocode responses
 
-// Reads the map center as the delivery point: fills lat/lng + the structured
-// Turkish fields and the human-readable resolved line.
+// Reads the map center as the delivery point: fills lat/lng, then tries to
+// auto-match Google's reverse-geocode names against our own tr_provinces/
+// tr_districts/tr_neighborhoods tables so the combos above pre-select
+// themselves. This is pure assistance — a miss never blocks anything, it
+// just leaves the combos for the customer to pick manually (spec §5: "don't
+// rely on the map alone, still keep the İl/İlçe/Mahalle fields").
 async function commitAddressPin() {
   const form = document.getElementById("customer-address-form");
   if (!form || !addr2Map) return;
@@ -12030,15 +12356,44 @@ async function commitAddressPin() {
   const token = ++addr2CommitToken;
   const info = await googleReverseFull(lat, lng);
   if (token !== addr2CommitToken || !document.getElementById("customer-address-form")) return;
-  if (!info) {
-    if (textEl) textEl.textContent = "تعذر جلب اسم المنطقة تلقائياً — يمكنك إدخالها يدوياً بزر التعديل";
-    return;
-  }
-  form.elements.sf_il.value = info.il || form.elements.sf_il.value || "إسطنبول";
-  if (info.ilce) form.elements.sf_ilce.value = info.ilce;
-  if (info.mahalle) form.elements.sf_mahalle.value = info.mahalle;
-  if (info.sokak) form.elements.sf_sokak.value = info.sokak;
-  if (textEl) textEl.textContent = info.display;
+  if (!info) { updateTrAddressPreview(); return; }
+
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  try {
+    const provinces = await fetchTrProvinces();
+    const matchedProvince = matchTrRow(provinces, info.il);
+    if (matchedProvince) {
+      setVal("trf-province-id", matchedProvince.id); setVal("trf-province-name", matchedProvince.name_tr);
+      setVal("trf-il-input", matchedProvince.name_tr);
+      const ilceInput = document.getElementById("trf-ilce-input");
+      const ilceWrap = document.getElementById("trf-ilce-wrap");
+      if (ilceInput) ilceInput.disabled = false;
+      if (ilceWrap) ilceWrap.classList.remove("is-disabled");
+
+      const districts = await fetchTrDistricts(matchedProvince.id);
+      const matchedDistrict = matchTrRow(districts, info.ilce);
+      if (matchedDistrict) {
+        setVal("trf-district-id", matchedDistrict.id); setVal("trf-district-name", matchedDistrict.name_tr);
+        setVal("trf-ilce-input", matchedDistrict.name_tr);
+        const mahalleInput = document.getElementById("trf-mahalle-input");
+        const mahalleWrap = document.getElementById("trf-mahalle-wrap");
+        if (mahalleInput) mahalleInput.disabled = false;
+        if (mahalleWrap) mahalleWrap.classList.remove("is-disabled");
+
+        const neighborhoods = await fetchTrNeighborhoods(matchedDistrict.id);
+        const matchedNeighborhood = matchTrRow(neighborhoods, info.mahalle);
+        if (matchedNeighborhood) {
+          setVal("trf-neighborhood-id", matchedNeighborhood.id); setVal("trf-neighborhood-name", matchedNeighborhood.name_tr);
+          setVal("trf-settlement-type", matchedNeighborhood.settlement_type || "mahalle");
+          setVal("trf-settlement-source", "db");
+          setVal("trf-mahalle-input", matchedNeighborhood.name_tr);
+        }
+      }
+    }
+  } catch (e) { /* auto-match is best-effort only */ }
+
+  if (info.sokak && !form.elements.trf_road_name.value.trim()) form.elements.trf_road_name.value = info.sokak;
+  updateTrAddressPreview();
 }
 
 // Boots the Google Maps map inside the open address modal and wires the search box.
@@ -12312,11 +12667,18 @@ function initUserLocation() {
 function isProfileComplete() {
   const p = state.customerProfile;
   if (!p || !p.name || !p.phone) return false;
-  // must have at least one address with building + apt numbers (zone or full)
-  // AND a resolved delivery point (named zone, or geocoded lat/lng) — an address
-  // saved without coordinates can never produce a distance-based delivery quote,
-  // so it doesn't count as "complete" and the customer is routed back to fix it.
-  return state.customerAddresses.some(a => a.structured?.bina && a.structured?.daire && (a.namedZone || (a.lat != null && a.lng != null)));
+  // must have at least one address with a door number (zone-mode "bina" or the
+  // full Turkish form's "externalDoorNo") AND either an internal door number
+  // OR an explicit "no internal door" choice, AND a resolved delivery point
+  // (named zone, or geocoded lat/lng) — an address saved without coordinates
+  // can never produce a distance-based delivery quote, so it doesn't count as
+  // "complete" and the customer is routed back to fix it.
+  return state.customerAddresses.some(a => {
+    const s = a.structured || {};
+    const hasExternalDoor = s.externalDoorNo || s.bina;
+    const hasInternalResolved = s.hasInternalDoor === false || s.internalDoorNo || s.daire;
+    return hasExternalDoor && hasInternalResolved && (a.namedZone || (a.lat != null && a.lng != null));
+  });
 }
 
 function openProfileSetupModal(pendingProductId, qty, opts, notes, addons) {
@@ -15507,6 +15869,13 @@ document.addEventListener("submit", async event => {
       fulfillment: isPickup ? "pickup" : "delivery",
       address: isPickup ? "" : (addrObj?.address || ""),
       addressDetails: isPickup ? "" : (addrObj?.details || ""),
+      // Additive Turkish-address snapshot (order_addresses spec §11): the order
+      // freezes whatever the address looked like at order time, so a later edit
+      // to the saved address never changes an old order's record. Purely
+      // additive — address/addressDetails strings above are unchanged so any
+      // existing reader (WhatsApp text, admin table) keeps working as-is.
+      structuredAddress: isPickup ? null : (addrObj?.structured || null),
+      fullAddressTr: isPickup ? "" : (addrObj?.fullAddressTr || ""),
       lineItems,
       notes: (state.cartNote || "").trim(),
       substitution: els.substitution?.value || "",
@@ -15664,45 +16033,43 @@ document.addEventListener("submit", async event => {
     return;
   }
   if (event.target.id === "customer-address-form") {
-    const form = new FormData(event.target);
     const addressId = Number(event.target.dataset.id);
     const wasDefault = state.customerAddresses.find(address => address.id === addressId)?.isDefault;
-    const makeDefault = form.get("isDefault") === "on" || !state.customerAddresses.length || Boolean(wasDefault);
-    // build structured Turkish address fields (auto-filled from the map pin,
-    // manually editable via the pencil toggle)
-    const structured = { il: (form.get("sf_il")||"").trim() || "إسطنبول", ilce: (form.get("sf_ilce")||"").trim(), mahalle: (form.get("sf_mahalle")||"").trim(), sokak: (form.get("sf_sokak")||"").trim(), bina: (form.get("sf_bina")||"").trim(), kat: (form.get("sf_kat")||"").trim(), daire: (form.get("sf_daire")||"").trim() };
-    let lat = Number(form.get("lat")) || null;
-    let lng = Number(form.get("lng")) || null;
-    // The delivery point must exist: either a map pin (fills everything) or a
-    // manually-typed mahalle at minimum.
-    if (!lat && !structured.mahalle) { showToast("حدّد موقعك على الخريطة أو أدخل الحي يدوياً بزر التعديل"); return; }
-    // Manual pencil-edit path never sets lat/lng from the map — geocode the typed
-    // address so distance-based delivery quotes still work for this address.
-    if (!lat && structured.mahalle) {
-      const submitBtn = event.target.querySelector('button[type="submit"]');
-      const originalLabel = submitBtn ? submitBtn.innerHTML : "";
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "جارٍ تحديد الموقع..."; }
-      const hits = await googleSearchPlaces([structured.sokak, structured.mahalle, structured.ilce, structured.il].filter(Boolean).join("، "));
-      if (hits.length) { lat = hits[0].lat; lng = hits[0].lng; }
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = originalLabel; }
-    }
-    // compose a readable address string from structured fields
-    const note = (form.get("note") || "").trim();
-    const addrParts = [structured.mahalle, structured.ilce, structured.il].filter(Boolean);
-    const detailParts = [structured.sokak, structured.bina ? `No:${structured.bina}` : "", structured.kat ? `Kat:${structured.kat}` : "", structured.daire ? `D:${structured.daire}` : ""].filter(Boolean);
-    const composedAddress = addrParts.join("، ");
-    const composedDetails = [detailParts.join(" "), note].filter(Boolean).join(" — ");
-    const namedZone = (form.get("namedZone") || "").trim();
+    const makeDefault = new FormData(event.target).get("isDefault") === "on" || !state.customerAddresses.length || Boolean(wasDefault);
+    const structured = readTrAddressFormState(event.target);
+
+    // Validation — Turkish messages per spec §14 (these are the ONLY Turkish
+    // user-facing strings on an otherwise-Arabic site: they're specific to
+    // this address form, matching the spec's literal requested text).
+    if (!structured.provinceId) return showToast("Lütfen il seçin.");
+    if (!structured.districtId) return showToast("Lütfen ilçe seçin.");
+    if (!structured.neighborhoodName) return showToast("Lütfen mahalle veya köy seçin.");
+    if (structured.settlementType !== "koy" && !structured.roadName) return showToast("Lütfen cadde veya sokak adını yazın.");
+    if (!structured.externalDoorNo) return showToast("Lütfen dış kapı numarasını girin.");
+    if (structured.hasInternalDoor && !structured.internalDoorNo) return showToast("Lütfen iç kapı numarasını girin veya numara olmadığını belirtin.");
+    const label = (new FormData(event.target).get("label") || "").trim();
+    if (!label) { showToast("اسم العنوان مطلوب"); return; }
+
+    let lat = Number(new FormData(event.target).get("lat")) || null;
+    let lng = Number(new FormData(event.target).get("lng")) || null;
+    if (!lat || !lng) return showToast("Lütfen bina girişini haritada işaretleyin.");
+
+    const fullAddressTr = composeFullAddressTr(structured);
+    const addrLines = fullAddressTr.split("\n").map(line => line.replace(/,\s*$/, ""));
+    const composedAddress = addrLines[0] || "";
+    const composedDetails = addrLines.slice(1).join(" — ");
+    const namedZone = (new FormData(event.target).get("namedZone") || "").trim();
     const addressData = {
       id: addressId || Date.now(),
-      label: (form.get("label") || "").trim() || "المنزل",
+      label: label || "المنزل",
       address: composedAddress,
       details: composedDetails,
-      note,
+      note: structured.addressNote,
       structured,
+      fullAddressTr,
       namedZone,
-      contactName: (form.get("contactName") || "").trim(),
-      contactPhone: (form.get("contactPhone") || "").trim(),
+      contactName: (new FormData(event.target).get("contactName") || "").trim(),
+      contactPhone: (new FormData(event.target).get("contactPhone") || "").trim(),
       lat,
       lng,
       isDefault: makeDefault

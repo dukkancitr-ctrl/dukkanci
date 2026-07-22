@@ -21,7 +21,7 @@ class AddressesScreen extends ConsumerWidget {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text(AppStrings.addressDeleteConfirmTitle),
-            content: Text('${address.label.isEmpty ? address.addressText : address.label}\n\n${AppStrings.addressDeleteConfirmBody}'),
+            content: Text('${address.label.isEmpty ? address.formattedAddress : address.label}\n\n${AppStrings.addressDeleteConfirmBody}'),
             actions: [
               TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text(AppStrings.cancel)),
               FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text(AppStrings.addressDelete)),
@@ -143,8 +143,19 @@ class _AddressCard extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(address.addressText, style: AppTextStyles.bodyMuted, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      if (address.addressDetails.isNotEmpty) Text(address.addressDetails, style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(address.formattedAddress, style: AppTextStyles.bodyMuted, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      if (address.detailsLine.isNotEmpty) Text(address.detailsLine, style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (address.hasLocation) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.place_rounded, size: 14, color: AppColors.green800),
+                            const SizedBox(width: 3),
+                            Text('الموقع على الخريطة محدَّد', style: AppTextStyles.caption.copyWith(color: AppColors.green800, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ],
                       if (address.recipientName.isNotEmpty || address.recipientPhone.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text([address.recipientName, address.recipientPhone].where((s) => s.isNotEmpty).join(' · '), style: AppTextStyles.caption),
