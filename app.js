@@ -6217,7 +6217,7 @@ function merchantLogin() {
         <div class="auth-logo"><span class="brand-mark"><img src="/assets/dukkanci-mark.png?v=86" alt="دكانجي"></span></div>
         <h2>أهلاً بكم في شاشة التحكم بالمتاجر</h2>
         <p>سجّل الدخول برقم موبايل متجرك وكلمة المرور التي زوّدتك بها إدارة دكانجي.</p>
-        <label class="input-label"><span>اسم المستخدم (رقم الموبايل أو البريد)</span><input name="username" type="text" inputmode="email" autocomplete="username" required placeholder="05XX XXX XX XX أو you@example.com" dir="ltr"></label>
+        <label class="input-label"><span>اسم المستخدم (رقم الموبايل أو البريد)</span><div class="field-icon"><input name="username" type="text" inputmode="email" autocomplete="username" required placeholder="05XX XXX XX XX أو you@example.com" dir="ltr"><span class="field-icon__box">${icon("phone")}</span></div></label>
         <label class="input-label"><span>كلمة المرور</span><div class="pw-input"><input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" dir="ltr"><button type="button" class="pw-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">${icon("eye")}</button></div></label>
         <p class="auth-error" id="merchant-pw-error" role="alert" hidden></p>
         <button class="primary-button full large" type="submit">${icon("shield")} دخول</button>

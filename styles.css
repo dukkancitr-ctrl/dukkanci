@@ -7750,15 +7750,17 @@ tr:last-child td {
    other auth/form surface (.modal-form, .account-form) opts into shared input
    styling by class, but this card's <form> never carried one of those classes,
    so fields rendered as the browser's raw UA-default box (2px inset grey
-   border, no radius) next to a fully custom-styled button. Scoped copy of the
-   same values (see `.modal-form input`), sized down to match the compact card. */
+   border, no radius) next to a fully custom-styled button. Restyled per the
+   reference mockup: a bold orange outline + rounded corners + a tinted icon
+   chip on the leading edge (site's existing --orange/--orange-soft, not a new
+   color) instead of the plain grey line used elsewhere on the site. */
 .merchant-auth__card input:not([type="checkbox"]),
 .merchant-auth__card select {
   width: 100%;
-  min-height: 44px;
-  padding: 0 13px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
+  min-height: 50px;
+  padding: 0 15px;
+  border: 2px solid var(--orange);
+  border-radius: 15px;
   background: #fff;
   font-size: 14px;
   outline: 0;
@@ -7766,7 +7768,64 @@ tr:last-child td {
 
 .merchant-auth__card input:focus,
 .merchant-auth__card select:focus {
-  border-color: rgba(227, 6, 19, 0.4);
+  border-color: var(--orange-dark);
+}
+
+/* Decorative leading icon chip — phone icon on the username field, mirrors the
+   existing show/hide eye button on the password field so both look the same. */
+.merchant-auth__card .field-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.merchant-auth__card .field-icon input {
+  padding-left: 62px;
+}
+
+.merchant-auth__card .pw-input input {
+  padding-left: 62px;
+}
+
+.merchant-auth__card .field-icon__box,
+.merchant-auth__card .pw-toggle {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--orange-soft);
+  color: var(--orange);
+  display: grid;
+  place-items: center;
+  border: 0;
+}
+
+.merchant-auth__card .field-icon__box::before,
+.merchant-auth__card .pw-toggle::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  margin-right: 9px;
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+}
+
+.merchant-auth__card .field-icon__box .icon,
+.merchant-auth__card .pw-toggle .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.merchant-auth__card .pw-toggle:hover {
+  background: #ffe9c4;
+}
+
+.merchant-auth__card .pw-toggle.is-on {
+  color: var(--orange-dark);
 }
 
 .merchant-auth__card .primary-button,
