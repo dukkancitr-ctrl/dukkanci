@@ -6224,7 +6224,7 @@ function merchantLogin() {
         <div class="merchant-auth__divider"><span>طرق دخول أخرى</span></div>
         <button type="button" class="secondary-button full" data-action="merchant-email">${icon("store")} دخول بحساب بريد إلكتروني (Google)</button>
         <button type="button" class="secondary-button full" data-action="join-merchant">${icon("plus")} ليس لديك متجر؟ أنشئ متجرك الآن</button>
-        <p class="merchant-auth__note">${icon("shield")} لم تستلم بياناتك؟ تواصل مع دكانجي عبر <a href="https://wa.me/905528000220" target="_blank" rel="noopener">واتساب</a>.</p>
+        <div class="merchant-auth__note">${icon("whatsapp")}<div><strong>لم تستلم بياناتك أو تحتاج مساعدة؟</strong><a class="merchant-auth__wa-link" href="https://wa.me/905528000220" target="_blank" rel="noopener" dir="ltr">+90 552 800 02 20</a></div></div>
       </form>
     </div>
   `);
@@ -6347,7 +6347,7 @@ function merchantNoStore() {
     <p>لم نعثر على متجر مرتبط برقمك. أنشئ متجرك، أو تواصل مع الدعم لربط متجرك القائم بحسابك.</p>
     <button type="button" class="primary-button full large" data-action="join-merchant">${icon("plus")} أنشئ متجرك الآن</button>
     <button type="button" class="secondary-button full" data-action="merchant-logout">${icon("logout")} تسجيل الخروج</button>
-    <p class="merchant-auth__note">${icon("shield")} لربط متجر قائم بحسابك تواصل مع دكانجي عبر <a href="https://wa.me/905528000220" target="_blank" rel="noopener">واتساب</a>.</p>
+    <div class="merchant-auth__note">${icon("whatsapp")}<div><strong>لربط متجر قائم بحسابك؟</strong><a class="merchant-auth__wa-link" href="https://wa.me/905528000220" target="_blank" rel="noopener" dir="ltr">+90 552 800 02 20</a></div></div>
   </form></div>`);
 }
 

@@ -7719,26 +7719,78 @@ tr:last-child td {
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 32px 26px;
+  padding: 28px 22px;
   box-shadow: var(--shadow-sm);
   text-align: center;
 }
 
 .merchant-auth__card h2 {
-  margin: 14px 0 4px;
+  margin: 12px 0 5px;
+  font-size: 19px;
 }
 
 .merchant-auth__card > p {
   color: var(--muted);
   font-weight: 500;
-  font-size: 13.5px;
-  line-height: 1.75;
-  margin-bottom: 20px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  margin-bottom: 18px;
 }
 
 .merchant-auth__card .input-label {
   text-align: right;
   margin-bottom: 12px;
+}
+
+.merchant-auth__card .input-label > span {
+  font-size: 11.5px;
+}
+
+/* The bare <input> here had no styling of its own anywhere in the sheet — every
+   other auth/form surface (.modal-form, .account-form) opts into shared input
+   styling by class, but this card's <form> never carried one of those classes,
+   so fields rendered as the browser's raw UA-default box (2px inset grey
+   border, no radius) next to a fully custom-styled button. Scoped copy of the
+   same values (see `.modal-form input`), sized down to match the compact card. */
+.merchant-auth__card input:not([type="checkbox"]),
+.merchant-auth__card select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  font-size: 14px;
+  outline: 0;
+}
+
+.merchant-auth__card input:focus,
+.merchant-auth__card select:focus {
+  border-color: rgba(227, 6, 19, 0.4);
+}
+
+.merchant-auth__card .primary-button,
+.merchant-auth__card .secondary-button,
+.merchant-auth__card .google-button,
+.merchant-auth__card .text-button {
+  font-size: 14px;
+}
+
+.merchant-auth__card .primary-button.large {
+  min-height: 47px;
+}
+
+.merchant-auth__card .secondary-button {
+  min-height: 42px;
+}
+
+/* `.secondary-button.full` never got `width:100%` sitewide (only `.primary-
+   button.full` did — see the 2026-07-15 otp-paste-button fix log entry for the
+   same gap), so these buttons sat narrower and off-center under the full-width
+   primary submit button, which is exactly the inconsistent block sizing being
+   fixed here. Scoped to this card only, same reasoning as that prior fix. */
+.merchant-auth__card .secondary-button.full {
+  width: 100%;
 }
 
 .merchant-auth__error {
@@ -7785,24 +7837,39 @@ tr:last-child td {
 }
 
 .merchant-auth__note {
-  margin-top: 16px;
+  margin-top: 14px;
   padding-top: 14px;
   border-top: 1px dashed var(--line);
   font-size: 12px;
   color: var(--muted);
   display: flex;
-  gap: 6px;
-  align-items: flex-start;
+  gap: 10px;
+  align-items: center;
   text-align: right;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .merchant-auth__note .icon {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--muted);
+  color: #1f9d57;
+}
+
+.merchant-auth__note strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.merchant-auth__wa-link {
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--green-800);
+  letter-spacing: 0.2px;
 }
 
 .merchant-auth__demo {
@@ -8047,6 +8114,12 @@ tr:last-child td {
   }
   .merchant-portal .merchant-auth {
     min-height: auto;
+    padding: 22px 12px 30px;
+  }
+  .merchant-portal .merchant-auth__card {
+    max-width: none;
+    padding: 24px 16px;
+    border-radius: 16px;
   }
   .merchant-portal__aside {
     padding: 30px 22px 26px;
@@ -8627,9 +8700,9 @@ tr:last-child td {
   align-items: center;
   text-align: center;
   gap: 10px;
-  margin: 19px 0;
+  margin: 15px 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 .merchant-auth__divider::before,
 .merchant-auth__divider::after {
