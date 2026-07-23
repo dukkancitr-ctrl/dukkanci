@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/api/api_client.dart';
+import '../core/api/supabase_bootstrap.dart';
 import '../core/auth/auth_repository.dart';
 import '../core/cache/secure_storage.dart';
 import '../features/banners/data/banner_repository.dart';
@@ -19,6 +21,16 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref.read(apiClientProvider), ref.read(secureStorageProvider));
+});
+
+/// `AuthRepository.currentSession` is a plain synchronous getter, so any
+/// widget that only `ref.read`s it at build time (ProfileScreen) never
+/// rebuilds after a login/logout — this is what made the login button look
+/// "unresponsive": it opened the OTP sheet and completed successfully, but
+/// nothing told the profile screen a session now exists. Watching this
+/// stream instead makes that rebuild automatic.
+final authStateChangesProvider = StreamProvider<AuthState>((ref) {
+  return supabase.auth.onAuthStateChange;
 });
 
 final storeRepositoryProvider = Provider<StoreRepository>((ref) => StoreRepository());

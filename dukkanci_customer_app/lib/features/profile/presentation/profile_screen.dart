@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/press_scale.dart';
+import '../../auth/presentation/login_sheet.dart';
 
 final _packageInfoProvider = FutureProvider.autoDispose<PackageInfo>((ref) => PackageInfo.fromPlatform());
 
@@ -53,6 +54,10 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watching this (rather than a one-off `ref.read`) is what makes the
+    // screen rebuild the instant showLoginSheet() creates a session — see
+    // authStateChangesProvider's doc comment for why a plain read never did.
+    ref.watch(authStateChangesProvider);
     final session = ref.read(authRepositoryProvider).currentSession;
     final isLoggedIn = session != null;
     final packageInfo = ref.watch(_packageInfoProvider).when(data: (v) => v, loading: () => null, error: (_, _) => null);
@@ -76,7 +81,7 @@ class ProfileScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (!isLoggedIn) FilledButton(onPressed: () {}, child: const Text(AppStrings.profileLogin)),
+              if (!isLoggedIn) FilledButton(onPressed: () => showLoginSheet(context), child: const Text(AppStrings.profileLogin)),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
