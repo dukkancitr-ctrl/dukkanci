@@ -777,9 +777,23 @@ async function loadStoresOnly() {
     const { data: st, error } = await sb.from("stores").select("*").order("id").gt("id", -cb);
     if (error || !st || !st.length) return false;
     let added = 0;
-    st.forEach(r => { if (!stores.some(s => s.id === r.id)) { stores.push(mapDbStore(r)); added++; } });
+    let changed = false;
+    st.forEach(r => {
+      const existing = stores.find(s => s.id === r.id);
+      if (!existing) { stores.push(mapDbStore(r)); added++; return; }
+      // A bundled `<slug>-data.js` placeholder (loaded via <script> before this
+      // runs, for fast first paint) can hardcode approvalStatus:"pending" from
+      // the day the store was added — that literal is never edited again once
+      // the admin approves the store in Supabase. Without this, the admin panel
+      // (and every other page) shows the stale "pending" state from the bundled
+      // object until the full ~1.8s-delayed catalog load overwrites `stores`
+      // wholesale, making an already-approved store "reappear" for review on
+      // every page load. Refresh this one server-owned field on the existing
+      // entry so the correction lands as soon as this fast, small query resolves.
+      if (existing.approvalStatus !== r.approval_status) { existing.approvalStatus = r.approval_status; changed = true; }
+    });
     if (added) warnUnslugged();
-    return added > 0;
+    return added > 0 || changed;
   } catch (e) { console.warn("Supabase stores load failed:", e.message); return false; }
 }
 

@@ -1,4 +1,4 @@
-const CACHE = "dukkanci-v273";
+const CACHE = "dukkanci-v274";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -54,7 +54,7 @@ const APP_SHELL = [
   "/chikiwiki-data.js?v=1",
   "/ayham-data.js?v=1",
   "/salsabeel-data.js?v=1",
-  "/app.js?v=354",
+  "/app.js?v=355",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=81",
   "/assets/photos/ezzedine/cover.jpg",
