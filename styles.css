@@ -13825,3 +13825,176 @@ tbody tr:hover {
   .region-card__icon { width: 34px; height: 34px; flex-basis: 34px; }
   .region-card__body b { font-size: 0.9rem; }
 }
+
+/* ── «من نحن» (/about) — renderAboutPage() في app.js ────────────────────────
+   حرصاً على استقلال الصفحة، لا تُستخدم كلاسات .why-* (خاصة بـ/why-dukkanci)
+   ولا .shop-tile (مقصورة على شريط الجوال في الرئيسية) — فقط .category-card/
+   .category-grid و.merchant-cta المشتركتان فعلياً عبر الموقع. الهيرو الغامق +
+   الفقاعات العائمة يعيدان استخدام حركتَي merchantFadeUp/merchantFloat
+   المعرَّفتين أعلاه لصفحات /merchant (حركة عامة لا خاصة بالتجار). */
+.about-page { overflow-x: hidden; }
+.about-page .section { padding: 64px 0; }
+
+.about-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 64px 0 56px;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(242, 162, 58, 0.22), transparent 40%),
+    radial-gradient(circle at 6% 100%, rgba(227, 6, 19, 0.32), transparent 42%),
+    linear-gradient(165deg, var(--green-950), var(--green-900) 62%, #33090d);
+  color: #fff;
+}
+
+.about-hero__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(50px);
+  pointer-events: none;
+  animation: merchantFloat 11s ease-in-out infinite;
+}
+
+.about-hero__blob--1 { width: 260px; height: 260px; top: -70px; inset-inline-start: -70px; background: rgba(242, 162, 58, 0.3); }
+.about-hero__blob--2 { width: 300px; height: 300px; bottom: -100px; inset-inline-end: -90px; background: rgba(227, 6, 19, 0.28); animation-delay: -5s; animation-duration: 14s; }
+
+.about-hero__grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  align-items: center;
+  gap: 44px;
+}
+
+.about-hero__content { animation: merchantFadeUp .6s ease both; }
+
+.about-hero__content h1 {
+  margin: 16px 0 16px;
+  color: #fff;
+  font-size: clamp(30px, 3.6vw, 44px);
+  line-height: 1.18;
+}
+
+.about-hero__content > p {
+  margin: 0 0 26px;
+  max-width: 560px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.about-hero__actions { display: flex; flex-wrap: wrap; gap: 13px; }
+.about-hero__actions .secondary-button {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+.about-hero__actions .secondary-button:hover { background: rgba(255, 255, 255, 0.18); }
+
+.about-hero__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: merchantFadeUp .6s ease .1s both;
+}
+
+.about-stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(6px);
+  border-radius: 18px;
+  padding: 16px 20px;
+}
+
+.about-stat__icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(242, 162, 58, 0.16);
+  color: var(--orange);
+}
+
+.about-stat__icon .icon { width: 21px; height: 21px; }
+.about-stat strong { display: block; color: var(--orange); font-size: 22px; font-weight: 800; line-height: 1.1; }
+.about-stat span { display: block; color: rgba(255, 255, 255, 0.78); font-size: 12.5px; margin-top: 3px; }
+
+.about-lead {
+  max-width: 720px;
+  margin: 0 auto 18px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 16.5px;
+  line-height: 1.9;
+}
+.about-lead:last-child { margin-bottom: 0; }
+
+.about-grid { display: grid; gap: 18px; }
+.about-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+.about-value-card {
+  padding: 26px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, #fff, #fffdfb);
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.about-value-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(227, 6, 19, 0.12);
+  box-shadow: var(--shadow-md);
+}
+
+.about-value-card__icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--green-50);
+  color: var(--green-800);
+}
+
+.about-value-card__icon .icon { width: 24px; height: 24px; }
+.about-value-card strong { display: block; margin-bottom: 8px; color: var(--green-900); font-size: 16.5px; }
+.about-value-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.75; }
+
+.about-contact__box {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 44px 32px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 9% 12%, rgba(255, 255, 255, 0.25), transparent 22%),
+    linear-gradient(120deg, #ffd7d9, #ffe7cb);
+}
+
+.about-contact__box h2 { margin: 0 0 10px; color: var(--green-900); font-size: 26px; }
+.about-contact__box > p { margin: 0 0 24px; color: #6a593e; font-size: 15px; }
+.about-contact__actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+
+@media (max-width: 900px) {
+  .about-hero__grid { grid-template-columns: 1fr; gap: 30px; }
+  .about-hero__content { text-align: center; }
+  .about-hero__content > p { margin-inline: auto; }
+  .about-hero__actions { justify-content: center; }
+  .about-grid--4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .about-page .section { padding: 44px 0; }
+  .about-hero { padding: 44px 0 40px; }
+  .about-hero__content > p { font-size: 15px; }
+  .about-lead { font-size: 15px; }
+  .about-grid--4 { grid-template-columns: 1fr; }
+  .about-contact__box { padding: 32px 22px; }
+}

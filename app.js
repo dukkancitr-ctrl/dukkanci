@@ -9716,6 +9716,7 @@ function updateHead(route, id) {
   else if (route === "stores") { title = "اطلب من المتاجر — كل متاجر ومطاعم حيّك في إسطنبول | دكانجي"; desc = "تصفّح كل متاجر ومطاعم دكانجي في إسطنبول: مطاعم، سوبرماركت، ملاحم، حلويات، مكسرات وبهارات — واطلب أونلاين مع توصيل من متجر حيّك."; }
   else if (route === "offers") { title = "عروض دكانجي — خصومات متاجر ومطاعم حيّك في إسطنبول"; desc = "أحدث العروض والخصومات الحقيقية من متاجر ومطاعم دكانجي في إسطنبول — أسعار قبل وبعد الخصم، محدّثة من المتاجر مباشرة."; }
   else if (route === "regions") { title = "المتاجر حسب المنطقة — مطاعم ومتاجر حيّك في إسطنبول | دكانجي"; desc = "اختر منطقتك في إسطنبول — إسنيورت، باشاك شهير، بيليك دوزو، الفاتح، أفجلار وغيرها — وتصفّح المتاجر والمطاعم العربية القريبة منك على دكانجي."; }
+  else if (route === "about") { title = "من نحن | دكانجي"; desc = "دكانجي منصة تجمع مطاعم ومتاجر حيّك في إسطنبول في مكان واحد — بأسعار واضحة بلا عمولة إضافية على المنتجات، ورسوم توصيل تظهر قبل تأكيد الطلب."; }
   else if (route === "contact") { title = "تواصل معنا | دكانجي"; desc = "تواصل مع فريق دكانجي عبر واتساب أو البريد الإلكتروني — دعم العملاء، استفسارات المتاجر، والشراكات التجارية في إسطنبول."; }
   else if (route === "join") { title = "انضم كتاجر — أنشئ متجرك | دكانجي"; desc = "أنشئ متجرك على دكانجي وابدأ باستقبال طلبات عملاء حيك في إسطنبول."; }
   else if (route === "why-dukkanci") { title = "لماذا دكانجي؟ اطلب من المتاجر العربية القريبة منك بدون عمولة على المنتجات"; desc = "تعرف على دكانجي، المنصة التي تجمع المتاجر العربية القريبة منك في مكان واحد، مع أسعار واضحة، بدون عمولة إضافية على المنتجات، وتقييمات تساعدك على الطلب بثقة."; }
@@ -10216,12 +10217,112 @@ function renderStaticPage(titleAr, icon1, lines) {
       <a href="/" data-action="route-home" class="secondary-button" style="display:inline-flex;margin-top:24px">${icon("arrowLeft")} العودة للرئيسية</a>
     </div></section>`;
 }
+// «من نحن» (/about) — قصة المنصة ومبادئها، لا صفحة تسويقية للطلب (تلك مهمة
+// /why-dukkanci) ولا صفحة استقطاب تجار (تلك /merchants). الأرقام هنا كلها حية
+// من نفس المصفوفات التي يعرضها الموقع فعلياً — لا رقم مُختلَق، مطابقةً لمبدأ
+// الصدق المتكرر في هذا المشروع (راجع سطر بطاقة العدد الحي في merchantAuthAsideHTML).
 function renderAboutPage() {
-  return renderStaticPage("من نحن", "store", [
-    "دكانجي منصة متخصصة في ربط سكان إسطنبول بالمتاجر المحلية في أحيائهم.",
-    "نهدف إلى تسهيل طلب المنتجات اليومية من خضار ولحوم وحلويات وسوبرماركت مع توصيل سريع.",
-    "نعمل على توفير تجربة تسوق موثوقة وشفافة تدعم الاقتصاد المحلي وتخدم المجتمع العربي في تركيا."
-  ]);
+  const liveStores = stores.filter(isStoreApproved).length;
+  const liveCategories = homeCategoriesOrdered().length;
+  const liveRegions = DALIL_REGION_LIST.length;
+  const values = [
+    ["check", "أسعار بلا عمولة", "السعر الذي تراه أمام كل منتج هو سعر المتجر نفسه — دكانجي لا يضيف أي عمولة على أسعار المنتجات."],
+    ["bike", "توصيل واضح مسبقاً", "تعرف رسوم التوصيل والمسافة قبل تأكيد طلبك، ولا رسوم مفاجئة بعد الإرسال."],
+    ["star", "تقييمات حقيقية", "تقييمات المتاجر مبنية على تجارب عملاء طلبوا فعلاً، لا أرقام مصطنعة."],
+    ["whatsapp", "دعم مباشر عبر واتساب", "فريقنا معك من أول طلب — تواصل معنا مباشرة لأي استفسار أو مشكلة."]
+  ];
+  const cats = homeCategoriesOrdered();
+  return `
+    <div class="about-page">
+      <!-- Hero -->
+      <section class="about-hero">
+        <span class="about-hero__blob about-hero__blob--1" aria-hidden="true"></span>
+        <span class="about-hero__blob about-hero__blob--2" aria-hidden="true"></span>
+        <div class="container about-hero__grid">
+          <div class="about-hero__content">
+            <span class="eyebrow light"><span></span> من نحن</span>
+            <h1>دكانجي — سوق حيّك في إسطنبول، بين يديك</h1>
+            <p>نجمع لك المطاعم والسوبرماركت والملاحم والحلويات والمتاجر العربية القريبة منك في مكان واحد، لتطلب بسهولة، وتعرف السعر ورسوم التوصيل قبل أن تؤكد — بلا عمولة إضافية على أسعار المنتجات.</p>
+            <div class="about-hero__actions">
+              <a class="primary-button large" href="/stores" data-route="stores">${icon("bag")} تصفّح المتاجر</a>
+              <button class="secondary-button large" data-action="join-merchant">${icon("store")} انضم كتاجر</button>
+            </div>
+          </div>
+          <div class="about-hero__stats">
+            <div class="about-stat"><span class="about-stat__icon">${icon("store")}</span><div><strong>+${liveStores}</strong><span>متجر ومطعم فعلي على المنصة</span></div></div>
+            <div class="about-stat"><span class="about-stat__icon">${icon("box")}</span><div><strong>${liveCategories}</strong><span>تصنيفات مختلفة تخدم حاجات بيتك</span></div></div>
+            <div class="about-stat"><span class="about-stat__icon">${icon("map")}</span><div><strong>${liveRegions}</strong><span>منطقة في إسطنبول نغطيها</span></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Story -->
+      <section class="section about-story">
+        <div class="container" style="max-width:760px">
+          <div class="section-heading centered"><div><span class="section-kicker">قصتنا</span><h2>لماذا بدأنا دكانجي؟</h2></div></div>
+          <p class="about-lead">قبل دكانجي، كان طلب حاجيات البيت اليومية من متجر الحي يعني رسائل واتساب متفرقة مع كل محل على حدة: تسأل عن السعر، تتأكد من التوفر، وتنتظر رداً قد يتأخر — ثم تكرر الأمر مع المحل التالي.</p>
+          <p class="about-lead">دكانجي وُلد لحل هذه المشكلة تحديداً: منصة واحدة تجمع المطاعم والسوبرماركت والملاحم والحلويات ومحلات المكسرات والمواد الغذائية المتخصصة القريبة منك، بمنتجات وأسعار ظاهرة أمامك من أول نظرة.</p>
+          <p class="about-lead">نخدم بشكل خاص الجالية العربية في إسطنبول، ونعمل مباشرة مع أصحاب المتاجر لعرض منتجاتهم الحقيقية بأسعارهم كما هي — لأن ثقتك بالسعر الذي تراه هي أساس العلاقة بيننا.</p>
+        </div>
+      </section>
+
+      <!-- Values -->
+      <section class="section about-values">
+        <div class="container">
+          <div class="section-heading centered"><div><span class="section-kicker">مبادئنا</span><h2>كيف نعمل معك</h2></div></div>
+          <div class="about-grid about-grid--4">
+            ${values.map(([ic, t, d]) => `
+              <div class="about-value-card">
+                <span class="about-value-card__icon">${icon(ic)}</span>
+                <strong>${t}</strong>
+                <p>${d}</p>
+              </div>`).join("")}
+          </div>
+        </div>
+      </section>
+
+      <!-- What we offer -->
+      <section class="section about-offer">
+        <div class="container">
+          <div class="section-heading centered"><div><span class="section-kicker">ماذا نقدّم</span><h2>كل ما يحتاجه حيّك في مكان واحد</h2></div></div>
+          <div class="category-grid">${cats.map(c => categoryCard(c.name, c.image, c.caption)).join("")}</div>
+        </div>
+      </section>
+
+      <!-- Merchant CTA. NOTE: the outer section is deliberately NOT
+           .merchant-cta-section — that class is display:none on mobile
+           site-wide (it's the homepage's own marketing-strip, hidden there on
+           purpose in the mobile buy-first redesign). Reusing it here silently
+           hid this banner on /about's mobile view (found by live preview). -->
+      <section class="section about-merchant-section">
+        <div class="container">
+          <div class="merchant-cta">
+            <div class="merchant-cta__art">
+              <div class="shop-mini">${icon("store")}</div>
+              <span class="dot dot--one"></span><span class="dot dot--two"></span>
+            </div>
+            <div class="merchant-cta__copy">
+              <span>لأصحاب المتاجر</span>
+              <h2>كبّر دكانك ووصل لعملاء أكثر</h2>
+              <p>انضم إلى دكانجي، اعرض منتجاتك واستقبل الطلبات وأدر متجرك من لوحة واحدة.</p>
+            </div>
+            <button class="primary-button dark" data-action="join-merchant">انضم كتاجر ${icon("arrowLeft")}</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Contact -->
+      <section class="section about-contact">
+        <div class="container about-contact__box">
+          <h2>عندك سؤال أو اقتراح؟</h2>
+          <p>فريق دكانجي يسعد بالرد عليك مباشرة عبر واتساب، أو من صفحة التواصل.</p>
+          <div class="about-contact__actions">
+            <a class="whatsapp-button" href="https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent("مرحباً، عندي سؤال عن دكانجي")}" target="_blank" rel="noopener">${icon("whatsapp")} تواصل عبر واتساب</a>
+            <a class="secondary-button large" href="/contact" data-route="contact">${icon("phone")} صفحة التواصل</a>
+          </div>
+        </div>
+      </section>
+    </div>`;
 }
 function renderContactPage() {
   const sitePhone = (state.siteSettings && state.siteSettings.contactPhone) || "";
