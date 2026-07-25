@@ -114,7 +114,8 @@ const STORE_SLUGS = {
   109: "chiki-wiki-beylikduzu",
   112: "ayham-market-ispartakule",
   113: "selsebil-esenyurt",
-  114: "bludan-market-fatih"
+  114: "bludan-market-fatih",
+  115: "galata-natural-water-esenyurt"
 };
 
 // Reverse: slug -> id.

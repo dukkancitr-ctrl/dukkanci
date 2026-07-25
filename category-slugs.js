@@ -13,7 +13,8 @@ const CATEGORY_SLUGS = {
   juices: "عصائر",
   "nuts-spices": "مكسرات وبهارات",
   "specialty-food": "مواد غذائية متخصصة",
-  "home-kitchens": "مطابخ منزلية"
+  "home-kitchens": "مطابخ منزلية",
+  "mineral-water": "المياه المعدنية"
 };
 
 // text -> slug

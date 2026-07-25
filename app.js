@@ -34,7 +34,7 @@
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore, ayhamStore, salsabeelStore, bludanmarketStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore, ayhamStore, salsabeelStore, bludanmarketStore, galatawaterStore);
 
 const products = [];
 
@@ -114,6 +114,7 @@ products.push(...chikiwikiProducts);
 products.push(...ayhamProducts);
 products.push(...salsabeelProducts);
 products.push(...bludanmarketProducts);
+products.push(...galatawaterProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -259,6 +260,7 @@ const initialDeliverySettings = {
   ...ayhamDeliverySettings,
   ...salsabeelDeliverySettings,
   ...bludanmarketDeliverySettings,
+  ...galatawaterDeliverySettings,
   101: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
 
@@ -2799,7 +2801,8 @@ const HOME_CATEGORIES = [
   ["بن ومكسرات", "/assets/photos/store-coffee.jpg", "أجود أنواع البنّ والقهوة"],
   ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"],
   ["مواد غذائية متخصصة", "/assets/photos/store-specialty-food.jpg", "عسل طبيعي ومنتجات النحل"],
-  ["مطابخ منزلية", "/assets/photos/store-home-kitchen-placeholder.svg", "أدوات ومستلزمات المطبخ"]
+  ["مطابخ منزلية", "/assets/photos/store-home-kitchen-placeholder.svg", "أدوات ومستلزمات المطبخ"],
+  ["المياه المعدنية", "/assets/photos/store-mineral-water.jpg", "مياه نقية توصلك لباب بيتك"]
 ];
 // The editable homepage categories. From site_settings.categories.items when
 // set (admin add/delete/edit), else built from the HOME_CATEGORIES defaults
@@ -12179,7 +12182,7 @@ function openAddressModal(addressId = null) {
         <span class="addr2-resolved-text" id="addr2-resolved-text" style="white-space:pre-line">${escAttr(resolvedText)}</span>
       </div>
 
-      ${(() => { const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId === 50 ? (getDeliverySettings(50)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone || "")}">`; })()}
+      ${(() => { const cartStoreId = state.cart.length ? state.cart[0].storeId : null; const safaZones = cartStoreId != null ? (getDeliverySettings(cartStoreId)?.namedZones || []) : []; const currentZone = address?.namedZone || ""; return safaZones.length ? `<div class="named-zone-picker"><p class="zone-picker-label">${icon("pin")} هل عنوانك في أحد هذه المجمعات؟ <small>سعر توصيل ثابت</small></p><div class="zone-picker-options">${safaZones.map(z => `<label class="zone-option"><input type="radio" name="namedZone" value="${escAttr(z.match[0])}" ${currentZone === z.match[0] ? "checked" : ""}><span>${z.label}</span></label>`).join("")}<label class="zone-option"><input type="radio" name="namedZone" value="" ${!currentZone ? "checked" : ""}><span>لا، عنوان عادي</span></label></div></div>` : `<input type="hidden" name="namedZone" value="${escAttr(address?.namedZone || "")}">`; })()}
 
       <input class="addr2-field-full" name="label" placeholder="اسم العنوان (مثال: المنزل، العمل) *" value="${escAttr(address?.label || "")}" required>
       <p class="addr2-section-label">معلومات التواصل</p>
@@ -12902,7 +12905,7 @@ function openProfileSetupModal(pendingProductId, qty, opts, notes, addons) {
   const existingAddr = state.customerAddresses[0] || {};
   const sf = existingAddr.structured || {};
   const storeId = pendingProductId ? (getProduct(pendingProductId)?.storeId) : null;
-  const safaZones = storeId === 50 ? (getDeliverySettings(50)?.namedZones || []) : [];
+  const safaZones = storeId != null ? (getDeliverySettings(storeId)?.namedZones || []) : [];
   const currentZone = existingAddr.namedZone || "";
 
   const isZone = safaZones.length && !!currentZone;
