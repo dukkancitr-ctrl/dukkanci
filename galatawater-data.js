@@ -69,6 +69,12 @@ const galatawaterDeliverySettings = {
     ratePerKm: 20,
     prepMinutes: 60,
     maxRoundTripKm: 200,
+    // This store's prices are already delivery-inclusive for the named zones below
+    // (fee 0 each). Every other store on the platform floors its computed distance
+    // fee at 150 TRY (see normalizeDeliveryFee() in app.js) — the merchant explicitly
+    // asked for that floor removed here, so nearby addresses outside the named zones
+    // pay the real 20 TRY/km instead of a minimum 150.
+    noFeeFloor: true,
     namedZones: [
       { match: ["Hayat Park 4", "Hayat Park"], fee: 0, label: "Hayat Park 4" },
       { match: ["Sembol İstanbul Residence", "Sembol Istanbul Residence", "Sembol"], fee: 0, label: "Sembol İstanbul Residence" },

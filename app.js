@@ -305,6 +305,13 @@ function runDeliveryMigrations() {
       });
       done.restaurantRate20 = true; changed = true;
     }
+    // مياه غلاطة الطبيعية (store 115) أُضيف لها noFeeFloor:true بعد النشر مباشرة
+    // (إلغاء الحد الأدنى 150 ل.ت المطبَّق افتراضياً على كل متاجر وضع "distance")،
+    // فأي متصفح فتح صفحة المتجر قبل هذا الإصلاح يحمل نسخة مجمَّدة بلا الحقل الجديد.
+    if (!done.galatawaterNoFeeFloor) {
+      if (saved["115"]) delete saved["115"];
+      done.galatawaterNoFeeFloor = true; changed = true;
+    }
     if (changed) {
       localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
       localStorage.setItem(KEY, JSON.stringify(done));
@@ -2093,7 +2100,7 @@ function estimateDeliveryQuote(store, address) {
     routeMinutes,
     estimatedMinutes: settings.prepMinutes + routeMinutes,
     rawFee,
-    fee: normalizeDeliveryFee(rawFee),
+    fee: settings.noFeeFloor ? rawFee : normalizeDeliveryFee(rawFee),
     ratePerKm: settings.ratePerKm,
     provider: "estimate",
     exceedsMaxDistance
