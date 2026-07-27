@@ -105,10 +105,15 @@ class _WelcomeSlide extends StatelessWidget {
       ),
       child: Stack(
         children: [
+          // العلامة المائية الخلفية: الشعار الحقيقي (نفس الملف المستخدم في
+          // شاشة البداية) بدل أيقونة متجر عامة — طلب صريح من المستخدم.
           Positioned(
-            left: -12,
-            bottom: -22,
-            child: Icon(Icons.storefront_rounded, size: 128, color: Colors.white.withValues(alpha: 0.10)),
+            left: -18,
+            bottom: -30,
+            child: Opacity(
+              opacity: 0.16,
+              child: Image.asset('assets/images/logo.png', width: 150, fit: BoxFit.contain),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -125,10 +130,16 @@ class _WelcomeSlide extends StatelessWidget {
                   style: AppTextStyles.bodyMuted.copyWith(color: Colors.white.withValues(alpha: 0.9)),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 7),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.pill)),
-                  child: Text(AppStrings.heroWelcomeCta, style: AppTextStyles.label.copyWith(color: AppColors.green800)),
+                // كان نصاً بلا أي مستمع نقر — زر «تصفّح المتاجر» لا يفعل شيئاً
+                // عند الضغط عليه. أُضيف PressScale + تنقّل حقيقي لقائمة كل
+                // المتاجر (نفس المسار الذي يفتحه «الأكثر رواجاً» بالرئيسية).
+                PressScale(
+                  onTap: () => context.push(AppRoutes.categoryPath('all')),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 7),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Text(AppStrings.heroWelcomeCta, style: AppTextStyles.label.copyWith(color: AppColors.green800)),
+                  ),
                 ),
               ],
             ),

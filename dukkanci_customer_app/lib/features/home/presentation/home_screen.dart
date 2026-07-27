@@ -180,6 +180,12 @@ class _HomeBody extends StatelessWidget {
   /// that's missing from the approved-stores fetch simply doesn't render.
   static const List<int> _paidHeroIds = [31, 56, 84, 50];
 
+  /// طلب صريح من المستخدم (2026-07-28): إزالة بانر «ماركت عمر» من هيرو
+  /// الرئيسية نهائياً (كان يظهر تلقائياً لأنه من متاجر العروض الحقيقية)
+  /// واستبداله ببانر «روا لتوزيع المياه» مباشرة بعد المتاجر الأربعة المدفوعة.
+  static const int _heroExcludedStoreId = 99; // ماركت عمر
+  static const int _heroReplacementStoreId = 115; // روا لتوزيع المياه
+
   List<Store> _sortedCategory(String key) {
     final c = HomeCategory.byKey(key);
     if (c == null) return const [];
@@ -210,20 +216,27 @@ class _HomeBody extends StatelessWidget {
     final sweets = _sortedCategory('sweets');
     final supermarket = _sortedCategory('supermarket');
 
-    // Paid placements first (in their fixed order), then the previous behavior
-    // (offer stores, else popular stores) fills the remaining slides.
+    // Paid placements first (in their fixed order), then the Rewa
+    // replacement slide, then the previous behavior (offer stores, else
+    // popular stores) fills the remaining slides — with the excluded store
+    // (ماركت عمر) filtered out of both the fixed slot and the auto-fill so
+    // it never resurfaces there even while it still carries a real discount.
     final paidHeroStores = [
       for (final id in _paidHeroIds)
         for (final s in stores)
           if (s.id == id) s,
     ];
-    final promoStores = offers.where((s) => s.displayImage != null).take(5).toList();
+    final replacementHeroStores = [
+      for (final s in stores)
+        if (s.id == _heroReplacementStoreId && s.displayImage != null) s,
+    ];
+    final promoStores = offers.where((s) => s.displayImage != null && s.id != _heroExcludedStoreId).take(5).toList();
     final fillStores = (promoStores.isNotEmpty
             ? promoStores
-            : popular.where((s) => s.displayImage != null).take(5).toList())
-        .where((s) => !_paidHeroIds.contains(s.id))
+            : popular.where((s) => s.displayImage != null && s.id != _heroExcludedStoreId).take(5).toList())
+        .where((s) => !_paidHeroIds.contains(s.id) && s.id != _heroReplacementStoreId)
         .toList();
-    final heroStores = [...paidHeroStores, ...fillStores].take(6).toList();
+    final heroStores = [...paidHeroStores, ...replacementHeroStores, ...fillStores].take(6).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
