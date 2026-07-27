@@ -9,12 +9,12 @@
 // 20 TRY/km round-trip (per the merchant's explicit instruction).
 const galatawaterStore = {
   "id": 115,
-  "name": "مياه غلاطة الطبيعية - مياه ينابيع",
+  "name": "روا لتوزيع المياه",
   "category": "المياه المعدنية",
   "image": "/assets/photos/galatawater/cover.jpg",
   "coverImage": "/assets/photos/galatawater/cover.jpg",
   "logoImage": "/assets/photos/galatawater/logo.png",
-  "logo": "غ",
+  "logo": "ر",
   "rating": 0,
   "reviews": 0,
   "newStore": true,
@@ -28,7 +28,7 @@ const galatawaterStore = {
   "featured": false,
   "hasOffer": false,
   "offer": "",
-  "description": "مياه غلاطة الطبيعية — مياه ينابيع طبيعية نقية، جالونات مياه كبيرة وكراتين أكواب مياه معدنية، توصيل لباب البيت في إسنيورت والمناطق المجاورة، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.",
+  "description": "روا لتوزيع المياه — مياه نقية من ينابيع الطبيعة، جالونات مياه كبيرة وكراتين أكواب مياه معدنية، توصيل لباب البيت في إسنيورت والمناطق المجاورة، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.",
   "address": "2M6P+H8H Esenyurt/İstanbul, Türkiye",
   "phone": "+90 553 999 99 63",
   "whatsapp": "+90 553 999 99 63",
@@ -45,8 +45,8 @@ const galatawaterStore = {
 };
 
 const galatawaterFullCatalog = [
-  { name: "جالون مياه غلاطة الطبيعية 18-19 لتر", description: "جالون مياه ينابيع طبيعية غلاطة، سعة 18-19 لتر، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 170, category: "مياه معدنية", unit: "جالون", image: "/assets/photos/galatawater/p1.jpg" },
-  { name: "كرتون مياه غلاطة المعدنية - أكواب 180 مل (60 كأس)", description: "كرتون يحتوي 60 كأس مياه معدنية غلاطة - مياه ينابيع طبيعية، سعة 180 مل للكأس، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 180, category: "مياه معدنية", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" }
+  { name: "جالون مياه روا الطبيعية 18-19 لتر", description: "جالون مياه ينابيع طبيعية روا، سعة 18-19 لتر، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 170, category: "مياه معدنية", unit: "جالون", image: "/assets/photos/galatawater/p1.jpg" },
+  { name: "كرتون مياه روا المعدنية - أكواب 180 مل (60 كأس)", description: "كرتون يحتوي 60 كأس مياه معدنية روا - مياه ينابيع طبيعية، سعة 180 مل للكأس، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 180, category: "مياه معدنية", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" }
 ];
 
 // Repo-bundled catalog is emptied for fast first paint; products load from Supabase.
