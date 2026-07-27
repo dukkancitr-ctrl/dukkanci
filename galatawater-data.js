@@ -45,7 +45,7 @@ const galatawaterStore = {
 };
 
 const galatawaterFullCatalog = [
-  { name: "جالون مياه روا الطبيعية 18-19 لتر", description: "جالون مياه ينابيع طبيعية روا، سعة 18-19 لتر، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 170, category: "مياه معدنية", unit: "جالون", image: "/assets/photos/galatawater/p1.jpg" },
+  { name: "مياه مايا داغ دمجانة 19 لتر", description: "دمجانة مياه مايا داغ الطبيعية، سعة 19 لتر، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 150 ل.ت فقط.", price: 150, category: "مياه معدنية", unit: "دمجانة", image: "/assets/photos/galatawater/p1.jpg" },
   { name: "كرتون مياه روا المعدنية - أكواب 180 مل (60 كأس)", description: "كرتون يحتوي 60 كأس مياه معدنية روا - مياه ينابيع طبيعية، سعة 180 مل للكأس، السعر شامل التوصيل ضمن مجمعاتنا المعتمدة.", price: 180, category: "مياه معدنية", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" }
 ];
 
