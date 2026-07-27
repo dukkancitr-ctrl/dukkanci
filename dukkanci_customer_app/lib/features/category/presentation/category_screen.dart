@@ -5,10 +5,12 @@ import '../../../app/providers.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/utils/store_priority.dart';
 import '../../../core/widgets/shimmer_box.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../home/domain/home_category.dart';
 import '../../home/presentation/widgets/store_card.dart';
+import '../../location/application/location_controller.dart';
 import '../../stores/domain/store.dart';
 
 /// A full store listing reached from a home category tile or a rail's
@@ -46,7 +48,7 @@ class CategoryScreen extends ConsumerWidget {
         ),
         error: (_, _) => AppErrorView(onRetry: () => ref.invalidate(approvedStoresProvider)),
         data: (all) {
-          final List<Store> list;
+          List<Store> list;
           switch (categoryKey) {
             case 'offers':
               final discounted = ref.watch(discountedStoreIdsProvider).value ?? const <int>{};
@@ -68,6 +70,12 @@ class CategoryScreen extends ConsumerWidget {
               if (a.open != b.open) return a.open ? -1 : 1;
               return b.rating.compareTo(a.rating);
             });
+            // طلب المستخدم 2026-07-27: روا يتصدر ضمن 2 كم فعلياً — يُطبَّق
+            // AFTER الفرز أعلاه (فرز مستقر: من ليس روا القريب يحتفظ بترتيبه)،
+            // لا أثر عملي إلا على قائمة "all" (روا لا ينتمي لأي تصنيف آخر
+            // أصلاً فيبقى غائباً عنه بصرف النظر عن هذا الفرز).
+            final location = ref.watch(locationControllerProvider);
+            list = sortStoresByProximityPriority(list, location?.lat, location?.lng);
           }
           if (list.isEmpty) {
             return const AppEmptyView(message: AppStrings.noResults, icon: Icons.storefront_outlined);

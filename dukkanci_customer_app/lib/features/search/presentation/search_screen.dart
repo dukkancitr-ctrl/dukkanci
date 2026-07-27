@@ -11,6 +11,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/arabic.dart';
 import '../../../core/utils/distance.dart';
+import '../../../core/utils/store_priority.dart';
 import '../../../core/widgets/press_scale.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../core/widgets/voice_search_button.dart';
@@ -194,6 +195,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     for (final product in _synonymMatches) {
       add(product);
     }
+    // طلب المستخدم 2026-07-27: نتائج بحث "ماء/مياه/دمجانة..." تتصدرها منتجات
+    // روا — نفس sortProductsByWaterSearchPriority في app.js، تُطبَّق هنا بعد
+    // التطابق النصي (لا تخترع تطابقاً غير موجود).
+    hits.sort((a, b) {
+      final ra = waterSearchPriorityStoreIds.contains(a.product.storeId) ? 0 : 1;
+      final rb = waterSearchPriorityStoreIds.contains(b.product.storeId) ? 0 : 1;
+      return ra.compareTo(rb);
+    });
     return hits;
   }
 
@@ -220,6 +229,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       });
     } else if (_activeFilters.contains(_Filter.topRated)) {
       list.sort((a, b) => b.rating.compareTo(a.rating));
+    } else {
+      // الافتراضي "الأنسب لك" — طلب المستخدم 2026-07-27: روا يتصدر ضمن 2 كم،
+      // وأثناء بحث فعلي تتصدره أيضاً نتائج بحث الماء. لا يتجاوز فرزاً صريحاً
+      // اختاره الزائر (الأقرب/الأعلى تقييماً) أعلاه.
+      list = sortStoresByProximityPriority(list, location?.lat, location?.lng);
+      if (_query.isNotEmpty) list = sortStoresByWaterSearchPriority(list);
     }
     return list;
   }
