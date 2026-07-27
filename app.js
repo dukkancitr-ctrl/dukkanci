@@ -820,7 +820,12 @@ async function loadSynonymIndex() {
   try {
     let from = 0;
     for (;;) {
-      const { data, error } = await sb.from("product_synonyms").select("product_id,synonyms").eq("status", "done").range(from, from + 999);
+      // .order() is required for .range() pagination to be reliable — without
+      // it Postgres's scan order isn't guaranteed stable across the separate
+      // page requests below, so consecutive pages can silently skip/duplicate
+      // rows (found live 2026-07-27: 5 newly-inserted rows never made it into
+      // the index — 3635 loaded vs 3640 that actually existed).
+      const { data, error } = await sb.from("product_synonyms").select("product_id,synonyms").eq("status", "done").order("product_id").range(from, from + 999);
       if (error || !data) break;
       for (const r of data) {
         if (Array.isArray(r.synonyms) && r.synonyms.length) productSynonymIndex.set(r.product_id, normalizeAr(r.synonyms.join(" ")));
@@ -2914,6 +2919,43 @@ function sortProductsByPaidPriority(list) {
   return list.slice().sort((a, b) => paidPriorityRank(a.storeId) - paidPriorityRank(b.storeId));
 }
 
+// Proximity priority — طلب المستخدم 2026-07-27: متجر روا لتوزيع المياه (115)
+// يجب أن يتصدر "/stores" (المتاجر القريبة منك) عندما يكون الزائر ضمن 2 كم
+// فعلياً منه — شرط قرب حقيقي لا أولوية دائمة كـPAID_PRIORITY_STORE_IDS. يُطبَّق
+// فقط في العرض الافتراضي "الأنسب لك" (لا يتجاوز فرزاً صريحاً اختاره الزائر)،
+// وتحت المتاجر المدفوعة دائماً (لا يغيّر التزام الدفع القائم).
+const PROXIMITY_PRIORITY_RULES = [{ storeId: 115, maxKm: 2 }];
+function proximityPriorityRank(store) {
+  const rule = PROXIMITY_PRIORITY_RULES.find(r => r.storeId === store.id);
+  if (!rule) return 1;
+  const km = branchDistanceKm(store);
+  return (km != null && km <= rule.maxKm) ? 0 : 1;
+}
+function sortStoresByProximityPriority(list) {
+  return list.slice().sort((a, b) => proximityPriorityRank(a) - proximityPriorityRank(b));
+}
+
+// Search priority — نفس طلب المستخدم: نتائج البحث عن "ماء/مياه/دمجانة
+// ماء/ماء 19 لتر" إلخ يجب أن تتصدرها منتجات روا. متجر روا يتصدر فقط عندما
+// يكون اسمه/فئته/منتجاته مطابقة بالفعل لكلمة البحث (وهذا واقع الحال بما أن
+// "مياه" جزء من اسم المتجر نفسه) — لا يخترع تطابقاً غير موجود. المنتجات
+// تُصنَّف مباشرة إلى دلو أولوية داخل getMatchingProducts نفسها (وليس بفرز
+// لاحق) لأن الفهرس الكامل ~13 ألف منتج، ومتجر روا (id 115) قريب من نهايته —
+// فرز بعد التوقّف المبكر على أول 60 نتيجة كان سيُسقطه صامتاً قبل وصول الفحص
+// إليه أصلاً على أي بحث شائع (تحقّق حي: صفر نتيجة روا لبحث "مياه" قبل هذا
+// الإصلاح رغم التطابق الفعلي).
+const WATER_SEARCH_PRIORITY_STORE_IDS = [115];
+// STORE cards shown alongside search results on /stores —
+// only reorders stores that already matched the search text (getFilteredStores
+// filters first), never injects a non-matching store.
+function sortStoresByWaterSearchPriority(list) {
+  return list.slice().sort((a, b) => {
+    const ra = WATER_SEARCH_PRIORITY_STORE_IDS.includes(a.id) ? 0 : 1;
+    const rb = WATER_SEARCH_PRIORITY_STORE_IDS.includes(b.id) ? 0 : 1;
+    return ra - rb;
+  });
+}
+
 // A sensible cross-store mix when there's no curated pick: one available,
 // imaged product per approved BRAND (highest-rated stores first) — branches of
 // the same brand are collapsed first so a multi-branch chain doesn't fill the
@@ -3366,17 +3408,24 @@ function getMatchingProducts(query, limit = 60) {
   const q = normalizeAr(query);
   if (!q) return [];
   const terms = q.split(" ").filter(Boolean);
-  const out = [];
+  // Two buckets, not one: `products` is ~13k items in roughly id order, so a
+  // plain "stop once we have `limit` matches" scan can exhaust the limit on
+  // earlier stores before ever reaching a late-id store like 115 — silently
+  // dropping it from a search it should win (طلب المستخدم 2026-07-27). Priority
+  // matches are never capped mid-scan (there are only a handful per store), so
+  // they always surface regardless of where they sit in the array; only the
+  // non-priority bucket stops early once it alone has enough to fill the limit.
+  const priority = [];
+  const rest = [];
   for (const product of products) {
     if (product.available === false) continue;
     const syn = productSynonymIndex.get(product.id);   // already-normalized dialect alt-names
     const hay = normalizeAr(`${product.name} ${product.category} ${getStore(product.storeId)?.name || ""}`) + (syn ? " " + syn : "");
-    if (terms.every(t => hay.includes(t))) {
-      out.push(product);
-      if (out.length >= limit) break;
-    }
+    if (!terms.every(t => hay.includes(t))) continue;
+    if (WATER_SEARCH_PRIORITY_STORE_IDS.includes(product.storeId)) priority.push(product);
+    else if (rest.length < limit) rest.push(product);
   }
-  return out;
+  return [...priority, ...rest].slice(0, limit);
 }
 
 // "ملاحم" is the homepage/browse grouping label; individual stores may carry a
@@ -3414,7 +3463,11 @@ function getFilteredStores() {
   // Paid-priority stores lead the default "recommended" view (no explicit
   // sort chosen by the visitor); an explicit sort choice (rating/delivery/
   // distance/open/offers) is respected as-is and not overridden.
-  if (!state.storeSort || state.storeSort === "recommended") result = sortStoresByPaidPriority(result);
+  if (!state.storeSort || state.storeSort === "recommended") {
+    result = sortStoresByProximityPriority(result);
+    if (state.search) result = sortStoresByWaterSearchPriority(result);
+    result = sortStoresByPaidPriority(result);
+  }
   return result;
 }
 
