@@ -95,6 +95,7 @@ class AppStrings {
   static const deliveryFee = 'رسوم التوصيل';
   static const deliveryTime = 'وقت التوصيل المتوقع';
   static const storeMenuSearchHint = 'ابحث في القائمة...';
+  static const storeAllProducts = 'جميع المنتجات';
   static const productUnavailable = 'غير متوفر';
   static const featuredBadge = 'مميز';
   static const priceOnRequestLabel = 'السعر عند الطلب';

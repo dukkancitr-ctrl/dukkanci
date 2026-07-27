@@ -18,6 +18,10 @@ import '../../products/domain/product.dart';
 import '../domain/store.dart';
 import '../domain/store_category_plan.dart';
 
+/// Sentinel category key for the "جميع المنتجات" tab — not a real category,
+/// just jumps back to the top of the product list instead of a section.
+const String _kAllCategoryKey = '__all__';
+
 final storeByKeyProvider = FutureProvider.autoDispose.family<Store?, String>((ref, slugOrId) {
   return ref.read(storeRepositoryProvider).fetchStoreBySlugOrId(slugOrId);
 });
@@ -110,6 +114,7 @@ class _StoreBody extends ConsumerStatefulWidget {
 
 class _StoreBodyState extends ConsumerState<_StoreBody> {
   final _sectionKeys = <String, GlobalKey>{};
+  final _topAnchorKey = GlobalKey();
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
   String _query = '';
@@ -134,7 +139,9 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
   void _syncActiveCategory() {
     if (_query.isNotEmpty || _sectionKeys.isEmpty) return;
     final barBottom = MediaQuery.of(context).padding.top + kToolbarHeight + 52 + 8;
-    String? current;
+    // Above every section (top of the list) means "جميع المنتجات" is the
+    // active tab again, not whatever category happened to be selected last.
+    String current = _kAllCategoryKey;
     for (final entry in _sectionKeys.entries) {
       final ctx = entry.value.currentContext;
       if (ctx == null) continue;
@@ -147,14 +154,14 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
         break;
       }
     }
-    if (current != null && current != _selectedCategory) {
+    if (current != _selectedCategory) {
       setState(() => _selectedCategory = current);
     }
   }
 
   void _scrollToCategory(String category) {
     setState(() => _selectedCategory = category);
-    final ctx = _sectionKeys[category]?.currentContext;
+    final ctx = category == _kAllCategoryKey ? _topAnchorKey.currentContext : _sectionKeys[category]?.currentContext;
     if (ctx != null) {
       Scrollable.ensureVisible(ctx, duration: AppMotion.base, curve: Curves.easeOut, alignmentPolicy: ScrollPositionAlignmentPolicy.explicit);
     }
@@ -321,14 +328,15 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
     for (final k in byCategory.keys) {
       _sectionKeys.putIfAbsent(k, () => GlobalKey());
     }
-    _selectedCategory ??= byCategory.keys.first;
+    _selectedCategory ??= _kAllCategoryKey;
 
     return SliverMainAxisGroup(
       slivers: [
+        SliverToBoxAdapter(key: _topAnchorKey, child: const SizedBox.shrink()),
         SliverPersistentHeader(
           pinned: true,
           delegate: _CategoryBarDelegate(
-            categories: byCategory.keys.toList(),
+            categories: [_kAllCategoryKey, ...byCategory.keys],
             selected: _selectedCategory,
             onTap: _scrollToCategory,
           ),
@@ -699,6 +707,7 @@ class _CategoryBarDelegate extends SliverPersistentHeaderDelegate {
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, i) {
           final isActive = categories[i] == selected;
+          final label = categories[i] == _kAllCategoryKey ? AppStrings.storeAllProducts : categories[i];
           return PressScale(
             onTap: () => onTap(categories[i]),
             child: Container(
@@ -710,7 +719,7 @@ class _CategoryBarDelegate extends SliverPersistentHeaderDelegate {
                 border: Border.all(color: isActive ? AppColors.green800 : AppColors.line),
               ),
               child: Text(
-                categories[i],
+                label,
                 style: AppTextStyles.label.copyWith(color: isActive ? Colors.white : AppColors.ink),
               ),
             ),
