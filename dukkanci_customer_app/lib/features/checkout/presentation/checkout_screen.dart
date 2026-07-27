@@ -38,24 +38,40 @@ class CheckoutScreen extends ConsumerStatefulWidget {
   ConsumerState<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
+/// Result of the pre-OTP-send phone confirmation dialog.
+enum _PhoneConfirmAction { edit, send }
+
+/// Returned by [_SavedAddressSheet] when the customer taps "إضافة عنوان
+/// جديد" instead of an existing row — a dedicated sentinel (not a
+/// SavedAddress) so the caller can tell "add a new one" apart from "picked
+/// address #0" without any ambiguity, same pattern as address_form_screen
+/// .dart's own manual-neighborhood sentinel.
+final Object _addNewAddressSentinel = Object();
+
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _nameController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _addressDetailsController = TextEditingController();
   final _phoneController = TextEditingController();
   final _notesController = TextEditingController();
   final _otpController = TextEditingController();
+  final _phoneFocusNode = FocusNode();
+  // Lets both the pre-send confirmation dialog and the post-send "تغيير
+  // الرقم؟" link scroll the phone field into view and focus it, instead of
+  // silently leaving the customer stuck on an OTP screen for a number they
+  // can no longer see or edit.
+  final _phoneFieldKey = GlobalKey();
   PaymentMethod _paymentMethod = PaymentMethod.cash;
   bool _isPickup = false;
   bool _leaveAtDoor = false;
   bool _submitting = false;
   bool _awaitingOtp = false;
+  bool _resendingOtp = false;
   String? _orderId;
   String? _error;
-  // Carries the picked address's structured Turkish fields + lat/lng forward
-  // to the order snapshot (spec §11) — the two text controllers above stay
-  // editable free text (customer can still tweak them at checkout time),
-  // this is the authoritative structured copy.
+  // The delivery address, entered/edited exclusively through the same
+  // structured Turkish-address form used by «عناويني» (province/district/
+  // neighborhood pickers + road/building/floor/apartment-number boxes + a
+  // notes box) — no free-text "type your whole address" field on this
+  // screen anymore, so a delivery address is always well-structured.
   SavedAddress? _selectedAddress;
 
   @override
@@ -73,32 +89,153 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   void _applyAddress(SavedAddress address) {
     _selectedAddress = address;
-    _addressController.text = address.formattedAddress;
-    _addressDetailsController.text = address.detailsLine;
     if (address.recipientName.isNotEmpty) _nameController.text = address.recipientName;
     if (address.recipientPhone.isNotEmpty) _phoneController.text = address.recipientPhone;
   }
 
-  Future<void> _pickSavedAddress() async {
+  /// "إضافة عنوان التوصيل" / "تغيير العنوان" — with no saved addresses yet,
+  /// jumps straight to the structured form (nothing to pick from); otherwise
+  /// opens the picker sheet, which itself offers "إضافة عنوان جديد" as one
+  /// more row so the customer is never stuck choosing among only-wrong
+  /// addresses.
+  Future<void> _openAddressPicker() async {
     final addresses = ref.read(addressesControllerProvider);
-    final picked = await showModalBottomSheet<SavedAddress>(
+    if (addresses.isEmpty) {
+      final created = await context.push<SavedAddress>(AppRoutes.addressForm);
+      if (created != null && mounted) setState(() => _applyAddress(created));
+      return;
+    }
+    final result = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg))),
       builder: (sheetContext) => _SavedAddressSheet(addresses: addresses),
     );
-    if (picked != null) setState(() => _applyAddress(picked));
+    if (!mounted || result == null) return;
+    if (identical(result, _addNewAddressSentinel)) {
+      final created = await context.push<SavedAddress>(AppRoutes.addressForm);
+      if (created != null && mounted) setState(() => _applyAddress(created));
+      return;
+    }
+    if (result is SavedAddress) setState(() => _applyAddress(result));
+  }
+
+  /// Pencil icon on the selected-address card — corrects the *same* address
+  /// (right city/district/neighborhood/street/building/floor/apartment
+  /// boxes, pre-filled) instead of forcing the customer to build a whole new
+  /// one from scratch just to fix a typo.
+  Future<void> _editSelectedAddress() async {
+    final current = _selectedAddress;
+    if (current == null) return;
+    final updated = await context.push<SavedAddress>(AppRoutes.addressForm, extra: current);
+    if (updated != null && mounted) setState(() => _applyAddress(updated));
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _addressController.dispose();
-    _addressDetailsController.dispose();
     _phoneController.dispose();
     _notesController.dispose();
     _otpController.dispose();
+    _phoneFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Scrolls the phone field into view and focuses it with the whole number
+  /// selected — used both by the pre-send confirmation dialog's "تعديل
+  /// الرقم" action and by the post-send "تغيير الرقم؟" link, so a wrong
+  /// number is always one tap away from being fixed instead of requiring the
+  /// customer to hunt for the field themselves.
+  void _focusPhoneField() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _phoneFieldKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), alignment: 0.1);
+      }
+      _phoneFocusNode.requestFocus();
+      _phoneController.selection = TextSelection(baseOffset: 0, extentOffset: _phoneController.text.length);
+    });
+  }
+
+  /// Shown once, right before the very first OTP send for this checkout —
+  /// the whole point is to tell the customer a WhatsApp confirmation code is
+  /// about to go out to a *specific* number, and give them a way to correct
+  /// it before it's sent (rather than after, stuck on an OTP field with no
+  /// visible way back — the exact bug this fixes).
+  Future<bool> _confirmPhoneBeforeSendingOtp(String phone) async {
+    final action = await showDialog<_PhoneConfirmAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(AppStrings.otpConfirmPhoneTitle),
+        content: Text(AppStrings.otpConfirmPhoneBody(phone)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_PhoneConfirmAction.edit),
+            child: const Text(AppStrings.otpConfirmPhoneEdit),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(_PhoneConfirmAction.send),
+            child: const Text(AppStrings.otpConfirmPhoneSend),
+          ),
+        ],
+      ),
+    );
+    if (action == _PhoneConfirmAction.edit) {
+      _focusPhoneField();
+      return false;
+    }
+    return action == _PhoneConfirmAction.send;
+  }
+
+  /// "تغيير الرقم؟" under the OTP field — for when the customer only
+  /// realizes the number was wrong *after* seeing "الرمز غير صحيح" (a code
+  /// sent to the wrong phone will never arrive, so retyping the code alone
+  /// can never fix it). Drops back to the phone step without losing any of
+  /// the other checkout fields already filled in.
+  void _changePhoneNumber() {
+    setState(() {
+      _awaitingOtp = false;
+      _otpController.clear();
+      _error = null;
+    });
+    _focusPhoneField();
+  }
+
+  Future<void> _resendOtp() async {
+    final phone = _phoneController.text.trim();
+    setState(() {
+      _resendingOtp = true;
+      _error = null;
+    });
+    final auth = ref.read(authRepositoryProvider);
+    final OtpSendResult result;
+    try {
+      result = await auth.sendOtp(phone);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _resendingOtp = false;
+        _error = e is Failure ? e.message : AppStrings.somethingWentWrong;
+      });
+      return;
+    }
+    if (!mounted) return;
+    if (result == OtpSendResult.skippedWhatsappUnavailable) {
+      // WhatsApp just became unavailable server-side — drop the OTP
+      // requirement entirely, mirroring _submit()'s own soft-skip handling,
+      // instead of resending into a channel that isn't there.
+      setState(() {
+        _resendingOtp = false;
+        _awaitingOtp = false;
+        _otpController.clear();
+      });
+      return;
+    }
+    setState(() {
+      _resendingOtp = false;
+      _otpController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.otpSentToPhone(phone))));
   }
 
   Future<void> _submit() async {
@@ -114,9 +251,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       setState(() => _error = 'يرجى إدخال رقم واتساب صحيح');
       return;
     }
-    if (!_isPickup && _addressController.text.trim().isEmpty) {
+    if (!_isPickup && _selectedAddress == null) {
       setState(() => _error = 'يرجى إدخال عنوان التوصيل');
       return;
+    }
+
+    final auth = ref.read(authRepositoryProvider);
+    final alreadyVerified = await auth.isPhoneAlreadyVerified(phone);
+
+    // Confirm — or let the customer fix — the destination number BEFORE any
+    // WhatsApp OTP goes out. Must happen before _submitting flips true so
+    // the summary bar doesn't spin while waiting on the dialog.
+    if (!alreadyVerified && !_awaitingOtp) {
+      final proceed = await _confirmPhoneBeforeSendingOtp(phone);
+      if (!mounted || !proceed) return;
     }
 
     setState(() {
@@ -124,8 +272,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _error = null;
     });
 
-    final auth = ref.read(authRepositoryProvider);
-    final alreadyVerified = await auth.isPhoneAlreadyVerified(phone);
     if (!alreadyVerified && !_awaitingOtp) {
       final OtpSendResult result;
       try {
@@ -145,10 +291,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         await _placeOrder(cart, name: name, phone: phone);
         return;
       }
+      if (!mounted) return;
       setState(() {
         _awaitingOtp = true;
         _submitting = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.otpSentToPhone(phone))));
       return;
     }
 
@@ -177,7 +325,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (_notesController.text.trim().isNotEmpty) _notesController.text.trim(),
       if (!_isPickup && _leaveAtDoor) 'يرجى ترك الطلب عند الباب دون الحاجة لمقابلتي',
     ];
-    final addressDetails = _addressDetailsController.text.trim();
     final selected = _selectedAddress;
     final draft = OrderDraft(
       id: _orderId!,
@@ -187,8 +334,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       contactName: name,
       contactPhone: phone,
       isPickup: _isPickup,
-      addressText: _addressController.text.trim(),
-      addressDetails: addressDetails,
+      addressText: selected?.formattedAddress ?? '',
+      addressDetails: selected?.detailsLine ?? '',
       structuredAddress: selected?.toJson(),
       fullAddressTr: selected?.fullAddressTr ?? '',
       paymentMethod: _paymentMethod,
@@ -267,7 +414,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'الاسم')),
                       const SizedBox(height: AppSpacing.md),
                       TextField(
+                        key: _phoneFieldKey,
                         controller: _phoneController,
+                        focusNode: _phoneFocusNode,
                         keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(labelText: AppStrings.enterPhone, hintText: '90XXXXXXXXXX'),
                       ),
@@ -280,40 +429,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     title: AppStrings.deliveryAddress,
                     child: Column(
                       children: [
-                        if (ref.watch(addressesControllerProvider).isNotEmpty) ...[
-                          Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: TextButton.icon(
-                              onPressed: _pickSavedAddress,
-                              icon: const Icon(Icons.bookmark_outline_rounded, size: 18),
-                              label: const Text(AppStrings.useSavedAddress),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                        ],
-                        TextField(
-                          controller: _addressController,
-                          decoration: const InputDecoration(labelText: AppStrings.addressTextLabel),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        TextField(
-                          controller: _addressDetailsController,
-                          decoration: const InputDecoration(labelText: AppStrings.addressDetailsLabel, hintText: AppStrings.addressDetailsHint),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Row(
-                          children: [
-                            Icon(Icons.place_rounded, size: 16, color: (_selectedAddress?.hasLocation ?? false) ? AppColors.green800 : AppColors.muted),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                (_selectedAddress?.hasLocation ?? false) ? AppStrings.addrLocationReady : AppStrings.addrLocationMissing,
-                                style: AppTextStyles.caption.copyWith(color: (_selectedAddress?.hasLocation ?? false) ? AppColors.green800 : AppColors.muted),
+                        _selectedAddress == null
+                            ? _AddAddressPrompt(onTap: _openAddressPicker)
+                            : _SelectedAddressCard(
+                                address: _selectedAddress!,
+                                onEdit: _editSelectedAddress,
+                                onChange: _openAddressPicker,
                               ),
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: AppSpacing.md),
                         _LeaveAtDoorRow(value: _leaveAtDoor, onChanged: (v) => setState(() => _leaveAtDoor = v)),
                       ],
@@ -345,12 +467,33 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   _SectionCard(
                     title: AppStrings.enterOtp,
-                    child: TextField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.headline,
-                      decoration: const InputDecoration(hintText: '••••••'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(AppStrings.otpSentToPhone(_phoneController.text.trim()), style: AppTextStyles.bodyMuted),
+                        const SizedBox(height: AppSpacing.sm),
+                        TextField(
+                          controller: _otpController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.headline,
+                          decoration: const InputDecoration(hintText: '••••••'),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton(
+                              onPressed: _submitting || _resendingOtp ? null : _changePhoneNumber,
+                              child: const Text(AppStrings.otpChangePhoneNumber),
+                            ),
+                            TextButton(
+                              onPressed: _submitting || _resendingOtp ? null : _resendOtp,
+                              child: Text(_resendingOtp ? AppStrings.otpResending : AppStrings.resendOtp),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -628,9 +771,102 @@ class _FulfillmentTile extends StatelessWidget {
   }
 }
 
+/// Empty state shown until the customer has a delivery address at all —
+/// the entry point into the structured Turkish-address form (province/
+/// district/neighborhood + road/building/floor/apartment boxes), never a
+/// free-text field.
+class _AddAddressPrompt extends StatelessWidget {
+  const _AddAddressPrompt({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
+        decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(AppRadius.sm)),
+        child: Row(
+          children: [
+            const Icon(Icons.add_location_alt_outlined, color: AppColors.green800),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(child: Text(AppStrings.addressAddNew, style: AppTextStyles.body.copyWith(color: AppColors.green800, fontWeight: FontWeight.w700))),
+            const Icon(Icons.chevron_left_rounded, color: AppColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The chosen delivery address, shown as a summary card once it's a real
+/// structured address (never the raw free-text box this replaces) — with a
+/// pencil to fix a wrong field in place and a "تغيير العنوان" link to swap
+/// to a different saved address or add a fresh one.
+class _SelectedAddressCard extends StatelessWidget {
+  const _SelectedAddressCard({required this.address, required this.onEdit, required this.onChange});
+
+  final SavedAddress address;
+  final VoidCallback onEdit;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CircleAvatar(radius: 18, backgroundColor: AppColors.green50, child: Icon(Icons.location_on_rounded, color: AppColors.green800, size: 18)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(address.label.isEmpty ? AppStrings.myAddresses : address.label, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(address.formattedAddress, style: AppTextStyles.bodyMuted),
+                  if (address.detailsLine.isNotEmpty) Text(address.detailsLine, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 20), tooltip: AppStrings.addressEdit),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Icon(Icons.place_rounded, size: 16, color: address.hasLocation ? AppColors.green800 : AppColors.muted),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                address.hasLocation ? AppStrings.addrLocationReady : AppStrings.addrLocationMissing,
+                style: AppTextStyles.caption.copyWith(color: address.hasLocation ? AppColors.green800 : AppColors.muted),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            onPressed: onChange,
+            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+            label: const Text(AppStrings.changeAddress),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Bottom sheet listing the customer's saved addresses ("عناويني") for a
-/// one-tap fill of the free-text fields above, instead of retyping an
-/// address that's already on file.
+/// one-tap pick, plus an "إضافة عنوان جديد" row that resolves to
+/// [_addNewAddressSentinel] instead of an address — the caller pushes the
+/// structured form itself so this sheet doesn't need to know about routing.
 class _SavedAddressSheet extends StatelessWidget {
   const _SavedAddressSheet({required this.addresses});
 
@@ -664,6 +900,13 @@ class _SavedAddressSheet extends StatelessWidget {
                   );
                 },
               ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(radius: 18, backgroundColor: AppColors.cream, child: Icon(Icons.add_rounded, color: AppColors.green800, size: 18)),
+              title: Text(AppStrings.addressAddNew, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700, color: AppColors.green800)),
+              onTap: () => Navigator.of(context).pop(_addNewAddressSentinel),
             ),
             const SizedBox(height: AppSpacing.sm),
             TextButton.icon(

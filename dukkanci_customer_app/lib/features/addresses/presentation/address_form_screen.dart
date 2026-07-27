@@ -390,7 +390,12 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
       recipientPhone: _phoneCtrl.text.trim(),
     );
     await ref.read(addressesControllerProvider.notifier).upsert(address);
-    if (mounted) context.pop();
+    // Popping with the saved address lets a caller that pushed this screen
+    // expecting a result (checkout's "إضافة عنوان جديد"/"تعديل" flows) apply
+    // it immediately without a second round-trip through the addresses
+    // list — existing callers that push without awaiting a value (the
+    // «عناويني» screen) simply ignore it.
+    if (mounted) context.pop(address);
   }
 
   @override

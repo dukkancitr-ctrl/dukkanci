@@ -149,8 +149,6 @@ class AppStrings {
   static const checkoutStepMenu = 'القائمة';
   static const checkoutStepCart = 'السلة';
   static const checkoutStepPayment = 'الدفع';
-  static const addressDetailsLabel = 'تفاصيل إضافية (اختياري)';
-  static const addressDetailsHint = 'الدور، رقم الشقة، معلم قريب...';
   static const leaveAtDoorLabel = 'اترك الطلب عند الباب';
   static const leaveAtDoorNote = 'سيُبلَّغ المندوب بعدم الحاجة لمقابلتك';
   static const checkoutDeliveryFeeNote = 'يتواصل معك المتجر عبر واتساب لتأكيد رسوم التوصيل';
@@ -161,7 +159,15 @@ class AppStrings {
   static const sendOtp = 'إرسال رمز التحقق';
   static const enterOtp = 'أدخل رمز التحقق';
   static const resendOtp = 'إعادة إرسال الرمز';
+  static const otpResending = 'جارٍ إعادة الإرسال...';
   static const verify = 'تحقق';
+  static const otpConfirmPhoneTitle = 'تأكيد رقم الهاتف';
+  static String otpConfirmPhoneBody(String phone) =>
+      'سنرسل رمز تحقق عبر واتساب إلى الرقم التالي:\n$phone\n\nيرجى التأكد أن هذا رقم واتساب صحيح لتصلك رسالة التحقق قبل المتابعة.';
+  static const otpConfirmPhoneEdit = 'تعديل الرقم';
+  static const otpConfirmPhoneSend = 'إرسال الرمز';
+  static String otpSentToPhone(String phone) => 'أرسلنا رمز التحقق عبر واتساب إلى $phone';
+  static const otpChangePhoneNumber = 'تغيير رقم الهاتف؟';
 
   // حالات الطلب — القيم الحقيقية في قاعدة البيانات نصوص عربية جاهزة للعرض
   // مباشرة (انظر features/checkout/domain/order.dart::OrderStatus)، فلا حاجة
@@ -202,12 +208,11 @@ class AppStrings {
   static const addressLabelWork = 'العمل';
   static const addressLabelOther = 'آخر';
   static const addressLabelCustomHint = 'اسم مخصص (اختياري)';
-  static const addressTextLabel = 'العنوان بالتفصيل';
   static const recipientNameLabel = 'اسم المستلم';
   static const addressValidationError = 'يرجى إدخال العنوان بالتفصيل';
-  static const useSavedAddress = 'استخدام عنوان محفوظ';
   static const savedAddressSheetTitle = 'اختر عنوان التوصيل';
   static const manageAddresses = 'إدارة العناوين';
+  static const changeAddress = 'تغيير العنوان';
   // نموذج العنوان المهيكل (نفس حقول الموقع) + رابط خرائط Google
   static const addrSectionLocation = 'İl / İlçe / Mahalle';
   static const addrSectionRoad = 'Cadde / Sokak';
