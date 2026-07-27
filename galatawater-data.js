@@ -48,7 +48,8 @@ const galatawaterFullCatalog = [
   { name: "مياه مايا داغ دمجانة 19 لتر", description: "دمجانة مياه مايا داغ الطبيعية، سعة 19 لتر، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 150 ل.ت فقط.", price: 150, category: "دمجانات المياه", unit: "دمجانة", image: "/assets/photos/galatawater/p1.jpg" },
   { name: "مياه ابانت كاسات 180 مل عدد 60", description: "كرتون مياه ابانت المعدنية، يحتوي 60 كأس سعة 180 مل للكأس، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 190 ل.ت فقط.", price: 190, category: "أكواب المياه", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" },
   { name: "مضخة يدوية لسحب مياه الدمجانة", description: "مضخة يدوية بسيطة التركيب لسحب المياه من دمجانة 19 لتر، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 150 ل.ت فقط.", price: 150, category: "إكسسوارات المياه", unit: "قطعة", image: "/assets/photos/galatawater/p3.jpg" },
-  { name: "دمجانة مياه ليلا الطبيعية 19 لتر", description: "دمجانة مياه ينابيع طبيعية ليلا، سعة 19 لتر، توصيل لباب المنزل أو المكتب ضمن مجمعاتنا المعتمدة بسعر 160 ل.ت فقط.", price: 160, category: "دمجانات المياه", unit: "دمجانة", image: "/assets/photos/galatawater/p4.jpg" }
+  { name: "دمجانة مياه ليلا الطبيعية 19 لتر", description: "دمجانة مياه ينابيع طبيعية ليلا، سعة 19 لتر، توصيل لباب المنزل أو المكتب ضمن مجمعاتنا المعتمدة بسعر 160 ل.ت فقط.", price: 160, category: "دمجانات المياه", unit: "دمجانة", image: "/assets/photos/galatawater/p4.jpg" },
+  { name: "مياه كاردلين 200 مل عدد 72", description: "صندوق مياه معدنية كاردلين، يحتوي 72 عبوة سعة 200 مل للعبوة، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 225 ل.ت فقط.", price: 225, category: "زجاجات المياه", unit: "صندوق", image: "/assets/photos/galatawater/p5.jpg" }
 ];
 
 // Repo-bundled catalog is emptied for fast first paint; products load from Supabase.
