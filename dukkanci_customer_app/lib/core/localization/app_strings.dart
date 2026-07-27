@@ -80,6 +80,11 @@ class AppStrings {
   static const useCurrentLocation = 'استخدام موقعي الحالي';
   static const chooseAreaManually = 'اختيار المنطقة يدوياً';
   static const locationPermissionDenied = 'تم رفض إذن الموقع — يمكنك اختيار منطقتك يدوياً';
+  static const openSettings = 'فتح الإعدادات';
+  static const locationServiceDisabledTitle = 'خدمة الموقع غير مفعّلة';
+  static const locationServiceDisabledBody = 'فعّل خدمة الموقع (GPS) من إعدادات جهازك لتحديد موقعك تلقائياً على الخريطة، أو حدّده يدوياً بسحب الخريطة.';
+  static const locationPermissionDeniedForeverTitle = 'إذن الموقع مرفوض';
+  static const locationPermissionDeniedForeverBody = 'منحت التطبيق رفضاً دائماً لإذن الموقع. فعّله من إعدادات التطبيق لتحديد موقعك تلقائياً، أو حدّده يدوياً بسحب الخريطة.';
 
   // شريط التنقل السفلي
   static const navHome = 'الرئيسية';

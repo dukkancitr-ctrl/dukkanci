@@ -77,6 +77,13 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initial == null) {
+      // New address (not editing a saved one with a lat/lng already): prompt
+      // for location right away instead of waiting for a tap on the FAB —
+      // otherwise the map just sits on Istanbul's default center with no
+      // indication the customer needs to do anything.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _useCurrentLocation());
+    }
     final a = widget.initial;
     _choice = _choiceFor(a?.label);
     if (_choice == _LabelChoice.other) _customLabelCtrl.text = a?.label ?? '';
@@ -249,14 +256,39 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
     );
   }
 
+  /// Called both from the FAB and automatically on screen open. Surfaces
+  /// *why* nothing happened instead of the old silent `return` — that
+  /// silence was the whole bug: a customer with GPS off, or who'd denied the
+  /// permission once, got a map that never asked for anything and just sat
+  /// on Istanbul's default center forever.
   Future<void> _useCurrentLocation() async {
+    if (_locating) return;
     setState(() => _locating = true);
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        if (mounted) {
+          await _promptOpenSettings(
+            title: AppStrings.locationServiceDisabledTitle,
+            body: AppStrings.locationServiceDisabledBody,
+            onConfirm: Geolocator.openLocationSettings,
+          );
+        }
+        return;
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          await _promptOpenSettings(
+            title: AppStrings.locationPermissionDeniedForeverTitle,
+            body: AppStrings.locationPermissionDeniedForeverBody,
+            onConfirm: Geolocator.openAppSettings,
+          );
+        }
+        return;
+      }
+      if (permission == LocationPermission.denied) return; // just declined the system dialog — no extra nagging
       final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       if (!mounted) return;
       final target = LatLng(position.latitude, position.longitude);
@@ -266,9 +298,31 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
         _locationSource = 'gps';
       });
       await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 17));
+    } catch (_) {
+      // Position fetch failed (timeout, no fix yet, …) — leave the map on
+      // its current pin so the customer can still drag it manually.
     } finally {
       if (mounted) setState(() => _locating = false);
     }
+  }
+
+  Future<void> _promptOpenSettings({
+    required String title,
+    required String body,
+    required Future<bool> Function() onConfirm,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text(AppStrings.cancel)),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text(AppStrings.openSettings)),
+        ],
+      ),
+    );
+    if (confirmed == true) await onConfirm();
   }
 
   void _onCameraIdle() async {

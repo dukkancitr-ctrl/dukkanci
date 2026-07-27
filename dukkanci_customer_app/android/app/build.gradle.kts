@@ -27,14 +27,17 @@ android {
         versionName = flutter.versionName
 
         // Android Maps SDK key referenced by AndroidManifest.xml's
-        // com.google.android.geo.API_KEY meta-data. Set it via either an
+        // com.google.android.geo.API_KEY meta-data. Override via either an
         // environment variable at build time (MAPS_API_KEY=... flutter build
         // appbundle) or android/local.properties (mapsApiKey=...) for local
-        // runs — never commit a real key to this file. Empty by default so a
-        // fresh checkout still builds (Maps just won't render until it's set).
+        // runs. Falls back to the same key the live website already serves
+        // to any anonymous visitor from https://www.dukkanci.com.tr/api/maps-key
+        // (not a secret — it's shipped client-side there too), so a build
+        // that skips the override still gets a working map instead of the
+        // blank grey canvas an empty key produces.
         val mapsApiKey = (project.findProperty("mapsApiKey") as String?)
             ?: System.getenv("MAPS_API_KEY")
-            ?: ""
+            ?: "AIzaSyA0sLQ7F2ivkWnR3XRPwmJx6HiNkHvqT3g"
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
