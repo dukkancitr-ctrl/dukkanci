@@ -209,7 +209,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // أعد تسجيل الجهاز به ليربط الخادم إشعارات هذا الطلب بهذا الجهاز.
       unawaited(ref.read(deviceRegistrarProvider).register(customerPhone: phone));
       if (!mounted) return;
-      context.go(AppRoutes.orderDetailPath(orderId));
+      // go() (not push()) so cart/checkout drop out of the stack — the order
+      // is done, there's nothing to "go back" into there. But go() alone
+      // makes order-detail the new stack ROOT with nothing beneath it, so
+      // the back button/gesture would exit the app entirely (the bug this
+      // fixes). Landing the stack on "My Orders" first, then pushing the
+      // detail screen on top, gives back a real target to pop to.
+      context.go(AppRoutes.orders);
+      context.push(AppRoutes.orderDetailPath(orderId));
     } catch (e) {
       setState(() => _error = e is Failure ? e.message : AppStrings.somethingWentWrong);
     } finally {
