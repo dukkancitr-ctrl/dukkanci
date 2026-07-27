@@ -35,7 +35,7 @@ const galatawaterStore = {
   "email": "",
   "website": "",
   "sourceUrl": "",
-  "hours": "التوصيل يومياً — تواصل عبر واتساب لتأكيد الطلب",
+  "hours": "يومياً 9:00 ص – 10:00 م",
   "areas": ["إسنيورت", "مناطق إسطنبول حسب المسافة"],
   "fulfillment": "توصيل",
   "subscription": "احترافي",
