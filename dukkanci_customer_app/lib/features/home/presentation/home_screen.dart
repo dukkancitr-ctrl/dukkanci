@@ -14,11 +14,14 @@ import '../../../core/widgets/state_views.dart';
 import '../../banners/presentation/app_home_banner_section.dart';
 import '../../location/application/location_controller.dart';
 import '../../notifications/application/notifications_controller.dart';
+import '../../products/domain/product.dart';
 import '../../stores/domain/store.dart';
 import '../domain/home_category.dart';
-import 'widgets/category_strip.dart';
+import 'widgets/category_tiles.dart';
+import 'widgets/product_rail.dart';
 import 'widgets/promo_hero.dart';
 import 'widgets/store_rail.dart';
+import 'widgets/trust_bar.dart';
 
 /// The redesigned home feed: an edge-to-edge red brand header, a manual-swipe
 /// promo hero, a category shortcut strip, and several horizontal rails
@@ -34,6 +37,8 @@ class HomeScreen extends ConsumerWidget {
     // عدّاد غير المقروء يسقط لصفر عند التحميل أو الفشل، فلا يمكن لخدمة
     // الإشعارات أن تُسقط الصفحة الرئيسية أو تعطّل تحميلها.
     final unreadNotifications = ref.watch(unreadNotificationsCountProvider);
+    final offerProducts = ref.watch(offerProductsProvider).value ?? const <Product>[];
+    final suggestedProducts = ref.watch(suggestedProductsProvider).value ?? const <Product>[];
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent),
       child: Scaffold(
@@ -45,6 +50,7 @@ class HomeScreen extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _HomeHeader(locationLabel: locationLabel, unreadNotifications: unreadNotifications),
               ),
+              const SliverToBoxAdapter(child: TrustBar()),
               storesAsync.when(
                 loading: () => const SliverToBoxAdapter(child: _HomeLoading()),
                 error: (_, _) => SliverToBoxAdapter(
@@ -57,6 +63,8 @@ class HomeScreen extends ConsumerWidget {
                   child: _HomeBody(
                     stores: stores,
                     discountedStoreIds: ref.watch(discountedStoreIdsProvider).value ?? const <int>{},
+                    offerProducts: offerProducts,
+                    suggestedProducts: suggestedProducts,
                   ),
                 ),
               ),
@@ -89,6 +97,7 @@ class _HomeHeader extends StatelessWidget {
           bottomLeft: Radius.circular(AppRadius.lg),
           bottomRight: Radius.circular(AppRadius.lg),
         ),
+        boxShadow: AppShadow.brand,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,16 +153,32 @@ class _HomeHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
+          Text(AppStrings.homeGreeting, style: AppTextStyles.headline.copyWith(color: Colors.white)),
+          const SizedBox(height: 3),
+          Text(
+            AppStrings.homeGreetingSub,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.bodyMuted.copyWith(color: Colors.white.withValues(alpha: 0.92)),
+          ),
+          const SizedBox(height: AppSpacing.md),
           PressScale(
             onTap: () => context.push(AppRoutes.search),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md + 1),
-              decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(AppRadius.sm)),
+              decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(AppRadius.sm), boxShadow: AppShadow.soft),
               child: Row(
                 children: [
-                  const Icon(Icons.search_rounded, color: AppColors.muted),
+                  Expanded(
+                    child: Text(AppStrings.homeSearchHint, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.bodyMuted),
+                  ),
                   const SizedBox(width: AppSpacing.sm),
-                  Text(AppStrings.homeSearchHint, style: AppTextStyles.bodyMuted),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(color: AppColors.orange, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.search_rounded, size: 18, color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -165,7 +190,12 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _HomeBody extends StatelessWidget {
-  const _HomeBody({required this.stores, required this.discountedStoreIds});
+  const _HomeBody({
+    required this.stores,
+    required this.discountedStoreIds,
+    required this.offerProducts,
+    required this.suggestedProducts,
+  });
 
   final List<Store> stores;
 
@@ -173,6 +203,12 @@ class _HomeBody extends StatelessWidget {
   /// misses several (see [Store.hasAnyOffer]). Watched by the parent so this
   /// stays a plain StatelessWidget like the rest of the home tree.
   final Set<int> discountedStoreIds;
+
+  /// Real discounted products for the «عروض اليوم» rail, and featured products
+  /// for «منتجات مقترحة لك» — fetched independently of the store list, so a
+  /// pending/failed load just leaves those rails out (never blanks the home).
+  final List<Product> offerProducts;
+  final List<Product> suggestedProducts;
 
   /// Paid header placement — the same four merchant-paid stores as the
   /// website's PAID_PRIORITY_STORE_IDS (app.js): مطعم الخوالي، باشا بيتزريا،
@@ -194,6 +230,18 @@ class _HomeBody extends StatelessWidget {
         if (a.open != b.open) return a.open ? -1 : 1;
         return b.rating.compareTo(a.rating);
       });
+  }
+
+  /// The best real photo to represent a category tile — the cover of the
+  /// highest-rated open store in that category (never an invented image; a
+  /// category with no photographed store falls back to a brand gradient).
+  String? _catImage(HomeCategory c) {
+    final withImage = stores.where(c.matches).where((s) => s.displayImage != null).toList()
+      ..sort((a, b) {
+        if (a.open != b.open) return a.open ? -1 : 1;
+        return b.rating.compareTo(a.rating);
+      });
+    return withImage.isEmpty ? null : withImage.first.displayImage;
   }
 
   @override
@@ -237,6 +285,8 @@ class _HomeBody extends StatelessWidget {
         .where((s) => !_paidHeroIds.contains(s.id) && s.id != _heroReplacementStoreId)
         .toList();
     final heroStores = [...paidHeroStores, ...replacementHeroStores, ...fillStores].take(6).toList();
+    final storeNames = {for (final s in stores) s.id: s.name};
+    final openCount = stores.where((s) => s.open).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,26 +302,30 @@ class _HomeBody extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
           child: Text(AppStrings.sectionCategories, style: AppTextStyles.title),
         ),
-        CategoryStrip(
+        CategoryTiles(
           categories: categories,
+          imageFor: _catImage,
           onTap: (c) => context.push(AppRoutes.categoryPath(c.key)),
         ),
         const SizedBox(height: AppSpacing.xl),
-        if (offers.isNotEmpty) ...[
-          StoreRail(
-            title: AppStrings.railOffers,
-            stores: offers,
-            highlightOffer: true,
-            onSeeAll: () => context.push(AppRoutes.categoryPath('offers')),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-        ],
         StoreRail(
-          title: AppStrings.railPopular,
+          title: AppStrings.railNearby,
+          subtitle: AppStrings.railNearbySub,
+          trailing: _OpenCountPill(count: openCount),
           stores: popular.take(12).toList(),
           onSeeAll: () => context.push(AppRoutes.categoryPath('popular')),
         ),
         const SizedBox(height: AppSpacing.xl),
+        if (offerProducts.isNotEmpty) ...[
+          ProductRail(
+            title: AppStrings.railTodayOffers,
+            subtitle: AppStrings.railTodayOffersSub,
+            products: offerProducts,
+            storeNames: storeNames,
+            onSeeAll: () => context.push(AppRoutes.categoryPath('offers')),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
         if (restaurants.isNotEmpty) ...[
           StoreRail(
             title: 'مطاعم',
@@ -296,8 +350,39 @@ class _HomeBody extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xl),
         ],
+        if (suggestedProducts.isNotEmpty) ...[
+          ProductRail(
+            title: AppStrings.railSuggested,
+            subtitle: AppStrings.railSuggestedSub,
+            products: suggestedProducts,
+            storeNames: storeNames,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
         const SizedBox(height: AppSpacing.xxl),
       ],
+    );
+  }
+}
+
+class _OpenCountPill extends StatelessWidget {
+  const _OpenCountPill({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 5),
+      decoration: BoxDecoration(color: AppColors.green50, borderRadius: BorderRadius.circular(AppRadius.pill)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(AppStrings.openStoresNow(count), style: AppTextStyles.label.copyWith(color: AppColors.green800)),
+        ],
+      ),
     );
   }
 }

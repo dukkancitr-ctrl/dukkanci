@@ -122,7 +122,7 @@ class _CartItemCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.line),
+          boxShadow: AppShadow.soft,
         ),
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Row(
@@ -134,7 +134,7 @@ class _CartItemCard extends ConsumerWidget {
                 width: 64,
                 height: 64,
                 child: item.image != null
-                    ? CachedNetworkImage(imageUrl: item.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                    ? CachedNetworkImage(imageUrl: item.image!, fit: BoxFit.cover, memCacheWidth: 160, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
                     : Container(color: AppColors.creamDark),
               ),
             ),
@@ -225,9 +225,10 @@ class _AddMoreFromStoreRail extends ConsumerWidget {
             Text(AppStrings.cartAddMoreSubtitle, style: AppTextStyles.caption),
             const SizedBox(height: AppSpacing.md),
             SizedBox(
-              height: 190,
+              height: 200,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(2, 2, 2, 12),
                 itemCount: items.length,
                 separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
                 itemBuilder: (context, i) => _QuickAddCard(product: items[i]),
@@ -273,7 +274,7 @@ class _QuickAddCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.line),
+          boxShadow: AppShadow.soft,
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
@@ -285,7 +286,7 @@ class _QuickAddCard extends ConsumerWidget {
                   width: 130,
                   height: 130,
                   child: product.image != null
-                      ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                      ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, memCacheWidth: 300, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
                       : Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, color: AppColors.line)),
                 ),
                 Padding(

@@ -20,12 +20,16 @@ class StoreRail extends StatelessWidget {
     super.key,
     required this.title,
     required this.stores,
+    this.subtitle,
+    this.trailing,
     this.onSeeAll,
     this.highlightOffer = false,
   });
 
   final String title;
   final List<Store> stores;
+  final String? subtitle;
+  final Widget? trailing;
   final VoidCallback? onSeeAll;
   final bool highlightOffer;
 
@@ -41,7 +45,7 @@ class StoreRail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+          padding: EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, (subtitle != null || trailing != null) ? 2 : AppSpacing.md),
           child: Row(
             children: [
               Expanded(child: Text(title, style: AppTextStyles.title)),
@@ -58,11 +62,23 @@ class StoreRail extends StatelessWidget {
             ],
           ),
         ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+            child: Text(subtitle!, style: AppTextStyles.caption),
+          ),
+        if (trailing != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+            child: Align(alignment: AlignmentDirectional.centerStart, child: trailing!),
+          ),
         SizedBox(
-          height: railHeight,
+          // +22 (with matching ListView vertical padding) so the new soft card
+          // shadow isn't clipped by the horizontal list's edges.
+          height: railHeight + 22,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 2, AppSpacing.lg, 20),
             itemCount: stores.length,
             separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
             itemBuilder: (context, i) => StoreRailCard(store: stores[i], width: cardWidth, highlightOffer: highlightOffer),
@@ -96,7 +112,7 @@ class StoreRailCard extends ConsumerWidget {
           decoration: BoxDecoration(
             color: AppColors.white,
             borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppColors.line),
+            boxShadow: AppShadow.card,
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -111,6 +127,7 @@ class StoreRailCard extends ConsumerWidget {
                       CachedNetworkImage(
                         imageUrl: store.displayImage!,
                         fit: BoxFit.cover,
+                        memCacheWidth: 640,
                         errorWidget: (_, _, _) => Container(color: AppColors.creamDark),
                       )
                     else

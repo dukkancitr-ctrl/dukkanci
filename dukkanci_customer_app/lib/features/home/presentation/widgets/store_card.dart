@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/localization/app_strings.dart';
 import '../../../../core/widgets/press_scale.dart';
 import '../../../../core/widgets/status_badge.dart';
 import '../../../favorites/application/favorites_controller.dart';
@@ -36,6 +37,7 @@ class StoreCard extends ConsumerWidget {
                     CachedNetworkImage(
                       imageUrl: store.displayImage!,
                       fit: BoxFit.cover,
+                      memCacheWidth: 640,
                       errorWidget: (_, _, _) => Container(color: AppColors.creamDark),
                     )
                   else
@@ -69,6 +71,23 @@ class StoreCard extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (store.offer != null && store.offer!.trim().isNotEmpty)
+                    Positioned(
+                      bottom: AppSpacing.sm,
+                      right: AppSpacing.sm,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 3),
+                        decoration: BoxDecoration(color: AppColors.orange, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.local_offer_rounded, size: 12, color: Colors.white),
+                            const SizedBox(width: 3),
+                            Text(AppStrings.offerLabel, style: AppTextStyles.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
                   if (!store.open)
                     Container(color: Colors.black.withValues(alpha: 0.4)),
                 ],
@@ -83,19 +102,17 @@ class StoreCard extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Text(store.category, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.caption),
                   const SizedBox(height: AppSpacing.sm),
-                  Row(
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      RatingPill(rating: store.rating, reviews: store.reviews, compact: true),
-                      if (store.rating > 0) const SizedBox(width: AppSpacing.sm),
-                      if (store.etaLabel != null)
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded, size: 14, color: AppColors.muted),
-                              const SizedBox(width: 3),
-                              Expanded(child: Text(store.etaLabel!, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyles.caption)),
-                            ],
-                          ),
+                      if (store.rating > 0) RatingPill(rating: store.rating, reviews: store.reviews, compact: true),
+                      if (store.etaLabel != null) MetaChip(icon: Icons.access_time_rounded, label: store.etaLabel!),
+                      if (store.deliveryFeePerKm != null)
+                        MetaChip(
+                          icon: Icons.delivery_dining_rounded,
+                          label: '${store.deliveryFeePerKm!.toStringAsFixed(0)} ${AppStrings.currencySuffix}${AppStrings.perKm}',
                         ),
                     ],
                   ),

@@ -14,6 +14,16 @@ class CategoryStrip extends StatelessWidget {
   final List<HomeCategory> categories;
   final void Function(HomeCategory) onTap;
 
+  // Warm brand-family gradient pairs, cycled by index so the section row reads
+  // as vibrant tiles instead of one flat red icon on a pink swatch repeated.
+  static const _tileGradients = <List<Color>>[
+    [Color(0xFFE30613), Color(0xFFBF0813)],
+    [Color(0xFFF2A23A), Color(0xFFCF7B19)],
+    [Color(0xFFE0708A), Color(0xFFC0294B)],
+    [Color(0xFF5AA06A), Color(0xFF2E7D32)],
+    [Color(0xFF6F9BD1), Color(0xFF477DA5)],
+  ];
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -36,11 +46,15 @@ class CategoryStrip extends StatelessWidget {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: AppColors.green50,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: AppColors.green100),
+                      gradient: LinearGradient(
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                        colors: _tileGradients[i % _tileGradients.length],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: AppShadow.soft,
                     ),
-                    child: Icon(c.icon, color: AppColors.green800, size: 28),
+                    child: Icon(c.icon, color: Colors.white, size: 28),
                   ),
                   const SizedBox(height: 6),
                   Text(

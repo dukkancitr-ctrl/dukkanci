@@ -100,11 +100,13 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: AppColors.white,
-        elevation: 0,
-        shadowColor: AppColors.green900.withValues(alpha: 0.08),
+        // Soft floating shadow instead of a hairline border — the flat
+        // border-only card was the main reason the UI read as "dry".
+        elevation: 5,
+        shadowColor: AppColors.green900.withValues(alpha: 0.22),
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          side: const BorderSide(color: AppColors.line),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -125,7 +127,7 @@ class AppTheme {
         unselectedLabelStyle: TextStyle(fontFamily: _fontFamily, fontSize: 11.5, fontWeight: FontWeight.w500),
         type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
-        elevation: 8,
+        elevation: 12,
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.green800,

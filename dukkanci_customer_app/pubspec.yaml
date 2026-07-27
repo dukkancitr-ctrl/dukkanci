@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.12.2
@@ -94,6 +94,18 @@ flutter:
           weight: 600
         - asset: assets/fonts/IBMPlexSansArabic-Bold.ttf
           weight: 700
+    # Distinctive display family for headings. Currently Tajawal (the site's
+    # real display fallback). To use Alyamama instead, drop the Alyamama .ttf
+    # files here and repoint the four assets below — no Dart change needed.
+    - family: AppDisplay
+      fonts:
+        - asset: assets/fonts/Tajawal-Regular.ttf
+        - asset: assets/fonts/Tajawal-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Tajawal-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Tajawal-ExtraBold.ttf
+          weight: 800
 
 # flutter_launcher_icons config — regenerate with:
 #   dart run flutter_launcher_icons

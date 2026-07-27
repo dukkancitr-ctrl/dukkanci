@@ -10,6 +10,7 @@ import '../features/banners/domain/app_banner.dart';
 import '../features/checkout/data/order_repository.dart';
 import '../features/stores/data/store_repository.dart';
 import '../features/stores/domain/store.dart';
+import '../features/products/domain/product.dart';
 
 final secureStorageProvider = Provider<SecureStorage>((ref) {
   return SecureStorage(const FlutterSecureStorage());
@@ -50,6 +51,16 @@ final approvedStoresProvider = FutureProvider.autoDispose<List<Store>>((ref) {
 /// offers rail.
 final discountedStoreIdsProvider = FutureProvider.autoDispose<Set<int>>((ref) {
   return ref.read(storeRepositoryProvider).fetchStoreIdsWithDiscountedProducts();
+});
+
+/// Real discounted products for the home «عروض اليوم» product rail.
+final offerProductsProvider = FutureProvider.autoDispose<List<Product>>((ref) {
+  return ref.read(storeRepositoryProvider).fetchDiscountedProducts(limit: 15);
+});
+
+/// Featured products for the home «منتجات مقترحة لك» product rail.
+final suggestedProductsProvider = FutureProvider.autoDispose<List<Product>>((ref) {
+  return ref.read(storeRepositoryProvider).fetchFeaturedProducts(limit: 15);
 });
 
 final orderRepositoryProvider = Provider<OrderRepository>((ref) {

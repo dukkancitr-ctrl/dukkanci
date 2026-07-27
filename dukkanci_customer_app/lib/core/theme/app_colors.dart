@@ -39,3 +39,26 @@ class AppColors {
   /// not gray.
   static const archLine = Color(0xFFE7C6B8);
 }
+
+/// Soft elevation tokens — mirror the website's --shadow-sm / --shadow-md
+/// (warm rgba(65,24,27,…) tint, never neutral gray) so cards, the header and
+/// the nav bar float instead of reading as flat bordered boxes. This is the
+/// single biggest fix for the "dry / flat" look.
+class AppShadow {
+  AppShadow._();
+
+  /// Subtle lift for small surfaces (the search field, category tiles, chips).
+  static const soft = <BoxShadow>[
+    BoxShadow(color: Color(0x1441181B), blurRadius: 22, offset: Offset(0, 10)),
+  ];
+
+  /// The default floating-card / rail shadow — soft and diffuse.
+  static const card = <BoxShadow>[
+    BoxShadow(color: Color(0x1F41181B), blurRadius: 34, offset: Offset(0, 16), spreadRadius: -6),
+  ];
+
+  /// Red-tinted glow under the brand header and the promo hero.
+  static const brand = <BoxShadow>[
+    BoxShadow(color: Color(0x3DE30613), blurRadius: 30, offset: Offset(0, 14)),
+  ];
+}

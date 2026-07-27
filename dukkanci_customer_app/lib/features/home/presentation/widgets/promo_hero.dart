@@ -167,7 +167,7 @@ class _StorePromoSlide extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (img != null)
-              CachedNetworkImage(imageUrl: img, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.green900))
+              CachedNetworkImage(imageUrl: img, fit: BoxFit.cover, memCacheWidth: 900, errorWidget: (_, _, _) => Container(color: AppColors.green900))
             else
               Container(color: AppColors.green900),
             DecoratedBox(

@@ -173,4 +173,51 @@ class StoreRepository {
       return [];
     }
   }
+
+  /// Real discounted products for the home «عروض اليوم» rail — products whose
+  /// old_price is genuinely higher than price (the same real-discount test as
+  /// [fetchStoreIdsWithDiscountedProducts]). One cheap capped query; only a
+  /// handful are needed for a horizontal rail. Fails soft (empty list) so it
+  /// can never take down the home feed.
+  Future<List<Product>> fetchDiscountedProducts({int limit = 15}) async {
+    try {
+      final rows = await supabase
+          .from('products')
+          .select()
+          .eq('available', true)
+          .not('old_price', 'is', null)
+          .limit(400) as List;
+      return rows
+          .map((r) => Product.fromJson(Map<String, dynamic>.from(r as Map)))
+          .where((p) => p.image != null && p.oldPrice != null && p.oldPrice! > p.price)
+          .take(limit)
+          .toList();
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchDiscountedProducts ignored: $e\n$st');
+      return [];
+    }
+  }
+
+  /// Featured products for the home «منتجات مقترحة لك» rail — the merchant/admin
+  /// `featured` flag, the only genuine "highlight this" signal in the data
+  /// (there is no order-count data, so nothing here is a fabricated "most
+  /// ordered"). Fails soft.
+  Future<List<Product>> fetchFeaturedProducts({int limit = 15}) async {
+    try {
+      final rows = await supabase
+          .from('products')
+          .select()
+          .eq('available', true)
+          .eq('featured', true)
+          .limit(200) as List;
+      return rows
+          .map((r) => Product.fromJson(Map<String, dynamic>.from(r as Map)))
+          .where((p) => p.image != null)
+          .take(limit)
+          .toList();
+    } catch (e, st) {
+      debugPrint('StoreRepository.fetchFeaturedProducts ignored: $e\n$st');
+      return [];
+    }
+  }
 }

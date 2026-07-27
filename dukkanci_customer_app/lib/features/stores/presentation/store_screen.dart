@@ -80,6 +80,7 @@ class _StoreCartBar extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.green800,
               borderRadius: BorderRadius.circular(AppRadius.sm),
+              boxShadow: AppShadow.card,
             ),
             child: Row(
               children: [
@@ -246,6 +247,7 @@ class _StoreBodyState extends ConsumerState<_StoreBody> {
                   CachedNetworkImage(
                     imageUrl: (store.coverImage ?? store.image)!,
                     fit: BoxFit.cover,
+                    memCacheWidth: 900,
                     errorWidget: (_, _, _) => Container(color: AppColors.creamDark),
                   )
                 else
@@ -416,7 +418,7 @@ class _StoreInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.line),
+        boxShadow: AppShadow.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -564,7 +566,7 @@ class _ProductGridCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.line),
+          boxShadow: AppShadow.soft,
         ),
         clipBehavior: Clip.antiAlias,
         child: LayoutBuilder(
@@ -586,7 +588,7 @@ class _ProductGridCard extends StatelessWidget {
                         fit: StackFit.expand,
                         children: [
                           if (product.image != null)
-                            CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, color: AppColors.line)))
+                            CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, memCacheWidth: 400, errorWidget: (_, _, _) => Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, color: AppColors.line)))
                           else
                             Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, color: AppColors.line, size: 36)),
                           if (product.featured)
@@ -698,7 +700,10 @@ class _CategoryBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
-      color: AppColors.cream,
+      decoration: BoxDecoration(
+        color: AppColors.cream,
+        boxShadow: overlapsContent ? AppShadow.soft : null,
+      ),
       alignment: Alignment.centerRight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,

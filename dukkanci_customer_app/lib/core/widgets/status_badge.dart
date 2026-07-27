@@ -69,3 +69,35 @@ class RatingPill extends StatelessWidget {
     );
   }
 }
+
+/// A small neutral meta chip (icon + label) for card metadata like delivery
+/// time and per-km fee — one shape reused across the grid and rail cards so
+/// "delivery info" looks the same everywhere.
+class MetaChip extends StatelessWidget {
+  const MetaChip({super.key, required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.creamDark,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.muted),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(fontFamily: 'IBMPlexSansArabic', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}

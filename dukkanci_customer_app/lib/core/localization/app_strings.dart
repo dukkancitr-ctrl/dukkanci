@@ -26,6 +26,9 @@ class AppStrings {
   static const homeSearchHint = 'ابحث عن متجر أو منتج...';
   static const seeAll = 'عرض الكل';
   static const setLocation = 'حدّد موقعك';
+  static const deliverTo = 'التوصيل إلى';
+  static const homeGreeting = 'أهلاً بك في دكانجي';
+  static const homeGreetingSub = 'سوق الحي بين يديك — نوصّله إليك';
   static const heroWelcomeTitle = 'كل ما تحتاجه يوصلك';
   static const heroWelcomeBody = 'مطاعم وأسواق ومحلات منطقتك في تطبيق واحد';
   static const heroWelcomeCta = 'تصفّح المتاجر';
@@ -35,6 +38,29 @@ class AppStrings {
   static const railOffers = 'عروض وخصومات';
   static const railPopular = 'الأكثر رواجاً';
   static const allStores = 'كل المتاجر';
+  static const railNearby = 'متاجر قريبة منك الآن';
+  static const railNearbySub = 'اختيارات يحبها الجيران';
+  static const railTodayOffers = 'عروض اليوم';
+  static const railTodayOffersSub = 'خصومات مختارة من متاجر الحي، تتجدد باستمرار';
+  static const railSuggested = 'منتجات مقترحة لك';
+  static const railSuggestedSub = 'مختارات متنوعة';
+  static const fastDelivery = 'توصيل سريع';
+  static const trustPayOnDelivery = 'الدفع عند الاستلام';
+  static const trustNoCard = 'لا تحتاج بطاقة';
+  static const trustPayAtDoor = 'اطلب الآن وادفع عند الباب';
+  static const addToCartShort = 'أضف للسلة';
+  static String openStoresNow(int n) => 'متاجر مفتوحة الآن: $n';
+  static String categoryTagline(String key) => _categoryTaglines[key] ?? '';
+  static const _categoryTaglines = <String, String>{
+    'restaurants': 'ألذ الأطباق إلى بابك',
+    'sweets': 'لأحلى المناسبات',
+    'supermarket': 'كل احتياجات البيت',
+    'butcher': 'لحوم طازجة يومياً',
+    'nuts': 'مكسرات وبنّ محمّص',
+    'specialty': 'منتجات مختارة',
+    'juices': 'عصائر طازجة ومشروبات',
+    'home_kitchen': 'أكل بيتي بنكهة الدار',
+  };
 
   // البحث
   static const searchRecentTitle = 'عمليات بحث سابقة';

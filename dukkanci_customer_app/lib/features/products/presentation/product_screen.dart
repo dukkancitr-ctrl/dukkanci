@@ -207,7 +207,7 @@ class _ProductBody extends StatelessWidget {
                   AspectRatio(
                     aspectRatio: 4 / 3,
                     child: product.image != null
-                        ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
+                        ? CachedNetworkImage(imageUrl: product.image!, fit: BoxFit.cover, memCacheWidth: 900, errorWidget: (_, _, _) => Container(color: AppColors.creamDark))
                         : Container(color: AppColors.creamDark, child: const Icon(Icons.fastfood_rounded, size: 48, color: AppColors.line)),
                   ),
                   if (product.featured)
