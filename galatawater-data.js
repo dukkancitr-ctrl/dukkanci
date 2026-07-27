@@ -45,8 +45,8 @@ const galatawaterStore = {
 };
 
 const galatawaterFullCatalog = [
-  { name: "مياه مايا داغ دمجانة 19 لتر", description: "دمجانة مياه مايا داغ الطبيعية، سعة 19 لتر، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 150 ل.ت فقط.", price: 150, category: "مياه معدنية", unit: "دمجانة", image: "/assets/photos/galatawater/p1.jpg" },
-  { name: "مياه ابانت كاسات 180 مل عدد 60", description: "كرتون مياه ابانت المعدنية، يحتوي 60 كأس سعة 180 مل للكأس، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 190 ل.ت فقط.", price: 190, category: "مياه معدنية", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" }
+  { name: "مياه مايا داغ دمجانة 19 لتر", description: "دمجانة مياه مايا داغ الطبيعية، سعة 19 لتر، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 150 ل.ت فقط.", price: 150, category: "دمجانات المياه", unit: "دمجانة", image: "/assets/photos/galatawater/p1.jpg" },
+  { name: "مياه ابانت كاسات 180 مل عدد 60", description: "كرتون مياه ابانت المعدنية، يحتوي 60 كأس سعة 180 مل للكأس، توصيل لباب المنزل ضمن مجمعاتنا المعتمدة بسعر 190 ل.ت فقط.", price: 190, category: "أكواب المياه", unit: "كرتون", image: "/assets/photos/galatawater/p2.jpg" }
 ];
 
 // Repo-bundled catalog is emptied for fast first paint; products load from Supabase.
