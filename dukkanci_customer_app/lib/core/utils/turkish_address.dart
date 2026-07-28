@@ -9,6 +9,21 @@ library;
 
 const List<String> trRoadTypes = ['Cadde', 'Sokak', 'Bulvar', 'Meydan', 'Yol', 'Küme Evleri', 'Mevki', 'Diğer'];
 
+/// Arabic gloss shown next to each Turkish road-type word in the dropdown —
+/// display only. The stored/composed value is always the raw Turkish word
+/// from [trRoadTypes] (it feeds `_roadTypeSuffix` and the final address the
+/// courier reads), this map never changes what gets saved.
+const Map<String, String> trRoadTypeArabicLabel = {
+  'Cadde': 'جادة',
+  'Sokak': 'شارع',
+  'Bulvar': 'بلوار',
+  'Meydan': 'ميدان',
+  'Yol': 'طريق',
+  'Küme Evleri': 'مجمع منازل',
+  'Mevki': 'موقع/منطقة',
+  'Diğer': 'أخرى',
+};
+
 const Map<String, String> _roadTypeSuffix = {
   'Cadde': 'Caddesi',
   'Sokak': 'Sokağı',

@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/localization/app_strings.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -14,6 +15,10 @@ import '../domain/saved_address.dart';
 import '../domain/tr_location.dart';
 
 enum _LabelChoice { home, work, other }
+
+/// Auto-fill status shown under the map — assistance only, never blocking:
+/// [failed] still leaves a working, manually-fillable form underneath.
+enum _GeoStatus { idle, loading, done, failed }
 
 /// Add/edit form for one saved address — the same Turkish administrative
 /// address system as the website: İl → İlçe → Mahalle/Köy cascading pickers
@@ -32,6 +37,9 @@ class AddressFormScreen extends ConsumerStatefulWidget {
 
 class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
   final _repo = TrLocationRepository();
+  final _geocoder = GeocodingService();
+  int _geoToken = 0;
+  _GeoStatus _geoStatus = _GeoStatus.idle;
 
   int? _provinceId;
   String _provinceName = '';
@@ -338,6 +346,71 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
       _lng = center.longitude;
       if (_locationSource != 'gps') _locationSource = 'map_selection';
     });
+    _autoFillFromLocation(center.latitude, center.longitude);
+  }
+
+  /// Reverse-geocodes the pin the customer just settled on and pre-selects
+  /// the matching المحافظة/المنطقة/الحي — a Dart mirror of the website's
+  /// `commitAddressPin()`. Every `await` is guarded by [token] (mirroring
+  /// the site's `addr2CommitToken`) so a customer who drags the map several
+  /// times in a row never has an earlier, slower response clobber a later
+  /// one. Pure assistance: a miss at any step just leaves that field (and
+  /// everything after it) for manual picking — never shows an error to the
+  /// customer for something that's inherently best-effort.
+  Future<void> _autoFillFromLocation(double lat, double lng) async {
+    final token = ++_geoToken;
+    if (mounted) setState(() => _geoStatus = _GeoStatus.loading);
+    final info = await _geocoder.reverseGeocode(lat, lng);
+    if (!mounted || token != _geoToken) return;
+    if (info == null) {
+      setState(() => _geoStatus = _GeoStatus.failed);
+      return;
+    }
+
+    final provinces = await _repo.fetchProvinces();
+    if (!mounted || token != _geoToken) return;
+    final matchedProvince = TrLocationRepository.matchByName(provinces, (p) => p.searchName, info.province);
+    if (matchedProvince == null) {
+      setState(() => _geoStatus = _GeoStatus.failed);
+      return;
+    }
+    setState(() {
+      _provinceId = matchedProvince.id;
+      _provinceName = matchedProvince.nameTr;
+    });
+
+    final districts = await _repo.fetchDistricts(matchedProvince.id);
+    if (!mounted || token != _geoToken) return;
+    final matchedDistrict = TrLocationRepository.matchByName(districts, (d) => d.searchName, info.district);
+    if (matchedDistrict == null) {
+      setState(() => _geoStatus = _GeoStatus.done);
+      return;
+    }
+    setState(() {
+      _districtId = matchedDistrict.id;
+      _districtName = matchedDistrict.nameTr;
+    });
+
+    final neighborhoods = await _repo.fetchNeighborhoods(matchedDistrict.id);
+    if (!mounted || token != _geoToken) return;
+    final matchedNeighborhood = TrLocationRepository.matchByName(neighborhoods, (n) => n.searchName, info.neighborhood);
+    if (matchedNeighborhood != null) {
+      setState(() {
+        _neighborhoodId = matchedNeighborhood.id;
+        _neighborhoodName = matchedNeighborhood.nameTr;
+        _settlementType = matchedNeighborhood.settlementType;
+        _settlementSource = 'db';
+        _manualNeighborhoodCtrl.clear();
+      });
+    }
+
+    // Street name: only offer it into a field the customer hasn't already
+    // typed into themselves, so re-settling the pin never overwrites a
+    // manual edit.
+    if (info.road.isNotEmpty && _roadNameCtrl.text.trim().isEmpty) {
+      setState(() => _roadNameCtrl.text = info.road);
+    }
+    setState(() => _geoStatus = _GeoStatus.done);
   }
 
   Future<void> _save() async {
@@ -426,8 +499,13 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
 
           // Real Google Maps pin-drop — a fixed center marker over a draggable
           // map, mirroring the website's map picker. Assist only: it never
-          // replaces the İl/İlçe/Mahalle fields below (spec §5).
+          // replaces the İl/İlçe/Mahalle fields below (spec §5) — it just
+          // pre-fills them via _autoFillFromLocation on every camera-idle.
           _SectionLabel(AppStrings.addrMapHint),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(AppStrings.addrMapSubHint, style: AppTextStyles.bodyMuted),
+          ),
           ClipRRect(
             borderRadius: BorderRadius.circular(AppRadius.md),
             child: SizedBox(
@@ -465,9 +543,17 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
               ),
             ),
           ),
+          if (_geoStatus == _GeoStatus.loading || _geoStatus == _GeoStatus.done) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _GeoStatusBanner(status: _geoStatus),
+          ],
           const SizedBox(height: AppSpacing.xl),
 
           _SectionLabel(AppStrings.addrSectionLocation),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Text(AppStrings.addrSectionLocationNote, style: AppTextStyles.caption),
+          ),
           _PickerField(label: AppStrings.addrProvinceLabel, value: _provinceName, hint: AppStrings.addrProvinceHint, onTap: _pickProvince),
           const SizedBox(height: AppSpacing.md),
           _PickerField(label: AppStrings.addrDistrictLabel, value: _districtName, hint: _provinceId == null ? AppStrings.addrDistrictHintDisabled : AppStrings.addrDistrictHint, enabled: _provinceId != null, onTap: _pickDistrict),
@@ -504,7 +590,9 @@ class _AddressFormScreenState extends ConsumerState<AddressFormScreen> {
                 child: DropdownButtonFormField<String>(
                   initialValue: _roadType,
                   isExpanded: true,
-                  items: trRoadTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  items: trRoadTypes
+                      .map((t) => DropdownMenuItem(value: t, child: Text('$t (${trRoadTypeArabicLabel[t] ?? t})', overflow: TextOverflow.ellipsis)))
+                      .toList(),
                   onChanged: (v) => setState(() => _roadType = v ?? 'Cadde'),
                 ),
               ),
@@ -737,42 +825,150 @@ class _LocationPickerSheetState<T> extends State<_LocationPickerSheet<T>> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Drag handle — a plain affordance hinting the sheet can be
+            // dismissed by swiping it down, matching the rest of the app's
+            // modal sheets.
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: AppSpacing.sm),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(AppRadius.pill)),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-              child: Text(widget.title, style: AppTextStyles.title),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+              child: Row(
+                children: [
+                  Expanded(child: Text(widget.title, style: AppTextStyles.title)),
+                  if (rows != null) Text('${filtered.length}', style: AppTextStyles.caption),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              child: TextField(
-                controller: _searchCtrl,
-                autofocus: false,
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: '...'),
-                onChanged: (v) => setState(() => _query = v),
+              child: Container(
+                decoration: BoxDecoration(color: AppColors.cream, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: false,
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.muted),
+                    hintText: AppStrings.addrSearchHint,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.pill), borderSide: BorderSide.none),
+                    filled: false,
+                    isDense: true,
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
               ),
             ),
             Flexible(
               child: rows == null
                   ? const Padding(padding: EdgeInsets.all(AppSpacing.xl), child: Center(child: CircularProgressIndicator()))
-                  : ListView(
+                  : ListView.separated(
                       shrinkWrap: true,
-                      children: [
-                        for (final r in filtered)
-                          ListTile(title: Text(widget.nameOf(r)), onTap: () => Navigator.of(context).pop(r)),
-                        if (filtered.isEmpty)
-                          const Padding(padding: EdgeInsets.all(AppSpacing.lg), child: Text('Sonuç bulunamadı')),
-                        if (widget.allowManual)
-                          ListTile(
-                            leading: const Icon(Icons.add_rounded, color: AppColors.green800),
-                            title: const Text(AppStrings.addrNeighborhoodManualOption, style: TextStyle(color: AppColors.green800, fontWeight: FontWeight.w700)),
-                            onTap: () => Navigator.of(context).pop(widget.manualSentinel),
-                          ),
-                      ],
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                      itemCount: filtered.length + (filtered.isEmpty ? 1 : 0) + (widget.allowManual ? 1 : 0),
+                      separatorBuilder: (context, i) => const Divider(height: 1, color: AppColors.line),
+                      itemBuilder: (context, i) {
+                        if (i < filtered.length) {
+                          final r = filtered[i];
+                          return _PickerRow(label: widget.nameOf(r), onTap: () => Navigator.of(context).pop(r));
+                        }
+                        // Past the real rows: an empty-state slot only exists
+                        // when there were none to show, then the manual-entry
+                        // row (if this picker allows it) always comes last.
+                        final afterRows = i - filtered.length;
+                        if (filtered.isEmpty && afterRows == 0) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                            child: Column(
+                              children: [
+                                Icon(Icons.search_off_rounded, color: AppColors.muted, size: 28),
+                                SizedBox(height: AppSpacing.sm),
+                                Text(AppStrings.addrNoResults, style: AppTextStyles.bodyMuted),
+                              ],
+                            ),
+                          );
+                        }
+                        return _PickerRow(
+                          label: AppStrings.addrNeighborhoodManualOption,
+                          icon: Icons.edit_rounded,
+                          highlighted: true,
+                          onTap: () => Navigator.of(context).pop(widget.manualSentinel),
+                        );
+                      },
                     ),
             ),
             const SizedBox(height: AppSpacing.md),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// One row in the İl/İlçe/Mahalle picker sheet — a location-pin icon by
+/// default, or a highlighted edit-pencil row for the "type it myself" option.
+class _PickerRow extends StatelessWidget {
+  const _PickerRow({required this.label, required this.onTap, this.icon, this.highlighted = false});
+
+  final String label;
+  final VoidCallback onTap;
+  final IconData? icon;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlighted ? AppColors.green800 : AppColors.ink;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
+        child: Row(
+          children: [
+            Icon(icon ?? Icons.location_on_outlined, size: 20, color: highlighted ? AppColors.green800 : AppColors.muted),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: Text(label, style: highlighted ? AppTextStyles.body.copyWith(color: color, fontWeight: FontWeight.w700) : AppTextStyles.body)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small status line under the map — loading spinner while the reverse
+/// geocode is in flight, a success check once the fields below have been
+/// pre-filled. Shows nothing on [_GeoStatus.idle]/[_GeoStatus.failed] since a
+/// failure here is silent-by-design (the manual pickers just work as-is).
+class _GeoStatusBanner extends StatelessWidget {
+  const _GeoStatusBanner({required this.status});
+
+  final _GeoStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = status == _GeoStatus.loading;
+    return Row(
+      children: [
+        SizedBox(
+          width: 16,
+          height: 16,
+          child: loading
+              ? const CircularProgressIndicator(strokeWidth: 2, color: AppColors.green800)
+              : const Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            loading ? AppStrings.addrGeocodingInProgress : AppStrings.addrGeocodingDone,
+            style: AppTextStyles.caption.copyWith(color: loading ? AppColors.muted : AppColors.success),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -240,35 +240,45 @@ class AppStrings {
   static const manageAddresses = 'إدارة العناوين';
   static const changeAddress = 'تغيير العنوان';
   // نموذج العنوان المهيكل (نفس حقول الموقع) + رابط خرائط Google
-  static const addrSectionLocation = 'İl / İlçe / Mahalle';
-  static const addrSectionRoad = 'Cadde / Sokak';
+  // ⚠️ الحقول نفسها (اسم المحافظة/المنطقة/الحي المختار، والعنوان النهائي
+  // المُجمَّع في turkish_address.dart) تبقى بالتركية دائماً — هي أسماء رسمية
+  // حقيقية يحتاجها المندوب. ما يتغيّر هنا هو فقط نص الشرح/التلميح المعروض
+  // للزبون قبل أن يختار، وهذا يجب أن يكون عربياً مفهوماً.
+  static const addrSectionLocation = 'المحافظة والمنطقة والحي';
+  static const addrSectionLocationNote = 'نعبّئ هذه الحقول تلقائياً من موضع الدبوس على الخريطة — يمكنك تصحيحها يدوياً في أي وقت.';
+  static const addrSectionRoad = 'الشارع والمبنى';
   static const addrSectionUnit = 'تفاصيل رقم الوحدة';
   static const addrSectionContact = 'معلومات التواصل';
-  static const addrProvinceLabel = 'İl *';
-  static const addrProvinceHint = 'İl seçin';
-  static const addrDistrictLabel = 'İlçe *';
-  static const addrDistrictHintDisabled = 'Önce İl seçin';
-  static const addrDistrictHint = 'İlçe seçin';
-  static const addrNeighborhoodLabel = 'Mahalle / Köy *';
-  static const addrNeighborhoodHintDisabled = 'Önce İlçe seçin';
-  static const addrNeighborhoodHint = 'Mahalle / Köy seçin';
-  static const addrNeighborhoodManualOption = 'Listede yok — yazayım';
-  static const addrNeighborhoodManualHint = 'Mahalle veya köy adını yazın';
+  static const addrProvinceLabel = 'المحافظة *';
+  static const addrProvinceHint = 'مثلاً: اسطنبول';
+  static const addrDistrictLabel = 'المنطقة *';
+  static const addrDistrictHintDisabled = 'اختر المحافظة أولاً';
+  static const addrDistrictHint = 'مثلاً: زيتون بورنو';
+  static const addrNeighborhoodLabel = 'الحي *';
+  static const addrNeighborhoodHintDisabled = 'اختر المنطقة أولاً';
+  static const addrNeighborhoodHint = 'مثلاً: كاياباشي';
+  static const addrNeighborhoodManualOption = 'الحي غير موجود بالقائمة — سأكتبه بنفسي';
+  static const addrNeighborhoodManualHint = 'اكتب اسم الحي أو القرية';
   static const addrNeighborhoodManualNote = 'سيُراجَع هذا الاسم لاحقاً من فريق دكانجي لإضافته للقائمة الرسمية.';
-  static const addrRoadNameHint = 'Cadde / Sokak Adı';
-  static const addrSiteNameHint = 'Site Adı (اختياري)';
-  static const addrBuildingNameHint = 'Bina / Apartman Adı (اختياري)';
-  static const addrBlockHint = 'Blok (اختياري، مثال: B أو 4A)';
-  static const addrExternalDoorHint = 'Dış Kapı No *';
-  static const addrInternalDoorHint = 'İç Kapı No';
-  static const addrNoInternalDoor = 'İç Kapı Numarası Yok';
-  static const addrFloorHint = 'Kat';
-  static const addrPostalCodeHint = 'Posta Kodu (اختياري)';
+  static const addrRoadNameHint = 'اسم الشارع، مثلاً: أتاتورك';
+  static const addrSiteNameHint = 'اسم المجمع السكني (اختياري)';
+  static const addrBuildingNameHint = 'اسم البناية (اختياري)';
+  static const addrBlockHint = 'رقم البلوك (اختياري، مثال: B أو 4A)';
+  static const addrExternalDoorHint = 'رقم البناء *';
+  static const addrInternalDoorHint = 'رقم الشقة';
+  static const addrNoInternalDoor = 'لا يوجد رقم شقة';
+  static const addrFloorHint = 'الطابق';
+  static const addrPostalCodeHint = 'الرمز البريدي (اختياري)';
   static const addrNoteLabel = 'وصف إضافي للعنوان';
-  static const addrNoteHint = 'Adres Tarifi — وصف إضافي يساعد المندوب على الوصول';
-  static const addrMapHint = 'Lütfen konumu bina girişine yerleştirin';
+  static const addrNoteHint = 'مثال: بجانب صيدلية، الباب الأزرق — وصف يساعد المندوب على الوصول';
+  static const addrMapHint = 'حرّك الخريطة وثبّت المؤشر عند باب المنزل';
+  static const addrMapSubHint = 'سنعبّئ المحافظة والمنطقة والحي تلقائياً بمجرد تثبيت الموقع';
   static const addrLocationReady = 'الموقع محدَّد على الخريطة';
   static const addrLocationMissing = 'يلزم تحديد الموقع على الخريطة لحساب التوصيل';
+  static const addrGeocodingInProgress = 'جارٍ تحديد العنوان من الخريطة…';
+  static const addrGeocodingDone = 'تم تعبئة العنوان تلقائياً — راجعه وعدّله إذا لزم';
+  static const addrSearchHint = 'ابحث بالاسم…';
+  static const addrNoResults = 'لا توجد نتائج مطابقة';
   // Validation — Turkish literals per the address spec (§14), the only
   // Turkish-language user-facing strings in an otherwise-Arabic app: they're
   // specific to this form, matching the spec's requested exact text.
