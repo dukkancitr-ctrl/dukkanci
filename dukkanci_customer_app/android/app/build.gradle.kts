@@ -39,14 +39,15 @@ android {
         // com.google.android.geo.API_KEY meta-data. Override via either an
         // environment variable at build time (MAPS_API_KEY=... flutter build
         // appbundle) or android/local.properties (mapsApiKey=...) for local
-        // runs. Falls back to the same key the live website already serves
-        // to any anonymous visitor from https://www.dukkanci.com.tr/api/maps-key
-        // (not a secret — it's shipped client-side there too), so a build
-        // that skips the override still gets a working map instead of the
-        // blank grey canvas an empty key produces.
+        // runs. Falls back to the "Android Production" key in the dukkanci
+        // Google Cloud project (Geocoding + Maps SDK for Android + Places),
+        // restricted to this app's package + the debug and release signing
+        // certificates' SHA-1 fingerprints — confirmed live via `adb logcat`
+        // that the previous fallback (the website's browser-restricted key)
+        // fails with "Authorization failure" on Android, hence the swap.
         val mapsApiKey = (project.findProperty("mapsApiKey") as String?)
             ?: System.getenv("MAPS_API_KEY")
-            ?: "AIzaSyA0sLQ7F2ivkWnR3XRPwmJx6HiNkHvqT3g"
+            ?: "AIzaSyBEZJcm_BQAVMH3k21HXwGxycLIN3QE7U0"
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
