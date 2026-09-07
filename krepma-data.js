@@ -7,9 +7,9 @@
 // Google Maps match confirmed: "krepma" (place ChIJeUg5mtOvyhQRqpQ-w_AkWGU), 4.5★/40 reviews,
 // exact address match; the WhatsApp number printed on the restaurant's own packaging in its
 // brand poster (+90 536 933 36 66) matches the number supplied by the merchant.
-// Google has no phone/hours on file for this listing, so hours come from the restaurant's own
-// site (Mon–Thu 09:00-22:00, Fri 09:00-23:00, Sat 10:00-23:00, Sun 10:00-22:00) — the parseable
-// range below is the window that holds true every day, with the exceptions spelled out in text.
+// Hours: 13:00–02:00 daily, given directly by the Dukkanci operator — this supersedes the
+// per-day table on the restaurant's own contact page (Mon–Thu 09:00-22:00 etc.), which does not
+// match how the shop actually trades. Google has no hours on file for this listing at all.
 // EXCLUDED on purpose (no real product photo — the merchant used its brand poster as the image):
 //   - كريب كوردن بلو (375 TRY)
 //   - كريب مكس جبن (300 TRY)
@@ -46,7 +46,7 @@ const krepmaStore = {
  "email": "",
  "website": "https://krepma.vercel.app/ar",
  "sourceUrl": "https://krepma.vercel.app/tr/menu/crepes",
- "hours": "يومياً 10:00 ص – 10:00 م (الإثنين–الجمعة من 9:00 ص · الجمعة والسبت حتى 11:00 م)",
+ "hours": "يومياً 1:00 م – 2:00 ص",
  "areas": [
   "باشاك شهير",
   "مناطق إسطنبول حسب المسافة"
@@ -55,7 +55,7 @@ const krepmaStore = {
  "subscription": "احترافي",
  "orderCount": 0,
  "officialStore": true,
- "approvalStatus": "pending",
+ "approvalStatus": "approved",
  "googleRating": 4.5,
  "googleReviewsCount": 40,
  "googlePlaceId": "ChIJeUg5mtOvyhQRqpQ-w_AkWGU",
