@@ -1473,12 +1473,16 @@ async function initCatalog() {
   // fallback entry) into the list right away — don't make them wait on the
   // deferred, heavy product load below just to become visible.
   loadStoresOnly().then(added => { if (added) render(); });
-  // Defer the heavy full-catalog load (~7600 products) so /store, /product and
-  // /offers deep-links hydrate just their own rows first (hydratePageData) and
-  // render fast, instead of competing with the full load for bandwidth. Stores
-  // come from bundled data (now topped up by loadStoresOnly above) meanwhile,
-  // so home/stores stay populated.
-  await new Promise(r => setTimeout(r, 1800));
+  // The full catalog used to sit behind a fixed 1800ms sleep so deep-link
+  // hydration wouldn't compete with it for bandwidth. That artificial wait is
+  // gone (2026-09-08, at the owner's request): it delayed prices, offers and
+  // product cards on every single page load, and the deep-link case is already
+  // handled properly by hydratePageData() fetching just its own rows first.
+  // Deep links still get their head start without a timer: this yields until
+  // that targeted hydration has settled, then starts the full load immediately
+  // — so a /store or /product visit is never slowed down, and home/stores no
+  // longer pay a flat 1.8s tax for a case that may not even apply.
+  if (window.__dkHydrating) { try { await window.__dkHydrating; } catch (e) {} }
   const ok = await loadCatalogFromSupabase();
   if (ok) render();
   else { applyProductPersistence(); render(); }
@@ -3472,7 +3476,12 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    <section class="section nearby-section dk-reveal" id="nearby-stores">
+    <!-- No dk-reveal here on purpose: this rail is the homepage's primary
+         content and is ~13,000px tall on a phone, so a fade-in is invisible
+         anyway while a stalled transition or a missed observer would hide
+         every store outright (that is exactly what happened on mobile before
+         2026-09-08). Decoration must never gate the main content. -->
+    <section class="section nearby-section" id="nearby-stores">
       <div class="container">
         ${timeMoodBanner}
         <div class="section-heading">
@@ -3510,6 +3519,7 @@ ${paidHeroStrip}
       </div>
     </section>` : ""}
 
+    ${storePromoBannersHTML(storePromoBannerList({ home: true }))}
     <section class="section offers-section dk-reveal">
       <div class="container">
         ${renderFlashCountdownBar()}
@@ -3781,16 +3791,44 @@ function seededShuffle(list, seed) {
 // الـ30 صنف بيتزا في المتجر (كان 13 منها فقط مخفَّضاً سابقاً) ليكون الادّعاء
 // صحيحاً 100% قبل بناء هذا البانر، وليس مجرد نص تسويقي بلا سعر فعلي خلفه.
 const OFFERS_PAGE_STORE_PROMOS = [
-  { storeId: 56, categoryContains: "بيتزا", headline: "خصم 10% على أطباق البيتزا", sub: "لعملاء دكانجي — على كل أصناف البيتزا" }
+  { storeId: 56, categoryContains: "بيتزا", headline: "خصم 10% على أطباق البيتزا", sub: "لعملاء دكانجي — على كل أصناف البيتزا" },
+  // 2026-09-08: كريبما — الخصم هنا على المتجر كله لا على تصنيف واحد، فلا
+  // categoryContains (غيابه = كل تصنيفات المتجر). وطلب المستخدم نشر عروضه على
+  // الصفحة الرئيسية أيضاً، فـ home:true يُظهر نفس البانر المُتحقَّق منه هناك.
+  { storeId: 116, headline: "خصم 15% على كل منتجات كريبما", sub: "كريب وفطاير طازجة — الخصم على القائمة كاملة", home: true }
 ];
-function offersPageStorePromoBanners() {
-  return OFFERS_PAGE_STORE_PROMOS.map(promo => {
+// opts.home = اقتصر على البانرات المعلَّمة للصفحة الرئيسية.
+// غياب categoryContains يعني «كل أصناف المتجر» — والشرط يبقى كما هو: لا يُرسم
+// البانر إطلاقاً ما لم يوجد منتج حقيقي متاح ومخفَّض فعلاً يطابقه.
+function storePromoBannerList(opts = {}) {
+  return OFFERS_PAGE_STORE_PROMOS.filter(promo => (opts.home ? promo.home === true : true)).map(promo => {
     const store = getStore(promo.storeId);
     if (!store || !isStoreApproved(store)) return null;
-    const matches = products.filter(p => p.storeId === promo.storeId && p.available && p.oldPrice && (p.category || "").includes(promo.categoryContains));
+    const matches = products.filter(p => p.storeId === promo.storeId && p.available && p.oldPrice
+      && (!promo.categoryContains || (p.category || "").includes(promo.categoryContains)));
     if (!matches.length) return null;
     return { store, promo };
   }).filter(Boolean);
+}
+function storePromoBannersHTML(list) {
+  if (!list.length) return "";
+  return `
+    <section class="section store-promo-banners-section">
+      <div class="container">
+        ${list.map(({ store, promo }) => `
+          <button class="store-promo-banner" data-action="open-store" data-id="${store.id}" aria-label="${escAttr(promo.headline)} — ${escAttr(store.name)}">
+            <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
+            <span class="store-promo-banner__gradient"></span>
+            <span class="store-promo-banner__body">
+              <b class="store-promo-banner__badge">${icon("percent")} عرض خاص</b>
+              <strong>${esc(promo.headline)}</strong>
+              <small>${esc(promo.sub)} · ${esc(store.name)}</small>
+            </span>
+            <span class="store-promo-banner__go">${icon("arrowLeft")}</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>`;
 }
 
 // ============================================================================
@@ -3868,7 +3906,7 @@ function bannerScheduleState(banner, nowMs) {
 // Resolves a banner's link to a real, currently-valid target. Returns null when
 // the target went stale (store deleted/unapproved, product removed/unavailable,
 // category renamed) — same render-time truth-validation rule the dailyDeal hero
-// and offersPageStorePromoBanners() already follow: a banner whose destination
+// and storePromoBannerList() already follow: a banner whose destination
 // no longer exists must disappear, never render as a dead click.
 function bannerLinkTarget(banner) {
   const type = banner.linkType || "none";
@@ -4057,7 +4095,7 @@ function renderOffers() {
   const ddStore = ddProductRaw ? getStore(ddProductRaw.storeId) : null;
   const ddProduct = ddStore && isStoreApproved(ddStore) ? ddProductRaw : null;
   const ddPct = ddProduct && ddProduct.oldPrice ? Math.round((1 - ddProduct.price / ddProduct.oldPrice) * 100) : 0;
-  const storePromoBanners = offersPageStorePromoBanners();
+  const storePromoBannersMarkup = storePromoBannersHTML(storePromoBannerList());
   return `
     <section class="page-hero offers-page-hero${ddProduct ? " offers-page-hero--dd" : ""}">
       ${ddProduct ? `
@@ -4078,23 +4116,7 @@ function renderOffers() {
       </div>`}
     </section>
     ${bannerStripHTML("offers_top")}
-    ${storePromoBanners.length ? `
-    <section class="section store-promo-banners-section">
-      <div class="container">
-        ${storePromoBanners.map(({ store, promo }) => `
-          <button class="store-promo-banner" data-action="open-store" data-id="${store.id}" aria-label="${escAttr(promo.headline)} — ${escAttr(store.name)}">
-            <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}">
-            <span class="store-promo-banner__gradient"></span>
-            <span class="store-promo-banner__body">
-              <b class="store-promo-banner__badge">${icon("percent")} عرض خاص</b>
-              <strong>${esc(promo.headline)}</strong>
-              <small>${esc(promo.sub)} · ${esc(store.name)}</small>
-            </span>
-            <span class="store-promo-banner__go">${icon("arrowLeft")}</span>
-          </button>
-        `).join("")}
-      </div>
-    </section>` : ""}
+    ${storePromoBannersMarkup}
     <section class="section">
       <div class="container">
         <div class="section-heading"><div><span class="section-kicker">لفترة محدودة</span><h2>خصومات اليوم</h2></div><span class="count-chip">${offerProducts.length} عروض متاحة</span></div>
@@ -11840,19 +11862,40 @@ function renderCategoryPage(slug) {
 // elements fade+slide-up into view when they enter the viewport. Respects
 // prefers-reduced-motion (the CSS already makes .dk-reveal visible without
 // transition in that case, so the JS just removes the class immediately).
+// Scroll-reveal for .dk-reveal sections. `.dk-reveal` is opacity:0 until this
+// adds .dk-visible, so ANY failure here hides real content — hence the belt-and-
+// braces below.
+//
+// 🔴 2026-09-08: this shipped with `threshold: 0.08`, which means "fire when 8%
+// of the element is on screen". That is a *fraction of the element*, not of the
+// viewport — so for the store rail (13,282px tall on a phone) it demanded
+// 1,062px of visibility inside an 812px viewport: impossible at any scroll
+// position. The stores stayed invisible on mobile forever while rendering
+// perfectly in the DOM. Desktop escaped it only because the multi-column grid
+// is short enough for 8% to fit on screen.
+// threshold:0 fires as soon as a single pixel intersects, which is what a
+// reveal animation actually wants and is height-independent.
 function setupScrollAnimations() {
   const els = document.querySelectorAll(".dk-reveal");
   if (!els.length) return;
-  if (typeof IntersectionObserver === "undefined") { els.forEach(el => el.classList.add("dk-visible")); return; }
+  const show = el => el.classList.add("dk-visible");
+  if (typeof IntersectionObserver === "undefined") { els.forEach(show); return; }
   const observer = new IntersectionObserver(entries => {
     entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("dk-visible");
-        observer.unobserve(entry.target);
-      }
+      if (entry.isIntersecting) { show(entry.target); observer.unobserve(entry.target); }
     });
-  }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+  }, { threshold: 0, rootMargin: "0px 0px -40px 0px" });
   els.forEach(el => observer.observe(el));
+  // Safety net: never let a decorative animation be the reason content is
+  // invisible. Anything still hidden a moment after paint is revealed outright
+  // (covers a throttled/blocked observer, or a section that is already on
+  // screen before the observer is wired up).
+  setTimeout(() => {
+    document.querySelectorAll(".dk-reveal:not(.dk-visible)").forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0) show(el);
+    });
+  }, 1200);
 }
 
 function setupHeroSlider() {
@@ -12042,7 +12085,9 @@ function render() {
   }
   if (route === "checkout" && state.cart.length) setTimeout(() => requestDeliveryQuote(), 0);
   if (route === "join") setTimeout(openJoinModal, 0);
-  if (route === "store" || route === "product" || route === "offers") hydratePageData();
+  // Keep a handle on the targeted deep-link hydration so initCatalog() can let
+  // it finish before pulling the full catalog, instead of guessing with a timer.
+  if (route === "store" || route === "product" || route === "offers") window.__dkHydrating = hydratePageData();
   if (route === "admin" && state.adminTab === "messages" && state.adminKey) {
     setTimeout(() => { startInboxPolling(); scrollChatToBottom(); }, 0);
   }

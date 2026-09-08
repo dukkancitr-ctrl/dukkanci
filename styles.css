@@ -15099,3 +15099,20 @@ button:focus-visible, a:focus-visible {
   .dk-matcher-submit { width: 100%; justify-content: center; }
 }
 
+/* --- Mobile: stores first ------------------------------------------------
+   Measured 2026-09-08 on a 375x812 phone: the store grid started at y=1854px
+   — 2.28 screens down — because two category navigators sit above it (the
+   stories rail, 148px, and the big shop tiles, 756px). Opening the site on a
+   phone therefore showed zero stores until you scrolled twice, which is what
+   the owner reported as "the stores don't show".
+   `main` becomes a flex column on mobile only so the store rail can be pulled
+   up right under the hero without touching the DOM order (desktop keeps its
+   own layout untouched). Both category navigators still follow, just below.  */
+@media (max-width: 640px) {
+  main { display: flex; flex-direction: column; }
+  main > * { order: 5; }
+  main > .hero2 { order: 0; }
+  main > .nearby-section { order: 1; }
+  main > .dk-stories-section { order: 2; }
+  main > .mobile-shop-tiles-section { order: 3; }
+}
