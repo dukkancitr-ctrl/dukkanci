@@ -1,4 +1,4 @@
-﻿const stores = [
+const stores = [
   {
     id: 5,
     name: "ملحمة الهلال",
@@ -364,6 +364,8 @@ const state = {
   customerNotifUnread: 0,
   reviewEligibility: {},  // storeId → { hasAnyOrder, hasReviewable, orderId } — checked lazily per store page visit
   storeFilter: "الكل",
+  homeCatFilter: "الكل",
+  homeDistrictFilter: "الكل",
   storeSort: "recommended",
   offersCategory: "الكل",
   search: "",
@@ -2608,6 +2610,7 @@ function updateCartBadges() {
   const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
   document.getElementById("cart-count").textContent = count;
   document.getElementById("mobile-cart-count").textContent = count;
+  updateFloatingMiniCart();
 }
 
 // Honest count of currently live offers (never a fabricated/urgency number) —
@@ -3082,23 +3085,236 @@ function nearbyStoreCard(store) {
   `;
 }
 
+// --- 2026 NEXT-GEN INTERACTIVE HELPERS FOR HOMEPAGE ---
+
+function getTimeOfDayContext() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) {
+    return {
+      period: "morning",
+      icon: "🥐",
+      title: "صباح الخير والبركة! فطور ومخبوزات طازجة ☀️",
+      desc: "أجبان، ألبان، معجنات ساخنة، قهوة واحتياجات البيت توصلك لبابك.",
+      btnText: "اطلب فطور الصباح",
+      targetCat: "سوبر ماركت"
+    };
+  } else if (h >= 12 && h < 18) {
+    return {
+      period: "lunch",
+      icon: "🍗",
+      title: "وقت الغداء الشهي! مشاوي ووجبات ساخنة 🍽️",
+      desc: "شاورما، برياني، وجبات عائلية وساندوتشات من أفضل مطابخ الحي.",
+      btnText: "اختر وجبة الغداء",
+      targetCat: "مطاعم"
+    };
+  } else if (h >= 18 && h < 24) {
+    return {
+      period: "evening",
+      icon: "🍰",
+      title: "سهرة الليلة! حلويات فاخرة وموالح ومشروبات 🌙",
+      desc: "كنافة نابلسية، بقلاوة، تسالي ومكسرات طازجة لجلسة عائلية ممتعة.",
+      btnText: "اطلب حلى السهرة",
+      targetCat: "حلويات"
+    };
+  } else {
+    return {
+      period: "night",
+      icon: "☕",
+      title: "سهرة هادئة! تسالي وطلبات سريعة متوفرة 🌙",
+      desc: "مشروبات، قهوة، وجبات سريعة وسوبرماركت متاح للطلب الآن.",
+      btnText: "تصفح المتاح الآن",
+      targetCat: "الكل"
+    };
+  }
+}
+
+const HOME_STORIES = [
+  { id: "popular", label: "الأكثر شعبية", icon: "🔥", badge: "مميز", cat: "الكل" },
+  { id: "fast", label: "توصيل سريع", icon: "🚀", badge: "سريع", cat: "الكل" },
+  { id: "restaurants", label: "مطاعم الحي", icon: "🍗", badge: "ساخن", cat: "مطاعم" },
+  { id: "butcher", label: "ملاحم ولحوم", icon: "🥩", badge: "طازج", cat: "ملاحم" },
+  { id: "sweets", label: "حلويات وسهرة", icon: "🍰", badge: "حلو", cat: "حلويات" },
+  { id: "offers", label: "تخفيضات اليوم", icon: "🏷️", badge: "خصم", cat: "عروض" },
+  { id: "market", label: "سوبر ماركت", icon: "🛒", badge: "يومي", cat: "سوبر ماركت" },
+  { id: "water", label: "مياه ومشروبات", icon: "💧", badge: "نقي", cat: "المياه المعدنية" }
+];
+
+function renderHomeStoriesRail() {
+  return `
+    <div class="dk-stories-section">
+      <div class="container">
+        <div class="dk-stories-rail" aria-label="قصص وتصنيفات سريعة">
+          ${HOME_STORIES.map(st => `
+            <button class="dk-story-item" type="button" data-action="home-story-click" data-cat="${escAttr(st.cat)}" data-id="${st.id}">
+              <div class="dk-story-ring">
+                <div class="dk-story-avatar">${st.icon}</div>
+                <span class="dk-story-badge">${st.badge}</span>
+              </div>
+              <span class="dk-story-label">${esc(st.label)}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+const ISTANBUL_DISTRICTS = ["الكل", "باشاك شهير", "الفاتح", "إسنيورت", "شيرين إيفلر", "باهتشلي إيفلر", "بيلك دوزو", "أفجلار", "زيتين بورنو"];
+
+function renderHomeDistrictSwitcher() {
+  const current = state.homeDistrictFilter || "الكل";
+  return `
+    <div class="dk-district-rail" aria-label="اختيار الحي بإسطنبول">
+      <span class="dk-district-label">${icon("pin")} المنطقة:</span>
+      ${ISTANBUL_DISTRICTS.map(d => `
+        <button type="button" class="dk-district-pill ${current === d ? "active" : ""}" data-action="home-district-filter" data-district="${escAttr(d)}">
+          ${esc(d)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+const HOME_INPAGE_CATS = [
+  { name: "الكل", icon: "✨" },
+  { name: "مطاعم", icon: "🍽️" },
+  { name: "سوبر ماركت", icon: "🛒" },
+  { name: "ملاحم", icon: "🥩" },
+  { name: "حلويات", icon: "🍰" },
+  { name: "بن ومكسرات", icon: "☕" },
+  { name: "المياه المعدنية", icon: "💧" }
+];
+
+function renderHomeInPageCatTabs() {
+  const current = state.homeCatFilter || "الكل";
+  return `
+    <nav class="dk-home-cat-tabs" aria-label="تصنيفات المتاجر المباشرة">
+      ${HOME_INPAGE_CATS.map(c => `
+        <button type="button" class="dk-home-cat-tab ${current === c.name ? "active" : ""}" data-action="home-cat-filter" data-cat="${escAttr(c.name)}">
+          <span class="tab-icon">${c.icon}</span>
+          <span>${esc(c.name)}</span>
+        </button>
+      `).join("")}
+    </nav>
+  `;
+}
+
+// Honest header for the home offers block. The cards below are the merchants'
+// real oldPrice-to-price cuts, so the copy says exactly that and shows the live
+// count. The previous version shipped a midnight countdown plus "لليوم فقط /
+// قبل نفاد الكمية" — removed 2026-09-08: nothing expires these offers at
+// midnight and the platform tracks no stock, so both claims were false. Same
+// rule as updateOffersBadge(): never a fabricated/urgency number.
+function renderFlashCountdownBar() {
+  const liveOffers = products.filter(p => p.oldPrice && p.available).length;
+  return `
+    <div class="dk-flash-header">
+      <div class="dk-flash-title">
+        <span class="dk-flash-fire">🏷️</span>
+        <div>
+          <h3>عروض وخصومات سارية الآن</h3>
+          <p>خصومات حقيقية يضعها التجار أنفسهم — تتغيّر كلما حدّثوا أسعارهم</p>
+        </div>
+      </div>
+      ${liveOffers ? `<span class="count-chip">${liveOffers} عرضاً متاحاً الآن</span>` : ""}
+    </div>
+  `;
+}
+
+function renderMealMatcherWidget() {
+  return `
+    <section class="section dk-meal-matcher-section dk-reveal">
+      <div class="container">
+        <div class="dk-meal-matcher">
+          <div class="dk-meal-matcher__header">
+            <h3><span>🤖</span> مش عارف تختار؟ دع دكانجي يقترح لك</h3>
+            <p>حدد ميزانيتك وعدد الأشخاص ونقترح لك طلباً مثالياً فوراً من أفضل المتاجر القريبة</p>
+          </div>
+          <div class="dk-matcher-controls">
+            <div class="dk-control-group">
+              <label for="matcher-budget">الميزانية التقريبية: <strong id="budget-val">350 ₺</strong></label>
+              <input type="range" class="dk-matcher-slider" id="matcher-budget" min="100" max="1500" step="50" value="350" oninput="document.getElementById('budget-val').textContent = this.value + ' ₺'">
+            </div>
+            <div class="dk-control-group">
+              <label for="matcher-persons">عدد الأشخاص: <strong id="persons-val">2 أفراد</strong></label>
+              <input type="range" class="dk-matcher-slider" id="matcher-persons" min="1" max="8" step="1" value="2" oninput="document.getElementById('persons-val').textContent = this.value + (this.value==1?' فرد':' أفراد')">
+            </div>
+            <button type="button" class="dk-matcher-submit" data-action="meal-matcher-run">
+              ${icon("stars")} اقترح وجبتي الآن
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function updateFloatingMiniCart() {
+  let bar = document.getElementById("dk-floating-cart");
+  const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+  if (count <= 0) {
+    if (bar) bar.classList.remove("visible");
+    return;
+  }
+  const total = state.cart.reduce((sum, item) => {
+    const p = getProduct(item.productId);
+    return sum + (p ? p.price * item.quantity : 0);
+  }, 0);
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "dk-floating-cart";
+    bar.className = "dk-floating-cart";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <div class="dk-floating-cart__summary" data-action="open-cart" style="cursor:pointer">
+      <span class="dk-floating-cart__badge">${count}</span>
+      <div class="dk-floating-cart__text">
+        <strong>سلتك الحالية</strong>
+        <span>${money(total)}</span>
+      </div>
+    </div>
+    <button class="dk-floating-cart__btn" data-action="open-cart">
+      ${icon("bag")} مراجعة الطلب ${icon("arrowLeft")}
+    </button>
+  `;
+  hydrateIcons(bar);
+  requestAnimationFrame(() => bar.classList.add("visible"));
+}
+
+
 function renderHome() {
-  // For brands with several branches, surface the branch nearest the visitor's
-  // location (from geolocation) instead of a fixed "main" branch — on desktop and
-  // mobile alike (the store grid is shared/responsive). Falls back to the featured
-  // branch until the browser location is known.
-  let featuredStores = collapseBranchGroups(stores.filter(store => store.featured && isStoreApproved(store)));
-  // When the visitor's location is known, show the nearest featured stores first
-  // so "متاجر قريبة منك الآن" is literally true.
+  let allApproved = stores.filter(store => isStoreApproved(store));
+  if (state.homeCatFilter && state.homeCatFilter !== "الكل") {
+    allApproved = allApproved.filter(s => storeMatchesCategory(s, state.homeCatFilter));
+  }
+  if (state.homeDistrictFilter && state.homeDistrictFilter !== "الكل") {
+    allApproved = allApproved.filter(s => (s.address || "").includes(state.homeDistrictFilter) || (s.description || "").includes(state.homeDistrictFilter) || (s.name || "").includes(state.homeDistrictFilter) || (s.region || "").includes(state.homeDistrictFilter));
+  }
+  let featuredStores = collapseBranchGroups(allApproved.filter(store => store.featured));
+  if (!featuredStores.length) featuredStores = collapseBranchGroups(allApproved).slice(0, 12);
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
-  // Paid-priority stores float to the front regardless of distance — see
-  // PAID_PRIORITY_STORE_IDS above.
   featuredStores = sortStoresByPaidPriority(featuredStores);
+
+  const timeCtx = getTimeOfDayContext();
+  const timeMoodBanner = `
+    <div class="dk-time-mood-banner">
+      <div class="dk-time-mood-info">
+        <span class="dk-time-mood-icon">${timeCtx.icon}</span>
+        <div class="dk-time-mood-text">
+          <h4>${timeCtx.title}</h4>
+          <p>${timeCtx.desc}</p>
+        </div>
+      </div>
+      <button class="dk-time-mood-action" data-action="home-cat-filter" data-cat="${escAttr(timeCtx.targetCat)}">
+        ${timeCtx.btnText} ${icon("arrowLeft")}
+      </button>
+    </div>
+  `;
+
   const offerProducts = sortProductsByPaidPriority(products.filter(product => product.oldPrice && product.available)).slice(0, 8);
   const mostOrdered = mostOrderedProducts();
   const recommended = recommendedProducts(mostOrdered.map(p => p.id));
-  // Real, not fabricated — a plain count of currently-open approved stores.
-  // No fake order counts / "last order" strings: we don't have that data yet.
   const openStoresCount = stores.filter(s => isStoreApproved(s) && isStoreOpenNow(s)).length;
   const HT = (state.siteSettings && state.siteSettings.heroTexts) || {};
   const ht = {
@@ -3118,16 +3334,12 @@ function renderHome() {
   };
   const bHref = hb.link || "#offers";
   const bAttrs = `href="${escAttr(bHref)}"${/^(https?:|tel:|mailto:|wa\.me)/i.test(bHref) ? ' target="_blank" rel="noopener"' : ""}`;
-  // Paid hero placement — the four merchant-paid stores (PAID_PRIORITY_STORE_IDS)
-  // surfaced by name/logo inside the hero itself. Real store rows only: a paid id
-  // that's missing or unapproved simply doesn't render a chip.
   const paidHeroStores = PAID_PRIORITY_STORE_IDS.map(id => stores.find(s => s.id === id)).filter(s => s && isStoreApproved(s));
   const paidHeroStrip = paidHeroStores.length ? `
           <div class="h2-featured" aria-label="متاجر مميزة">
             <span class="h2-featured-label">${icon("star")} متاجر مميزة</span>
             ${paidHeroStores.map(s => `<a class="h2-featured-chip" href="/store/${escAttr(storeParam(s))}" data-action="open-store" data-id="${s.id}">${storeAvatar(s)}<span>${esc(s.name)}</span></a>`).join("")}
           </div>` : "";
-  // Real average store rating (truthful — never fabricated) for the hero rating float.
   const ratedHeroStores = stores.filter(s => (Number(s.reviews) || 0) > 0);
   let heroRatingFloat = "";
   if (ratedHeroStores.length) {
@@ -3135,14 +3347,12 @@ function renderHome() {
     const avgRating = (ratedHeroStores.reduce((a, s) => a + (Number(s.rating) || 0) * Number(s.reviews), 0) / totalRev).toFixed(1);
     heroRatingFloat = `<div class="h2-rate-num"><strong>${avgRating}</strong><small>متوسط تقييم المتاجر</small></div>`;
   }
-  // HERO V2 — fully scoped under .hero2 (class names prefixed h2-* so nothing leaks in/out).
-  // Rotating headline (4 slides via setupHeroSlider) + real working search + phone mock + glass floats.
   return `
     <section class="hero2">
       <span class="h2-bgword" aria-hidden="true">DUKKANCI</span>
       <div class="container h2-grid">
         <div class="h2-copy">
-          <span class="h2-eyebrow"><span class="h2-pulse"></span> ${escAttr(HT.eyebrow || "سوق الحي بين يديك — تجربة أوضح من واتساب")}</span>
+          <span class="h2-eyebrow"><span class="h2-pulse"></span> ${escAttr(HT.eyebrow || "سوق الحي بين يديك — تجربة أوضح من واتساب")}${openStoresCount ? `<span class="h2-eyebrow-counter"><span class="live-dot"></span>${openStoresCount.toLocaleString("ar")} متجر مفتوح</span>` : ""}</span>
           <div class="h2-slides" id="hero2-slides">
             <article class="h2-slide active">
               <h1>كل ما تحتاجه من <span class="h2-grad">متاجر منطقتك</span><br>اطلب الآن وادفع عند الاستلام</h1>
@@ -3244,7 +3454,13 @@ ${paidHeroStrip}
           </div>
         </div>
       </div>
+      <button class="hero2-scroll-indicator" onclick="document.getElementById('nearby-stores')?.scrollIntoView({behavior:'smooth'})">
+        <span>اكتشف المتاجر</span>
+        <svg class="scroll-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+      </button>
     </section>
+
+    ${renderHomeStoriesRail()}
 
     ${bannerStripHTML("home_top")}
 
@@ -3256,18 +3472,25 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    <section class="section nearby-section" id="nearby-stores">
+    <section class="section nearby-section dk-reveal" id="nearby-stores">
       <div class="container">
+        ${timeMoodBanner}
         <div class="section-heading">
           <div><span class="section-kicker">اختيارات يحبها الجيران</span><h2>متاجر قريبة منك الآن</h2></div>
           <a href="/stores" data-route="stores">استكشف الكل ${icon("arrowLeft")}</a>
         </div>
+        ${renderHomeDistrictSwitcher()}
+        ${renderHomeInPageCatTabs()}
         ${openStoresCount ? `<div class="live-activity-pill"><span class="live-dot"></span> متاجر مفتوحة الآن: ${openStoresCount.toLocaleString("ar")}</div>` : ""}
-        <div class="store-grid">${featuredStores.map(nearbyStoreCard).join("")}</div>
+        <div class="store-grid">
+          ${featuredStores.length ? featuredStores.map(nearbyStoreCard).join("") : `<div class="empty-state" style="grid-column:1/-1;text-align:center;padding:40px 20px;background:#fff;border-radius:20px;border:1px solid #eee"><h3>لا توجد متاجر تطابق الفلتر المحدد</h3><p style="color:#888;margin-top:6px">جرّب اختيار تصنيف أو منطقة أخرى</p></div>`}
+        </div>
       </div>
     </section>
 
-    <section class="section ask-dukkanci-cta-section">
+    ${renderMealMatcherWidget()}
+
+    <section class="section ask-dukkanci-cta-section dk-reveal">
       <div class="container">
         <a class="ask-dukkanci-cta" href="/ask-dukkanci" data-route="ask-dukkanci">
           <span class="ask-dukkanci-cta__icon">${icon("stars")}</span>
@@ -3278,7 +3501,7 @@ ${paidHeroStrip}
     </section>
 
     ${mostOrdered.length ? `
-    <section class="section most-ordered-section">
+    <section class="section most-ordered-section dk-reveal">
       <div class="container">
         <div class="section-heading">
           <div><span class="section-kicker">تجربة مضمونة</span><h2>الأكثر طلباً اليوم</h2></div>
@@ -3287,8 +3510,9 @@ ${paidHeroStrip}
       </div>
     </section>` : ""}
 
-    <section class="section offers-section">
+    <section class="section offers-section dk-reveal">
       <div class="container">
+        ${renderFlashCountdownBar()}
         <div class="offers-banner">
           <div class="offers-banner__copy">
             <span class="eyebrow light"><span></span> ${escAttr(hb.eyebrow)}</span>
@@ -3311,7 +3535,7 @@ ${paidHeroStrip}
 
     ${bannerStripHTML("home_mid")}
 
-    <section class="section categories-section">
+    <section class="section categories-section dk-reveal">
       <div class="container">
         <div class="section-heading">
           <div><span class="section-kicker">تسوّق حسب رغبتك</span><h2>ماذا تحتاج اليوم؟</h2></div>
@@ -3324,7 +3548,7 @@ ${paidHeroStrip}
     </section>
 
     ${recommended.length ? `
-    <section class="section recommended-section">
+    <section class="section recommended-section dk-reveal">
       <div class="container">
         <div class="section-heading">
           <div><span class="section-kicker">مختارات متنوعة</span><h2>منتجات مقترحة لك</h2></div>
@@ -3333,7 +3557,7 @@ ${paidHeroStrip}
       </div>
     </section>` : ""}
 
-    <section class="section confidence-section">
+    <section class="section confidence-section dk-reveal">
       <div class="container">
         <div class="section-heading centered">
           <div><span class="section-kicker">ثقة من أول طلب</span><h2>اطلب بثقة</h2></div>
@@ -3347,7 +3571,7 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    <section class="section steps-section">
+    <section class="section steps-section dk-reveal">
       <div class="container">
         <div class="section-heading centered">
           <div><span class="section-kicker">بسيطة وواضحة</span><h2>طلبك في ثلاث خطوات</h2></div>
@@ -3360,7 +3584,7 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    <section class="section whatsapp-assist-section">
+    <section class="section whatsapp-assist-section dk-reveal">
       <div class="container">
         <div class="whatsapp-assist">
           <div class="whatsapp-assist__copy">
@@ -3372,7 +3596,7 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    <section class="section merchant-cta-section">
+    <section class="section merchant-cta-section dk-reveal">
       <div class="container">
         <div class="merchant-cta">
           <div class="merchant-cta__art">
@@ -3380,6 +3604,7 @@ ${paidHeroStrip}
             <span class="dot dot--one"></span><span class="dot dot--two"></span>
           </div>
           <div class="merchant-cta__copy">
+            <span class="merchant-cta__counter">${icon("store")} +${stores.filter(s => isStoreApproved(s)).length.toLocaleString("ar")} متجر على دكانجي</span>
             <span>لأصحاب المتاجر</span>
             <h2>كبّر دكانك ووصل لعملاء أكثر</h2>
             <p>انضم إلى دكانجي، اعرض منتجاتك واستقبل الطلبات وأدر متجرك من لوحة واحدة.</p>
@@ -11611,6 +11836,25 @@ function renderCategoryPage(slug) {
 // Idempotent per render: render() clears state._heroTimer first, so this never stacks
 // timers. state._heroSlide persists the active slide so a data-refresh re-render resumes
 // where it left off instead of snapping back to slide 1.
+// HOMEPAGE IMPROVEMENT 2026: Scroll-driven entrance animations — .dk-reveal
+// elements fade+slide-up into view when they enter the viewport. Respects
+// prefers-reduced-motion (the CSS already makes .dk-reveal visible without
+// transition in that case, so the JS just removes the class immediately).
+function setupScrollAnimations() {
+  const els = document.querySelectorAll(".dk-reveal");
+  if (!els.length) return;
+  if (typeof IntersectionObserver === "undefined") { els.forEach(el => el.classList.add("dk-visible")); return; }
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("dk-visible");
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+  els.forEach(el => observer.observe(el));
+}
+
 function setupHeroSlider() {
   const root = document.querySelector(".hero2");
   if (!root) return;
@@ -11774,7 +12018,12 @@ function render() {
   updateCartBadges();
   updateOffersBadge();
   // Home/join render the V2 hero with its rotating headline — arm its auto-advance slider.
-  if (route === "home" || route === "join") { setupHeroSlider(); setupHeroSearchTyper(); }
+  if (route === "home" || route === "join") {
+    setupHeroSlider();
+    setupHeroSearchTyper();
+    setupScrollAnimations();
+  }
+  updateFloatingMiniCart();
   // Managed banners can appear on home/offers/category — arm their in-view
   // impression counter after every paint (it self-dedupes per session).
   setupBannerImpressions();
@@ -13881,6 +14130,35 @@ document.addEventListener("click", event => {
     showToast(ids.has(id) ? "أُضيف إلى «الأكثر طلباً اليوم»" : "أُزيل من «الأكثر طلباً اليوم»", "success");
   }
   if (action === "store-filter") { state.storeFilter = target.dataset.category; render(); }
+  if (action === "home-cat-filter") {
+    state.homeCatFilter = target.dataset.cat || "الكل";
+    render();
+    const el = document.getElementById("nearby-stores");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  }
+  if (action === "home-district-filter") {
+    state.homeDistrictFilter = target.dataset.district || "الكل";
+    render();
+    const el = document.getElementById("nearby-stores");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  }
+  if (action === "home-story-click") {
+    const cat = target.dataset.cat;
+    if (cat === "عروض") {
+      navigate("offers");
+    } else {
+      state.homeCatFilter = cat || "الكل";
+      render();
+      const el = document.getElementById("nearby-stores");
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+  if (action === "meal-matcher-run") {
+    const budget = document.getElementById("matcher-budget")?.value || 350;
+    const persons = document.getElementById("matcher-persons")?.value || 2;
+    state.askDukkanci.message = `ميزانيتي حوالي ${budget} ليرة لعدد ${persons} أشخاص، اقترح لي وجبة متكاملة وسريعة`;
+    navigate("ask-dukkanci");
+  }
   if (action === "offers-filter") { state.offersCategory = target.dataset.category; render(); }
   if (action === "admin-cat-filter") {
     state.adminProductCategory = target.dataset.cat || null;

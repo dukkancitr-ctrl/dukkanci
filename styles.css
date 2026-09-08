@@ -14158,3 +14158,944 @@ tbody tr:hover {
   .legal-card { padding: 18px; }
   .legal-cta__box { padding: 30px 20px; }
 }
+
+/* ============================================================================
+   HOMEPAGE IMPROVEMENTS 2026 — Global enhancements
+   ============================================================================ */
+
+/* --- Text Selection Styling --- */
+::selection {
+  background: rgba(227, 6, 19, 0.15);
+  color: inherit;
+}
+
+/* --- Scroll-Driven Entrance Animations --- */
+.dk-reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dk-reveal.dk-visible {
+  opacity: 1;
+  transform: none;
+}
+.dk-reveal-delay-1 { transition-delay: 0.08s; }
+.dk-reveal-delay-2 { transition-delay: 0.16s; }
+.dk-reveal-delay-3 { transition-delay: 0.24s; }
+@media (prefers-reduced-motion: reduce) {
+  .dk-reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* --- Improved Focus States (Accessibility) --- */
+:focus-visible {
+  outline: 3px solid rgba(227, 6, 19, 0.5);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+button:focus-visible, a:focus-visible {
+  outline: 3px solid rgba(227, 6, 19, 0.5);
+  outline-offset: 2px;
+}
+
+/* --- Hero V2 Improvements --- */
+
+/* Animated floating orbs */
+@keyframes dkOrbFloat1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(12px, -18px) scale(1.04); }
+  66% { transform: translate(-8px, 10px) scale(0.97); }
+}
+@keyframes dkOrbFloat2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-15px, 12px) scale(0.96); }
+  66% { transform: translate(10px, -14px) scale(1.05); }
+}
+.hero2 .h2-orb.one { animation: dkOrbFloat1 12s ease-in-out infinite; }
+.hero2 .h2-orb.two { animation: dkOrbFloat2 15s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hero2 .h2-orb.one, .hero2 .h2-orb.two { animation: none; }
+}
+
+/* Animated mesh gradient background for hero */
+@keyframes dkMeshShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.hero2::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background: linear-gradient(135deg,
+    rgba(255, 225, 212, 0.6) 0%,
+    rgba(255, 245, 240, 0.3) 25%,
+    rgba(255, 220, 200, 0.5) 50%,
+    rgba(255, 240, 230, 0.2) 75%,
+    rgba(255, 210, 190, 0.4) 100%);
+  background-size: 400% 400%;
+  animation: dkMeshShift 20s ease infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero2::before { animation: none; }
+}
+
+/* CTA Shimmer effect */
+@keyframes dkShimmer {
+  0% { transform: translateX(150%) skewX(-20deg); }
+  100% { transform: translateX(-150%) skewX(-20deg); }
+}
+.hero2 .h2-cta-main {
+  position: relative;
+  overflow: hidden;
+}
+.hero2 .h2-cta-main::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 60%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+  transform: translateX(150%) skewX(-20deg);
+  animation: dkShimmer 4s ease-in-out infinite;
+  animation-delay: 2s;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero2 .h2-cta-main::after { animation: none; display: none; }
+}
+
+/* Scroll down indicator */
+@keyframes dkScrollBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.7; }
+  50% { transform: translateY(8px); opacity: 1; }
+}
+.hero2-scroll-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0 0;
+  color: var(--h2-brand, #9a0000);
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: opacity 0.3s;
+}
+.hero2-scroll-indicator:hover { opacity: 1; }
+.hero2-scroll-indicator .scroll-arrow {
+  width: 24px;
+  height: 24px;
+  animation: dkScrollBounce 2s ease-in-out infinite;
+}
+@media (max-width: 640px) {
+  .hero2-scroll-indicator { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero2-scroll-indicator .scroll-arrow { animation: none; }
+}
+
+/* Hero eyebrow live counter */
+.h2-eyebrow-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(19, 138, 74, 0.1);
+  color: #138a4a;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  margin-inline-start: 8px;
+}
+.h2-eyebrow-counter .live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #34a368;
+  box-shadow: 0 0 0 3px rgba(52, 163, 104, 0.18);
+}
+
+/* --- Store Cards Improvements --- */
+.nearby-store-card {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nearby-store-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 50px rgba(73, 16, 16, 0.12);
+}
+/* Open status pulse dot */
+.status-badge.open {
+  position: relative;
+  padding-inline-start: 18px;
+}
+.status-badge.open::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.3);
+}
+@keyframes dkStatusPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.1); }
+}
+.status-badge.open::before {
+  animation: dkStatusPulse 2.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-badge.open::before { animation: none; }
+}
+
+/* Visual star rating */
+.dk-star-visual {
+  display: inline-flex;
+  gap: 1px;
+  direction: ltr;
+}
+.dk-star-visual .dk-star {
+  width: 13px; height: 13px;
+  color: #f59e0b;
+}
+.dk-star-visual .dk-star.half { color: #fcd34d; }
+.dk-star-visual .dk-star.empty { color: #e5e7eb; }
+
+/* --- Ask Dukkanci CTA Glass Morphism --- */
+.ask-dukkanci-cta {
+  background: rgba(255, 255, 255, 0.7) !important;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(154, 0, 0, 0.1) !important;
+  box-shadow: 0 16px 40px rgba(73, 16, 16, 0.08), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+}
+.ask-dukkanci-cta:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 22px 50px rgba(73, 16, 16, 0.12), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+}
+
+/* Sparkle animation on AI icon */
+@keyframes dkSparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+  25% { transform: scale(1.15) rotate(5deg); filter: brightness(1.3); }
+  50% { transform: scale(1) rotate(-3deg); filter: brightness(1); }
+  75% { transform: scale(1.1) rotate(3deg); filter: brightness(1.2); }
+}
+.ask-dukkanci-cta__icon {
+  animation: dkSparkle 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-dukkanci-cta__icon { animation: none; }
+}
+
+/* --- Product Cards Improvements --- */
+
+/* Skeleton loading for images */
+@keyframes dkSkeleton {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.product-card__image.loading img,
+.home-offer-card__image.loading img {
+  opacity: 0;
+}
+.product-card__image.loading::after,
+.home-offer-card__image.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #f3f0ee 25%, #faf7f5 50%, #f3f0ee 75%);
+  background-size: 200% 100%;
+  animation: dkSkeleton 1.5s ease-in-out infinite;
+  border-radius: inherit;
+}
+
+/* Most Ordered badge glow */
+@keyframes dkBadgeGlow {
+  0%, 100% { box-shadow: 0 4px 12px rgba(245, 198, 91, 0.3); }
+  50% { box-shadow: 0 4px 20px rgba(245, 198, 91, 0.6); }
+}
+.most-ordered-badge {
+  animation: dkBadgeGlow 2.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .most-ordered-badge { animation: none; }
+}
+
+/* Quick-add pulse on hover */
+.quick-add--labeled {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.quick-add--labeled:hover:not(:disabled) {
+  transform: scale(1.06);
+  box-shadow: 0 8px 20px rgba(227, 6, 19, 0.25);
+}
+
+/* Offer discount chip enhancement */
+.discount-chip {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+/* --- Confidence Section Redesign --- */
+.confidence-grid article {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  overflow: hidden;
+}
+.confidence-grid article:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 40px rgba(73, 16, 16, 0.1);
+}
+.confidence-grid article::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  inset-inline-end: -40px;
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(227, 6, 19, 0.06), transparent 70%);
+  pointer-events: none;
+}
+.confidence-grid article:nth-child(2)::before {
+  background: radial-gradient(circle, rgba(37, 211, 102, 0.08), transparent 70%);
+}
+.confidence-grid article:nth-child(3)::before {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.08), transparent 70%);
+}
+.confidence-grid article:nth-child(4)::before {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.08), transparent 70%);
+}
+
+/* Larger, colored confidence icons */
+.confidence-grid .icon {
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+.confidence-grid article:nth-child(1) .icon {
+  background: rgba(227, 6, 19, 0.08);
+  color: #c70511;
+}
+.confidence-grid article:nth-child(2) .icon {
+  background: rgba(37, 211, 102, 0.1);
+  color: #25d366;
+}
+.confidence-grid article:nth-child(3) .icon {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+.confidence-grid article:nth-child(4) .icon {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+/* Background pattern for confidence section */
+.confidence-section {
+  background: #fcf8f6 url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23e3d5cf' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") !important;
+}
+
+/* --- Steps Section Improvements --- */
+.steps-grid article {
+  transition: transform 0.3s ease;
+}
+.steps-grid article:hover {
+  transform: translateY(-4px);
+}
+
+/* Enhanced step number */
+.step-number {
+  background: linear-gradient(135deg, #9a0000, #d51f1f) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 20px rgba(154, 0, 0, 0.25) !important;
+  font-size: 20px !important;
+}
+
+/* Connecting line between steps */
+.steps-grid {
+  position: relative;
+}
+@media (min-width: 769px) {
+  .steps-grid::before {
+    content: "";
+    position: absolute;
+    top: 72px;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, #ead8d4 0, #ead8d4 8px, transparent 8px, transparent 14px);
+    z-index: 0;
+  }
+  .steps-grid article {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* --- WhatsApp Section Improvements --- */
+@keyframes dkWaBounce {
+  0%, 100% { transform: translateY(0); }
+  15% { transform: translateY(-6px); }
+  30% { transform: translateY(0); }
+  45% { transform: translateY(-3px); }
+  60% { transform: translateY(0); }
+}
+.whatsapp-button .icon {
+  animation: dkWaBounce 3s ease-in-out infinite;
+  animation-delay: 1s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-button .icon { animation: none; }
+}
+
+.whatsapp-assist {
+  background: linear-gradient(135deg, #dcf8e8, #e9f8ef, #f0fdf4) !important;
+  border-color: #b8e6cc !important;
+}
+
+/* --- Merchant CTA Improvements --- */
+.merchant-cta {
+  position: relative;
+  overflow: hidden;
+}
+.merchant-cta::before {
+  content: "";
+  position: absolute;
+  top: -60px;
+  inset-inline-end: -60px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(227, 6, 19, 0.05), transparent 70%);
+  pointer-events: none;
+}
+
+/* Merchant counter */
+.merchant-cta__counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(227, 6, 19, 0.08);
+  color: #9a0000;
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+/* --- Performance: content-visibility for off-screen sections --- */
+.confidence-section,
+.steps-section,
+.whatsapp-assist-section,
+.merchant-cta-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* --- Hero float cards gentle hover --- */
+.hero2 .h2-float {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero2 .h2-float.delivery {
+  animation: dkOrbFloat2 10s ease-in-out infinite;
+  animation-delay: 0.5s;
+}
+.hero2 .h2-float.price {
+  animation: dkOrbFloat1 11s ease-in-out infinite;
+  animation-delay: 1s;
+}
+.hero2 .h2-float.rating {
+  animation: dkOrbFloat2 13s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero2 .h2-float.delivery,
+  .hero2 .h2-float.price,
+  .hero2 .h2-float.rating { animation: none; }
+}
+
+/* --- Subtle gradient border on store card hover --- */
+.store-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(227, 6, 19, 0.2), rgba(245, 158, 11, 0.15), rgba(52, 211, 153, 0.15));
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.store-card {
+  position: relative;
+}
+.store-card:hover::after {
+  opacity: 1;
+}
+
+/* --- Offer banner section tag enhancement --- */
+.offers-section .eyebrow {
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   NEXT-GEN HOMEPAGE 2026 — 8 ADVANCED INTERACTIVE SYSTEMS
+   ============================================================================ */
+
+/* --- 1. Time-of-Day Smart Mood Banner --- */
+.dk-time-mood-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 241, 237, 0.9));
+  border: 1px solid rgba(227, 6, 19, 0.12);
+  border-radius: 20px;
+  padding: 14px 20px;
+  margin-bottom: 22px;
+  box-shadow: 0 10px 30px rgba(73, 16, 16, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+.dk-time-mood-banner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--h2-brand, #9a0000), #ff6b47);
+}
+.dk-time-mood-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.dk-time-mood-icon {
+  font-size: 28px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(154, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+.dk-time-mood-text h4 {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--green-900, #470b10);
+  margin-bottom: 2px;
+}
+.dk-time-mood-text p {
+  font-size: 12.5px;
+  color: #71717a;
+  font-weight: 600;
+  margin: 0;
+}
+.dk-time-mood-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--h2-brand, #9a0000);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+.dk-time-mood-action:hover {
+  background: #c71919;
+  transform: translateY(-2px);
+}
+@media (max-width: 640px) {
+  .dk-time-mood-banner { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .dk-time-mood-action { width: 100%; justify-content: center; }
+}
+
+/* --- 2. Instagram-Style Store Stories Rail --- */
+.dk-stories-section {
+  padding: 20px 0 10px;
+}
+.dk-stories-rail {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding: 10px 4px 18px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.dk-stories-rail::-webkit-scrollbar { display: none; }
+.dk-story-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  width: 78px;
+  transition: transform 0.2s ease;
+}
+.dk-story-item:hover { transform: translateY(-3px); }
+.dk-story-ring {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(135deg, #e30613, #f59e0b, #ec4899, #8b5cf6);
+  background-size: 300% 300%;
+  animation: dkStoryGradient 6s ease infinite;
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 20px rgba(227, 6, 19, 0.18);
+}
+@keyframes dkStoryGradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dk-story-ring { animation: none; }
+}
+.dk-story-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #fff;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  overflow: hidden;
+}
+.dk-story-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dk-story-label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink, #231f20);
+  text-align: center;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 78px;
+}
+.dk-story-badge {
+  position: absolute;
+  bottom: -2px;
+  inset-inline-end: -2px;
+  background: #e30613;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1.5px solid #fff;
+}
+
+/* --- 3. Live Flash Deals Countdown Bar --- */
+.dk-flash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px 22px;
+  background: linear-gradient(135deg, #2d080b, #540c13);
+  border-radius: 20px;
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(45, 8, 11, 0.25);
+}
+.dk-flash-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dk-flash-fire {
+  font-size: 26px;
+  animation: dkSparkle 2s ease-in-out infinite;
+}
+.dk-flash-title h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 2px;
+}
+.dk-flash-title p {
+  font-size: 12px;
+  color: #fca5a5;
+  margin: 0;
+}
+/* --- 4. In-Page Instant Category Tabs --- */
+.dk-home-filter-nav {
+  margin-bottom: 24px;
+}
+.dk-home-cat-tabs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+  scrollbar-width: none;
+}
+.dk-home-cat-tabs::-webkit-scrollbar { display: none; }
+.dk-home-cat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(154, 0, 0, 0.12);
+  background: #fff;
+  color: #5b5052;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+}
+.dk-home-cat-tab:hover {
+  background: #fff1ed;
+  border-color: rgba(154, 0, 0, 0.3);
+  color: #9a0000;
+  transform: translateY(-2px);
+}
+.dk-home-cat-tab.active {
+  background: linear-gradient(135deg, #9a0000, #c71919);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 22px rgba(154, 0, 0, 0.28);
+}
+.dk-home-cat-tab .tab-icon {
+  font-size: 16px;
+}
+
+/* --- 5. Quick Istanbul District Switcher --- */
+.dk-district-rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 14px;
+  scrollbar-width: none;
+  margin-bottom: 16px;
+}
+.dk-district-rail::-webkit-scrollbar { display: none; }
+.dk-district-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #888;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  padding-inline-end: 6px;
+}
+.dk-district-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.dk-district-pill:hover {
+  border-color: #9a0000;
+  color: #9a0000;
+  background: #fff8f5;
+}
+.dk-district-pill.active {
+  background: #fff1ed;
+  border-color: #9a0000;
+  color: #9a0000;
+  font-weight: 800;
+}
+
+/* --- 7. Floating Sticky Mini-Cart Bar --- */
+.dk-floating-cart {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(140px);
+  z-index: 998;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(calc(100% - 32px), 540px);
+  padding: 12px 18px;
+  border-radius: 24px;
+  background: rgba(21, 17, 17, 0.94);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  opacity: 0;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+}
+.dk-floating-cart.visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+.dk-floating-cart__summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dk-floating-cart__badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #e30613;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 800;
+}
+.dk-floating-cart__text strong {
+  display: block;
+  font-size: 13.5px;
+  color: #fff;
+}
+.dk-floating-cart__text span {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fbbf24;
+}
+.dk-floating-cart__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #e30613, #c70511);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 8px 20px rgba(227, 6, 19, 0.4);
+}
+.dk-floating-cart__btn:hover {
+  transform: scale(1.04);
+}
+@media (max-width: 640px) {
+  .dk-floating-cart { bottom: 68px; padding: 10px 14px; }
+}
+
+/* --- 8. Interactive Meal Matcher Widget --- */
+.dk-meal-matcher-section {
+  padding: 20px 0;
+}
+.dk-meal-matcher {
+  background: linear-gradient(135deg, #fff7f4, #fff, #fef2ee);
+  border: 1px solid rgba(154, 0, 0, 0.12);
+  border-radius: 28px;
+  padding: 32px 28px;
+  box-shadow: 0 16px 40px rgba(73, 16, 16, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+.dk-meal-matcher__header {
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto 28px;
+}
+.dk-meal-matcher__header h3 {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--green-900, #470b10);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.dk-meal-matcher__header p {
+  font-size: 14px;
+  color: #71717a;
+  margin: 0;
+}
+.dk-matcher-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 20px;
+  align-items: end;
+  background: #fff;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(154, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+}
+.dk-control-group label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink, #231f20);
+  margin-bottom: 10px;
+}
+.dk-control-group label strong {
+  color: #e30613;
+  font-size: 14px;
+}
+.dk-matcher-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #f1e7e5;
+  accent-color: #e30613;
+  cursor: pointer;
+}
+.dk-matcher-submit {
+  padding: 14px 28px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #9a0000, #d51f1f);
+  color: #fff;
+  border: none;
+  font-size: 15px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 12px 30px rgba(154, 0, 0, 0.25);
+  white-space: nowrap;
+}
+.dk-matcher-submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(154, 0, 0, 0.32);
+}
+@media (max-width: 820px) {
+  .dk-matcher-controls { grid-template-columns: 1fr; gap: 16px; }
+  .dk-matcher-submit { width: 100%; justify-content: center; }
+}
+
