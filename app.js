@@ -720,6 +720,12 @@ function mapDbStore(r) {
     categorySettings: (r.category_settings && typeof r.category_settings === "object") ? r.category_settings : {}
   };
 }
+// Exactly the columns mapDbProduct() reads. select("*") also pulled created_at
+// (~113 kB across the catalogue) which nothing in the app ever touches; since
+// mapDbProduct is the only path from a DB row to an app object, no other column
+// is reachable, so narrowing the select is free payload back.
+const PRODUCT_COLUMNS = "id,store_id,source_id,name,image,slug,price,old_price,price_on_request,unit,category,available,featured,description,image_fit,options,addons,catalog_product_id,advance_hours";
+
 function mapDbProduct(r) {
   return {
     id: r.id, storeId: r.store_id, sourceId: r.source_id, name: r.name, image: r.image, slug: r.slug,
@@ -754,16 +760,49 @@ async function loadCatalogFromSupabase() {
     // the cached entry expires. A per-load, always-true id filter (ids are positive, so
     // id > -cb matches every row) varies the URL each load, forcing a fresh read.
     const cb = Date.now();
-    const { data: st, error: e1 } = await sb.from("stores").select("*").order("id").gt("id", -cb);
+    // The store list and the product row-count don't depend on each other, so
+    // pay for one round trip instead of two — on mobile latency that is the
+    // difference between ~0.3s and ~0.6s before the first page can even start.
+    const [storesRes, countRes] = await Promise.all([
+      sb.from("stores").select("*").order("id").gt("id", -cb),
+      sb.from("products").select("id", { count: "exact", head: true }).gt("id", -cb),
+    ]);
+    const { data: st, error: e1 } = storesRes;
     if (e1 || !st || !st.length) return false;
-    let all = [], from = 0;
-    for (;;) {
-      const { data, error } = await sb.from("products").select("*").order("id").gt("id", -cb).range(from, from + 999);
-      if (error) return false;
-      all = all.concat(data);
-      if (data.length < 1000) break;
-      from += 1000;
-    }
+    // PostgREST caps every response at 1000 rows (db-max-rows), so the ~14.5k
+    // product catalogue always needs ~15 pages. Those used to be fetched one
+    // after another, each waiting on the one before it — on mobile latency that
+    // alone cost 12-18s before a single price could render.
+    // Now: ask for the row count once, then pull the pages concurrently in small
+    // waves. Same rows, same order, a fraction of the wall-clock time.
+    const PAGE = 1000, CONCURRENCY = 5;
+    const { count, error: eCount } = countRes;
+    if (eCount) return false;
+
+    const fetchPage = async i => {
+      const { data, error } = await sb.from("products").select(PRODUCT_COLUMNS)
+        .order("id").gt("id", -cb).range(i * PAGE, i * PAGE + PAGE - 1);
+      if (error) throw error;
+      return data || [];
+    };
+
+    let pages = [];
+    try {
+      const total = Math.max(1, Math.ceil((count || 0) / PAGE));
+      // Keep the pages in index order regardless of which request settles first.
+      for (let start = 0; start < total; start += CONCURRENCY) {
+        const wave = [];
+        for (let i = start; i < Math.min(start + CONCURRENCY, total); i++) wave.push(fetchPage(i));
+        pages = pages.concat(await Promise.all(wave));
+      }
+      // Rows can be inserted between the count and the reads; keep going while
+      // the tail still comes back full so a late product is never dropped.
+      for (let i = pages.length; pages.length && pages[pages.length - 1].length === PAGE; i++) {
+        pages.push(await fetchPage(i));
+      }
+    } catch (e) { console.warn("Supabase products load failed:", e.message); return false; }
+
+    const all = pages.flat();
     if (!all.length) return false;
     stores.length = 0; st.forEach(r => stores.push(mapDbStore(r)));
     const mapped = all.map(mapDbProduct);
@@ -2915,6 +2954,12 @@ const QUICK_SEARCH_CHIPS = ["دجاج مشوي", "رز", "لحوم", "حلويا
 // حسب تصميمه أصلاً) ولا يتجاوز فرزاً صريحاً اختاره الزائر بنفسه (تقييم/سعر
 // توصيل/الأقرب) في صفحة المتاجر.
 const PAID_PRIORITY_STORE_IDS = [31, 56, 84, 50];
+// متاجر تتصدّر شبكة «خصومات اليوم» في /offers وحدها — لا علاقة لها بـ
+// PAID_PRIORITY_STORE_IDS التي ترتّب قوائم المتاجر على المنصة كلها وتُمثّل
+// التزام دفع قائم. قائمة منفصلة عمداً كي لا يُخلط ترتيب صفحة واحدة بذلك
+// الالتزام، ولتسهيل سحب الأولوية لاحقاً بحذف رقم من هنا فقط.
+// 2026-09-08: طلب المستخدم صراحةً تصدُّر عروض كريبما (116) هذه الصفحة.
+const OFFERS_PAGE_LEAD_STORE_IDS = [116];
 function paidPriorityRank(storeId) {
   const idx = PAID_PRIORITY_STORE_IDS.indexOf(storeId);
   return idx === -1 ? PAID_PRIORITY_STORE_IDS.length : idx;
@@ -4074,11 +4119,15 @@ function renderOffers() {
   // stable order across visits — only the product grid itself is shuffled.
   const baseOfferProducts = products.filter(product => product.oldPrice && product.available);
   const offerCategories = [...new Set(baseOfferProducts.map(product => (getStore(product.storeId) || {}).category).filter(Boolean))];
-  // Paid-priority stores' offers lead the grid (in PAID_PRIORITY_STORE_IDS
-  // order), before everything else — only the remainder is shuffled per visit.
-  const priorityOfferProducts = sortProductsByPaidPriority(baseOfferProducts.filter(product => paidPriorityRank(product.storeId) < PAID_PRIORITY_STORE_IDS.length));
-  const restOfferProducts = baseOfferProducts.filter(product => paidPriorityRank(product.storeId) >= PAID_PRIORITY_STORE_IDS.length);
-  const allOfferProducts = [...priorityOfferProducts, ...seededShuffle(restOfferProducts, state._offersSeed)];
+  // ترتيب الشبكة على ثلاث طبقات: متاجر الصدارة (OFFERS_PAGE_LEAD_STORE_IDS)،
+  // ثم المتاجر المدفوعة بترتيبها، ثم البقية مخلوطة لكل زيارة. الطبقة الأولى
+  // تُخلط هي أيضاً بنفس بذرة الزيارة كي لا يتصدّر نفس الصنف كل مرة — فتحصل
+  // كل أصناف المتجر على فرصة الظهور أولاً، بلا أي ترتيب مُختلَق.
+  const isLeadOffer = product => OFFERS_PAGE_LEAD_STORE_IDS.includes(product.storeId);
+  const leadOfferProducts = seededShuffle(baseOfferProducts.filter(isLeadOffer), state._offersSeed);
+  const priorityOfferProducts = sortProductsByPaidPriority(baseOfferProducts.filter(product => !isLeadOffer(product) && paidPriorityRank(product.storeId) < PAID_PRIORITY_STORE_IDS.length));
+  const restOfferProducts = baseOfferProducts.filter(product => !isLeadOffer(product) && paidPriorityRank(product.storeId) >= PAID_PRIORITY_STORE_IDS.length);
+  const allOfferProducts = [...leadOfferProducts, ...priorityOfferProducts, ...seededShuffle(restOfferProducts, state._offersSeed)];
   const activeOffersCategory = offerCategories.includes(state.offersCategory) ? state.offersCategory : "الكل";
   const offerProducts = activeOffersCategory === "الكل"
     ? allOfferProducts
