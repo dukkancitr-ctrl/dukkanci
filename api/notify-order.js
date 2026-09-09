@@ -507,6 +507,7 @@ async function sbWrite(method, path, body, prefer) {
 const LOGIN_MAX_FAILS = 10;                  // failures allowed inside the window
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;      // rolling window
 const LOGIN_LOCK_MS = 15 * 60 * 1000;        // lock duration once the cap is hit
+const ORDERS_LOOKUP_MAX = 25;                // M4: phone-keyed order lookups per IP per window
 function clientIp(req) {
   const xff = String((req.headers && (req.headers["x-forwarded-for"] || req.headers["x-real-ip"])) || "");
   return xff.split(",")[0].trim() || "unknown";
@@ -518,7 +519,7 @@ async function loginThrottleBlocked(key) {
     return !!(row && row.locked_until && Date.parse(row.locked_until) > Date.now());
   } catch (e) { return false; }
 }
-async function recordLoginFailure(key) {
+async function recordLoginFailure(key, cap = LOGIN_MAX_FAILS) {
   try {
     const rows = await sbGet(`login_attempts?key=eq.${encodeURIComponent(key)}&select=fails,window_start&limit=1`);
     const row = Array.isArray(rows) && rows[0];
@@ -528,7 +529,7 @@ async function recordLoginFailure(key) {
       fails = (row.fails || 0) + 1;
       windowStart = row.window_start;
     }
-    if (fails >= LOGIN_MAX_FAILS) lockedUntil = new Date(now + LOGIN_LOCK_MS).toISOString();
+    if (fails >= cap) lockedUntil = new Date(now + LOGIN_LOCK_MS).toISOString();
     await sbWrite("POST", "login_attempts?on_conflict=key",
       { key, fails, window_start: windowStart, locked_until: lockedUntil, updated_at: new Date(now).toISOString() },
       "resolution=merge-duplicates,return=minimal");
@@ -1499,6 +1500,16 @@ module.exports = async (req, res) => {
       const phone = String(q.phone || "").replace(/\D/g, "");
       const ids = String(q.ids || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 50);
       if (!phone && !ids.length) return res.status(400).json({ error: "phone or ids required" });
+      // M4: throttle phone-keyed lookups by IP — guest order history is keyed by
+      // phone (no session), so an unlimited endpoint lets an attacker enumerate
+      // phone numbers to harvest customers' orders/addresses. The id-only path is
+      // not throttled (order ids are unguessable). Fails open if login_attempts
+      // is absent (see M1). 429 on the phone path can never block an id lookup.
+      if (phone) {
+        const ipKey = "orders:" + clientIp(req);
+        if (await loginThrottleBlocked(ipKey)) return res.status(429).json({ error: "too-many-requests" });
+        recordLoginFailure(ipKey, ORDERS_LOOKUP_MAX).catch(() => {});
+      }
       const rows = [];
       if (phone) {
         const r = await sbGet(`orders?delivery_details->>phoneKey=eq.${encodeURIComponent(phone)}&select=*&order=created_at.desc&limit=200`);
