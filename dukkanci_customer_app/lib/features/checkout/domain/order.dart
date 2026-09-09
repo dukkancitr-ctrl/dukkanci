@@ -117,6 +117,39 @@ class OrderDraft {
         'deliveryQuote': null,
       };
 
+  /// Body for the AUTHORITATIVE, tamper-proof order creation —
+  /// POST /api/notify-order?action=create-order. The server reprices every line
+  /// item from the products table (so the client can't dictate the total),
+  /// enforces store open/approved/subscription + min-order, and both saves the
+  /// order and sends the WhatsApp notifications. Delivery is 0 here (this app
+  /// doesn't charge delivery upfront — the store confirms it over WhatsApp, so
+  /// total == subtotal, matching the checkout screen). Line items carry the real
+  /// selection INDEXES (not labels) so variant/addon surcharges reprice correctly.
+  Map<String, dynamic> toCreateOrderBody() => {
+        'idempotencyKey': id,
+        'storeId': storeId,
+        'customer': contactName,
+        'customerPhone': contactPhone,
+        'fulfillment': isPickup ? 'pickup' : 'delivery',
+        'lineItems': items
+            .map((i) => {
+                  'productId': i.productId,
+                  'qty': i.quantity,
+                  'optionSelections': i.optionSelections,
+                  'addonSelections': i.addonSelections,
+                  'notes': i.notes ?? '',
+                })
+            .toList(),
+        'clientDeliveryFee': 0,
+        'address': isPickup ? '' : addressText,
+        'addressDetails': isPickup ? '' : addressDetails,
+        'structuredAddress': isPickup ? null : structuredAddress,
+        'fullAddressTr': isPickup ? '' : fullAddressTr,
+        'payment': paymentMethod.arabicLabel,
+        'notes': notes ?? '',
+        'source': 'android_app',
+      };
+
   /// Row for the best-effort direct Supabase upsert (onConflict: id) —
   /// matches pushOrderCloud()'s exact `orders` row shape.
   Map<String, dynamic> toSupabaseRow() => {

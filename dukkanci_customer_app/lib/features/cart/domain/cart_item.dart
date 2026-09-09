@@ -9,6 +9,13 @@ class CartItem {
   final String? selectedOptionLabel;
   final List<String> selectedAddonIds;
   final List<String> selectedAddonLabels;
+  // Real selection INDEXES — the only thing the server's create-order endpoint
+  // can reprice from (labels aren't enough). optionSelections[i] = the chosen
+  // value index within product.options[i]; addonSelections = the chosen indexes
+  // into product.addons. Kept alongside the label fields (labels are for display,
+  // indexes are for authoritative server repricing).
+  final List<int> optionSelections;
+  final List<int> addonSelections;
   final String? notes;
 
   const CartItem({
@@ -22,6 +29,8 @@ class CartItem {
     this.selectedOptionLabel,
     this.selectedAddonIds = const [],
     this.selectedAddonLabels = const [],
+    this.optionSelections = const [],
+    this.addonSelections = const [],
     this.notes,
   });
 
@@ -48,6 +57,8 @@ class CartItem {
         selectedOptionLabel: selectedOptionLabel,
         selectedAddonIds: selectedAddonIds,
         selectedAddonLabels: selectedAddonLabels,
+        optionSelections: optionSelections,
+        addonSelections: addonSelections,
         notes: notes,
       );
 
@@ -62,6 +73,8 @@ class CartItem {
         'selectedOptionLabel': selectedOptionLabel,
         'selectedAddonIds': selectedAddonIds,
         'selectedAddonLabels': selectedAddonLabels,
+        'optionSelections': optionSelections,
+        'addonSelections': addonSelections,
         'notes': notes,
       };
 
@@ -76,6 +89,8 @@ class CartItem {
         selectedOptionLabel: json['selectedOptionLabel'] as String?,
         selectedAddonIds: ((json['selectedAddonIds'] as List?) ?? []).cast<String>(),
         selectedAddonLabels: ((json['selectedAddonLabels'] as List?) ?? []).cast<String>(),
+        optionSelections: ((json['optionSelections'] as List?) ?? []).map((e) => (e as num).toInt()).toList(),
+        addonSelections: ((json['addonSelections'] as List?) ?? []).map((e) => (e as num).toInt()).toList(),
         notes: json['notes'] as String?,
       );
 }

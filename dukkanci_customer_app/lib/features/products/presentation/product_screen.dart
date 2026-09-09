@@ -77,6 +77,10 @@ class _ProductScreenState extends ConsumerState<ProductScreen> {
       selectedOptionLabel: optionLabels.isEmpty ? null : optionLabels.join('، '),
       selectedAddonIds: List.generate(addonLabels.length, (i) => i.toString()),
       selectedAddonLabels: addonLabels,
+      // Real indexes for authoritative server repricing (create-order):
+      // one value-index per option group, and the chosen addon indexes.
+      optionSelections: List<int>.from(_selectedValueIndexPerOption),
+      addonSelections: _selectedAddonIndexes.toList()..sort(),
       notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
     );
 

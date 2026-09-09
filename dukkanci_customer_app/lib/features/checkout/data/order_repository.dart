@@ -4,19 +4,18 @@ import '../../../core/api/supabase_bootstrap.dart';
 import '../../../core/errors/failure.dart';
 import '../domain/order.dart';
 
-/// Places an order via the SAME dual-write path app.js uses:
-/// notifyOrderWhatsapp() → POST /api/notify-order (no ?action=, a same-origin
-/// service-role write — THE authoritative save, plus the WhatsApp notify) and
-/// pushOrderCloud() → direct Supabase upsert (best-effort secondary copy,
-/// onConflict: id, harmless if both succeed). Field shapes reverse-engineered
-/// from app.js's real `newOrder` object + both save functions — see
-/// order.dart's toNotifyOrderBody()/toSupabaseRow() for the exact mapping.
+/// Places an order via the AUTHORITATIVE server endpoint create-order
+/// (POST /api/notify-order?action=create-order): the server reprices every line
+/// item from the products table, enforces store open/approved/subscription +
+/// min-order, and both saves the order and sends the WhatsApp notifications in
+/// one call. This replaces the old dual-write (notify-order default path +
+/// direct Supabase upsert) which stored the client-supplied total verbatim — a
+/// tampered client could dictate any total (see CLAUDE.md C2 fix, 2026-09-09).
 ///
-/// CLAUDE.md documents a real 2026-07-02..07-10 production incident
-/// ("فقدان طلبات صامت") where orders reached WhatsApp but were never saved
-/// because only one of these two writes existed. Do NOT simplify to one
-/// write. The notify-order call is the one that must succeed for the order
-/// to count as placed; the direct Supabase upsert failing is swallowed.
+/// The returned order id is the server's authoritative id (create-order mints
+/// its own DK-… id). idempotencyKey = the draft id, so a retry of the same tap
+/// returns the same order instead of creating a duplicate (create-order dedupes
+/// on idempotency_key).
 class OrderRepository {
   OrderRepository(this._api);
 
@@ -24,23 +23,21 @@ class OrderRepository {
 
   Future<String> submit(OrderDraft draft) async {
     try {
-      await _api.post<void>(
-        '/api/notify-order',
-        data: draft.toNotifyOrderBody(),
-        idempotencyKey: draft.id, // order id IS the natural idempotency key — same id, same order
+      final result = await _api.post<Map<String, dynamic>>(
+        '/api/notify-order?action=create-order',
+        data: draft.toCreateOrderBody(),
+        idempotencyKey: draft.id,
+        parse: (json) => Map<String, dynamic>.from(json as Map),
       );
+      final order = result['order'];
+      if (order is Map && order['id'] != null) return order['id'].toString();
+      // create-order always returns the saved order on success; if the shape is
+      // ever unexpected, fall back to the client draft id rather than crashing.
+      return draft.id;
     } catch (e, st) {
-      debugPrint('OrderRepository.submit notify-order failed: $e\n$st');
+      debugPrint('OrderRepository.submit create-order failed: $e\n$st');
       throw Failure.unknown('تعذّر إرسال طلبك، حاول مرة أخرى');
     }
-
-    try {
-      await supabase.from('orders').upsert(draft.toSupabaseRow(), onConflict: 'id');
-    } catch (e, st) {
-      debugPrint('OrderRepository.submit direct Supabase upsert failed (non-fatal, order already saved via notify-order): $e\n$st');
-    }
-
-    return draft.id;
   }
 
   /// Mirrors app.js's loadCustomerOrdersFromSupabase(): fetches THIS
