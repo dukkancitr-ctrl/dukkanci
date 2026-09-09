@@ -7332,10 +7332,10 @@ function adminCredentials() {
             <tr>
               <td>${esc(r.name)}</td>
               <td>${r.no_phone ? `<span class="creds-muted">— أضف رقماً —</span>` : `<code dir="ltr">${esc(r.username)}</code>${dupes.has(r.username) ? ` <span class="creds-dupe" title="رقم مكرر بين أكثر من متجر">مكرر</span>` : ""}`}</td>
-              <td>${r.no_phone ? "—" : `<code dir="ltr">${esc(r.password)}</code>`}</td>
+              <td>${r.no_phone ? "—" : (r.password ? `<code dir="ltr">${esc(r.password)}</code>` : `<span class="creds-muted" title="كلمة المرور مُجزّأة ولا يمكن عرضها — اضغط «توليد جديد» لإصدار كلمة تظهر مرة واحدة">••••••••</span>`)}</td>
               <td>${r.subscription_active ? `<span class="status-pill open">فعّال</span>` : `<span class="status-pill closed">منتهٍ</span>`}</td>
               <td class="creds-actions">${r.no_phone ? "" : `
-                <button class="secondary-button compact" data-action="copy-creds" data-username="${escAttr(r.username)}" data-password="${escAttr(r.password)}" data-name="${escAttr(r.name)}">نسخ</button>
+                ${r.password ? `<button class="secondary-button compact" data-action="copy-creds" data-username="${escAttr(r.username)}" data-password="${escAttr(r.password)}" data-name="${escAttr(r.name)}">نسخ</button>` : ""}
                 <button class="secondary-button compact" data-action="reset-creds" data-id="${r.store_id}" data-name="${escAttr(r.name)}">توليد جديد</button>`}</td>
             </tr>`).join("")}
         </tbody>
@@ -16546,13 +16546,64 @@ document.addEventListener("submit", async event => {
     const etaMin = (deliverySettings.prepMinutes || 20) + (isPickup ? 0 : 25);
     // The actual order placement — run now if the phone is already verified, else
     // only after the WhatsApp OTP is confirmed (anti-fraud gate below).
-    const commitOrder = () => {
+    const commitOrder = async () => {
       // Campaign attribution: which source/campaign brought this real order.
       try { newOrder.attribution = window.DUKKANCI_TRACKING?.getAttribution() || null; } catch (e) {}
+      // AUTHORITATIVE order creation (C2 fix). The server (create-order) reprices
+      // every line item from the products table, enforces store open/approved/
+      // subscription + min-order, validates any coupon and caps wallet credit —
+      // so a tampered client can no longer dictate the charged total. Delivery
+      // stays the client-computed fee (delivery pricing is client-side by design).
+      // The returned order id + total are the source of truth. This replaces the
+      // old pushOrderCloud + notifyOrderWhatsapp dual-write (which stored the
+      // browser-supplied total verbatim); create-order saves AND notifies.
+      const createBody = {
+        idempotencyKey: newOrder.idempotencyKey || (newOrder.idempotencyKey = ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${newOrder.id}-${Date.now()}`)),
+        storeId,
+        customer: contactName,
+        customerPhone: contactPhone,
+        fulfillment: isPickup ? "pickup" : "delivery",
+        lineItems: state.cart.map(it => ({
+          productId: it.productId, qty: it.quantity,
+          optionSelections: it.optionSelections || [], addonSelections: it.addonSelections || [],
+          notes: it.notes || ""
+        })),
+        clientDeliveryFee: isPickup ? 0 : (totals.delivery || 0),
+        couponCode: state.coupon ? state.coupon.code : "",
+        creditApplied: orderCredit,
+        address: newOrder.address, addressDetails: newOrder.addressDetails,
+        structuredAddress: newOrder.structuredAddress, fullAddressTr: newOrder.fullAddressTr,
+        notes: newOrder.notes, substitution: newOrder.substitution, payment: newOrder.payment,
+        scheduleDay: newOrder.scheduleDay, scheduleTime: newOrder.scheduleTime,
+        closedWhenOrdered: storeClosedNow,
+        customerId: (isFeatureOn("feature_customer_accounts") && state.user) ? state.user.id : undefined,
+        attribution: newOrder.attribution, source: "web"
+      };
+      let resp, data;
+      try {
+        resp = await fetch("/api/notify-order?action=create-order", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(createBody)
+        });
+        data = await resp.json().catch(() => ({}));
+      } catch (e) { showToast("تعذّر إرسال الطلب — تحقّق من اتصالك وحاول مجدداً"); return; }
+      if (!resp.ok || !data.ok || !data.order) {
+        const map = {
+          store_closed: "المتجر مغلق حالياً ولا يستقبل طلبات",
+          subscription_inactive: "هذا المتجر لا يستقبل طلبات حالياً",
+          store_not_approved: "هذا المتجر غير متاح للطلب حالياً",
+          out_of_range: "العنوان خارج نطاق توصيل هذا المتجر",
+          below_min_order: data.minOrder ? `الحد الأدنى للطلب ${money(data.minOrder)}` : "قيمة الطلب أقل من الحد الأدنى للطلب",
+          product_unavailable: "أحد المنتجات لم يعد متوفراً — يرجى مراجعة سلتك",
+          price_on_request: "أحد المنتجات بسعر عند الطلب — تواصل عبر واتساب"
+        };
+        showToast(map[data.code] || data.error || "تعذّر إنشاء الطلب، حاول مجدداً");
+        return;
+      }
+      // Adopt the server's authoritative order id + recomputed total.
+      newOrder.id = data.order.id;
+      newOrder.total = Number(data.order.total);
       state.myOrders.unshift(newOrder);
       state.orders.unshift(newOrder);
-      pushOrderCloud(newOrder, { keepalive: true });
-      notifyOrderWhatsapp(newOrder);
       // Feature 2: record the coupon redemption server-side (enforces usage limits).
       if (isFeatureOn("feature_conversion_drivers") && state.coupon) {
         recordCouponRedemption(newOrder.id, storeId, totals.subtotal, contactPhone);
@@ -16561,9 +16612,9 @@ document.addEventListener("submit", async event => {
       if (isFeatureOn("feature_community_retention") && state.user) {
         settleReferralAndCredit(newOrder.id, orderCredit);
       }
-      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: finalTotal, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
+      window.DUKKANCI_TRACKING?.track("Purchase", { ids: state.cart.map(i => i.productId), value: newOrder.total, orderId: newOrder.id, count: state.cart.length, store_id: storeId, phone: contactPhone, customer_id: state.user?.id });
       if (askDukkanciCartOrigin) {
-        window.DUKKANCI_TRACKING?.track("ask_dukkanci_checkout_completed", { order_id: newOrder.id, value: finalTotal, store_id: storeId });
+        window.DUKKANCI_TRACKING?.track("ask_dukkanci_checkout_completed", { order_id: newOrder.id, value: newOrder.total, store_id: storeId });
         askDukkanciCartOrigin = false;
       }
       state.cart = [];
@@ -16584,7 +16635,7 @@ document.addEventListener("submit", async event => {
         <p>طلبك رقم <strong dir="ltr">${newOrder.id}</strong> وصل إلى <strong>${getStore(storeId).name}</strong>.</p>
         <div class="order-success-summary">
           <span>${icon("box")}<small>المنتجات</small><b>${itemCount.toLocaleString("ar")}</b></span>
-          <span>${icon("wallet")}<small>الإجمالي</small><b>${money(finalTotal)}</b></span>
+          <span>${icon("wallet")}<small>الإجمالي</small><b>${money(newOrder.total)}</b></span>
           <span>${icon(isPickup ? "store" : "bike")}<small>${isPickup ? "الاستلام" : "التوصيل إلى"}</small><b>${isPickup ? "من المتجر" : (newOrder.address || "عنوانك")}</b></span>
           <span>${icon("clock")}<small>${storeClosedNow ? "موعد التنفيذ" : "الوقت المتوقع"}</small><b>${storeClosedNow ? "اليوم التالي" : `~${etaMin} دقيقة`}</b></span>
         </div>
@@ -16598,7 +16649,7 @@ document.addEventListener("submit", async event => {
     const submitBtn = event.target.querySelector('button[type="submit"]');
     const submitLabel = submitBtn ? submitBtn.innerHTML : "";
     if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = "جارٍ إرسال الطلب..."; }
-    if (state.verifiedPhone === verifyPhone) commitOrder();
+    if (state.verifiedPhone === verifyPhone) await commitOrder();
     else await startCheckoutOtp(verifyPhone, contactPhone, commitOrder);
     if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
   }

@@ -315,6 +315,27 @@ function genPassword(n = 8) {
   return s;
 }
 
+// H3: store-credential passwords are hashed at rest with scrypt (Node built-in,
+// no dependency). Format: "scrypt$<saltHex>$<hashHex>". Legacy rows are plaintext
+// and are upgraded lazily on the owner's next successful login (see store-login).
+function isHashedPassword(v) { return typeof v === "string" && v.startsWith("scrypt$"); }
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16);
+  const derived = crypto.scryptSync(String(plain), salt, 64);
+  return "scrypt$" + salt.toString("hex") + "$" + derived.toString("hex");
+}
+function verifyPasswordHash(plain, stored) {
+  const parts = String(stored || "").split("$");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  try {
+    const salt = Buffer.from(parts[1], "hex");
+    const expected = Buffer.from(parts[2], "hex");
+    if (!salt.length || !expected.length) return false;
+    const derived = crypto.scryptSync(String(plain), salt, expected.length);
+    return derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+  } catch (e) { return false; }
+}
+
 function sb() {
   return {
     url: (env("SUPABASE_URL") || PUB_URL).replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, ""),
@@ -476,6 +497,48 @@ async function sbWrite(method, path, body, prefer) {
     const rows = await r.json().catch(() => null);
     return { ok: r.ok, status: r.status, rows };
   } catch (e) { return { ok: false, error: e.message }; }
+}
+
+// ── M1: login brute-force throttle ──────────────────────────────────────────
+// Backed by the login_attempts table (service-role only). FAILS OPEN on ANY
+// error — a throttle must never be the reason a legitimate login is refused, and
+// it must keep working before migrations/20260909_login_rate_limit.sql is applied
+// (until then loginThrottleBlocked always returns false, i.e. no throttling).
+const LOGIN_MAX_FAILS = 10;                  // failures allowed inside the window
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;      // rolling window
+const LOGIN_LOCK_MS = 15 * 60 * 1000;        // lock duration once the cap is hit
+function clientIp(req) {
+  const xff = String((req.headers && (req.headers["x-forwarded-for"] || req.headers["x-real-ip"])) || "");
+  return xff.split(",")[0].trim() || "unknown";
+}
+async function loginThrottleBlocked(key) {
+  try {
+    const rows = await sbGet(`login_attempts?key=eq.${encodeURIComponent(key)}&select=locked_until&limit=1`);
+    const row = Array.isArray(rows) && rows[0];
+    return !!(row && row.locked_until && Date.parse(row.locked_until) > Date.now());
+  } catch (e) { return false; }
+}
+async function recordLoginFailure(key) {
+  try {
+    const rows = await sbGet(`login_attempts?key=eq.${encodeURIComponent(key)}&select=fails,window_start&limit=1`);
+    const row = Array.isArray(rows) && rows[0];
+    const now = Date.now();
+    let fails = 1, windowStart = new Date(now).toISOString(), lockedUntil = null;
+    if (row && row.window_start && (now - Date.parse(row.window_start)) < LOGIN_WINDOW_MS) {
+      fails = (row.fails || 0) + 1;
+      windowStart = row.window_start;
+    }
+    if (fails >= LOGIN_MAX_FAILS) lockedUntil = new Date(now + LOGIN_LOCK_MS).toISOString();
+    await sbWrite("POST", "login_attempts?on_conflict=key",
+      { key, fails, window_start: windowStart, locked_until: lockedUntil, updated_at: new Date(now).toISOString() },
+      "resolution=merge-duplicates,return=minimal");
+  } catch (e) {}
+}
+async function clearLoginThrottle(key) {
+  try {
+    await sbWrite("PATCH", `login_attempts?key=eq.${encodeURIComponent(key)}`,
+      { fails: 0, locked_until: null, updated_at: new Date().toISOString() }, "return=minimal");
+  } catch (e) {}
 }
 
 // ── Audit log + merchant notifications (spec §17/§19) ───────────────────────
@@ -1621,8 +1684,10 @@ module.exports = async (req, res) => {
     if (q.action === "store-creds") {
       if (!adminOk({ headers: req.headers, query: q })) return res.status(403).json({ error: "unauthorized" });
       const storeRows = await sbGet("stores?select=id,name,phone,email,subscription_active&order=id") || [];
-      const credRows = await sbGet("store_credentials?select=store_id,username,password") || [];
+      // H3: passwords are hashed at rest, so we no longer fetch/return them here.
+      const credRows = await sbGet("store_credentials?select=store_id,username") || [];
       const byId = new Map(credRows.map(c => [Number(c.store_id), c]));
+      const freshPlain = new Map(); // store_id -> plaintext for rows CREATED this call (show-once)
       const toCreate = [];
       for (const s of storeRows) {
         if (byId.has(Number(s.id))) continue;
@@ -1630,9 +1695,10 @@ module.exports = async (req, res) => {
         // username = phone (primary login) when present, else email, else a
         // store-id placeholder. Phone-less stores still log in via the email path.
         const key = phoneKey(s.phone) || String(s.email || "").toLowerCase().trim() || `store-${s.id}`;
-        const row = { store_id: s.id, username: key, password: genPassword() };
-        byId.set(Number(s.id), row);
-        toCreate.push(row);
+        const plain = genPassword();
+        freshPlain.set(Number(s.id), plain);
+        byId.set(Number(s.id), { store_id: s.id, username: key });
+        toCreate.push({ store_id: s.id, username: key, password: hashPassword(plain) });
       }
       let writeOk = true;
       if (toCreate.length) {
@@ -1641,9 +1707,13 @@ module.exports = async (req, res) => {
       }
       const list = storeRows.map(s => {
         const cr = byId.get(Number(s.id));
+        const fresh = freshPlain.get(Number(s.id));
         return {
           store_id: s.id, name: s.name, phone: s.phone || "",
-          username: cr ? cr.username : "", password: cr ? cr.password : "",
+          username: cr ? cr.username : "",
+          // Hashed at rest → only a just-issued password is visible; existing ones
+          // are masked ("" + has_credential), admin issues a new one via reset.
+          password: fresh || "", has_credential: !!cr,
           subscription_active: s.subscription_active !== false,
           no_phone: !phoneKey(s.phone)
         };
@@ -1763,7 +1833,15 @@ module.exports = async (req, res) => {
       if (fulfillment !== "pickup") {
         const ds = body.deliverySettings || {};
         const dest = body.destination || {};
-        if (ds.mode === "fixed") {
+        // Delivery pricing lives client-side by design (named-zone / nationwide /
+        // distance logic + localStorage shadow — see delivery-settings-localstorage).
+        // When the checkout sends its computed fee, record it as-is (clamped 0..500);
+        // only fall back to the server fixed/distance estimate for callers that omit
+        // it. Product PRICES are always repriced from the DB above, so this keeps the
+        // core anti-tamper guarantee while not regressing any store's delivery rules.
+        if (body.clientDeliveryFee != null) {
+          delivery = Math.min(500, Math.max(0, Number(body.clientDeliveryFee) || 0));
+        } else if (ds.mode === "fixed") {
           delivery = Math.min(500, Math.max(0, Number(ds.fixedFee) || 0));
         } else if (Number.isFinite(Number(store.lat)) && Number.isFinite(Number(store.lng))
           && Number.isFinite(Number(dest.lat)) && Number.isFinite(Number(dest.lng))) {
@@ -1800,7 +1878,21 @@ module.exports = async (req, res) => {
         }
       }
 
-      const total = Math.max(0, subtotal + delivery - discount);
+      // Wallet credit: the client may request spending store credit, but NEVER
+      // trust the amount — cap it to the customer's real remaining balance read
+      // from the ledger server-side (0 when there is no signed-in customer or no
+      // credit). Keeps the order total honest even if the client inflates it.
+      let creditApplied = 0;
+      const reqCredit = Math.max(0, Number(body.creditApplied) || 0);
+      if (reqCredit > 0 && body.customerId) {
+        try {
+          const ledger = await sbGet(`customer_credits?customer_id=eq.${encodeURIComponent(body.customerId)}&select=amount`);
+          const bal = Array.isArray(ledger) ? ledger.reduce((s, r) => s + (Number(r.amount) || 0), 0) : 0;
+          creditApplied = Math.min(reqCredit, Math.max(0, bal), Math.max(0, subtotal + delivery - discount));
+        } catch (e) { creditApplied = 0; }
+      }
+
+      const total = Math.max(0, subtotal + delivery - discount - creditApplied);
 
       const orderId = await nextOrderId();
       const nowIso = new Date().toISOString();
@@ -1814,7 +1906,7 @@ module.exports = async (req, res) => {
           lineItems, notes: String(body.notes || "").slice(0, 500), substitution: String(body.substitution || "").slice(0, 200),
           payment: String(body.payment || "نقداً عند التسليم").slice(0, 60),
           scheduleDay: String(body.scheduleDay || "").slice(0, 40), scheduleTime: String(body.scheduleTime || "").slice(0, 40),
-          closedWhenOrdered: !!body.closedWhenOrdered, createdAt: nowIso, couponCode, discount
+          closedWhenOrdered: !!body.closedWhenOrdered, createdAt: nowIso, couponCode, discount, creditUsed: creditApplied
         },
         idempotency_key: idempotencyKey,
         notification_status: "pending",
@@ -1906,6 +1998,12 @@ module.exports = async (req, res) => {
     const password = String((body && body.password) || "");
     if (!rawUser || !password) return res.status(400).json({ ok: false, error: "missing-credentials" });
 
+    // M1: brute-force throttle, keyed by the login identifier.
+    const throttleKey = "store:" + (phoneKey(rawUser) || rawUser.toLowerCase());
+    if (await loginThrottleBlocked(throttleKey)) {
+      return res.status(429).json({ ok: false, error: "too-many-attempts" });
+    }
+
     // Resolve candidate credential rows. Primary key is the store phone (the
     // username column). When the username is an email, look up the store(s) that
     // carry that email and verify the password against their credential rows.
@@ -1915,7 +2013,7 @@ module.exports = async (req, res) => {
       let srows = await sbGet(`stores?email=eq.${enc}&select=id`) || [];
       if (!srows.length) srows = await sbGet(`stores?subscription_email=eq.${enc}&select=id`) || [];
       const ids = srows.map(s => Number(s.id)).filter(Boolean);
-      if (!ids.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+      if (!ids.length) { await recordLoginFailure(throttleKey); return res.status(401).json({ ok: false, error: "bad-credentials" }); }
       creds = await sbGet(`store_credentials?store_id=in.(${ids.join(",")})&select=store_id,password`) || [];
     } else {
       const key = phoneKey(rawUser);
@@ -1923,13 +2021,24 @@ module.exports = async (req, res) => {
       creds = await sbGet(`store_credentials?username=eq.${encodeURIComponent(key)}&select=store_id,password`) || [];
     }
 
+    // H3: verify against the scrypt hash; legacy plaintext rows compare directly
+    // and are transparently re-hashed on this successful login (lazy migration —
+    // no bulk rewrite, and we never need to know a password we didn't just verify).
+    const legacyUpgrades = [];
     const matched = creds.filter(cr => {
+      if (isHashedPassword(cr.password)) return verifyPasswordHash(password, cr.password);
       const a = Buffer.from(String(cr.password)), b = Buffer.from(password);
-      return a.length === b.length && crypto.timingSafeEqual(a, b);
+      const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (ok) legacyUpgrades.push(Number(cr.store_id));
+      return ok;
     }).map(cr => Number(cr.store_id));
-    if (!matched.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+    for (const sid of legacyUpgrades) {
+      sbWrite("PATCH", `store_credentials?store_id=eq.${sid}`, { password: hashPassword(password) }, "return=minimal").catch(() => {});
+    }
+    if (!matched.length) { await recordLoginFailure(throttleKey); return res.status(401).json({ ok: false, error: "bad-credentials" }); }
     const sList = await sbGet(`stores?id=in.(${matched.join(",")})&select=id,name,subscription_active`) || [];
-    if (!sList.length) return res.status(401).json({ ok: false, error: "bad-credentials" });
+    if (!sList.length) { await recordLoginFailure(throttleKey); return res.status(401).json({ ok: false, error: "bad-credentials" }); }
+    clearLoginThrottle(throttleKey).catch(() => {});
     const token = signMerchantToken(sList.map(s => Number(s.id)));
     const withStatus = sList.map(s => ({ id: s.id, name: s.name, subscription_active: s.subscription_active !== false }));
     if (sList.length === 1) {
@@ -1950,9 +2059,11 @@ module.exports = async (req, res) => {
     if (!key) return res.status(400).json({ error: "no-phone" });
     const password = genPassword();
     const w = await sbWrite("POST", "store_credentials?on_conflict=store_id",
-      { store_id: storeId, username: key, password, updated_at: new Date().toISOString() },
+      { store_id: storeId, username: key, password: hashPassword(password), updated_at: new Date().toISOString() },
       "resolution=merge-duplicates,return=minimal");
     if (!w.ok) return res.status(502).json({ error: "save failed" });
+    // Return the plaintext ONCE so the admin can hand it to the merchant; only the
+    // hash is stored, so this is the only moment it is ever visible.
     return res.status(200).json({ ok: true, store_id: storeId, username: key, password });
   }
 
@@ -2619,7 +2730,7 @@ module.exports = async (req, res) => {
     const password = String(body.password || "").trim();
     if (!phone || !password || password.length < 6) return res.status(400).json({ error: "invalid" });
     const username = phoneKey(phone) || phone;
-    const w = await sbWrite("POST", "store_credentials?on_conflict=store_id", [{ store_id: storeId, username, password }], "resolution=merge-duplicates,return=minimal");
+    const w = await sbWrite("POST", "store_credentials?on_conflict=store_id", [{ store_id: storeId, username, password: hashPassword(password) }], "resolution=merge-duplicates,return=minimal");
     return res.status(200).json({ ok: !!w.ok });
   }
 
@@ -2780,7 +2891,8 @@ module.exports = async (req, res) => {
     const row = body.store || {};
     const storeId = Number(row.id);
     if (!storeId) return res.status(400).json({ error: "id required" });
-    let authed = adminOk({ headers: req.headers, query: pq });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    let authed = isAdmin;
     if (!authed) authed = merchantOk(req, storeId);
     if (!authed) authed = await verifySupabaseStoreOwner(req, storeId);
     let newOwnerUserId = null; // set only for the "brand-new self-join store" path below
@@ -2795,6 +2907,21 @@ module.exports = async (req, res) => {
       }
     }
     if (!authed) return res.status(403).json({ error: "unauthorized" });
+    // H1 (mass-assignment) fix: only platform admins may write platform-controlled
+    // columns. A merchant editing their own store (merchant token / Supabase owner /
+    // brand-new self-join) must not be able to set these via a crafted payload —
+    // e.g. re-enable an expired subscription, self-approve, or feature themselves.
+    // Stripped fields keep their current DB value on update, or the column default
+    // on a new insert (approval_status defaults to 'pending', so a self-join store
+    // still lands pending). Admins are unaffected.
+    if (!isAdmin) {
+      const PROTECTED = ["subscription_active", "subscription", "subscription_status",
+        "subscription_email", "current_period_end", "trial_ends_at", "approval_status",
+        "featured", "official_store", "rating", "reviews", "order_count",
+        "google_rating", "google_reviews_count", "google_place_id", "google_maps_url",
+        "google_rating_updated_at"];
+      for (const k of PROTECTED) delete row[k];
+    }
     // Root fix for the base64-in-DB bug class: join-form logos and dashboard
     // cover/logo uploads arrive as data: URLs — host them before the row lands.
     await offloadRowImages(row, ["image", "cover_image", "logo_image"], `store${storeId}`);
@@ -2859,9 +2986,18 @@ module.exports = async (req, res) => {
 
   // Admin inbox writes (password-gated).
   if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai" || pq.action === "set-pin" || pq.action === "set-label") {
-    if (!adminOk({ headers: req.headers, query: pq })) return res.status(403).json({ error: "unauthorized" });
+    // M1: throttle the admin password login by client IP (the mint endpoint is the
+    // only brute-forceable one; the other actions already require a valid session).
+    const adminThrottleKey = pq.action === "login" ? "admin:" + clientIp(req) : null;
+    if (adminThrottleKey && await loginThrottleBlocked(adminThrottleKey)) {
+      return res.status(429).json({ error: "too-many-attempts" });
+    }
+    if (!adminOk({ headers: req.headers, query: pq })) {
+      if (adminThrottleKey) await recordLoginFailure(adminThrottleKey);
+      return res.status(403).json({ error: "unauthorized" });
+    }
 
-    if (pq.action === "login") return res.status(200).json({ ok: true, token: signAdminToken() });
+    if (pq.action === "login") { clearLoginThrottle(adminThrottleKey).catch(() => {}); return res.status(200).json({ ok: true, token: signAdminToken() }); }
 
     // Pin / unpin a conversation (pinned threads sort to the top of the inbox).
     if (pq.action === "set-pin") {
