@@ -4,6 +4,7 @@ Allow: /
 # صفحات خاصة لا تحتاج فهرسة
 Disallow: /account
 Disallow: /cart
+Disallow: /checkout
 Disallow: /orders
 Disallow: /merchant
 Disallow: /admin
