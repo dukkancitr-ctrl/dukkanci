@@ -1109,13 +1109,18 @@ async function sendOrderWhatsapp(c, order, store, priceFlag) {
 // far below what those real prices add up to. Returns null when nothing looks
 // wrong or when it can't tell (missing products, empty cart) — always fails
 // closed toward "not suspicious" so this can never hold up a real order.
-async function checkOrderPriceSanity(order) {
+// Re-price an order's line items from the real, current products table using
+// each product's BASE price (variant/addon surcharges aren't modeled from the
+// legacy lineItems, which carry options as text not indexes — so this is a
+// safe LOWER bound on the true product value). Returns 0 when it can't tell
+// (missing products, empty cart), so callers always fail toward "don't touch".
+async function computeExpectedSubtotal(order) {
   try {
     const items = Array.isArray(order.lineItems) ? order.lineItems : [];
     const ids = [...new Set(items.map(i => Number(i.productId)).filter(Boolean))];
-    if (!ids.length) return null;
+    if (!ids.length) return 0;
     const rows = await sbGet(`products?id=in.(${ids.join(",")})&select=id,price`);
-    if (!Array.isArray(rows) || !rows.length) return null;
+    if (!Array.isArray(rows) || !rows.length) return 0;
     const priceById = new Map(rows.map(r => [Number(r.id), Number(r.price) || 0]));
     let expectedSubtotal = 0;
     for (const it of items) {
@@ -1123,13 +1128,18 @@ async function checkOrderPriceSanity(order) {
       if (real == null) continue; // product not found/mismatched — skip rather than guess
       expectedSubtotal += real * (Number(it.qty) || 1);
     }
-    if (expectedSubtotal <= 0) return null;
-    const total = Number(order.total) || 0;
-    // Delivery only ever ADDS to total, so ignoring it keeps this a safe floor
-    // check; 30% leaves generous room for any real coupon/credit stacking.
-    if (total < expectedSubtotal * 0.3) return { expectedSubtotal, total };
-    return null;
-  } catch (e) { return null; }
+    return expectedSubtotal > 0 ? expectedSubtotal : 0;
+  } catch (e) { return 0; }
+}
+
+async function checkOrderPriceSanity(order) {
+  const expectedSubtotal = await computeExpectedSubtotal(order);
+  if (expectedSubtotal <= 0) return null;
+  const total = Number(order.total) || 0;
+  // Delivery only ever ADDS to total, so ignoring it keeps this a safe floor
+  // check; 30% leaves generous room for any real coupon/credit stacking.
+  if (total < expectedSubtotal * 0.3) return { expectedSubtotal, total };
+  return null;
 }
 
 // Throttle the paid AI path per WhatsApp sender: more than 20 inbound messages
@@ -3080,12 +3090,29 @@ module.exports = async (req, res) => {
   // wild, so we upsert the full order row here too, service-role, same-origin, no
   // RLS involved. on_conflict=id + merge-duplicates makes this idempotent with
   // whatever pushOrderCloud already saved (or will save) for the same order id.
+  // Option B (C2): these hold the server-side repricing outcome, computed inside
+  // the try below and reused for the admin flag after it.
+  let expectedSubtotal = 0;
+  const submittedTotal = Number(order.total) || 0;
+  let priceCorrected = null;
   try {
     const b = body || {};
     const ddPhone = order.customerPhone || "";
+    // Reprice from the products table and CORRECT a grossly under-reported total.
+    // Delivery only adds and coupon/credit are dormant, so any submitted total
+    // below HALF the real product subtotal is tampering (the create-order path
+    // already reprices new clients; this protects the legacy path old released
+    // apps + stale web tabs still use, without breaking them — the order still
+    // saves, just at the honest product-value floor).
+    expectedSubtotal = await computeExpectedSubtotal(order);
+    let effectiveTotal = submittedTotal;
+    if (expectedSubtotal > 0 && submittedTotal < expectedSubtotal * 0.5) {
+      priceCorrected = { from: submittedTotal, to: expectedSubtotal };
+      effectiveTotal = expectedSubtotal;
+    }
     const orderRow = {
       id: order.id, store_id: Number(order.storeId), customer: order.customer || "",
-      total: order.total, status: b.status || "طلب جديد", time: b.time || "الآن",
+      total: effectiveTotal, status: b.status || "طلب جديد", time: b.time || "الآن",
       items: Number(b.items) || (Array.isArray(order.lineItems) ? order.lineItems.length : 0),
       delivery_details: {
         quote: b.deliveryQuote ?? null,
@@ -3106,7 +3133,8 @@ module.exports = async (req, res) => {
         scheduleDay: b.scheduleDay || "",
         scheduleTime: b.scheduleTime || "",
         closedWhenOrdered: !!b.closedWhenOrdered,
-        createdAt: b.createdAt || ""
+        createdAt: b.createdAt || "",
+        priceCorrected: priceCorrected  // audit trail when a tampered total was corrected server-side
       }
     };
     if (b.customerId) { orderRow.customer_id = b.customerId; orderRow.customer_phone = ddPhone; }
@@ -3123,7 +3151,12 @@ module.exports = async (req, res) => {
   // can then hold/cancel the order before it's prepared. This uses each real
   // product's base price as a floor (variant/addon surcharges aren't modeled,
   // so it only ever under-flags, never false-flags a legitimately priced order).
-  const priceFlag = await checkOrderPriceSanity(order);
+  // Reuse the repricing computed during the save (no second DB round-trip): a
+  // corrected order is always flagged for the admin; otherwise flag the softer
+  // "suspicious but not corrected" band (below 30% of real product value).
+  const priceFlag = priceCorrected
+    ? { expectedSubtotal, total: priceCorrected.from }
+    : (expectedSubtotal > 0 && submittedTotal < expectedSubtotal * 0.3 ? { expectedSubtotal, total: submittedTotal } : null);
 
   // Authoritative store contact + name from the DB — never trust the client for
   // WHERE messages go.
