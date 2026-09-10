@@ -183,7 +183,18 @@
     d = d || {};
     const eventId = d.eventId || (name === "Purchase" ? "order_" + d.orderId : undefined);
     if (consentOK("marketing") && window.fbq) {
-      const fb = { content_ids: d.ids, content_type: "product", value: d.value, currency: CURRENCY, num_items: d.count };
+      // DPA/catalog fields (content_ids + content_type) must only be sent when a
+      // real product id backs the event — e.g. "view_store" is mapped to
+      // ViewContent too (a store page visit, not a product page) but carries no
+      // product id; declaring content_type:"product" on it anyway is what Meta's
+      // "Missing Parameter in DPA Events" diagnostic was flagging (2026-09-11).
+      const fb = { currency: CURRENCY };
+      if (d.value != null) fb.value = d.value;
+      if (d.count != null) fb.num_items = d.count;
+      if (Array.isArray(d.ids) && d.ids.length) {
+        fb.content_ids = d.ids.map(String); // catalog content_ids are strings
+        fb.content_type = "product";
+      }
       if (eventId) window.fbq("track", name, fb, { eventID: eventId });
       else window.fbq("track", name, fb);
     }
