@@ -56,7 +56,10 @@ const META_EVENT = {
   begin_checkout: "InitiateCheckout",
   add_to_cart: "AddToCart",
   view_item: "ViewContent",
-  view_store: "ViewContent",
+  // Custom event, NOT ViewContent: a store page has no content_ids, and Meta's
+  // DPA diagnostic flags every ViewContent without them. Must match the browser
+  // name (tracking.js META_NAME) so the shared event_id still dedups.
+  view_store: "ViewStore",
   submit_phone: "Lead",
   whatsapp_click: "Contact"
 };
@@ -149,7 +152,6 @@ const TIKTOK_EVENT = {
   begin_checkout: "InitiateCheckout",
   add_to_cart: "AddToCart",
   view_item: "ViewContent",
-  view_store: "ViewContent",
   submit_phone: "Lead",
   whatsapp_click: "Contact"
 };

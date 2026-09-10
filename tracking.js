@@ -60,7 +60,9 @@
     AddToCart: "AddToCart", add_to_cart: "AddToCart",
     InitiateCheckout: "InitiateCheckout", begin_checkout: "InitiateCheckout",
     Purchase: "Purchase", purchase: "Purchase",
-    view_store: "ViewContent",
+    // A store page is not a product: sending it as ViewContent (no content_ids)
+    // trips Meta's "Missing Parameter in DPA Events". Custom event instead.
+    view_store: "ViewStore",
     whatsapp_click: "Contact", submit_phone: "Lead"
   };
 

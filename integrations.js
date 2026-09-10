@@ -13,6 +13,8 @@
   ];
   const LS_KEY = "dukkanci-integrations";
   const CURRENCY = "TRY";
+  // Meta standard events; anything else goes through fbq("trackCustom").
+  const META_STANDARD = { ViewContent: 1, AddToCart: 1, InitiateCheckout: 1, Purchase: 1, Lead: 1, Contact: 1 };
   const injected = {};
   const I = {
     settings: {},
@@ -195,12 +197,14 @@
         fb.content_ids = d.ids.map(String); // catalog content_ids are strings
         fb.content_type = "product";
       }
-      if (eventId) window.fbq("track", name, fb, { eventID: eventId });
-      else window.fbq("track", name, fb);
+      const method = META_STANDARD[name] ? "track" : "trackCustom";
+      if (!META_STANDARD[name]) { if (d.store_id != null) fb.store_id = String(d.store_id); if (d.store_name) fb.store_name = d.store_name; }
+      if (eventId) window.fbq(method, name, fb, { eventID: eventId });
+      else window.fbq(method, name, fb);
     }
-    if (consentOK("marketing") && window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY }, eventId ? { event_id: eventId } : undefined);
+    if (META_STANDARD[name] && consentOK("marketing") && window.ttq) window.ttq.track(name === "Purchase" ? "CompletePayment" : name, { content_id: (d.ids || [])[0], value: d.value, currency: CURRENCY }, eventId ? { event_id: eventId } : undefined);
     if (consentOK("analytics") && window.gtag) {
-      const map = { ViewContent: "view_item", AddToCart: "add_to_cart", InitiateCheckout: "begin_checkout", Purchase: "purchase" };
+      const map = { ViewContent: "view_item", AddToCart: "add_to_cart", InitiateCheckout: "begin_checkout", Purchase: "purchase", ViewStore: "view_store" };
       window.gtag("event", map[name] || name, { value: d.value, currency: CURRENCY, transaction_id: d.orderId });
     }
     // Google Ads conversion on purchase — marketing consent required
