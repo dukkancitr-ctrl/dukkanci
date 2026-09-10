@@ -72,16 +72,24 @@
     this.settings = map;
     localStorage.setItem(LS_KEY, JSON.stringify(map));
     const rows = Object.keys(map).map(k => ({ setting_key: k, setting_value: map[k].setting_value || "", is_enabled: !!map[k].is_enabled }));
-    // use service-role API endpoint (anon key cannot write due to RLS)
-    const pwd = adminPassword || (typeof state !== "undefined" && state.adminKey) || "";
+    // use service-role API endpoint (anon key cannot write due to RLS).
+    // state.adminKey is the signed admin SESSION token (never the password);
+    // an explicit adminPassword argument is still honoured for scripts.
+    const tok = (typeof state !== "undefined" && state.adminKey) || "";
+    const headers = { "Content-Type": "application/json" };
+    if (tok) headers["x-admin-token"] = tok;
+    if (adminPassword) headers["x-admin-password"] = adminPassword;
+    let result = { ok: false, status: 0 };
     try {
-      await fetch("/api/save-integrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-password": pwd },
-        body: JSON.stringify({ rows })
-      });
-    } catch (e) { /* offline — localStorage fallback above is enough */ }
+      const res = await fetch("/api/save-integrations", { method: "POST", headers, body: JSON.stringify({ rows }) });
+      let err = "";
+      if (!res.ok) { try { err = (await res.json()).error || ""; } catch (e) {} }
+      result = { ok: res.ok, status: res.status, error: err };
+    } catch (e) { result = { ok: false, status: 0, error: String(e && e.message || e) }; }
     this.inject();
+    // Callers must surface a failure: before 2026-09-11 this returned nothing and
+    // the dashboard showed "saved" even when the server rejected the write.
+    return result;
   };
 
   // Run one injection block in isolation: a throw in one pixel (e.g. a bad id)

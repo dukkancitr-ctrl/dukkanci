@@ -16436,9 +16436,13 @@ document.addEventListener("submit", async event => {
     (window.DUKKANCI_INTEGRATIONS?.SETTING_KEYS || []).forEach(k => {
       if (f.elements[k]) map[k] = { setting_value: f.elements[k].value.trim(), is_enabled: !!(f.elements[k + "__on"] && f.elements[k + "__on"].checked) };
     });
-    window.DUKKANCI_INTEGRATIONS?.save(map);
-    showToast("تم حفظ إعدادات التكاملات وتطبيقها", "success");
-    render();
+    (async () => {
+      const r = await (window.DUKKANCI_INTEGRATIONS?.save(map) || Promise.resolve({ ok: false, status: 0 }));
+      if (r && r.ok) showToast("تم حفظ إعدادات التكاملات وتطبيقها", "success");
+      else if (r && (r.status === 401 || r.status === 403)) showToast("لم يُحفظ في القاعدة: الجلسة الإدارية غير صالحة — سجّل الدخول من جديد", "");
+      else showToast("لم يُحفظ في القاعدة (خطأ " + ((r && r.status) || "شبكة") + ") — أُبقيت القيم على هذا الجهاز فقط", "");
+      render();
+    })();
     return;
   }
   if (event.target.id === "merchant-offer-form") {
