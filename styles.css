@@ -2049,6 +2049,19 @@ img {
   color: #8a6f6e;
   font-size: 10px;
 }
+.store-badge--live {
+  opacity: 1;
+  text-decoration: none;
+  border-color: var(--green-800);
+  background: rgba(227, 6, 19, 0.12);
+  transition: background 0.15s ease;
+}
+.store-badge--live:hover { background: rgba(227, 6, 19, 0.2); }
+.store-badge--live small { color: #f2b3b3; }
+/* Live Google Play badge: Play glyph + two-line label side by side (2026-09-11). */
+.store-badge--live { flex-direction: row; gap: 8px; padding: 0 10px; }
+.store-badge__glyph { width: 18px; height: 18px; flex: 0 0 auto; color: #fff; }
+.store-badge__text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
 
 /* ── Contact cards ── */
 .footer-contact-cards {
@@ -15112,7 +15125,88 @@ button:focus-visible, a:focus-visible {
   main { display: flex; flex-direction: column; }
   main > * { order: 5; }
   main > .hero2 { order: 0; }
+  main > .app-download-section { order: 0; } /* right after the hero, above the tall store grid */
   main > .nearby-section { order: 1; }
   main > .dk-stories-section { order: 2; }
   main > .mobile-shop-tiles-section { order: 3; }
+}
+
+/* ── Homepage app-download band (Google Play + PWA install) ── */
+.app-download-section { padding: 0 0 26px; }
+.app-download-band {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: linear-gradient(120deg, var(--green-900), var(--green-800));
+  color: #fff;
+  border-radius: 22px;
+  padding: 22px 26px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+.app-download-band__art { flex: 0 0 auto; }
+.app-download-band__icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  display: block;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.app-download-band__body { flex: 1; min-width: 0; }
+.app-download-band__kicker {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--orange);
+  margin-bottom: 4px;
+}
+.app-download-band__body h2 { font-size: 22px; margin: 0 0 6px; color: #fff; }
+.app-download-band__body p {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 14px;
+  max-width: 46ch;
+}
+.app-download-band__actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.gplay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #111;
+  color: #fff;
+  text-decoration: none;
+  padding: 9px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.gplay-btn:hover { background: #000; transform: translateY(-1px); }
+.gplay-btn--block { width: 100%; justify-content: center; padding: 12px 18px; }
+.gplay-btn__glyph { width: 24px; height: 24px; flex: 0 0 auto; }
+.gplay-btn__text { display: flex; flex-direction: column; line-height: 1.15; text-align: start; }
+.gplay-btn__text small { font-size: 10px; opacity: 0.85; }
+.gplay-btn__text b { font-size: 17px; font-weight: 700; }
+.app-download-band__alt {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.app-download-band__alt .icon { width: 16px; height: 16px; }
+@media (max-width: 640px) {
+  .app-download-band { flex-direction: column; text-align: center; padding: 24px 18px; gap: 16px; }
+  .app-download-band__body p { margin-inline: auto; }
+  .app-download-band__actions { justify-content: center; }
+  .app-download-band__icon { width: 76px; height: 76px; }
+  .app-download-band__body h2 { font-size: 20px; }
 }
