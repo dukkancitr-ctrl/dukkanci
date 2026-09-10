@@ -62,22 +62,26 @@ const META_EVENT = {
 };
 
 // Resolve Meta config from env, falling back to integration_settings in the DB.
-let _metaCfgCache = null;
+// Cached per warm instance with a short TTL so a token/pixel saved from the admin
+// panel is picked up within minutes instead of only after a cold start.
+const CFG_CACHE_TTL_MS = 5 * 60 * 1000;
+let _metaCfgCache = null, _metaCfgAt = 0;
 async function metaConfig(serviceKey, supabaseUrl) {
   let pixel = (process.env.META_PIXEL_ID || "").trim();
   let token = (process.env.META_CONVERSIONS_API_TOKEN || "").trim();
   let test = (process.env.META_TEST_EVENT_CODE || "").trim();
   const ver = (process.env.META_API_VERSION || "v21.0").trim();
   if ((!pixel || !token) && serviceKey) {
-    if (!_metaCfgCache) {
+    if (!_metaCfgCache || (Date.now() - _metaCfgAt) > CFG_CACHE_TTL_MS) {
       try {
         const r = await sb("GET", "integration_settings?select=setting_key,setting_value,is_enabled&setting_key=in.(meta_pixel_id,meta_capi_token,meta_test_event_code)", null, serviceKey, supabaseUrl);
         if (r.ok) {
           const rows = await r.json(); const m = {};
           rows.forEach(x => { m[x.setting_key] = x.is_enabled ? (x.setting_value || "") : ""; });
           _metaCfgCache = m;
-        } else { _metaCfgCache = {}; }
-      } catch (e) { _metaCfgCache = {}; }
+        } else { _metaCfgCache = _metaCfgCache || {}; }
+      } catch (e) { _metaCfgCache = _metaCfgCache || {}; }
+      _metaCfgAt = Date.now();
     }
     pixel = pixel || _metaCfgCache.meta_pixel_id || "";
     token = token || _metaCfgCache.meta_capi_token || "";
@@ -150,18 +154,19 @@ const TIKTOK_EVENT = {
   whatsapp_click: "Contact"
 };
 
-let _ttCfgCache = null;
+let _ttCfgCache = null, _ttCfgAt = 0;
 async function tiktokConfig(serviceKey, supabaseUrl) {
   let pixel = (process.env.TIKTOK_PIXEL_ID || "").trim();
   let token = (process.env.TIKTOK_EVENTS_API_TOKEN || "").trim();
   let test = (process.env.TIKTOK_TEST_EVENT_CODE || "").trim();
   if ((!pixel || !token) && serviceKey) {
-    if (!_ttCfgCache) {
+    if (!_ttCfgCache || (Date.now() - _ttCfgAt) > CFG_CACHE_TTL_MS) {
       try {
         const r = await sb("GET", "integration_settings?select=setting_key,setting_value,is_enabled&setting_key=in.(tiktok_pixel_id,tiktok_events_token,tiktok_test_event_code)", null, serviceKey, supabaseUrl);
         if (r.ok) { const rows = await r.json(); const m = {}; rows.forEach(x => { m[x.setting_key] = x.is_enabled ? (x.setting_value || "") : ""; }); _ttCfgCache = m; }
-        else { _ttCfgCache = {}; }
-      } catch (e) { _ttCfgCache = {}; }
+        else { _ttCfgCache = _ttCfgCache || {}; }
+      } catch (e) { _ttCfgCache = _ttCfgCache || {}; }
+      _ttCfgAt = Date.now();
     }
     pixel = pixel || _ttCfgCache.tiktok_pixel_id || "";
     token = token || _ttCfgCache.tiktok_events_token || "";
