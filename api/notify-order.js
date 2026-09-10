@@ -248,6 +248,7 @@ async function sendOtpWhatsapp(c, to, otp) {
       ]
     }
   };
+  let result;
   try {
     const r = await fetch(`${GRAPH}/${c.version}/${c.phoneId}/messages`, {
       method: "POST",
@@ -255,10 +256,29 @@ async function sendOtpWhatsapp(c, to, otp) {
       body: JSON.stringify(payload)
     });
     const data = await r.json().catch(() => ({}));
-    return { ok: r.ok, status: r.status, id: data?.messages?.[0]?.id, error: r.ok ? undefined : data };
+    result = { ok: r.ok, status: r.status, id: data?.messages?.[0]?.id, error: r.ok ? undefined : data };
   } catch (e) {
-    return { ok: false, error: e.message };
+    result = { ok: false, error: e.message };
   }
+  await logOtpSend(to, template, result);
+  return result;
+}
+
+// Log every OTP send (never the code) to marketing_event_logs. A 200 from Meta
+// only means "accepted": delivery can still fail later, and Meta reports that
+// asynchronously to the webhook, which needs this row (keyed by wam_id) to land
+// the failure reason on — OTP messages are not in whatsapp_messages.
+async function logOtpSend(to, template, result) {
+  try {
+    const err = result.ok ? null : result.error;
+    await sbWrite("POST", "marketing_event_logs", [{
+      event_id: crypto.randomUUID(), event_name: "otp_send", destination: "whatsapp_otp",
+      payload_json: { wam_id: result.id || null, phone_tail: String(to).slice(-4), template },
+      response_json: result.ok ? { id: result.id || null } : (err && typeof err === "object" ? err : { error: String(err || "") }),
+      status: result.ok ? "accepted" : "send_failed",
+      error_message: result.ok ? null : JSON.stringify(err || "").slice(0, 500)
+    }], "return=minimal");
+  } catch (e) {}
 }
 
 // Hash an OTP bound to its phone with a server-side pepper, so a DB leak can't
@@ -1247,8 +1267,14 @@ async function ingestWebhook(body) {
       // Delivery/read statuses for messages we sent.
       for (const s of (v.statuses || [])) {
         if (!s || !s.id) continue;
+        // Meta puts the reason for a "failed" status in s.errors — keep it.
+        const err = Array.isArray(s.errors) && s.errors.length ? JSON.stringify(s.errors).slice(0, 500) : null;
         await sbWrite("PATCH", `whatsapp_messages?wam_id=eq.${encodeURIComponent(s.id)}`,
-          { status: s.status }, "return=minimal");
+          err ? { status: s.status, error: err } : { status: s.status }, "return=minimal");
+        // OTP sends live in marketing_event_logs (see logOtpSend), not whatsapp_messages.
+        await sbWrite("PATCH", `marketing_event_logs?destination=eq.whatsapp_otp&payload_json->>wam_id=eq.${encodeURIComponent(s.id)}`,
+          { status: s.status, error_message: err, response_json: { status: s.status, timestamp: s.timestamp || null, errors: s.errors || null, pricing: s.pricing || null } },
+          "return=minimal");
       }
     }
   }
