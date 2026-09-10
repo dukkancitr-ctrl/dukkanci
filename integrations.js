@@ -27,7 +27,18 @@
 
   // Remember when the integration_settings table isn't provisioned in this project,
   // so we don't re-issue a request that 404s in the console on every page load.
+  // The flag is a timestamp and EXPIRES after 24h: a permanent flag once turned
+  // every pixel off forever on any device that saw a single transient error
+  // (found 2026-09-11 while wiring the new Meta Pixel — the legacy value "1"
+  // is treated as expired so those devices recover on their next visit).
   const ABSENT_FLAG = "dukkanci-int-settings-absent";
+  const ABSENT_TTL_MS = 24 * 60 * 60 * 1000;
+  function absentFlagFresh() {
+    try {
+      const ts = Number(localStorage.getItem(ABSENT_FLAG));
+      return Number.isFinite(ts) && ts > 1e12 && (Date.now() - ts) < ABSENT_TTL_MS;
+    } catch (e) { return false; }
+  }
   function tableLooksAbsent(error) {
     if (!error) return false;
     const code = error.code || "";
@@ -39,7 +50,7 @@
     // try Supabase first (global), fall back to localStorage (per-device)
     try {
       await (window.__supabaseReady || Promise.resolve());
-      if (window.supabaseClient && localStorage.getItem(ABSENT_FLAG) !== "1") {
+      if (window.supabaseClient && !absentFlagFresh()) {
         const { data, error } = await window.supabaseClient.from("integration_settings").select("*");
         if (!error && data) {
           this.settings = {};
@@ -48,7 +59,7 @@
           return this.settings;
         }
         // Table absent (not provisioned here): stop querying it on future loads.
-        if (tableLooksAbsent(error)) { try { localStorage.setItem(ABSENT_FLAG, "1"); } catch (e) {} }
+        if (tableLooksAbsent(error)) { try { localStorage.setItem(ABSENT_FLAG, String(Date.now())); } catch (e) {} }
       }
     } catch (e) { /* table may not exist yet — fall through */ }
     this.settings = localSettings();
