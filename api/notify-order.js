@@ -1978,8 +1978,10 @@ module.exports = async (req, res) => {
         order_id: savedRow.id, status: "طلب جديد", note: null, changed_by: "system"
       }, "return=minimal");
 
-      res.status(200).json({ ok: true, order: publicOrderView(savedRow) });
-
+      // Notify BEFORE responding: Vercel can freeze the function as soon as the
+      // response is sent, so work after it may never run. Responding first here
+      // silently skipped every merchant notification (WhatsApp/panel/push) —
+      // found 2026-09-11 on DK-426788084: notification_attempts stayed 0.
       try {
         const orderForNotify = {
           id: savedRow.id, storeId, customer, customerPhone, total, fulfillment,
@@ -2011,7 +2013,7 @@ module.exports = async (req, res) => {
           }, "return=minimal");
         } catch (_) {}
       }
-      return;
+      return res.status(200).json({ ok: true, order: publicOrderView(savedRow) });
     } catch (e) {
       console.warn("[create-order] unexpected error: " + (e && e.stack || e));
       return res.status(500).json({ error: "تعذّر إنشاء الطلب، حاول مجدداً" });
