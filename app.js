@@ -3301,7 +3301,10 @@ function renderMealMatcherWidget() {
 function updateFloatingMiniCart() {
   let bar = document.getElementById("dk-floating-cart");
   const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
-  if (count <= 0) {
+  // لا يظهر شريط السلة العائم حيث يكون مكرَّراً أو مربكاً: صفحة الدفع هي
+  // مراجعة الطلب نفسها، ولوحتا التاجر/الإدارة ليستا واجهة شراء أصلاً.
+  const hiddenHere = state.route === "checkout" || state.route === "merchant" || state.route === "admin";
+  if (count <= 0 || hiddenHere) {
     if (bar) bar.classList.remove("visible");
     return;
   }
@@ -3323,8 +3326,8 @@ function updateFloatingMiniCart() {
         <span>${money(total)}</span>
       </div>
     </div>
-    <button class="dk-floating-cart__btn" data-action="open-cart">
-      ${icon("bag")} مراجعة الطلب ${icon("arrowLeft")}
+    <button class="dk-floating-cart__btn" data-action="open-cart" aria-label="مراجعة الطلب">
+      ${icon("bag")}<span class="dk-floating-cart__btn-label">مراجعة الطلب ${icon("arrowLeft")}</span>
     </button>
   `;
   hydrateIcons(bar);
