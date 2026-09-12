@@ -3100,35 +3100,52 @@ function homeOfferCard(product) {
 function nearbyStoreCard(store) {
   const isFavorite = state.favorites.includes(`store-${store.id}`);
   const open = isStoreOpenNow(store);
+  const coverImg = store.coverImage || store.image || "/assets/photos/product-meat.jpg";
+  const avatarImg = store.logoImage || store.image || "/assets/dukkanci-app-icon-192.png";
+  const descSnippet = store.description ? store.description.slice(0, 56) : (store.category || "مأكولات ومؤونة يومية");
+  const offerBadge = store.hasOffer && store.offer ? `<span class="deal-pill">🔥 ${esc(store.offer)}</span>` : `<span class="zero-pill">🛡️ 0% عمولة</span>`;
+  const verifiedBadge = store.officialStore || store.branchGroup === "alsultan" ? `<span class="verified-icon" title="متجر رسمي موثق">✓</span>` : "";
+
   return `
-    <article class="store-card nearby-store-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}">
-      <button class="store-card__image" data-action="open-store" data-id="${store.id}">
-        <img src="${escAttr(store.coverImage || store.image)}" alt="${escAttr(store.name)}" loading="lazy">
-        <span class="status-badge ${open ? "open" : "closed"}">${open ? "مفتوح" : "مغلق الآن"}</span>
-        ${hasNationwideShipping(store) ? `<span class="nationwide-badge">${icon("box")} توصيل لكل الولايات</span>` : ""}
-        ${store.branchGroup === "alsultan" ? `<span class="official-branch-badge">${icon("shield")} فرع رسمي</span>` : store.officialStore ? `<span class="official-branch-badge ${store.brandTheme || ""}">${icon("shield")} متجر رسمي</span>` : ""}
-        ${store.hasOffer && store.offer ? `<span class="offer-ribbon">${esc(store.offer)}</span>` : ""}
-      </button>
-      <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
-        ${icon("heart")}
-      </button>
-      <div class="store-card__body">
-        <button class="store-title-row" data-action="open-store" data-id="${store.id}">
-          ${storeAvatar(store)}
-          <span><strong>${esc(store.name)}</strong><small>${esc(store.category)}</small></span>
+    <article class="store-card nearby-store-card app-full-card ${store.sourceBranded ? "source-branded-store-card" : ""} ${store.brandTheme ? `store-theme-${store.brandTheme}` : ""}" data-action="open-store" data-id="${store.id}">
+      <div class="store-card__image-wrap">
+        <img class="store-card__hero-img" src="${escAttr(coverImg)}" alt="${escAttr(store.name)}" loading="lazy">
+        <div class="store-card__badges-overlay">
+          <div class="badge-top-row">
+            <span class="status-pill ${open ? "open" : "closed"}">${open ? "مفتوح الآن" : "مغلق"}</span>
+            ${offerBadge}
+          </div>
+          <div class="badge-bottom-row">
+            ${etaChip(store, { withDistanceFallback: true })}
+            <span class="rating-pill">★ ${store.rating || "4.8"} ${store.reviews ? `<small>(${store.reviews})</small>` : ""}</span>
+          </div>
+        </div>
+        <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
+          ${icon("heart")}
         </button>
-        <div class="store-rating">
-          ${store.newStore ? `${icon("store")} <strong>متجر جديد</strong><span>موثق البيانات</span>` : `${icon("star")} <strong>${store.rating}</strong><span>(${store.reviews} تقييم)</span>`}
+      </div>
+
+      <div class="store-card__app-body">
+        <div class="store-main-row">
+          <div class="store-avatar-circle">
+            <img src="${escAttr(avatarImg)}" alt="${escAttr(store.name)}" loading="lazy">
+          </div>
+          <div class="store-info-box">
+            <div class="store-name-line">
+              <strong class="store-name">${esc(store.name)}</strong>
+              ${verifiedBadge}
+            </div>
+            <p class="store-tags-line">${esc(descSnippet)}</p>
+          </div>
         </div>
-        <div class="store-meta">
-          ${etaChip(store, { withDistanceFallback: true })}
-          <span>${icon("bike")} ${deliveryPriceLabel(store)}</span>
+
+        <div class="store-footer-meta">
+          <span class="meta-item del-fee">${icon("bike")} ${deliveryPriceLabel(store)}</span>
+          <span class="meta-sep">•</span>
+          <span class="meta-item min-order">${icon("bag")} حد أدنى ${money(store.minOrder || 0)}</span>
+          <span class="meta-sep">•</span>
+          <span class="meta-item payment-tag">💵 الدفع عند الباب</span>
         </div>
-        <div class="nearby-store-extra">
-          <span>${icon("bag")} حد أدنى ${money(store.minOrder)}</span>
-          <span>${icon("shield")} الدفع عند الاستلام</span>
-        </div>
-        <button class="primary-button full compact" data-action="open-store" data-id="${store.id}">اطلب الآن ${icon("arrowLeft")}</button>
       </div>
     </article>
   `;
@@ -3334,6 +3351,76 @@ function updateFloatingMiniCart() {
   requestAnimationFrame(() => bar.classList.add("visible"));
 }
 
+function renderHomePromoBanners() {
+  return `
+    <div class="dk-mobile-promo-slider" aria-label="عروض ومزايا دكانجي">
+      <div class="dk-promo-track">
+        <div class="dk-promo-card dk-promo-card--red">
+          <div class="dk-promo-content">
+            <span class="dk-promo-tag">🔥 أقوى توفير بالحي</span>
+            <h3>وفر حتى 30% مع عروض اليوم</h3>
+            <p>خصومات حقيقية وحصرية من أشهر مطاعم ومتاجر إسطنبول</p>
+            <a href="/offers" data-route="offers" class="dk-promo-btn">تصفح العروض الآن ←</a>
+          </div>
+          <div class="dk-promo-art">🎁</div>
+        </div>
+        <div class="dk-promo-card dk-promo-card--amber">
+          <div class="dk-promo-content">
+            <span class="dk-promo-tag">🛡️ ضمان السعر العادل</span>
+            <h3>0% عمولة إضافية على الأسعار</h3>
+            <p>تطلب مباشرة بسعر المحل الأصلي بدون أي زيادة أو وسيط</p>
+            <a href="/stores" data-route="stores" class="dk-promo-btn">اكتشف المتاجر ←</a>
+          </div>
+          <div class="dk-promo-art">🏷️</div>
+        </div>
+        <div class="dk-promo-card dk-promo-card--green">
+          <div class="dk-promo-content">
+            <span class="dk-promo-tag">💵 تسوّق براحة بال</span>
+            <h3>الدفع عند الاستلام كاش أو كرت</h3>
+            <p>استلم طلبك لباب بيتك وتأكد منه ثم ادفع بكل طمأنينة</p>
+            <a href="#nearby-stores" class="dk-promo-btn">اطلب لحيك الآن ←</a>
+          </div>
+          <div class="dk-promo-art">🛵</div>
+        </div>
+      </div>
+      <div class="dk-promo-dots" aria-hidden="true">
+        <span class="dot active"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderAppTilesGrid() {
+  const tiles = [
+    { name: "مطاعم", label: "مطاعم ومشاوي", sub: "وجبات ساخنة", emoji: "🍔", bg: "#fff3ec", border: "#fed7aa", color: "#c2410c", route: null },
+    { name: "سوبر ماركت", label: "سوبر ماركت", sub: "مؤونة البيت", emoji: "🛒", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d", route: null },
+    { name: "ملاحم", label: "ملاحم ولحوم", sub: "طازج يومياً", emoji: "🥩", bg: "#fef2f2", border: "#fecaca", color: "#b91c1c", route: null },
+    { name: "حلويات", label: "حلويات وبقلاوة", sub: "كنافة وضيافة", emoji: "🍰", bg: "#fdf2f8", border: "#fbcfe8", color: "#be185d", route: null },
+    { name: "مخابز", label: "أفران ومعجنات", sub: "مناقيش وخبز", emoji: "🥐", bg: "#fffbeb", border: "#fde68a", color: "#b45309", route: null },
+    { name: "بن ومكسرات", label: "محامص وبن", sub: "قهوة وبهارات", emoji: "☕", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce", route: null },
+    { name: "المياه المعدنية", label: "مياه ومشروبات", sub: "توصيل للباب", emoji: "💧", bg: "#f0f9ff", border: "#bae6fd", color: "#0369a1", route: null },
+    { name: "عروض", label: "عروض وتوفير", sub: "وفر حتى 30%", emoji: "🔥", bg: "#fff1f2", border: "#fecdd3", color: "#e11d48", route: "offers" }
+  ];
+
+  return `
+    <div class="dk-app-tiles-section" aria-label="أقسام التطبيق الرئيسية">
+      <div class="dk-app-tiles-grid">
+        ${tiles.map(t => `
+          <button type="button" class="dk-app-tile ${t.route ? 'is-deal' : ''} ${state.homeCatFilter === t.name ? 'active' : ''}"
+                  style="--tile-bg: ${t.bg}; --tile-border: ${t.border}; --tile-color: ${t.color};"
+                  data-action="${t.route ? 'navigate' : 'home-cat-filter'}"
+                  ${t.route ? `data-route="${t.route}"` : `data-cat="${escAttr(t.name)}"`}>
+            <span class="dk-app-tile-icon">${t.emoji}</span>
+            <span class="dk-app-tile-label">${esc(t.label)}</span>
+            <small class="dk-app-tile-sub">${esc(t.sub)}</small>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
 
 function renderHome() {
   let allApproved = stores.filter(store => isStoreApproved(store));
@@ -3400,114 +3487,172 @@ function renderHome() {
     heroRatingFloat = `<div class="h2-rate-num"><strong>${avgRating}</strong><small>متوسط تقييم المتاجر</small></div>`;
   }
   return `
-    <section class="hero2">
-      <span class="h2-bgword" aria-hidden="true">DUKKANCI</span>
-      <div class="container h2-grid">
-        <div class="h2-copy">
-          <span class="h2-eyebrow"><span class="h2-pulse"></span> ${escAttr(HT.eyebrow || "سوق الحي بين يديك — تجربة أوضح من واتساب")}${openStoresCount ? `<span class="h2-eyebrow-counter"><span class="live-dot"></span>${openStoresCount.toLocaleString("ar")} متجر مفتوح</span>` : ""}</span>
-          <div class="h2-slides" id="hero2-slides">
-            <article class="h2-slide active">
-              <h1>كل ما تحتاجه من <span class="h2-grad">متاجر منطقتك</span><br>اطلب الآن وادفع عند الاستلام</h1>
-              <p class="h2-lead">مطاعم، ماركت، حلويات، لحوم، خضار — توصيل لباب بيتك في إسطنبول.</p>
-            </article>
-            <article class="h2-slide">
-              <h1>أسعار واضحة<br><span class="h2-grad">بدون عمولة</span> على المنتجات</h1>
-              <p class="h2-lead">دكانجي لا يضيف عمولة على أسعار منتجات المتاجر. ترى سعر المنتج، رسوم التوصيل، والإجمالي قبل تأكيد الطلب.</p>
-            </article>
-            <article class="h2-slide">
-              <h1>متاجر مقيّمة<br>وتجربة <span class="h2-grad">قابلة للثقة</span></h1>
-              <p class="h2-lead">كل تجربة طلب تساعد في تقييم المتجر: جودة التنفيذ، سرعة التجهيز، التغليف، ودقة الطلب. المتجر الجيد يظهر أقوى.</p>
-            </article>
-            <article class="h2-slide">
-              <h1>بدل فوضى واتساب<br>اطلب بطريقة <span class="h2-grad">مرتبة</span></h1>
-              <p class="h2-lead">لا تسأل كل محل عن الأسعار والتوفر. المنتجات والمتاجر والتفاصيل أمامك في مكان واحد قبل أن تقرر.</p>
-            </article>
+    <section class="hero2 dk-hero-immersive">
+      <div class="dk-hero-glow-1" aria-hidden="true"></div>
+      <div class="dk-hero-glow-2" aria-hidden="true"></div>
+      
+      <div class="container dk-hero-inner">
+        <!-- Top Live Eyebrow -->
+        <div class="dk-hero-header-center">
+          <div class="dk-hero-live-pill">
+            <span class="dk-live-indicator"><span class="dk-live-dot"></span> مباشر</span>
+            <span class="dk-live-text">سوق الحي بين يديك في إسطنبول 🇹🇷</span>
+            ${openStoresCount ? `<span class="dk-live-count">• ${openStoresCount.toLocaleString("ar")} متجر مفتوح الآن</span>` : ""}
           </div>
 
-          <div class="hero-search">
-            ${icon("search")}
-            <input id="hero-search" type="search" placeholder="ابحث عن شاورما، رز، لحمة، حلويات، سوبرماركت..." value="${escAttr(state.search)}">
+          <h1 class="dk-hero-main-title">
+            كل ما تحتاجه من <span class="dk-title-gradient">متاجر حيّك</span><br>
+            <span class="dk-title-sub">نوصله لباب بيتك طازجاً وبنفس سعر المحل</span>
+          </h1>
+
+          <p class="dk-hero-lead-text">
+            مشاوي ومطاعم شعبية، لحوم طازجة، خضار وفواكه، ومؤونة بيتك اليومية من أفضل المتاجر في منطقتك — بدون أي عمولة إضافية، والدفع كاش أو كرت عند الاستلام.
+          </p>
+        </div>
+
+        <!-- Grand Discovery & Search Capsule (All-in-One) -->
+        <div class="dk-grand-search-capsule" role="search">
+          <!-- 1. Location Selector -->
+          <button type="button" class="dk-search-loc-btn" data-action="location" title="اضغط لتحديد منطقتك في إسطنبول">
+            <span class="dk-loc-ring">${icon("pin")}</span>
+            <div class="dk-loc-texts">
+              <small>مكان التوصيل</small>
+              <strong id="hero-loc-name">${state.userLocation ? esc(state.userLocation.area || "موقعي الحالي") : "اختر حيك بإسطنبول"}</strong>
+            </div>
+            <span class="dk-loc-arrow">${icon("chevron")}</span>
+          </button>
+
+          <div class="dk-capsule-divider" aria-hidden="true"></div>
+
+          <!-- 2. Search Input -->
+          <div class="dk-search-core">
+            <span class="dk-search-glass-icon">${icon("search")}</span>
+            <input id="hero-search" type="search" placeholder="ماذا تشتهي اليوم؟ شاورما، مشاوي، لحوم، سوبرماركت..." value="${escAttr(state.search)}" autocomplete="off" aria-label="البحث عن منتج أو متجر">
             <button type="button" class="search-clear" data-action="clear-search" aria-label="مسح البحث" title="مسح">${icon("close")}</button>
             ${voiceSearchButton("hero")}
-            <button data-action="run-search">ابحث</button>
           </div>
 
-          <div class="search-chips" aria-label="بحث سريع">
-            ${QUICK_SEARCH_CHIPS.map(term => `<button type="button" class="search-chip" data-action="quick-chip" data-term="${escAttr(term)}">${esc(term)}</button>`).join("")}
-          </div>
-${paidHeroStrip}
-          <div class="h2-cta-row">
-            <a class="h2-cta-main" href="/stores" data-route="stores">ابدأ التسوق الآن ←</a>
-            <a class="h2-cta-second" href="#nearby-stores">تصفح المتاجر القريبة</a>
+          <!-- 3. Search Submit Button -->
+          <button type="button" class="dk-capsule-submit" data-action="run-search" aria-label="تنفيذ البحث">
+            <span>ابحث الآن</span>
+            ${icon("arrowLeft")}
+          </button>
+        </div>
+
+        <!-- App Stories & 4x2 Service Tiles -->
+        ${renderHomeStoriesRail()}
+        ${renderAppTilesGrid()}
+
+        ${renderHomePromoBanners()}
+
+        <!-- Featured Curated Stores Rail (Visual Food Cards with Ratings & Prices) -->
+        <div class="dk-hero-merchant-rail">
+          <div class="dk-hero-rail-header">
+            <div class="dk-rail-title-wrap">
+              <span class="dk-rail-flame">🔥</span>
+              <strong>الأكثر طلباً وتفضيلاً في إسطنبول الآن</strong>
+            </div>
+            <a href="/stores" data-route="stores" class="dk-rail-all-link">استكشف كافة المتاجر (${stores.filter(isStoreApproved).length}+) ←</a>
           </div>
 
-          <div class="h2-dots" id="hero2-dots" aria-label="تبديل الرسائل">
-            <button class="h2-dot active" data-index="0" aria-label="الرسالة 1"></button>
-            <button class="h2-dot" data-index="1" aria-label="الرسالة 2"></button>
-            <button class="h2-dot" data-index="2" aria-label="الرسالة 3"></button>
-            <button class="h2-dot" data-index="3" aria-label="الرسالة 4"></button>
-          </div>
+          <div class="dk-hero-cards-grid">
+            <a href="/store/alkhawali-restaurant" data-action="open-store" data-id="31" class="dk-h-card">
+              <div class="dk-h-card-media">
+                <img src="/assets/photos/product-meat.jpg" alt="مطعم الخوالي" loading="eager">
+                <span class="dk-h-time">⏱️ 25 - 40 د</span>
+                <span class="dk-h-rating">★ 4.8</span>
+              </div>
+              <div class="dk-h-card-body">
+                <strong>مطعم الخوالي</strong>
+                <p>مشاوي، كباب، وشاورما على أصولها</p>
+                <div class="dk-h-foot">
+                  <span class="dk-h-badge">0% عمولة ✓</span>
+                  <span class="dk-h-action">اطلب الآن ←</span>
+                </div>
+              </div>
+            </a>
 
-          <div class="h2-trust">
-            <div class="h2-trust-card zero"><span class="h2-trust-icon">${icon("percent")}</span><div><strong>0% عمولة منتجات</strong><span>المنصة لا تضيف عمولة على سعر المنتج.</span></div></div>
-            <div class="h2-trust-card rated"><span class="h2-trust-icon">${icon("star")}</span><div><strong>متاجر يتم تقييمها</strong><span>التجربة تساعد في رفع جودة المتاجر.</span></div></div>
-            <div class="h2-trust-card clear"><span class="h2-trust-icon">${icon("shield")}</span><div><strong>التكلفة قبل التأكيد</strong><span>السعر والتوصيل يظهران قبل إرسال الطلب.</span></div></div>
+            <a href="/store/pasa-pizzeria-restaurant" data-action="open-store" data-id="56" class="dk-h-card">
+              <div class="dk-h-card-media">
+                <img src="/assets/photos/product-baklava.jpg" alt="مطعم باشا بيتزريا" loading="eager">
+                <span class="dk-h-time">⏱️ 30 - 45 د</span>
+                <span class="dk-h-rating">★ 4.9</span>
+              </div>
+              <div class="dk-h-card-body">
+                <strong>مطعم باشا بيتزريا</strong>
+                <p>بيتزا إيطالية، باستا، ومناقيش طازجة</p>
+                <div class="dk-h-foot">
+                  <span class="dk-h-badge">0% عمولة ✓</span>
+                  <span class="dk-h-action">اطلب الآن ←</span>
+                </div>
+              </div>
+            </a>
+
+            <a href="/store/domani" data-action="open-store" data-id="84" class="dk-h-card">
+              <div class="dk-h-card-media">
+                <img src="/assets/photos/product-meat.jpg" alt="ملحمة الدوماني" loading="eager">
+                <span class="dk-h-time">⏱️ طازج يومياً</span>
+                <span class="dk-h-rating">★ 4.9</span>
+              </div>
+              <div class="dk-h-card-body">
+                <strong>ملحمة الدوماني</strong>
+                <p>لحوم غنم وعجل بلدي وتجهيزات للشواء</p>
+                <div class="dk-h-foot">
+                  <span class="dk-h-badge">أسعار الملحمة ✓</span>
+                  <span class="dk-h-action">اطلب الآن ←</span>
+                </div>
+              </div>
+            </a>
+
+            <a href="/store/safa-alsham-market" data-action="open-store" data-id="50" class="dk-h-card">
+              <div class="dk-h-card-media">
+                <img src="/assets/photos/product-cookies.jpg" alt="ماركت صفا الشام" loading="eager">
+                <span class="dk-h-time">⏱️ توصيل سريع</span>
+                <span class="dk-h-rating">★ 4.7</span>
+              </div>
+              <div class="dk-h-card-body">
+                <strong>ماركت صفا الشام</strong>
+                <p>سوبر ماركت سوري وتركي ومؤونة البيت</p>
+                <div class="dk-h-foot">
+                  <span class="dk-h-badge">دفع عند الباب ✓</span>
+                  <span class="dk-h-action">اطلب الآن ←</span>
+                </div>
+              </div>
+            </a>
           </div>
         </div>
 
-        <div class="h2-stage" aria-hidden="true">
-          <span class="h2-orb one"></span><span class="h2-orb two"></span>
-
-          <div class="h2-float delivery">
-            <div class="h2-float-title"><i>📍</i> متاجر قريبة</div>
-            <p>يبدأ الطلب من منطقتك، وليس من قائمة عامة عشوائية.</p>
+        <!-- Trust Highlights Bar -->
+        <div class="dk-hero-trust-bar">
+          <div class="dk-trust-item">
+            <span class="t-icon">🏷️</span>
+            <div><strong>0% عمولة على المنتجات</strong><small>المنصة لا تضيف زيادة على سعر المحل</small></div>
           </div>
-
-          <div class="h2-float price">
-            <div class="h2-float-title"><i>₺</i> وضوح السعر</div>
-            <p>عمولة دكانجي على المنتجات صفر، والتوصيل واضح قبل التأكيد.</p>
-            <div class="h2-price-line"><span>عمولة دكانجي</span><strong class="h2-zero">0</strong></div>
+          <div class="dk-trust-item">
+            <span class="t-icon">⚡</span>
+            <div><strong>توصيل سريع لباب بيتك</strong><small>من المتاجر الأقرب لك في حيك</small></div>
           </div>
-
-          <div class="h2-phone">
-            <div class="h2-screen">
-              <div class="h2-screen-top">
-                <div class="h2-loc">📍 إسطنبول — المتاجر الأقرب لك</div>
-                <div class="h2-screen-title">ماذا تريد أن تطلب اليوم؟</div>
-                <div class="h2-pseudo-search">🔎 ابحث عن متجر أو منتج</div>
-              </div>
-              <div class="h2-cat-row">
-                <div class="h2-cat"><b>🍽️</b>مطاعم</div>
-                <div class="h2-cat"><b>🛒</b>ماركت</div>
-                <div class="h2-cat"><b>🥩</b>ملاحم</div>
-                <div class="h2-cat"><b>☕</b>قهوة</div>
-              </div>
-              <div class="h2-store-list">
-                <div class="h2-store-card"><div class="h2-store-logo">🍗</div><div><h3>مطعم الخوالي</h3><p>وجبات ومشاوي — متاح للطلب</p><span class="h2-chip">★ تجربة قابلة للتقييم</span></div></div>
-                <div class="h2-store-card"><div class="h2-store-logo">🧀</div><div><h3>صفا الشام ماركت</h3><p>مواد غذائية ومنتجات يومية</p><span class="h2-chip">₺ سعر واضح</span></div></div>
-                <div class="h2-store-card"><div class="h2-store-logo">🍰</div><div><h3>حلويات الحي</h3><p>حلويات وقهوة وضيافة</p><span class="h2-chip">✓ قريب منك</span></div></div>
-              </div>
-              <div class="h2-checkout">
-                <div class="h2-checkout-row"><span>سلة مختصرة</span><strong>الإجمالي يظهر قبل التأكيد</strong></div>
-                <div class="h2-checkout-btn">راجع الطلب</div>
-              </div>
-            </div>
+          <div class="dk-trust-item">
+            <span class="t-icon">💵</span>
+            <div><strong>الدفع عند الاستلام</strong><small>ادفع كاش أو ببطاقتك عند الباب</small></div>
           </div>
-
-          <div class="h2-float rating">
-            <div class="h2-float-title"><i>⭐</i> تقييم المتاجر</div>
-            <p>الترتيب يتبع الجودة والتجربة، لا الظهور العشوائي.</p>
-            ${heroRatingFloat}
-            <div class="h2-bars">
-              <div class="h2-bar"><span style="width:82%"></span></div>
-              <div class="h2-bar"><span style="width:68%"></span></div>
-              <div class="h2-bar"><span style="width:76%"></span></div>
-            </div>
+          <div class="dk-trust-item">
+            <span class="t-icon">⭐</span>
+            <div><strong>متاجر مختارة ومقيّمة</strong><small>جودة مضمونة وتتبع مباشر للطلب</small></div>
           </div>
+        </div>
+
+        <!-- Hidden hooks for background timer compatibility -->
+        <div class="h2-slides" id="hero2-slides" style="display:none">
+          <article class="h2-slide active"></article>
+        </div>
+        <div class="h2-dots" id="hero2-dots" style="display:none">
+          <button class="h2-dot active" data-index="0"></button>
         </div>
       </div>
-      <button class="hero2-scroll-indicator" onclick="document.getElementById('nearby-stores')?.scrollIntoView({behavior:'smooth'})">
-        <span>اكتشف المتاجر</span>
+
+      <button class="hero2-scroll-indicator" onclick="document.getElementById('nearby-stores')?.scrollIntoView({behavior:'smooth'})" aria-label="استكشف المتاجر بالأسفل">
+        <span>اكتشف متاجر حيك</span>
         <svg class="scroll-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
       </button>
     </section>
@@ -3534,17 +3679,7 @@ ${paidHeroStrip}
       </div>
     </section>
 
-    ${renderHomeStoriesRail()}
-
     ${bannerStripHTML("home_top")}
-
-    <section class="section mobile-shop-tiles-section">
-      <div class="container">
-        <div class="shop-tiles-grid">
-          ${homeCategoriesOrdered().map((c, i) => shopTile(c.name, c.image, c.caption, i === 0)).join("")}
-        </div>
-      </div>
-    </section>
 
     <!-- No dk-reveal here on purpose: this rail is the homepage's primary
          content and is ~13,000px tall on a phone, so a fade-in is invisible
