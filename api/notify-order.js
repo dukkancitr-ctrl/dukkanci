@@ -296,6 +296,12 @@ function cfg() {
     cc: env("WHATSAPP_DEFAULT_COUNTRY_CODE") || "90",
     lang: env("WHATSAPP_TEMPLATE_LANG") || "ar",
     tplStore: env("WHATSAPP_TEMPLATE_STORE"),
+    // Richer 11-variable store alert (address + map link + payment + dashboard
+    // login). Optional: when it is unset the store alert falls back to the old
+    // 6-variable tplStore exactly as before, so nothing breaks before the new
+    // template is approved in Meta. Body to create in WhatsApp Manager is
+    // documented next to buildStoreOrderParams().
+    tplStoreFull: env("WHATSAPP_TEMPLATE_STORE_FULL"),
     tplCustomer: env("WHATSAPP_TEMPLATE_CUSTOMER"),
     tplStatus: env("WHATSAPP_TEMPLATE_STATUS") || "order_status_update",
     // Admin recipients — get a copy of every new order regardless of whether the
@@ -1084,24 +1090,59 @@ async function sendOrderWhatsapp(c, order, store, priceFlag) {
   const fulfillmentFull = scheduleAr ? `${fulfillmentAr} - ${scheduleAr}` : `${fulfillmentAr} - في أقرب وقت`;
   const results = {};
 
-  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentFull}`
-    + (order.address ? `\nالعنوان: ${order.address}` : "")
-    + (order.payment ? `\nالدفع: ${order.payment}` : "")
-    + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
-  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentFull, itemsLine(order.lineItems) || "-"];
+  // Dashboard login goes to the STORE's own number only — admins receive a copy
+  // of every store's orders, so putting credentials in the shared body would
+  // WhatsApp every merchant's password to the admin phones on every order.
+  const creds = await loadStoreCreds(order.storeId);
 
-  if (storeTo) results.store = await sendWhatsapp(c, storeTo, { template: c.tplStore, params: storeAlertParams, text: storeAlertText });
-  else results.store = { skipped: true, reason: "store has no whatsapp/phone" };
+  // Legacy 6-variable parameters, kept byte-identical to what the approved
+  // `order_store_alert` template expects — it stays the guaranteed-delivery
+  // fallback until the richer template exists.
+  const legacyParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentFull, itemsLine(order.lineItems) || "-"];
+
+  // Meta only allows free-form text inside a 24h customer-service window (opened
+  // by the recipient writing to us first), so it can't be the only path: try the
+  // full formatted message, and on any failure fall back to the approved
+  // template so the merchant is still alerted exactly as before.
+  async function sendAlert(to, { text, params, legacy }) {
+    if (c.tplStoreFull) {
+      const rich = await sendWhatsapp(c, to, { template: c.tplStoreFull, params });
+      // A renamed, rejected or wrong-arity template would otherwise silence every
+      // merchant alert on the platform — always keep the proven one as a net.
+      if (rich.ok || !c.tplStore) return rich;
+      return { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), fellBackFrom: "full-template", fullTemplateError: rich.error };
+    }
+    const free = await sendWhatsapp(c, to, { text });
+    if (free.ok || !c.tplStore) return free;
+    return { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), fellBackFrom: "free-form" };
+  }
+
+  if (storeTo) {
+    results.store = await sendAlert(storeTo, {
+      text: buildStoreOrderText(order, { creds }),
+      params: buildStoreOrderParams(order, { creds }),
+      legacy: legacyParams
+    });
+  } else {
+    results.store = { skipped: true, reason: "store has no whatsapp/phone" };
+  }
 
   if (adminTos.length) {
     const flagNote = priceFlag
       ? `⚠️ تنبيه سعر مشبوه: الإجمالي المُرسَل (${money(priceFlag.total)}) أقل بكثير من السعر الفعلي للمنتجات (${money(priceFlag.expectedSubtotal)}). تحقّق قبل تجهيز الطلب.\n\n`
       : "";
-    const adminText = flagNote + `🛒 [${storeName}] ` + storeAlertText;
-    const adminParams = [...storeAlertParams];
-    adminParams[1] = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
+    // No `creds` here — see the comment above. The store name rides in the
+    // customer slot because the approved template has no store placeholder and
+    // admins need to tell one store's orders from another's.
+    const adminLabel = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
+    const adminText = flagNote + buildStoreOrderText(order, { storeName });
+    const adminParams = buildStoreOrderParams(order, { customerLabel: adminLabel, credsReplacement: `نسخة إدارة — ${storeName}` });
+    const adminLegacy = [...legacyParams];
+    adminLegacy[1] = adminLabel;
     results.admin = [];
-    for (const to of adminTos) results.admin.push({ to, ...(await sendWhatsapp(c, to, { template: c.tplStore, params: adminParams, text: adminText })) });
+    for (const to of adminTos) {
+      results.admin.push({ to, ...(await sendAlert(to, { text: adminText, params: adminParams, legacy: adminLegacy })) });
+    }
   } else {
     results.admin = { skipped: true, reason: "no admin phones configured" };
   }
@@ -1290,7 +1331,16 @@ function normalizeOrder(body) {
       customerPhone: dd.phone || "", total: Number(rec.total) || 0,
       fulfillment: dd.fulfillment || "delivery", address: dd.address || "",
       payment: dd.payment || "", lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [],
-      scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || ""
+      scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || "",
+      // Street/building/apartment detail + map pin + customer notes: carried so
+      // the merchant alert can show a full, deliverable address. All optional —
+      // older clients that omit them simply produce a shorter message.
+      deliveryFee: dd.deliveryFee ?? (dd.quote && dd.quote.fee != null ? Number(dd.quote.fee) : null),
+      subtotal: dd.subtotal ?? null, discount: Number(dd.discount) || 0, creditUsed: Number(dd.creditUsed) || 0,
+      addressDetails: dd.addressDetails || "", fullAddressTr: dd.fullAddressTr || "",
+      structuredAddress: dd.structuredAddress || null,
+      addressLat: dd.addressLat ?? null, addressLng: dd.addressLng ?? null,
+      notes: dd.notes || "", substitution: dd.substitution || ""
     };
   }
   const o = body || {};
@@ -1299,7 +1349,13 @@ function normalizeOrder(body) {
     customerPhone: o.customerPhone || "", total: Number(o.total) || 0,
     fulfillment: o.fulfillment || "delivery", address: o.address || "",
     payment: o.payment || "", lineItems: Array.isArray(o.lineItems) ? o.lineItems : [],
-    scheduleDay: o.scheduleDay || "", scheduleTime: o.scheduleTime || ""
+    scheduleDay: o.scheduleDay || "", scheduleTime: o.scheduleTime || "",
+    deliveryFee: (o.deliveryQuote && o.deliveryQuote.fee != null) ? Number(o.deliveryQuote.fee) : null,
+    subtotal: null, discount: 0, creditUsed: 0,
+    addressDetails: o.addressDetails || "", fullAddressTr: o.fullAddressTr || "",
+    structuredAddress: o.structuredAddress || null,
+    addressLat: o.addressLat ?? null, addressLng: o.addressLng ?? null,
+    notes: o.notes || "", substitution: o.substitution || ""
   };
 }
 
@@ -1347,6 +1403,250 @@ const itemsLine = items => {
   if (shown < parts.length) out += ` • و${parts.length - shown} منتج آخر`;
   return out;
 };
+
+// ───────────────── Store order alert: one builder, every channel ────────────
+// The merchant alert used to be assembled inline in three different places and
+// carried only id/customer/phone/total/fulfillment/items — no street address, no
+// map link, no way into the dashboard. Everything below builds that message ONCE
+// so the WhatsApp copy, the dashboard bell and any future channel can never
+// drift apart again (the "fix one, forget the other" trap in CLAUDE.md §7).
+
+const MERCHANT_PANEL_URL = `${SITE_URL}/merchant`;
+
+// One WhatsApp-template-safe value. Meta rejects any parameter containing a
+// newline, a tab, or 4+ consecutive spaces, so multi-line content is folded onto
+// one line with " · " separators; the template BODY supplies the line breaks.
+// Also caps length so sendWhatsapp's blunt 1024-char slice never cuts mid-word.
+function flatParam(value, max = 700) {
+  const s = String(value == null ? "" : value)
+    .replace(/[\r\n\t]+/g, " · ").replace(/ {2,}/g, " ")
+    .replace(/(\s*·\s*)+/g, " · ").replace(/^\s*·\s*|\s*·\s*$/g, "").trim();
+  if (!s) return "—";
+  return s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s;
+}
+
+// A number we actually recorded, or NaN. Guards the null/0 conflation above:
+// a missing fee must never render as "free" and a missing subtotal must never
+// render as 0 ل.ت.
+function knownNumber(v) { return (v === null || v === undefined || v === "") ? NaN : Number(v); }
+
+// Google Maps link to the customer's door. Prefers the exact pin dropped when
+// the address was saved (the address form refuses to save without one), and
+// falls back to a text search on the written address so older orders — and the
+// published mobile app, which doesn't send coordinates — still get a tappable
+// map instead of nothing.
+function customerMapsLink(order) {
+  const lat = Number(order && order.addressLat);
+  const lng = Number(order && order.addressLng);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+    return `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}`;
+  }
+  const text = [order && order.fullAddressTr, order && order.address, order && order.addressDetails]
+    .filter(Boolean).join(", ").replace(/\s+/g, " ").trim();
+  return text ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text.slice(0, 200))}` : "";
+}
+
+// The delivery address, one fact per line, exactly as the customer entered it.
+// `fullAddressTr` is the composed Turkish address (neighbourhood + street /
+// building + block / door + floor / district + postcode) — it is what a courier
+// actually reads, so it wins over the shorter `address` summary when present.
+function addressLines(order) {
+  if (!order || order.fulfillment === "pickup") return [];
+  const out = [];
+  const full = String(order.fullAddressTr || "").trim();
+  if (full) {
+    full.split("\n").map(l => l.replace(/,\s*$/, "").trim()).filter(Boolean).forEach(l => out.push(l));
+  } else if (order.address) {
+    out.push(String(order.address).trim());
+  }
+  // `addressDetails` is normally just lines 2..n of `fullAddressTr` re-joined by
+  // the client, so printing both repeats the building and door twice. Compare on
+  // letters/digits only (separators differ: ", " vs " — ") and keep it only when
+  // it genuinely adds something the composed lines don't already say.
+  const extra = String(order.addressDetails || "").trim();
+  const bare = t => String(t).replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+  if (extra && !bare(out.join(" ")).includes(bare(extra))) out.push(extra);
+  // Free-text directions ("بجانب الصيدلية") — never part of the composed Turkish
+  // address, and often the one line that actually gets the courier to the door.
+  const note = order.structuredAddress && String(order.structuredAddress.addressNote || "").trim();
+  if (note) out.push(`📝 ${note}`);
+  return out;
+}
+
+// One line per product, with its options/notes indented underneath — the store
+// has to read this while packing, so it never gets collapsed onto one line the
+// way the template parameter does.
+function itemsBlock(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return "-";
+  return list.map((i, n) => {
+    const qty = i.qty || 1;
+    const price = i.price != null ? ` — ${money(Number(i.price) * qty)}` : "";
+    const head = `${n + 1}. ${i.name || "منتج"} ×${qty}${price}`;
+    const sub = [];
+    if (i.options) sub.push(`   ↳ ${String(i.options).replace(/\s*\n\s*/g, " · ")}`);
+    if (i.notes) sub.push(`   ↳ ملاحظة: ${i.notes}`);
+    return [head, ...sub].join("\n");
+  }).join("\n");
+}
+
+// Money breakdown lines: subtotal, delivery fee, coupon discount and wallet
+// credit, then the total the customer actually pays. Anything we don't actually
+// know is left out rather than printed as zero — a merchant reading "رسوم
+// التوصيل: ٠ ل.ت" on an old order would reasonably think delivery was free.
+function moneyLines(order) {
+  const out = [];
+  // `Number(null)` is 0, so null MUST be excluded before the isFinite check —
+  // otherwise an order with no recorded fee prints "مجاني" and tells the
+  // merchant delivery was free when we simply don't know.
+  const fee = knownNumber(order.deliveryFee);
+  const sub = knownNumber(order.subtotal);
+  const discount = Number(order.discount) || 0;
+  const credit = Number(order.creditUsed) || 0;
+  const hasFee = order.fulfillment !== "pickup" && Number.isFinite(fee);
+  // Only worth splitting out when there is something to split: with no fee,
+  // discount or credit the subtotal and the total are the same number twice.
+  const splits = (hasFee && fee > 0) || discount > 0 || credit > 0;
+  if (Number.isFinite(sub) && sub > 0 && splits) out.push(`🧮 مجموع المنتجات: ${money(sub)}`);
+  if (hasFee) out.push(`🚚 رسوم التوصيل: ${fee > 0 ? money(fee) : "مجاني"}`);
+  if (discount > 0) out.push(`🏷️ خصم الكوبون: -${money(discount)}`);
+  if (credit > 0) out.push(`👛 رصيد مستخدم: -${money(credit)}`);
+  out.push(`💰 الإجمالي المطلوب من الزبون: ${money(order.total)}`);
+  return out;
+}
+
+// Login details for the store's own dashboard. Passwords are hashed at rest
+// (H3), so the plaintext only exists for rows written before that change — for
+// an already-hashed row we say where to get a new one instead of inventing or
+// resetting anything (a silent reset would lock out a merchant who knows theirs).
+// Returned to the STORE only; the admin copy of the alert never carries it.
+async function loadStoreCreds(storeId) {
+  try {
+    const rows = await sbGet(`store_credentials?store_id=eq.${encodeURIComponent(storeId)}&select=username,password&limit=1`);
+    const row = Array.isArray(rows) && rows[0];
+    if (!row || !row.username) return null;
+    return { username: row.username, password: isHashedPassword(row.password) ? "" : (row.password || "") };
+  } catch (e) { return null; }
+}
+
+// Full merchant-facing order message. Free-form WhatsApp text (and the dashboard
+// bell) can render it as-is; `buildStoreOrderParams` below flattens the same facts
+// for the approved-template path, which cannot carry newlines.
+function buildStoreOrderText(order, opts) {
+  const o = opts || {};
+  const isPickup = order.fulfillment === "pickup";
+  const schedule = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
+  const L = [];
+
+  L.push("🛒 *طلب جديد على دكانجي*");
+  if (o.storeName) L.push(`🏪 المتجر: ${o.storeName}`);
+  L.push("");
+  L.push(`📦 رقم الطلب: ${order.id}`);
+  L.push("");
+  L.push("*بيانات الزبون*");
+  L.push(`👤 الاسم: ${order.customer || "—"}`);
+  L.push(`📞 الهاتف: ${order.customerPhone || "—"}`);
+  L.push("");
+  L.push(isPickup ? "*الاستلام*" : "*التوصيل*");
+  L.push(isPickup
+    ? `🏬 استلام من المتجر${schedule ? ` — ${schedule}` : " — في أقرب وقت"}`
+    : `🚚 توصيل${schedule ? ` — ${schedule}` : " — في أقرب وقت"}`);
+  if (!isPickup) {
+    const lines = addressLines(order);
+    if (lines.length) {
+      L.push("📍 العنوان:");
+      lines.forEach(l => L.push(`   ${l}`));
+    } else {
+      L.push("📍 العنوان: لم يُحدَّد — يرجى التواصل مع الزبون");
+    }
+    const map = customerMapsLink(order);
+    if (map) { L.push("🗺️ الموقع على الخريطة:"); L.push(map); }
+  }
+  L.push("");
+  L.push("*تفاصيل الطلب*");
+  L.push(itemsBlock(order.lineItems));
+  L.push("");
+  // Money breakdown. Every line except the total is conditional: an order placed
+  // before the fee was recorded, or a pickup order, simply shows fewer lines
+  // rather than a made-up "0 ل.ت" the merchant would have to second-guess.
+  moneyLines(order).forEach(l => L.push(l));
+  if (order.payment) L.push(`💳 الدفع: ${order.payment}`);
+  if (order.notes) L.push(`📝 ملاحظات الزبون: ${order.notes}`);
+  if (order.substitution) L.push(`🔄 عند نفاد صنف: ${order.substitution}`);
+
+  if (o.creds) {
+    L.push("");
+    L.push("*لوحة متجرك*");
+    L.push(`🔗 ${MERCHANT_PANEL_URL}`);
+    L.push(`👤 اسم المستخدم: ${o.creds.username}`);
+    L.push(o.creds.password
+      ? `🔑 كلمة المرور: ${o.creds.password}`
+      : "🔑 كلمة المرور: هي التي استلمتها عند تفعيل متجرك — لإصدار كلمة مرور جديدة تواصل مع إدارة دكانجي.");
+    L.push("من اللوحة يمكنك متابعة الطلب وتغيير حالته وتعديل أسعار منتجاتك.");
+  }
+  return L.join("\n");
+}
+
+// Same facts, flattened for a WhatsApp template. The 13 values below map 1:1 to
+// {{1}}..{{11}} of the template named in WHATSAPP_TEMPLATE_STORE_FULL — create it
+// in WhatsApp Manager (category Utility, language Arabic) with EXACTLY this body,
+// then set the env var to its name:
+//
+//   🛒 طلب جديد على دكانجي
+//
+//   📦 رقم الطلب: {{1}}
+//   👤 الزبون: {{2}}
+//   📞 هاتف الزبون: {{3}}
+//
+//   🚚 الاستلام: {{4}}
+//   📍 العنوان: {{5}}
+//   🗺️ الخريطة: {{6}}
+//
+//   🧾 المنتجات: {{7}}
+//   🧮 مجموع المنتجات: {{8}}
+//   🚚 رسوم التوصيل: {{9}}
+//   💰 الإجمالي المطلوب من الزبون: {{10}}
+//   💳 الدفع: {{11}}
+//   📝 ملاحظات: {{12}}
+//
+//   🔐 لوحة متجرك: https://www.dukkanci.com.tr/merchant
+//   {{13}}
+//
+//   نرجو تجهيز الطلب والتواصل مع الزبون في أقرب وقت. شكراً لك.
+//
+// Keep the order of the variables — they are positional, and a mismatch would
+// silently put the phone number under "الإجمالي".
+function buildStoreOrderParams(order, opts) {
+  const o = opts || {};
+  const isPickup = order.fulfillment === "pickup";
+  const schedule = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
+  const fulfillment = (isPickup ? "استلام من المتجر" : "توصيل") + (schedule ? ` - ${schedule}` : " - في أقرب وقت");
+  const extras = [order.notes ? `ملاحظات الزبون: ${order.notes}` : "",
+                  order.substitution ? `عند نفاد صنف: ${order.substitution}` : "",
+                  Number(order.discount) > 0 ? `خصم كوبون: -${money(order.discount)}` : "",
+                  Number(order.creditUsed) > 0 ? `رصيد مستخدم: -${money(order.creditUsed)}` : ""].filter(Boolean).join(" · ");
+  const creds = o.creds
+    ? `اسم المستخدم: ${o.creds.username} · كلمة المرور: ${o.creds.password || "التي استلمتها عند تفعيل متجرك (للاستعادة تواصل مع إدارة دكانجي)"}`
+    : (o.credsReplacement || "—");
+  return [
+    flatParam(order.id, 60),
+    flatParam(o.customerLabel || order.customer, 120),
+    flatParam(order.customerPhone, 40),
+    flatParam(fulfillment, 120),
+    flatParam(isPickup ? "استلام من المتجر" : (addressLines(order).join(" · ") || "لم يُحدَّد — تواصل مع الزبون"), 500),
+    flatParam(isPickup ? "—" : (customerMapsLink(order) || "—"), 300),
+    flatParam(itemsLine(order.lineItems), 700),
+    // Subtotal / delivery fee: "—" when this order simply has no record of them
+    // (pickup, or placed before the fee was persisted) rather than a false zero.
+    flatParam(knownNumber(order.subtotal) > 0 ? money(order.subtotal) : "—", 40),
+    flatParam(isPickup || !Number.isFinite(knownNumber(order.deliveryFee)) ? "—"
+      : (knownNumber(order.deliveryFee) > 0 ? money(order.deliveryFee) : "مجاني"), 40),
+    flatParam(money(order.total), 40),
+    flatParam(order.payment || "—", 80),
+    flatParam(extras || "لا توجد", 300),
+    flatParam(creds, 200)
+  ];
+}
 
 // Default customer-facing line for each order status, used when the merchant
 // leaves the note blank. Mirrors the statuses in app.js's order manager.
@@ -1947,9 +2247,18 @@ module.exports = async (req, res) => {
         id: orderId, store_id: storeId, customer, total, status: "طلب جديد", time: "الآن",
         items: totalQty,
         delivery_details: {
-          quote: deliveryMeta, phone: customerPhone, phoneKey: customerPhone.replace(/\D/g, ""),
+          // `quote` used to carry distance only, so a create-order row had no
+          // record of what delivery actually cost — the merchant alert and the
+          // dashboard both read the fee from here now.
+          quote: fulfillment === "pickup" ? null : { ...(deliveryMeta || {}), fee: delivery },
+          subtotal, deliveryFee: delivery,
+          phone: customerPhone, phoneKey: customerPhone.replace(/\D/g, ""),
           fulfillment, address: String(body.address || "").slice(0, 300), addressDetails: String(body.addressDetails || "").slice(0, 300),
           structuredAddress: body.structuredAddress || null, fullAddressTr: String(body.fullAddressTr || "").slice(0, 600),
+          // Map pin of the customer's door (see customerMapsLink) — kept as a
+          // number or null so a malformed client value can't poison the row.
+          addressLat: Number.isFinite(Number(body.addressLat)) ? Number(body.addressLat) : null,
+          addressLng: Number.isFinite(Number(body.addressLng)) ? Number(body.addressLng) : null,
           lineItems, notes: String(body.notes || "").slice(0, 500), substitution: String(body.substitution || "").slice(0, 200),
           payment: String(body.payment || "نقداً عند التسليم").slice(0, 60),
           scheduleDay: String(body.scheduleDay || "").slice(0, 40), scheduleTime: String(body.scheduleTime || "").slice(0, 40),
@@ -1983,15 +2292,26 @@ module.exports = async (req, res) => {
       // silently skipped every merchant notification (WhatsApp/panel/push) —
       // found 2026-09-11 on DK-426788084: notification_attempts stayed 0.
       try {
+        const dd = orderRow.delivery_details;
         const orderForNotify = {
           id: savedRow.id, storeId, customer, customerPhone, total, fulfillment,
-          address: orderRow.delivery_details.address, payment: orderRow.delivery_details.payment,
-          lineItems, scheduleDay: orderRow.delivery_details.scheduleDay, scheduleTime: orderRow.delivery_details.scheduleTime
+          address: dd.address, payment: dd.payment,
+          lineItems, scheduleDay: dd.scheduleDay, scheduleTime: dd.scheduleTime,
+          // Everything the merchant needs to actually deliver: full street
+          // address, the map pin, and what the customer asked for.
+          deliveryFee: dd.deliveryFee, subtotal: dd.subtotal, discount: dd.discount, creditUsed: dd.creditUsed,
+          addressDetails: dd.addressDetails, fullAddressTr: dd.fullAddressTr,
+          structuredAddress: dd.structuredAddress,
+          addressLat: dd.addressLat, addressLng: dd.addressLng,
+          notes: dd.notes, substitution: dd.substitution
         };
         let push = { skipped: true };
         try { push = await pushNewOrder(orderForNotify); } catch (e) {}
+        // Full order (address, map link, items, payment) in the bell itself —
+        // this channel has no template/length limits and no Meta dependency, so
+        // the merchant always has the complete order somewhere they can read it.
         await notifyMerchant(storeId, "new_order", "طلب جديد 🛒",
-          `طلب ${orderForNotify.id} من ${customer} بقيمة ${money(total)}.`, "order", orderForNotify.id);
+          buildStoreOrderText(orderForNotify, {}), "order", orderForNotify.id);
         let notifyResult = { skipped: true, reason: "whatsapp not configured" };
         if (c.token && c.phoneId) notifyResult = await sendOrderWhatsapp(c, orderForNotify, store, null);
         const anyOk = !!(notifyResult && (
@@ -2587,7 +2907,13 @@ module.exports = async (req, res) => {
     const orderForNotify = {
       id: row.id, storeId: row.store_id, customer: row.customer, customerPhone: dd.phone || row.customer_phone || "",
       total: row.total, fulfillment: dd.fulfillment || "delivery", address: dd.address || "", payment: dd.payment || "",
-      lineItems: dd.lineItems || [], scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || ""
+      lineItems: dd.lineItems || [], scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || "",
+      deliveryFee: dd.deliveryFee ?? (dd.quote && dd.quote.fee != null ? Number(dd.quote.fee) : null),
+      subtotal: dd.subtotal ?? null, discount: Number(dd.discount) || 0, creditUsed: Number(dd.creditUsed) || 0,
+      addressDetails: dd.addressDetails || "", fullAddressTr: dd.fullAddressTr || "",
+      structuredAddress: dd.structuredAddress || null,
+      addressLat: dd.addressLat ?? null, addressLng: dd.addressLng ?? null,
+      notes: dd.notes || "", substitution: dd.substitution || ""
     };
     let notifyResult = { skipped: true, reason: "whatsapp not configured" };
     if (c.token && c.phoneId) notifyResult = await sendOrderWhatsapp(c, orderForNotify, store, null);
@@ -3144,6 +3470,12 @@ module.exports = async (req, res) => {
       items: Number(b.items) || (Array.isArray(order.lineItems) ? order.lineItems.length : 0),
       delivery_details: {
         quote: b.deliveryQuote ?? null,
+        // Same field name as the create-order path so every reader (merchant
+        // alert, dashboard, reports) finds the delivery fee in one place.
+        // NOT `subtotal`: the only product figure this path has is the repriced
+        // floor (addons/variants aren't modelled), so recording it under that
+        // name would hand a later reader a number that isn't what was charged.
+        deliveryFee: (b.deliveryQuote && b.deliveryQuote.fee != null) ? Number(b.deliveryQuote.fee) : null,
         phone: ddPhone,
         phoneKey: ddPhone.replace(/\D/g, ""),
         fulfillment: order.fulfillment || "delivery",
@@ -3154,6 +3486,10 @@ module.exports = async (req, res) => {
         // still save exactly as before.
         structuredAddress: b.structuredAddress || null,
         fullAddressTr: b.fullAddressTr || "",
+        // Map pin of the customer's door, so the merchant alert (and a later
+        // re-send from the dashboard) can link straight to Google Maps.
+        addressLat: b.addressLat ?? null,
+        addressLng: b.addressLng ?? null,
         lineItems: order.lineItems || [],
         notes: b.notes || "",
         substitution: b.substitution || "",
@@ -3190,7 +3526,6 @@ module.exports = async (req, res) => {
   // WHERE messages go.
   const rows = await sbGet(`stores?id=eq.${encodeURIComponent(order.storeId)}&select=name,phone,whatsapp&limit=1`);
   const store = rows && rows[0];
-  const storeName = (store && store.name) || "متجرك";
 
   // Browser push to the store + admins — independent of WhatsApp, so it works
   // even while the WhatsApp number is down. Fire before the WhatsApp gate below.
@@ -3199,74 +3534,16 @@ module.exports = async (req, res) => {
 
   // In-dashboard notification bell (spec §19) — independent of push/WhatsApp.
   await notifyMerchant(order.storeId, "new_order", "طلب جديد 🛒",
-    `طلب ${order.id} من ${order.customer || "عميل"} بقيمة ${money(order.total)}.`, "order", order.id);
+    buildStoreOrderText(order, {}), "order", order.id);
 
   if (!c.token || !c.phoneId) {
     return res.status(200).json({ ok: true, order: order.id, push, whatsapp: { skipped: true, reason: "whatsapp not configured" } });
   }
-  const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
-  const adminTos = c.adminPhones.map(p => toE164(p, c.cc)).filter(Boolean);
-  const custTo = toE164(order.customerPhone, c.cc);
-  const fulfillmentAr = order.fulfillment === "pickup" ? "استلام من المتجر" : "توصيل";
-  // Fold the requested delivery/pickup time into the same param slot so the
-  // store sees it without opening the dashboard — no new template param needed.
-  const scheduleAr = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
-  const fulfillmentFull = scheduleAr ? `${fulfillmentAr} - ${scheduleAr}` : `${fulfillmentAr} - في أقرب وقت`;
-  const results = {};
-
-  const storeAlertText = `🛒 طلب جديد على دكانجي\n\nرقم الطلب: ${order.id}\nالزبون: ${order.customer}\nهاتف الزبون: ${order.customerPhone}\nالإجمالي: ${money(order.total)}\nالاستلام: ${fulfillmentFull}`
-    + (order.address ? `\nالعنوان: ${order.address}` : "")
-    + (order.payment ? `\nالدفع: ${order.payment}` : "")
-    + `\n\nالمنتجات:\n${itemsLine(order.lineItems) || "-"}\n\nافتح لوحة دكانجي لإدارة الطلب.`;
-  const storeAlertParams = [String(order.id), order.customer, order.customerPhone, money(order.total), fulfillmentFull, itemsLine(order.lineItems) || "-"];
-
-  // 1) Notify the STORE.
-  if (storeTo) {
-    results.store = await sendWhatsapp(c, storeTo, { template: c.tplStore, params: storeAlertParams, text: storeAlertText });
-  } else {
-    results.store = { skipped: true, reason: "store has no whatsapp/phone" };
-  }
-
-  // 2) Notify the PLATFORM ADMINS — always, independent of the store's own
-  // number/delivery so an admin copy never depends on that store's contact
-  // info being correct. Same approved template (no store-name placeholder
-  // exists in it), so the store name is folded into the customer-name slot —
-  // admins get every store's orders on their number and need to tell them apart.
-  // Sent to each configured admin number in turn (never the platform's own
-  // sending number — WhatsApp Cloud API can't deliver a message to itself).
-  if (adminTos.length) {
-    const flagNote = priceFlag
-      ? `⚠️ تنبيه سعر مشبوه: الإجمالي المُرسَل (${money(priceFlag.total)}) أقل بكثير من السعر الفعلي للمنتجات (${money(priceFlag.expectedSubtotal)}). تحقّق قبل تجهيز الطلب.\n\n`
-      : "";
-    const adminText = flagNote + `🛒 [${storeName}] ` + storeAlertText;
-    const adminParams = [...storeAlertParams];
-    adminParams[1] = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
-    results.admin = [];
-    for (const to of adminTos) {
-      results.admin.push({ to, ...(await sendWhatsapp(c, to, { template: c.tplStore, params: adminParams, text: adminText })) });
-    }
-  } else {
-    results.admin = { skipped: true, reason: "no admin phones configured" };
-  }
-
-  // 3) Acknowledge to the CUSTOMER.
-  if (custTo) {
-    const text = `✅ تم استلام طلبك على دكانجي\n\nرقم الطلب: ${order.id}\nالمتجر: ${storeName}\nالإجمالي: ${money(order.total)}\n\nسنعلمك فور تأكيد المتجر لطلبك. شكراً لاستخدامك دكانجي 🛍️`;
-    const params = [String(order.id), storeName, money(order.total)];
-    results.customer = await sendWhatsapp(c, custTo, { template: c.tplCustomer, params, text });
-  } else {
-    results.customer = { skipped: true, reason: "no customer phone" };
-  }
-
-  // Record which recipients actually got a copy — otherwise a silent send
-  // failure (bad number, Meta rate-limit, template rejected) leaves no trace
-  // anywhere and looks identical to "it worked".
-  try {
-    const adminOk = Array.isArray(results.admin) ? results.admin.every(r => r.ok) : !!(results.admin && results.admin.ok);
-    await logAudit(order.storeId, "system", "order_notify", "order", order.id, null, {
-      store: !!(results.store && results.store.ok), admin: adminOk, customer: !!(results.customer && results.customer.ok)
-    });
-  } catch (e) {}
+  // Same sender as the create-order path — one builder, one format, so the two
+  // entry points (this legacy endpoint the published mobile app still uses, and
+  // create-order used by the website) can never drift apart again. It notifies
+  // the store, every admin number and the customer, and writes the audit row.
+  const results = await sendOrderWhatsapp(c, order, store, priceFlag);
 
   return res.status(200).json({ ok: true, order: order.id, results, push });
 };

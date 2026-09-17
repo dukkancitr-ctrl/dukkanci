@@ -1146,6 +1146,8 @@ function pushOrderCloud(order, opts = {}) {
       addressDetails: order.addressDetails || "",
       structuredAddress: order.structuredAddress || null,
       fullAddressTr: order.fullAddressTr || "",
+      addressLat: order.addressLat ?? null,
+      addressLng: order.addressLng ?? null,
       lineItems: order.lineItems || [],
       notes: order.notes || "",
       substitution: order.substitution || "",
@@ -1221,6 +1223,7 @@ function notifyOrderWhatsapp(order) {
         status: order.status, time: order.time, items: order.items,
         addressDetails: order.addressDetails,
         structuredAddress: order.structuredAddress, fullAddressTr: order.fullAddressTr,
+        addressLat: order.addressLat, addressLng: order.addressLng,
         notes: order.notes,
         substitution: order.substitution, scheduleDay: order.scheduleDay,
         scheduleTime: order.scheduleTime, closedWhenOrdered: order.closedWhenOrdered,
@@ -1261,6 +1264,7 @@ function mapDbOrder(r) {
     status: r.status, time: r.time, items: r.items,
     customerPhone: dd.phone || "", fulfillment: dd.fulfillment || (quote ? "delivery" : "pickup"),
     address: dd.address || "", addressDetails: dd.addressDetails || "",
+    fullAddressTr: dd.fullAddressTr || "", addressLat: dd.addressLat ?? null, addressLng: dd.addressLng ?? null,
     lineItems: Array.isArray(dd.lineItems) ? dd.lineItems : [], notes: dd.notes || "",
     substitution: dd.substitution || "", payment: dd.payment || "",
     scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || "",
@@ -16693,6 +16697,11 @@ document.addEventListener("submit", async event => {
       // existing reader (WhatsApp text, admin table) keeps working as-is.
       structuredAddress: isPickup ? null : (addrObj?.structured || null),
       fullAddressTr: isPickup ? "" : (addrObj?.fullAddressTr || ""),
+      // Map pin of the door the customer marked (the address form refuses to
+      // save without one). Sent on so the merchant's order alert can link
+      // straight to Google Maps instead of only naming the street.
+      addressLat: isPickup ? null : (addrObj?.lat ?? null),
+      addressLng: isPickup ? null : (addrObj?.lng ?? null),
       lineItems,
       notes: (state.cartNote || "").trim(),
       substitution: els.substitution?.value || "",
@@ -16737,6 +16746,7 @@ document.addEventListener("submit", async event => {
         creditApplied: orderCredit,
         address: newOrder.address, addressDetails: newOrder.addressDetails,
         structuredAddress: newOrder.structuredAddress, fullAddressTr: newOrder.fullAddressTr,
+        addressLat: newOrder.addressLat, addressLng: newOrder.addressLng,
         notes: newOrder.notes, substitution: newOrder.substitution, payment: newOrder.payment,
         scheduleDay: newOrder.scheduleDay, scheduleTime: newOrder.scheduleTime,
         closedWhenOrdered: storeClosedNow,
