@@ -16,7 +16,7 @@
 
   <meta property="og:type" content="website">
   <meta property="og:title" content="افتح متجرك داخل السوق العربي الرقمي في إسطنبول | دكانجي">
-  <meta property="og:description" content="قناة بيع عربية جديدة أمام آلاف العملاء في إسطنبول. بدون عمولات على المبيعات، طلبات على واتساب، وإدارة من الموبايل.">
+  <meta property="og:description" content="قناة بيع عربية جديدة أمام عملاء عرب في إسطنبول يبحثون عن احتياجاتهم اليومية. بدون عمولات على المبيعات، طلبات على واتساب، وإدارة من الموبايل.">
   <meta property="og:image" content="/assets/dukkanci-app-icon-512.png">
   <meta property="og:locale" content="ar_AR">
   <meta name="twitter:card" content="summary_large_image">
@@ -324,7 +324,7 @@
         </div>
         <div class="stat-card">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 3-4.5 6-4.5S15 16 15 19"/><path d="M16 6a3 3 0 0 1 0 6M21 19c0-2-1-3.2-3-3.8"/></svg></span>
-          <strong>+50</strong><span>متجر شريك على المنصة</span>
+          <strong id="merchant-store-count">+90</strong><span>متجر شريك على المنصة</span>
         </div>
         <div class="stat-card">
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span>
@@ -568,5 +568,33 @@
       <span><a href="https://www.dukkanci.com.tr/">العودة إلى الموقع</a> · <a href="/privacy.html">سياسة الخصوصية</a></span>
     </div>
   </footer>
+
+  <script>
+    // عدد حي فعلاً من قاعدة البيانات، لا رقم ثابت — كي لا يظهر رقم قديم مع نمو المنصة.
+    // عند فشل الجلب يبقى الرقم الاحتياطي في الأعلى (+90)، وهو دائماً أقل من العدد الحقيقي فلا يبالغ أبداً.
+    (function () {
+      var el = document.getElementById("merchant-store-count");
+      if (!el) return;
+      fetch("/api/config", { headers: { Accept: "application/json" } })
+        .then(function (r) { return r && r.ok ? r.json() : null; })
+        .then(function (cfg) {
+          if (!cfg || !cfg.configured || !cfg.url || !cfg.anonKey) return null;
+          var base = String(cfg.url).replace(/\/+$/, "");
+          var endpoint = base + "/rest/v1/stores?select=id&open=eq.true&approval_status=eq.approved";
+          return fetch(endpoint, {
+            headers: { apikey: cfg.anonKey, Authorization: "Bearer " + cfg.anonKey, Prefer: "count=exact" },
+            cache: "no-store"
+          });
+        })
+        .then(function (res) { return res && res.ok ? res : null; })
+        .then(function (res) {
+          if (!res) return;
+          var range = res.headers.get("content-range") || "";
+          var total = parseInt(range.split("/")[1], 10);
+          if (Number.isFinite(total) && total > 0) el.textContent = "+" + total.toLocaleString("ar");
+        })
+        .catch(function () { /* يبقى الرقم الاحتياطي كما هو */ });
+    })();
+  </script>
 </body>
 </html>
