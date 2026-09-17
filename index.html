@@ -195,6 +195,19 @@
             </button>
           </div>
         </div>
+
+        <!-- Paid header placement: the four merchant-paid stores (same ids as
+             PAID_PRIORITY_STORE_IDS in app.js). Static links so they render on
+             every page (and in SSR shells) before any JS runs. -->
+        <div class="featured-stores-bar">
+          <div class="container featured-stores-bar__inner">
+            <span class="featured-stores-bar__label"><span class="icon-slot" data-icon="star"></span>متاجر مميزة</span>
+            <a href="/store/alkhawali-restaurant" data-action="open-store" data-id="31">مطعم الخوالي</a>
+            <a href="/store/pasa-pizzeria-restaurant" data-action="open-store" data-id="56">مطعم باشا بيتزريا</a>
+            <a href="/store/domani" data-action="open-store" data-id="84">ملحمة الدوماني</a>
+            <a href="/store/safa-alsham-market" data-action="open-store" data-id="50">ماركت صفا الشام</a>
+          </div>
+        </div>
       </header>
 
       <main id="app" tabindex="-1"></main>
@@ -258,8 +271,8 @@
             <a href="/offers"><span class="dk-menu-badge">توفير</span> عروض دكانجي</a>
             <a href="/regions">المتاجر حسب المنطقة</a>
             <a href="/dalil">دليل المطاعم والمتاجر</a>
-            <a href="/stores?cat=restaurants">مطاعم ومأكولات</a>
-            <a href="/stores?cat=market">سوبر ماركت ومؤونة</a>
+            <a href="/category/restaurants">مطاعم ومأكولات</a>
+            <a href="/category/supermarket">سوبر ماركت ومؤونة</a>
           </div>
 
           <!-- About & Partners -->
@@ -446,7 +459,7 @@
     <script src="/bludanmarket-data.js?v=1"></script>
     <script src="/galatawater-data.js?v=11"></script>
     <script src="/krepma-data.js?v=3"></script>
-    <script src="/app.js?v=379"></script>
+    <script src="/app.js?v=380"></script>
     <script src="/tracking.js?v=8"></script>
     <script src="/integrations.js?v=93"></script>
     <script src="/assets/capacitor-bridge.js?v=1"></script>

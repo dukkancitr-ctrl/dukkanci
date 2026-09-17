@@ -2275,7 +2275,9 @@ function etaChip(store, { withDistanceFallback = false } = {}) {
     const km = branchDistanceKm(store);
     if (km != null) return `<span>${icon("pin")} ${formatDistance(km)}</span>`;
   }
-  return `<span>${icon("clock")} ${store.time}</span>`;
+  // Some stores (e.g. a fresh listing) have no `time` estimate set at all — fall
+  // back to an honest generic label instead of printing an empty badge.
+  return `<span>${icon("clock")} ${store.time || "حسب موقعك"}</span>`;
 }
 
 // ───────────────── Feature 5: voice search (feature_voice_search) ─────────────────
@@ -2660,6 +2662,19 @@ function updateCartBadges() {
   updateFloatingMiniCart();
 }
 
+// Highest real discount % live right now, never a made-up marketing round
+// number — the platform's actual best deal at any given moment can be lower
+// (or higher) than whatever number a copywriter guessed.
+function maxLiveOfferDiscountPct() {
+  let max = 0;
+  for (const p of products) {
+    if (!p.oldPrice || !p.available || p.oldPrice <= p.price) continue;
+    const pct = Math.round((1 - p.price / p.oldPrice) * 100);
+    if (pct > max) max = pct;
+  }
+  return max;
+}
+
 // Honest count of currently live offers (never a fabricated/urgency number) —
 // shown as a small badge on the mobile "العروض" tab so it doesn't rely on the
 // user stumbling onto the offers page to know deals exist.
@@ -2958,6 +2973,41 @@ const QUICK_SEARCH_CHIPS = ["دجاج مشوي", "رز", "لحوم", "حلويا
 // حسب تصميمه أصلاً) ولا يتجاوز فرزاً صريحاً اختاره الزائر بنفسه (تقييم/سعر
 // توصيل/الأقرب) في صفحة المتاجر.
 const PAID_PRIORITY_STORE_IDS = [31, 56, 84, 50];
+// Fixed copy for the 4 paid stores' homepage hero cards — only what the
+// platform actually knows won't change per store (a one-line pitch + which
+// commitment badge applies). Everything that could be wrong or stale (photo,
+// rating, delivery time) is read live from the store's own DB row in
+// heroPaidCards() below instead of being hardcoded here.
+const HERO_PAID_CARD_COPY = {
+  31: { desc: "مشاوي، كباب، وشاورما على أصولها", badge: "0% عمولة ✓" },
+  56: { desc: "بيتزا إيطالية، باستا، ومناقيش طازجة", badge: "0% عمولة ✓" },
+  84: { desc: "لحوم غنم وعجل بلدي وتجهيزات للشواء", badge: "أسعار الملحمة ✓" },
+  50: { desc: "سوبر ماركت سوري وتركي ومؤونة البيت", badge: "دفع عند الباب ✓" }
+};
+// Real photo + rating + delivery time for each paid hero card, straight from
+// the store's own row — never a fabricated number or a stock photo that
+// doesn't belong to that store (a butcher showing a bakery's photo, etc).
+function heroPaidCards() {
+  return PAID_PRIORITY_STORE_IDS.map(id => {
+    const store = stores.find(s => s.id === id);
+    const copy = HERO_PAID_CARD_COPY[id];
+    if (!store || !copy || !isStoreApproved(store)) return null;
+    const img = store.coverImage || store.image || "/assets/photos/store-market.jpg";
+    const rated = Number(store.reviews) > 0;
+    // Same honest priority as etaChip() (real ETA feature > distance > the
+    // store's own estimate) but plain text to match this card's emoji badge
+    // style instead of etaChip's SVG-icon markup.
+    let time = store.time || "حسب موقعك";
+    if (isFeatureOn("feature_eta_tightening")) {
+      const eta = estimateEta(store);
+      if (eta) time = `${eta.low}–${eta.high} د`;
+    } else {
+      const km = branchDistanceKm(store);
+      if (km != null) time = formatDistance(km);
+    }
+    return { store, ...copy, img, rated, time };
+  }).filter(Boolean);
+}
 // متاجر تتصدّر شبكة «خصومات اليوم» في /offers وحدها — لا علاقة لها بـ
 // PAID_PRIORITY_STORE_IDS التي ترتّب قوائم المتاجر على المنصة كلها وتُمثّل
 // التزام دفع قائم. قائمة منفصلة عمداً كي لا يُخلط ترتيب صفحة واحدة بذلك
@@ -3121,7 +3171,7 @@ function nearbyStoreCard(store) {
           </div>
           <div class="badge-bottom-row">
             ${etaChip(store, { withDistanceFallback: true })}
-            <span class="rating-pill">★ ${store.rating || "4.8"} ${store.reviews ? `<small>(${store.reviews})</small>` : ""}</span>
+            ${Number(store.reviews) > 0 ? `<span class="rating-pill">★ ${store.rating} <small>(${store.reviews})</small></span>` : ""}
           </div>
         </div>
         <button class="favorite-button ${isFavorite ? "active" : ""}" data-action="favorite" data-key="store-${store.id}" aria-label="إضافة للمفضلة">
@@ -3356,13 +3406,14 @@ function updateFloatingMiniCart() {
 }
 
 function renderHomePromoBanners() {
+  const maxPct = maxLiveOfferDiscountPct();
   return `
     <div class="dk-mobile-promo-slider" aria-label="عروض ومزايا دكانجي">
       <div class="dk-promo-track">
         <div class="dk-promo-card dk-promo-card--red">
           <div class="dk-promo-content">
             <span class="dk-promo-tag">🔥 أقوى توفير بالحي</span>
-            <h3>وفر حتى 30% مع عروض اليوم</h3>
+            <h3>${maxPct > 0 ? `وفر حتى ${maxPct}% مع عروض اليوم` : "خصومات اليوم من متاجر حيّك"}</h3>
             <p>خصومات حقيقية وحصرية من أشهر مطاعم ومتاجر إسطنبول</p>
             <a href="/offers" data-route="offers" class="dk-promo-btn">تصفح العروض الآن ←</a>
           </div>
@@ -3397,6 +3448,7 @@ function renderHomePromoBanners() {
 }
 
 function renderAppTilesGrid() {
+  const maxOfferPct = maxLiveOfferDiscountPct();
   const tiles = [
     { name: "مطاعم", label: "مطاعم ومشاوي", sub: "وجبات ساخنة", emoji: "🍔", bg: "#fff3ec", border: "#fed7aa", color: "#c2410c", route: null },
     { name: "سوبر ماركت", label: "سوبر ماركت", sub: "مؤونة البيت", emoji: "🛒", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d", route: null },
@@ -3405,7 +3457,7 @@ function renderAppTilesGrid() {
     { name: "مخابز", label: "أفران ومعجنات", sub: "مناقيش وخبز", emoji: "🥐", bg: "#fffbeb", border: "#fde68a", color: "#b45309", route: null },
     { name: "بن ومكسرات", label: "محامص وبن", sub: "قهوة وبهارات", emoji: "☕", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce", route: null },
     { name: "المياه المعدنية", label: "مياه ومشروبات", sub: "توصيل للباب", emoji: "💧", bg: "#f0f9ff", border: "#bae6fd", color: "#0369a1", route: null },
-    { name: "عروض", label: "عروض وتوفير", sub: "وفر حتى 30%", emoji: "🔥", bg: "#fff1f2", border: "#fecdd3", color: "#e11d48", route: "offers" }
+    { name: "عروض", label: "عروض وتوفير", sub: maxOfferPct > 0 ? `وفر حتى ${maxOfferPct}%` : "خصومات اليوم", emoji: "🔥", bg: "#fff1f2", border: "#fecdd3", color: "#e11d48", route: "offers" }
   ];
 
   return `
@@ -3477,19 +3529,6 @@ function renderHome() {
   };
   const bHref = hb.link || "#offers";
   const bAttrs = `href="${escAttr(bHref)}"${/^(https?:|tel:|mailto:|wa\.me)/i.test(bHref) ? ' target="_blank" rel="noopener"' : ""}`;
-  const paidHeroStores = PAID_PRIORITY_STORE_IDS.map(id => stores.find(s => s.id === id)).filter(s => s && isStoreApproved(s));
-  const paidHeroStrip = paidHeroStores.length ? `
-          <div class="h2-featured" aria-label="متاجر مميزة">
-            <span class="h2-featured-label">${icon("star")} متاجر مميزة</span>
-            ${paidHeroStores.map(s => `<a class="h2-featured-chip" href="/store/${escAttr(storeParam(s))}" data-action="open-store" data-id="${s.id}">${storeAvatar(s)}<span>${esc(s.name)}</span></a>`).join("")}
-          </div>` : "";
-  const ratedHeroStores = stores.filter(s => (Number(s.reviews) || 0) > 0);
-  let heroRatingFloat = "";
-  if (ratedHeroStores.length) {
-    const totalRev = ratedHeroStores.reduce((a, s) => a + Number(s.reviews), 0);
-    const avgRating = (ratedHeroStores.reduce((a, s) => a + (Number(s.rating) || 0) * Number(s.reviews), 0) / totalRev).toFixed(1);
-    heroRatingFloat = `<div class="h2-rate-num"><strong>${avgRating}</strong><small>متوسط تقييم المتاجر</small></div>`;
-  }
   return `
     <section class="hero2 dk-hero-immersive">
       <div class="dk-hero-glow-1" aria-hidden="true"></div>
@@ -3560,69 +3599,22 @@ function renderHome() {
           </div>
 
           <div class="dk-hero-cards-grid">
-            <a href="/store/alkhawali-restaurant" data-action="open-store" data-id="31" class="dk-h-card">
+            ${heroPaidCards().map(c => `
+            <a href="/store/${escAttr(storeParam(c.store))}" data-action="open-store" data-id="${c.store.id}" class="dk-h-card">
               <div class="dk-h-card-media">
-                <img src="/assets/photos/product-meat.jpg" alt="مطعم الخوالي" loading="eager">
-                <span class="dk-h-time">⏱️ 25 - 40 د</span>
-                <span class="dk-h-rating">★ 4.8</span>
+                <img src="${escAttr(c.img)}" alt="${escAttr(c.store.name)}" loading="eager">
+                <span class="dk-h-time">⏱️ ${esc(c.time)}</span>
+                ${c.rated ? `<span class="dk-h-rating">★ ${esc(c.store.rating)}</span>` : ""}
               </div>
               <div class="dk-h-card-body">
-                <strong>مطعم الخوالي</strong>
-                <p>مشاوي، كباب، وشاورما على أصولها</p>
+                <strong>${esc(c.store.name)}</strong>
+                <p>${esc(c.desc)}</p>
                 <div class="dk-h-foot">
-                  <span class="dk-h-badge">0% عمولة ✓</span>
+                  <span class="dk-h-badge">${esc(c.badge)}</span>
                   <span class="dk-h-action">اطلب الآن ←</span>
                 </div>
               </div>
-            </a>
-
-            <a href="/store/pasa-pizzeria-restaurant" data-action="open-store" data-id="56" class="dk-h-card">
-              <div class="dk-h-card-media">
-                <img src="/assets/photos/product-baklava.jpg" alt="مطعم باشا بيتزريا" loading="eager">
-                <span class="dk-h-time">⏱️ 30 - 45 د</span>
-                <span class="dk-h-rating">★ 4.9</span>
-              </div>
-              <div class="dk-h-card-body">
-                <strong>مطعم باشا بيتزريا</strong>
-                <p>بيتزا إيطالية، باستا، ومناقيش طازجة</p>
-                <div class="dk-h-foot">
-                  <span class="dk-h-badge">0% عمولة ✓</span>
-                  <span class="dk-h-action">اطلب الآن ←</span>
-                </div>
-              </div>
-            </a>
-
-            <a href="/store/domani" data-action="open-store" data-id="84" class="dk-h-card">
-              <div class="dk-h-card-media">
-                <img src="/assets/photos/product-meat.jpg" alt="ملحمة الدوماني" loading="eager">
-                <span class="dk-h-time">⏱️ طازج يومياً</span>
-                <span class="dk-h-rating">★ 4.9</span>
-              </div>
-              <div class="dk-h-card-body">
-                <strong>ملحمة الدوماني</strong>
-                <p>لحوم غنم وعجل بلدي وتجهيزات للشواء</p>
-                <div class="dk-h-foot">
-                  <span class="dk-h-badge">أسعار الملحمة ✓</span>
-                  <span class="dk-h-action">اطلب الآن ←</span>
-                </div>
-              </div>
-            </a>
-
-            <a href="/store/safa-alsham-market" data-action="open-store" data-id="50" class="dk-h-card">
-              <div class="dk-h-card-media">
-                <img src="/assets/photos/product-cookies.jpg" alt="ماركت صفا الشام" loading="eager">
-                <span class="dk-h-time">⏱️ توصيل سريع</span>
-                <span class="dk-h-rating">★ 4.7</span>
-              </div>
-              <div class="dk-h-card-body">
-                <strong>ماركت صفا الشام</strong>
-                <p>سوبر ماركت سوري وتركي ومؤونة البيت</p>
-                <div class="dk-h-foot">
-                  <span class="dk-h-badge">دفع عند الباب ✓</span>
-                  <span class="dk-h-action">اطلب الآن ←</span>
-                </div>
-              </div>
-            </a>
+            </a>`).join("")}
           </div>
         </div>
 
@@ -3642,7 +3634,7 @@ function renderHome() {
           </div>
           <div class="dk-trust-item">
             <span class="t-icon">⭐</span>
-            <div><strong>متاجر مختارة ومقيّمة</strong><small>جودة مضمونة وتتبع مباشر للطلب</small></div>
+            <div><strong>متاجر معتمدة ومراجَعة</strong><small>تقييمات حقيقية من زبائن اشتروا فعلاً</small></div>
           </div>
         </div>
 
