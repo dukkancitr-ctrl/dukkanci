@@ -98,6 +98,8 @@ module.exports = async (req, res) => {
     }
   };
   if (!product.price_on_request && priceVal > 0) jsonLd.offers.price = priceVal.toFixed(2);
+  // The selling store acts as the product's brand for richer product markup.
+  jsonLd.brand = { "@type": "Brand", name: storeName };
   if (synonyms.length) jsonLd.alternateName = synonyms;
 
   const T = esc(title), D = esc(desc), I = esc(img), C = esc(canonical);
