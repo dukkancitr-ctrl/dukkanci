@@ -1106,9 +1106,11 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 إرشادات مهمة:
 - للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
 - لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
-- عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر ورابطه) وشارك رابط المتجر مباشرة بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
+- عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية بالمنتجات» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر ورابطه) وشارك رابط المتجر مباشرة بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
+- عند سؤال العميل عن متجر بالاسم (رابطه، عنوانه، ساعاته، هل هو موجود): إن وصلتك «نتائج بحث حقيقية بالمتاجر» فاعتمد عليها حرفياً وشارك الرابط والعنوان مباشرة بثقة — اسم المتجر ورابطه وعنوانه وساعاته وعدد متاجر المنصة **كلها معلومات عامة منشورة على الموقع بلا استثناء**، فلا ترفض مشاركتها أو تتردد فيها أبداً مهما بدت شخصية الطلب. كذلك أرقام واتساب الدعم والبريد الإلكتروني أسفل «حقائق عامة حيّة» — شاركها كما وردت حرفياً، ولا تخترع رقماً من عندك أبداً إن لم يصلك في هذا القسم.
+- **مصدر الحقيقة الوحيد لأي رابط أو منتج أو متجر هو ما يصلك حرفياً تحت «نتائج بحث حقيقية» في هذه الرسالة — لا معرفتك العامة عن العالم الخارجي أو عن دكانجي إطلاقاً.** إن لم يصلك اسم متجر أو رابطه هنا فهذا يعني أنه غير موجود على المنصة أو أن البحث لم يجده الآن — لا تُنشئ رابط dukkanci.com.tr ولا أي رابط آخر من عندك أبداً مهما بدا الاسم منطقياً أو مألوفاً لك، ولا تستخدم أي معلومة تعرفها عن مطعم/متجر حقيقي من مصادر خارج دكانجي (كخرائط جوجل مثلاً) حتى لو صادف أنها صحيحة واقعياً — العميل يثق أن كل رابط تعطيه هو رابط دكانجي حقيقي.
 - لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
-- لا تطلب أبداً بيانات حساسة (أرقام بطاقات، كلمات مرور، رموز).
+- لا تطلب أبداً بيانات حساسة (أرقام بطاقات، كلمات مرور، رموز) — هذا مختلف تماماً عن أرقام تواصل دكانجي العامة نفسها، وهي آمنة للمشاركة دائماً.
 - للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
 أجب مباشرةً بالرسالة النهائية فقط دون شرح طريقة تفكيرك.`;
 // RAG retrieval: embed the customer's question and pull the most relevant chunks
@@ -1167,8 +1169,34 @@ const SEARCH_STOPWORDS = new Set([
   "او", "أو", "ايضا", "أيضاً", "كمان", "بس", "فقط", "لي", "لك", "له", "لها", "قدر",
   "تقدر", "تقدرو", "ياريت", "عايز", "عايزة", "محتاج", "محتاجة", "الرجاء", "رجاء",
   "يتوفر", "تتوفر", "وما", "سعر", "سعره", "بسعر", "اسعار", "الاسعار", "بكام", "كام",
-  "شقد", "قديش", "وزن"
+  "شقد", "قديش", "وزن",
+  // Request-phrasing words for store lookups specifically ("اعطيني رابط متجر
+  // X" — confirmed live: without these, the AND-set becomes ["اعطيني","رابط",
+  // "متجر","مندي"], none of which is in the store's real name/category, so the
+  // search comes back empty for a store that clearly exists).
+  "اعطيني", "اعطني", "اعطي", "عطيني", "رابط", "متجر", "محل", "اسم", "موقع", "عنوان", "اين",
+  // Generic category words — confirmed live these can otherwise poison a store
+  // search two ways: required in the strict AND-set (a supermarket like "صفا
+  // الشام" doesn't literally have "مطعم" in its name/category, so "وين موقع
+  // مطعم صفا الشام" matched nothing), AND, worse, as the sole survivor of the
+  // loosen-to-first-term fallback (a bare "مطعم" alone matches dozens of
+  // unrelated restaurants and drowns out the real, more specific name terms —
+  // confirmed live it returned 5 random restaurants instead of "صفا الشام").
+  "مطعم", "مطاعم", "سوبرماركت", "سوبر", "ماركت", "بقالة"
 ].map(normalizeArabic));
+// Arabic attaches possessive pronouns as SUFFIXES with no space ("اسمه"="اسم"+
+// "he/it", "سعرها"="سعر"+"her/its") — same shape of bug as the "ال"/"و" prefix
+// handling above, confirmed live: "هل عندكم متجر اسمه فستق حلب" missed a real,
+// confirmed store because "اسمه" (with the pronoun) isn't the bare "اسم" this
+// file already lists as a stopword. Longest suffix first so a real match on a
+// short suffix isn't shadowed by a longer one it also happens to end with.
+const POSSESSIVE_SUFFIXES = ["ها", "هم", "كم", "نا", "ه", "ك", "ي"];
+function stripPossessiveSuffix(t) {
+  for (const suf of POSSESSIVE_SUFFIXES) {
+    if (t.length > suf.length + 1 && t.endsWith(suf)) return t.slice(0, -suf.length);
+  }
+  return t;
+}
 // Free-text WhatsApp messages carry sentence punctuation ("؟"/"!"/"،" etc.)
 // stuck directly onto the last word with no space ("الملوك؟") — normalizeArabic
 // only strips harakat, not general punctuation, so matchesAllTerms would then
@@ -1195,7 +1223,9 @@ function productSearchTerms(query) {
     // ("ورق عنب") is never stripped for the actual search, since its bare form
     // ("رق") isn't itself a recognized stopword.
     const bareWaw = t.length > 1 && t.startsWith("و") ? t.slice(1) : t;
-    return !SEARCH_STOPWORDS.has(t) && !SEARCH_STOPWORDS.has(bareAl) && !SEARCH_STOPWORDS.has(bareWaw);
+    const barePossessive = stripPossessiveSuffix(t);
+    return !SEARCH_STOPWORDS.has(t) && !SEARCH_STOPWORDS.has(bareAl) && !SEARCH_STOPWORDS.has(bareWaw)
+      && !SEARCH_STOPWORDS.has(barePossessive);
   });
 }
 function matchesAllTerms(haystack, terms) {
@@ -1275,6 +1305,79 @@ function formatProductResults(products) {
     const priceStr = p.price != null ? `${money(p.price)}${p.unit ? "/" + p.unit : ""}` : "السعر عند الطلب";
     return `- ${p.name}${p.category ? " (" + p.category + ")" : ""} — ${priceStr} — متجر ${p.store} — ${p.storeUrl}`;
   }).join("\n");
+}
+
+// ───────────────────────── Real store lookup for the AI ────────────────────
+// The 2026-09 WhatsApp audit found the AI inconsistent about store info it
+// already knows is public: it freely gave متجر الخوالي's exact link+address in
+// one conversation, then flatly refused a link for مندي اليمن — a store it had
+// JUST recommended by name — in another. Same fix shape as product search:
+// ground it in a real lookup instead of leaving "should I answer this?" to the
+// model's mood. Stores are few enough (~100 live, same threshold the Flutter
+// app's searchStores() documents) to fetch whole and match in memory — no need
+// for the ilike-candidate-narrowing dance searchProductsForAi needs at 14k+ rows.
+async function searchStoresForAi(query, limit = 5) {
+  try {
+    const allTerms = productSearchTerms(query);
+    if (!allTerms.length) return [];
+    const rows = await sbGet("stores?select=id,name,slug,category,address,hours,approval_status&order=name.asc");
+    if (!Array.isArray(rows)) return [];
+    // Same visibility predicate as isStoreApproved() in app.js: null or
+    // "approved" only — "pending"/"rejected" stores never surface here.
+    const approved = rows.filter(s => !s.approval_status || s.approval_status === "approved");
+    let matched = approved.filter(s => matchesAllTerms(`${s.name} ${s.category || ""}`, allTerms));
+    // Same loosen-to-first-term fallback as searchProductsForAi, for the same
+    // reason: a full sentence's remaining terms can still be one word too many.
+    if (!matched.length && allTerms.length > 1) {
+      matched = approved.filter(s => matchesAllTerms(`${s.name} ${s.category || ""}`, [allTerms[0]]));
+    }
+    return matched.slice(0, limit).map(s => ({
+      name: s.name, category: s.category || null, address: s.address || null, hours: s.hours || null,
+      url: `${SITE_URL}/store/${s.slug || s.id}`
+    }));
+  } catch (e) { return []; }
+}
+function formatStoreResults(stores) {
+  return stores.map(s => {
+    const bits = [s.category, s.address, s.hours].filter(Boolean);
+    return `- ${s.name}${bits.length ? " (" + bits.join(" — ") + ")" : ""} — ${s.url}`;
+  }).join("\n");
+}
+// Live counters + contact numbers the AI kept getting inconsistently right —
+// fetched fresh every reply (both queries are cheap and indexed) instead of
+// hardcoded, so an admin changing the support number in «site_settings» or the
+// live store count moving never leaves the bot repeating a stale fact. The
+// wrong number IS a real, confirmed bug this replaces: the audit transcript
+// shows the AI once inventing "905551000530" as a "direct call" number —
+// off by one digit from the real customer-service line "905551000630" shown
+// in the site footer — because nothing grounded it and the model filled the
+// gap itself. customerWa mirrors api/contact.js's exact resolution
+// (site_settings.contactWa → contactPhone → hardcoded fallback).
+const MERCHANT_SUPPORT_WA = "905528000220";
+const FALLBACK_CUSTOMER_WA = "905551000630";
+const SUPPORT_EMAIL = "info@dukkanci.com.tr";
+async function getLiveFacts() {
+  try {
+    const [settingsRows, storeCount] = await Promise.all([
+      sbGet("site_settings?select=key,value&key=in.(contactWa,contactPhone)"),
+      sbCount("stores?or=(approval_status.is.null,approval_status.eq.approved)")
+    ]);
+    const settings = {};
+    (Array.isArray(settingsRows) ? settingsRows : []).forEach(r => { settings[r.key] = r.value; });
+    const customerWaDigits = String(settings.contactWa || settings.contactPhone || "").replace(/\D/g, "") || FALLBACK_CUSTOMER_WA;
+    return { customerWa: customerWaDigits, merchantWa: MERCHANT_SUPPORT_WA, email: SUPPORT_EMAIL, storeCount: storeCount };
+  } catch (e) {
+    return { customerWa: FALLBACK_CUSTOMER_WA, merchantWa: MERCHANT_SUPPORT_WA, email: SUPPORT_EMAIL, storeCount: null };
+  }
+}
+function formatLiveFacts(facts) {
+  const lines = [
+    `- عدد المتاجر الحية على دكانجي الآن: ${facts.storeCount != null ? facts.storeCount.toLocaleString("ar") : "غير معروف حالياً"}${facts.storeCount != null ? "" : " (لا تخترع رقماً)"}`,
+    `- واتساب خدمة العملاء (استفسارات الطلبات والزبائن): +${facts.customerWa}`,
+    `- واتساب خدمة أصحاب المتاجر (الانضمام كتاجر أو استفسارات لوحة المتجر): +${facts.merchantWa}`,
+    `- البريد الإلكتروني: ${facts.email}`
+  ];
+  return lines.join("\n");
 }
 // Ordered candidate query strings to try, cheapest/most-specific first — the
 // caller (aiReply) searches each in turn and stops at the first with results,
@@ -1565,14 +1668,34 @@ async function aiReply(text, wa_id, timestamp) {
   }
   if (searchCandidates.length) {
     let products = [];
+    let stores = [];
     for (const q of searchCandidates) {
       products = await searchProductsForAi(q);
       if (products.length) break;
     }
+    for (const q of searchCandidates) {
+      stores = await searchStoresForAi(q);
+      if (stores.length) break;
+    }
     system += products.length
-      ? `\n\nنتائج بحث حقيقية من كتالوج دكانجي الحالي — اعتمد عليها حرفياً، لا تُضف عليها ولا تُغيّرها:\n${formatProductResults(products)}`
-      : `\n\nبحثتَ فعلياً في كتالوج دكانجي الآن ولم تجد أي منتج مطابق. أخبر العميل بصدق أنك لم تجد نتيجة مطابقة حالياً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج.`;
+      ? `\n\nنتائج بحث حقيقية بالمنتجات من كتالوج دكانجي الحالي — اعتمد عليها حرفياً، لا تُضف عليها ولا تُغيّرها:\n${formatProductResults(products)}`
+      : `\n\nبحثتَ فعلياً في كتالوج المنتجات ولم تجد أي منتج مطابق. أخبر العميل بصدق أنك لم تجد نتيجة مطابقة حالياً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تستخدم أي معلومة عن منتج من معرفتك العامة — إن لم تصلك هنا فهي غير موجودة على دكانجي.`;
+    // Always report the store-search outcome too, even empty — this is the
+    // fix for a real bug the loosening/stopword work above uncovered live:
+    // when this branch was silent on zero results, the model filled the gap
+    // from its own general knowledge instead (confirmed twice: it once
+    // returned a random Google Maps link for a real store instead of the real
+    // dukkanci.com.tr one, and once outright INVENTED a plausible-looking
+    // dukkanci.com.tr URL for a store name that does not exist at all).
+    system += stores.length
+      ? `\n\nنتائج بحث حقيقية بالمتاجر — اعتمد عليها حرفياً وشارك الرابط بثقة (معلومة عامة منشورة على الموقع):\n${formatStoreResults(stores)}`
+      : `\n\nبحثتَ فعلياً بالمتاجر ولم تجد متجراً مطابقاً بهذا الاسم على دكانجي. أخبر العميل بصدق أنك لم تجده حالياً على المنصة واقترح تصفّح الموقع أو التأكد من الاسم. لا تختلق رابطاً أو عنواناً أبداً، ولا تستخدم أي معلومة عن متجر من معرفتك العامة خارج دكانجي — إن لم تصلك هنا فهو غير موجود على المنصة.`;
   }
+  // Facts that must never be "sometimes I know this, sometimes I don't" — see
+  // "Live counters + contact numbers" above. Always included: cheap, and this
+  // is exactly the class of info the audit found the AI inconsistent about.
+  const facts = await getLiveFacts();
+  system += `\n\nحقائق عامة حيّة عن دكانجي — اعتمد عليها دائماً بثقة عند سؤالك عنها، فهي معلومات عامة منشورة على الموقع:\n${formatLiveFacts(facts)}`;
   try {
     return await aiGateway.complete("whatsapp_autoreply", {
       system, messages, maxTokens: 500, temperature: 0.4, timeoutMs: 8000
