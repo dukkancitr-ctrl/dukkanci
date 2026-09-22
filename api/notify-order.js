@@ -1152,7 +1152,7 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 إرشادات مهمة:
 - للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
 - لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
-- عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية بالمنتجات» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر ورابطه) وشارك رابط المتجر مباشرة بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
+- عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية بالمنتجات» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر). **شارك رابط المنتج المباشر لكل نتيجة دائماً (وليس رابط المتجر العام فقط)** بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وجدت النتائج المنتج نفسه في أكثر من متجر، رشّح للعميل كل متجر يبيعه (لا تكتفِ بأول نتيجة فقط) مع رابط المنتج المباشر الخاص بكل واحد منها، حتى يختار العميل الأقرب أو الأنسب له. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
 - عند سؤال العميل عن متجر بالاسم (رابطه، عنوانه، ساعاته، هل هو موجود): إن وصلتك «نتائج بحث حقيقية بالمتاجر» فاعتمد عليها حرفياً وشارك الرابط والعنوان مباشرة بثقة — اسم المتجر ورابطه وعنوانه وساعاته وعدد متاجر المنصة **كلها معلومات عامة منشورة على الموقع بلا استثناء**، فلا ترفض مشاركتها أو تتردد فيها أبداً مهما بدت شخصية الطلب. كذلك أرقام واتساب الدعم والبريد الإلكتروني أسفل «حقائق عامة حيّة» — شاركها كما وردت حرفياً، ولا تخترع رقماً من عندك أبداً إن لم يصلك في هذا القسم.
 - **مصدر الحقيقة الوحيد لأي رابط أو منتج أو متجر هو ما يصلك حرفياً تحت «نتائج بحث حقيقية» في هذه الرسالة — لا معرفتك العامة عن العالم الخارجي أو عن دكانجي إطلاقاً.** إن لم يصلك اسم متجر أو رابطه هنا فهذا يعني أنه غير موجود على المنصة أو أن البحث لم يجده الآن — لا تُنشئ رابط dukkanci.com.tr ولا أي رابط آخر من عندك أبداً مهما بدا الاسم منطقياً أو مألوفاً لك، ولا تستخدم أي معلومة تعرفها عن مطعم/متجر حقيقي من مصادر خارج دكانجي (كخرائط جوجل مثلاً) حتى لو صادف أنها صحيحة واقعياً — العميل يثق أن كل رابط تعطيه هو رابط دكانجي حقيقي.
 - لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
@@ -1216,6 +1216,16 @@ const SEARCH_STOPWORDS = new Set([
   "تقدر", "تقدرو", "ياريت", "عايز", "عايزة", "محتاج", "محتاجة", "الرجاء", "رجاء",
   "يتوفر", "تتوفر", "وما", "سعر", "سعره", "بسعر", "اسعار", "الاسعار", "بكام", "كام",
   "شقد", "قديش", "وزن",
+  // "Find it" colloquial verbs ("وين اجده؟" = "where do I find it?") — confirmed
+  // live these poison the strict AND-set exactly like the imperative "بحث"
+  // family above already handled: "اجده" survives possessive-suffix stripping
+  // as content ("اجد"+"ه"), so a real, specific ask like "اريد خبز مصري وين
+  // اجده" degraded to loosen-to-first-term ("خبز" alone, dropping "مصري") and
+  // matched generic bread instead of the actual "خبز مصري"/"عيش مصري" sold at
+  // two real stores — the model then (correctly, given weak candidates) told
+  // the customer nothing was found. Bare/root forms only, since the possessive
+  // check already folds "اجده"/"اجدها"/"اجدهم" etc. onto "اجد".
+  "اجد", "يجد", "لقى", "لاقي",
   // Request-phrasing words for store lookups specifically ("اعطيني رابط متجر
   // X" — confirmed live: without these, the AND-set becomes ["اعطيني","رابط",
   // "متجر","مندي"], none of which is in the store's real name/category, so the
@@ -1300,7 +1310,7 @@ function arabicIlikePattern(term) {
 // (un-normalized) stored text.
 async function fetchProductCandidates(terms, limit) {
   if (!terms.length) return [];
-  const params = ["select=id,store_id,name,category,price,old_price,unit,price_on_request,available", "available=eq.true", `limit=${limit}`];
+  const params = ["select=id,store_id,name,category,price,old_price,unit,price_on_request,available,slug", "available=eq.true", `limit=${limit}`];
   for (const term of terms) {
     const pattern = encodeURIComponent(arabicIlikePattern(term));
     params.push(`or=(name.ilike.${pattern},category.ilike.${pattern})`);
@@ -1341,7 +1351,15 @@ async function searchProductsForAi(query, limit = 5) {
       return {
         name: p.name, category: p.category || null,
         price: p.price_on_request ? null : Number(p.price) || null, unit: p.unit || null,
-        store: s.name, storeUrl: `${SITE_URL}/store/${s.slug || s.id}`
+        store: s.name, storeUrl: `${SITE_URL}/store/${s.slug || s.id}`,
+        // Direct link to the product's own page — distinct from storeUrl above.
+        // The pre-existing version only ever gave the AI the store's page, so a
+        // customer asking "does anyone sell X" got sent to browse a whole store
+        // instead of straight to the item (user's explicit ask: "توفير رابط
+        // المنتج بشكل مباشر"). Same canonical shape used everywhere else in the
+        // codebase (api/product.js, api/offers.js, api/sitemap.js): slug first,
+        // numeric id as fallback for older rows with no slug yet.
+        productUrl: `${SITE_URL}/product/${p.slug || p.id}`
       };
     });
   } catch (e) { return []; }
@@ -1349,7 +1367,10 @@ async function searchProductsForAi(query, limit = 5) {
 function formatProductResults(products) {
   return products.map(p => {
     const priceStr = p.price != null ? `${money(p.price)}${p.unit ? "/" + p.unit : ""}` : "السعر عند الطلب";
-    return `- ${p.name}${p.category ? " (" + p.category + ")" : ""} — ${priceStr} — متجر ${p.store} — ${p.storeUrl}`;
+    // Lead with productUrl (the specific item), not storeUrl (the whole store) —
+    // this is the line the model quotes back almost verbatim, so it's what
+    // decides whether the customer lands on the exact product or has to browse.
+    return `- ${p.name}${p.category ? " (" + p.category + ")" : ""} — ${priceStr} — متجر ${p.store} — رابط المنتج المباشر: ${p.productUrl}`;
   }).join("\n");
 }
 
