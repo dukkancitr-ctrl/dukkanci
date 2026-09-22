@@ -999,9 +999,35 @@ async function sendAutoReply(to, text) {
 // When a customer asks for a human — or a human agent takes over — the AI steps
 // aside. Per-conversation state lives in whatsapp_threads (service-role only).
 const HUMAN_REQUEST_RE = /(موظّ?ف|[إا]نسان|بشر(?:ي)?|خدمة\s*(?:العملاء|الزبائن)|الدعم|ممثّ?ل|مندوب|(?:شخص|حدا?)\s*حقيقي|human|agent|representative|operator|real\s*person|customer\s*service|live\s*chat|talk\s*to\s*(?:someone|a\s*person|human))/i;
+// The site's «دعم» (support) form deep-links straight into WhatsApp with a
+// pre-filled "لدي مشكلة: <category>" message — an unambiguous, already-structured
+// signal that a human is needed, regardless of category.
+const STRUCTURED_COMPLAINT_RE = /^\s*لدي\s*مشكلة\s*:/i;
+// AI_SYSTEM below explicitly tells the model it can never cancel an order or
+// delete an account — so letting it try first before escalating only burns the
+// customer's patience. Measured live (2026-09 WhatsApp audit): one customer
+// repeated "لدي مشكلة: إلغاء طلب" 5× before stumbling onto phrasing that finally
+// escalated; two customers churned after a cancel request went unanswered.
+// (?<!ب) excludes the unrelated بالغ/بالغة/بالغي root ("severe"/"adult"/"reach")
+// which would otherwise substring-match — Arabic has no \w-aware \b to lean on.
+const CANCEL_OR_DELETE_RE = /(?<!ب)[إا]ل(?:ا)?غ(?:اء|ي|و)|cancel(?:led|ling|ing)?\b|حذف\s*(?:ال)?حساب|delete\s*(?:my\s*)?account/i;
+// A delay/stuck complaint only counts paired with something order-shaped — bare
+// "متأخر"/"تأخر"/"متوقف" alone is too broad (e.g. "الموقع متوقف") to safely
+// auto-escalate on its own. "متوقف" covers the real churned-customer phrasing
+// "الطلب متوقف" that "متأخر" alone missed (2026-09 WhatsApp audit).
+const DELAY_COMPLAINT_RE = /(طلب.{0,15}(متأخ?ر|تأخ[رّ]|متوقف)|(متأخ?ر|تأخ[رّ]|متوقف).{0,15}طلب)/i;
+// Returns the matched escalation REASON ("human"/"complaint"/"cancel"/"delay"),
+// or null when nothing matches — a reason string (not a boolean) so callers can
+// tell admins *why* a thread escalated, while `if (wantsHuman(text))` still
+// works unchanged (non-empty string is truthy, null is falsy).
 function wantsHuman(text) {
-  const t = String(text || "");
-  return !!t.trim() && HUMAN_REQUEST_RE.test(t);
+  const t = String(text || "").trim();
+  if (!t) return null;
+  if (HUMAN_REQUEST_RE.test(t)) return "human";
+  if (STRUCTURED_COMPLAINT_RE.test(t)) return "complaint";
+  if (CANCEL_OR_DELETE_RE.test(t)) return "cancel";
+  if (DELAY_COMPLAINT_RE.test(t)) return "delay";
+  return null;
 }
 async function getThreadFlags(wa_id) {
   try {
@@ -1016,14 +1042,36 @@ async function setThreadFlags(wa_id, patch) {
       "resolution=merge-duplicates,return=minimal");
   } catch (e) { /* escalation state is best-effort */ }
 }
-async function notifyAdminsEscalation(wa_id, name) {
+const ESCALATION_REASON_LABEL = {
+  human: "طلب التحدث مع موظف",
+  complaint: "شكوى عبر نموذج الدعم",
+  cancel: "طلب إلغاء طلب / حذف حساب",
+  delay: "شكوى تأخّر طلب"
+};
+async function notifyAdminsEscalation(wa_id, name, reason) {
+  const reasonLabel = ESCALATION_REASON_LABEL[reason] || "طلب التحدث مع موظف";
   try {
     await pushToSubscriptions("role=eq.admin", {
       title: "💬 عميل يطلب موظفاً",
-      body: `${name || wa_id} بحاجة لرد بشري على واتساب`,
+      body: `${name || wa_id} بحاجة لرد بشري على واتساب (${reasonLabel})`,
       url: "/", tag: "wa-escalate-" + wa_id
     });
   } catch (e) { /* push is best-effort */ }
+  // Web push needs an admin device with notifications granted and the tab (or
+  // OS) actually delivering it — unproven in practice: the 2026-09 WhatsApp
+  // audit found escalated threads sitting unanswered for hours, sometimes
+  // never. WhatsApp is the channel admins are demonstrably watching, so mirror
+  // the alert there too via the same zero-dependency send used for order-notify
+  // failures (rawAdminAlert never depends on template/service-window state).
+  try {
+    await rawAdminAlert(cfg(), `🙋 عميل واتساب بحاجة لموظف — ${reasonLabel}\n${name ? name + " · " : ""}+${wa_id}`);
+  } catch (e) {}
+  // No audit_logs entry here: that table's store_id is NOT NULL (store-scoped by
+  // design) and a WhatsApp thread has no store — tried it, PostgREST 23502'd and
+  // was swallowed by the try/catch (best-effort logging failed silently). The
+  // reason still reaches admins live via the push body + WhatsApp alert above;
+  // persisting it durably would need a new column on whatsapp_threads (DDL), out
+  // of scope here.
 }
 
 // Dukkanci WhatsApp support hours (Istanbul = UTC+3, no DST): open 09:00–23:00.
@@ -1372,11 +1420,15 @@ async function ingestWebhook(body) {
         const dup = ins && ins.ok && Array.isArray(ins.rows) && ins.rows.length === 0;
         if (!dup && d.type === "text" && m.from) {
           const flags = await getThreadFlags(m.from);
-          // Human escalation: customer explicitly asks for a person.
-          if (wantsHuman(d.body)) {
+          // Human escalation: explicit request, a structured «لدي مشكلة:» support
+          // ticket, a cancel/delete-account ask, or a delay complaint — the AI
+          // can't act on any of these (see AI_SYSTEM), so hand off immediately
+          // instead of making the customer repeat themselves into escalating.
+          const escalationReason = wantsHuman(d.body);
+          if (escalationReason) {
             if (!flags.needs_human) {
               await setThreadFlags(m.from, { ai_paused: true, needs_human: true, last_escalated_at: new Date().toISOString() });
-              await notifyAdminsEscalation(m.from, nameByWa[m.from]);
+              await notifyAdminsEscalation(m.from, nameByWa[m.from], escalationReason);
               try { await sendAutoReply(m.from, "تمام 🙌 بحوّلك لموظف من فريق دكانجي يتابع معك. ابقَ معنا وسيردّ عليك قريباً."); } catch (e) {}
             }
             continue; // already-escalated repeats → stay silent (human will reply)
