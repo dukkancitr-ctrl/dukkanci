@@ -281,6 +281,38 @@ async function logOtpSend(to, template, result) {
   } catch (e) {}
 }
 
+// Meta delivers free-form text ONLY inside the 24h window that the recipient's own
+// last message opens. Outside it the Cloud API still answers HTTP 200 and fails the
+// delivery later (131047, reported only to the webhook) — so a "successful" send
+// proves nothing and no fallback ever fires. Measured 2026-09-21: 0 of 13 recent
+// orders had an open window at the store's number, i.e. every rich text alert
+// since it shipped was accepted and silently dropped. This decides up front.
+// Fails CLOSED (window "shut") on any error: the approved template always works.
+async function serviceWindowOpen(to) {
+  try {
+    const since = new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString();
+    const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(to)}&direction=eq.in&created_at=gte.${encodeURIComponent(since)}&select=id&limit=1`);
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) { return false; }
+}
+
+// Log every order-alert send (store / admin / customer) so the webhook can land
+// Meta's later delivery verdict on it — same mechanism as logOtpSend. Before this
+// the statuses of these messages were thrown away, so "sent" was the last thing
+// anyone could ever know. No customer data goes in: order id, role, phone tail.
+async function logOrderAlertSend(orderId, role, to, result) {
+  try {
+    const err = result.ok ? null : result.error;
+    await sbWrite("POST", "marketing_event_logs", [{
+      event_id: crypto.randomUUID(), event_name: "order_alert", destination: "whatsapp_order_alert",
+      payload_json: { wam_id: result.id || null, order_id: String(orderId || ""), role, phone_tail: String(to).slice(-4), via: result.via || null, window_closed: !!result.windowClosed },
+      response_json: result.ok ? { id: result.id || null } : (err && typeof err === "object" ? err : { error: String(err || "") }),
+      status: result.ok ? "accepted" : "send_failed",
+      error_message: result.ok ? null : JSON.stringify(err || "").slice(0, 500)
+    }], "return=minimal");
+  } catch (e) {}
+}
+
 // Hash an OTP bound to its phone with a server-side pepper, so a DB leak can't
 // recover codes and a code can't be replayed for a different number.
 function otpHash(phone, code) {
@@ -1080,6 +1112,17 @@ function publicOrderView(row) {
   };
 }
 
+// Best-effort, zero-dependency admin ping: a single plain-text WhatsApp send
+// with NO template/window logic — used only as the very last resort when the
+// normal alert pipeline itself throws, so the admin still hears about it even
+// if the bug is inside sendAlert/sendOrderWhatsapp. Never throws.
+async function rawAdminAlert(c, text) {
+  const tos = (c.adminPhones || []).map(p => toE164(p, c.cc)).filter(Boolean);
+  for (const to of tos) {
+    try { await sendWhatsapp(c, to, { text }); } catch (e) {}
+  }
+}
+
 async function sendOrderWhatsapp(c, order, store, priceFlag) {
   const storeName = (store && store.name) || "متجرك";
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
@@ -1089,6 +1132,8 @@ async function sendOrderWhatsapp(c, order, store, priceFlag) {
   const scheduleAr = [order.scheduleDay, order.scheduleTime].filter(Boolean).join(" · ");
   const fulfillmentFull = scheduleAr ? `${fulfillmentAr} - ${scheduleAr}` : `${fulfillmentAr} - في أقرب وقت`;
   const results = {};
+
+  try {
 
   // Dashboard login goes to the STORE's own number only — admins receive a copy
   // of every store's orders, so putting credentials in the shared body would
@@ -1104,17 +1149,29 @@ async function sendOrderWhatsapp(c, order, store, priceFlag) {
   // by the recipient writing to us first), so it can't be the only path: try the
   // full formatted message, and on any failure fall back to the approved
   // template so the merchant is still alerted exactly as before.
-  async function sendAlert(to, { text, params, legacy }) {
+  async function sendAlert(to, { text, params, legacy }, role) {
+    let out;
     if (c.tplStoreFull) {
       const rich = await sendWhatsapp(c, to, { template: c.tplStoreFull, params });
       // A renamed, rejected or wrong-arity template would otherwise silence every
       // merchant alert on the platform — always keep the proven one as a net.
-      if (rich.ok || !c.tplStore) return rich;
-      return { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), fellBackFrom: "full-template", fullTemplateError: rich.error };
+      if (rich.ok || !c.tplStore) out = { ...rich, via: "full-template" };
+      else out = { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), via: "template", fellBackFrom: "full-template", fullTemplateError: rich.error };
+    } else if (await serviceWindowOpen(to)) {
+      // The recipient wrote to us in the last 23h, so free-form text is deliverable.
+      const free = await sendWhatsapp(c, to, { text });
+      if (free.ok || !c.tplStore) out = { ...free, via: "text" };
+      else out = { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), via: "template", fellBackFrom: "free-form" };
+    } else if (c.tplStore) {
+      // Window shut (the normal case for merchants): only the approved template is
+      // delivered. NEVER try text first here — Meta accepts it with a 200 and drops
+      // it afterwards, so the template fallback would never run.
+      out = { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), via: "template", windowClosed: true };
+    } else {
+      out = { ...(await sendWhatsapp(c, to, { text })), via: "text", windowClosed: true };
     }
-    const free = await sendWhatsapp(c, to, { text });
-    if (free.ok || !c.tplStore) return free;
-    return { ...(await sendWhatsapp(c, to, { template: c.tplStore, params: legacy })), fellBackFrom: "free-form" };
+    await logOrderAlertSend(order.id, role, to, out);
+    return out;
   }
 
   if (storeTo) {
@@ -1122,47 +1179,86 @@ async function sendOrderWhatsapp(c, order, store, priceFlag) {
       text: buildStoreOrderText(order, { creds }),
       params: buildStoreOrderParams(order, { creds }),
       legacy: legacyParams
-    });
+    }, "store");
   } else {
     results.store = { skipped: true, reason: "store has no whatsapp/phone" };
   }
 
+  // Customer confirmation is sent BEFORE the admin copy below on purpose: the
+  // admin message needs to know whether the store and/or the customer actually
+  // got notified, so it can flag it — and admins get a copy of every order
+  // regardless, making that the one channel almost guaranteed to reach someone.
+  if (custTo) {
+    const text = `✅ تم استلام طلبك على دكانجي\n\nرقم الطلب: ${order.id}\nالمتجر: ${storeName}\nالإجمالي: ${money(order.total)}\n\nسنعلمك فور تأكيد المتجر لطلبك. شكراً لاستخدامك دكانجي 🛍️`;
+    const params = [String(order.id), storeName, money(order.total)];
+    results.customer = await sendWhatsapp(c, custTo, { template: c.tplCustomer, params, text });
+    await logOrderAlertSend(order.id, "customer", custTo, { ...results.customer, via: c.tplCustomer ? "template" : "text" });
+  } else {
+    results.customer = { skipped: true, reason: "no customer phone" };
+  }
+
+  // A real (non-skipped) channel that had a number to send to but still didn't
+  // succeed. Skipped channels (no phone on file) are a data gap, not a delivery
+  // failure, so they're excluded — otherwise every guest/pickup order with no
+  // store WhatsApp on file would falsely alarm as "notification failed".
+  const storeFailed = !!storeTo && !(results.store && results.store.ok);
+  const customerFailed = !!custTo && !(results.customer && results.customer.ok);
+
   if (adminTos.length) {
+    const failNote = [
+      storeFailed ? "🚨 تنبيه: لم يصل إشعار هذا الطلب للمتجر — تواصلوا معه يدوياً فوراً." : "",
+      customerFailed ? "🚨 تنبيه: لم يصل تأكيد الطلب للزبون." : ""
+    ].filter(Boolean).join("\n");
     const flagNote = priceFlag
       ? `⚠️ تنبيه سعر مشبوه: الإجمالي المُرسَل (${money(priceFlag.total)}) أقل بكثير من السعر الفعلي للمنتجات (${money(priceFlag.expectedSubtotal)}). تحقّق قبل تجهيز الطلب.\n\n`
       : "";
     // No `creds` here — see the comment above. The store name rides in the
     // customer slot because the approved template has no store placeholder and
-    // admins need to tell one store's orders from another's.
-    const adminLabel = (priceFlag ? "⚠️ سعر مشبوه — " : "") + `${storeName} — ${order.customer}`;
-    const adminText = flagNote + buildStoreOrderText(order, { storeName });
+    // admins need to tell one store's orders from another's. The failure banner
+    // rides in the SAME slot (prefix) so it surfaces even in template mode,
+    // where only the fixed params — not free text — actually get delivered.
+    const adminLabel = (storeFailed || customerFailed ? "🚨 فشل إشعار — " : (priceFlag ? "⚠️ سعر مشبوه — " : "")) + `${storeName} — ${order.customer}`;
+    const adminText = (failNote ? failNote + "\n\n" : "") + flagNote + buildStoreOrderText(order, { storeName });
     const adminParams = buildStoreOrderParams(order, { customerLabel: adminLabel, credsReplacement: `نسخة إدارة — ${storeName}` });
     const adminLegacy = [...legacyParams];
     adminLegacy[1] = adminLabel;
     results.admin = [];
     for (const to of adminTos) {
-      results.admin.push({ to, ...(await sendAlert(to, { text: adminText, params: adminParams, legacy: adminLegacy })) });
+      results.admin.push({ to, ...(await sendAlert(to, { text: adminText, params: adminParams, legacy: adminLegacy }, "admin")) });
     }
   } else {
     results.admin = { skipped: true, reason: "no admin phones configured" };
   }
 
-  if (custTo) {
-    const text = `✅ تم استلام طلبك على دكانجي\n\nرقم الطلب: ${order.id}\nالمتجر: ${storeName}\nالإجمالي: ${money(order.total)}\n\nسنعلمك فور تأكيد المتجر لطلبك. شكراً لاستخدامك دكانجي 🛍️`;
-    const params = [String(order.id), storeName, money(order.total)];
-    results.customer = await sendWhatsapp(c, custTo, { template: c.tplCustomer, params, text });
-  } else {
-    results.customer = { skipped: true, reason: "no customer phone" };
-  }
-
   try {
     const adminOkAll = Array.isArray(results.admin) ? results.admin.every(r => r.ok) : !!(results.admin && results.admin.ok);
     await logAudit(order.storeId, "system", "order_notify", "order", order.id, null, {
-      store: !!(results.store && results.store.ok), admin: adminOkAll, customer: !!(results.customer && results.customer.ok)
+      store: !!(results.store && results.store.ok), admin: adminOkAll, customer: !!(results.customer && results.customer.ok),
+      storeFailed, customerFailed
     });
   } catch (e) {}
 
+  // If NOBODY got notified at all (store had a number and failed, and admin also
+  // failed for every number), the templated admin copy above didn't get through
+  // either — fire the zero-dependency plain-text fallback as a last resort.
+  const adminOkAny = Array.isArray(results.admin) ? results.admin.some(r => r.ok) : !!(results.admin && results.admin.ok);
+  if (storeFailed && !adminOkAny) {
+    await rawAdminAlert(c, `🚨 دكانجي: فشل إشعار الطلب ${order.id} تماماً (المتجر والإدارة). تحقّقوا يدوياً من الطلب في لوحة التحكم.`);
+  }
+
   return results;
+
+  } catch (e) {
+    // The alert pipeline itself crashed (a bug, not a delivery failure) — never
+    // let that propagate and break order creation for the customer. Best-effort
+    // raw ping so this doesn't fail completely silently, then return whatever
+    // partial results we already have (order creation always continues).
+    try { await rawAdminAlert(c, `🚨 دكانجي: تعطّل نظام إشعارات الطلب ${order && order.id} — ${String((e && e.message) || e).slice(0, 200)}`); } catch (e2) {}
+    results.store = results.store || { ok: false, error: "notify pipeline crashed" };
+    results.admin = results.admin || { ok: false, error: "notify pipeline crashed" };
+    results.customer = results.customer || { ok: false, error: "notify pipeline crashed" };
+    return results;
+  }
 }
 
 // Re-prices an order's line items from the real `products` table (never the
@@ -1312,8 +1408,9 @@ async function ingestWebhook(body) {
         const err = Array.isArray(s.errors) && s.errors.length ? JSON.stringify(s.errors).slice(0, 500) : null;
         await sbWrite("PATCH", `whatsapp_messages?wam_id=eq.${encodeURIComponent(s.id)}`,
           err ? { status: s.status, error: err } : { status: s.status }, "return=minimal");
-        // OTP sends live in marketing_event_logs (see logOtpSend), not whatsapp_messages.
-        await sbWrite("PATCH", `marketing_event_logs?destination=eq.whatsapp_otp&payload_json->>wam_id=eq.${encodeURIComponent(s.id)}`,
+        // OTP and order-alert sends live in marketing_event_logs (logOtpSend /
+        // logOrderAlertSend), not whatsapp_messages — this is where a "failed" lands.
+        await sbWrite("PATCH", `marketing_event_logs?destination=in.(whatsapp_otp,whatsapp_order_alert)&payload_json->>wam_id=eq.${encodeURIComponent(s.id)}`,
           { status: s.status, error_message: err, response_json: { status: s.status, timestamp: s.timestamp || null, errors: s.errors || null, pricing: s.pricing || null } },
           "return=minimal");
       }
