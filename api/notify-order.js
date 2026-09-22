@@ -1153,6 +1153,7 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 - للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
 - لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
 - عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية بالمنتجات» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر). **شارك رابط المنتج المباشر لكل نتيجة دائماً (وليس رابط المتجر العام فقط)** بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وجدت النتائج المنتج نفسه في أكثر من متجر، رشّح للعميل كل متجر يبيعه (لا تكتفِ بأول نتيجة فقط) مع رابط المنتج المباشر الخاص بكل واحد منها، حتى يختار العميل الأقرب أو الأنسب له. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
+- عند سؤال العميل بشكل عام عن مطاعم/محلات موجودة (بلا اسم محدَّد، مثل «عندكم مطاعم؟» أو «شو في محلات؟»): إن وصلتك قائمة حقيقية بمتاجر/مطاعم دكانجي أسفل هذه التعليمات فاذكر أسماءها **حرفياً كما وردت** مع روابطها بثقة — لا تكتفِ بجملة عامة بلا أسماء حقيقية. **ممنوع تماماً ذكر أي اسم مطعم/محل من معرفتك العامة أو تخمينك، حتى لو بدا اسماً حقيقياً ومنطقياً ومطابقاً لأسلوب تسمية شائع (مثل «بيت الشام» أو «مندي اليمن»)** — إن لم يرد الاسم حرفياً في تلك القائمة فهو غير مؤكَّد ولا يجوز ذكره أبداً.
 - عند سؤال العميل عن متجر بالاسم (رابطه، عنوانه، ساعاته، هل هو موجود): إن وصلتك «نتائج بحث حقيقية بالمتاجر» فاعتمد عليها حرفياً وشارك الرابط والعنوان مباشرة بثقة — اسم المتجر ورابطه وعنوانه وساعاته وعدد متاجر المنصة **كلها معلومات عامة منشورة على الموقع بلا استثناء**، فلا ترفض مشاركتها أو تتردد فيها أبداً مهما بدت شخصية الطلب. كذلك أرقام واتساب الدعم والبريد الإلكتروني أسفل «حقائق عامة حيّة» — شاركها كما وردت حرفياً، ولا تخترع رقماً من عندك أبداً إن لم يصلك في هذا القسم.
 - **مصدر الحقيقة الوحيد لأي رابط أو منتج أو متجر هو ما يصلك حرفياً تحت «نتائج بحث حقيقية» في هذه الرسالة — لا معرفتك العامة عن العالم الخارجي أو عن دكانجي إطلاقاً.** إن لم يصلك اسم متجر أو رابطه هنا فهذا يعني أنه غير موجود على المنصة أو أن البحث لم يجده الآن — لا تُنشئ رابط dukkanci.com.tr ولا أي رابط آخر من عندك أبداً مهما بدا الاسم منطقياً أو مألوفاً لك، ولا تستخدم أي معلومة تعرفها عن مطعم/متجر حقيقي من مصادر خارج دكانجي (كخرائط جوجل مثلاً) حتى لو صادف أنها صحيحة واقعياً — العميل يثق أن كل رابط تعطيه هو رابط دكانجي حقيقي.
 - لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
@@ -1215,7 +1216,7 @@ const SEARCH_STOPWORDS = new Set([
   "او", "أو", "ايضا", "أيضاً", "كمان", "بس", "فقط", "لي", "لك", "له", "لها", "قدر",
   "تقدر", "تقدرو", "ياريت", "عايز", "عايزة", "محتاج", "محتاجة", "الرجاء", "رجاء",
   "يتوفر", "تتوفر", "وما", "سعر", "سعره", "بسعر", "اسعار", "الاسعار", "بكام", "كام",
-  "شقد", "قديش", "وزن",
+  "شقد", "قديش", "وزن", "شو", "ايش", "شنو",
   // "Find it" colloquial verbs ("وين اجده؟" = "where do I find it?") — confirmed
   // live these poison the strict AND-set exactly like the imperative "بحث"
   // family above already handled: "اجده" survives possessive-suffix stripping
@@ -1230,7 +1231,11 @@ const SEARCH_STOPWORDS = new Set([
   // X" — confirmed live: without these, the AND-set becomes ["اعطيني","رابط",
   // "متجر","مندي"], none of which is in the store's real name/category, so the
   // search comes back empty for a store that clearly exists).
-  "اعطيني", "اعطني", "اعطي", "عطيني", "رابط", "متجر", "محل", "اسم", "موقع", "عنوان", "اين",
+  "اعطيني", "اعطني", "اعطي", "عطيني", "رابط", "متجر", "متاجر", "محل", "محلات", "دكاكين", "اسم", "موقع", "عنوان", "اين",
+  // "لحام"/"ملحمة"/"ملاحم" (butcher shop) — never a real product word on its
+  // own ("لحمة"/"لحم" = the meat itself is a completely different word and
+  // stays searchable), so safe to strip like the other category-only asks.
+  "لحام", "ملحمة", "ملاحم",
   // Generic category words — confirmed live these can otherwise poison a store
   // search two ways: required in the strict AND-set (a supermarket like "صفا
   // الشام" doesn't literally have "مطعم" in its name/category, so "وين موقع
@@ -1410,6 +1415,69 @@ function formatStoreResults(stores) {
     return `- ${s.name}${bits.length ? " (" + bits.join(" — ") + ")" : ""} — ${s.url}`;
   }).join("\n");
 }
+
+// ── Generic category listings ("عندكم مطاعم؟", "شو محلات موجودة؟") ──────────
+// A gap distinct from name search above: productSearchTerms() deliberately
+// strips bare category words (مطعم/سوبر/بقالة/etc — see the SEARCH_STOPWORDS
+// comment near "مطعم", "مطاعم"...) specifically so they don't poison a
+// specific-name AND-set. The side effect: a message that ONLY asks about a
+// category, with no other content word, produces an EMPTY search-candidate
+// list and skips searchStoresForAi() entirely — aiReply() below had nothing
+// to ground the model on, so it either refused vaguely or risked inventing
+// real-sounding restaurant names that aren't actually on Dukkanci (user's
+// explicit ask: answer with real names that exist on the platform instead).
+// Maps a keyword to the exact stores.category values it means (confirmed live
+// against the real distinct category list on production, not guessed) —
+// `null` means "no specific category, list across all of them".
+const STORE_CATEGORY_KEYWORDS = [
+  { re: /مطعم|مطاعم/i, categories: ["مطاعم"] },
+  { re: /حلوياني|حلويات|حلواني|حلوى/i, categories: ["حلويات"] },
+  { re: /سوبر\s*ماركت|سوبرماركت|بقال[ةه]|بقاليات/i, categories: ["سوبر ماركت"] },
+  // ملحمة ومشاوي's literal stored text ("ملحمه ومشاوي" once normalized) does NOT
+  // substring-contain "ملاحم" (different letter order), so this category needs
+  // the manual value-mapping below — the generic substring search that already
+  // covers حلويات/عصائر/etc (whose category text IS a literal substring match)
+  // would silently miss this one.
+  { re: /ملحم[ةه]|ملاحم|لحام/i, categories: ["ملاحم", "ملحمة ومشاوي"] },
+  { re: /مكسرات|بهارات/i, categories: ["مكسرات وبهارات", "بن ومكسرات"] },
+  { re: /عصائر|عصير/i, categories: ["عصائر"] },
+  { re: /مياه\s*معدني[ةه]/i, categories: ["المياه المعدنية"] },
+  { re: /مطبخ\s*منزلي|مطابخ\s*منزلي[ةه]/i, categories: ["مطابخ منزلية"] },
+  { re: /مواد\s*غذائي[ةه]\s*متخصص[ةه]/i, categories: ["مواد غذائية متخصصة"] },
+  // Generic "any store/shop" ask with no specific category or name attached.
+  { re: /محل(?:ات)?|متجر|متاجر|دكاكين/i, categories: null }
+];
+function detectCategoryAsk(text) {
+  const t = String(text || "");
+  for (const entry of STORE_CATEGORY_KEYWORDS) {
+    if (entry.re.test(t)) return entry.categories; // null = across all categories
+  }
+  return undefined; // no category keyword present at all
+}
+// Fetches all approved stores (same "few enough to fetch whole" pattern as
+// searchStoresForAi — ~100 live stores total) and filters/counts locally.
+// Returns a real total plus a short sample so a WhatsApp reply stays readable.
+async function listStoresByCategory(categories, limit = 8) {
+  try {
+    const rows = await sbGet("stores?select=id,name,slug,category,approval_status&order=name.asc");
+    if (!Array.isArray(rows)) return { total: 0, sample: [] };
+    const approved = rows.filter(s => !s.approval_status || s.approval_status === "approved");
+    const filtered = categories ? approved.filter(s => categories.includes(s.category)) : approved;
+    return {
+      total: filtered.length,
+      sample: filtered.slice(0, limit).map(s => ({
+        name: s.name, category: s.category || null, url: `${SITE_URL}/store/${s.slug || s.id}`
+      }))
+    };
+  } catch (e) { return { total: 0, sample: [] }; }
+}
+function formatCategoryStoreList(result) {
+  if (!result.sample.length) return "";
+  const lines = result.sample.map(s => `- ${s.name}${s.category ? " (" + s.category + ")" : ""} — ${s.url}`).join("\n");
+  const remaining = result.total - result.sample.length;
+  return remaining > 0 ? `${lines}\n(ويوجد ${remaining} متجراً/مطعماً إضافياً من هذه الفئة على دكانجي)` : lines;
+}
+
 // Live counters + contact numbers the AI kept getting inconsistently right —
 // fetched fresh every reply (both queries are cheap and indexed) instead of
 // hardcoded, so an admin changing the support number in «site_settings» or the
@@ -1774,6 +1842,20 @@ async function aiReply(text, wa_id, timestamp) {
     system += stores.length
       ? `\n\nنتائج بحث حقيقية بالمتاجر — اعتمد عليها حرفياً وشارك الرابط بثقة (معلومة عامة منشورة على الموقع):\n${formatStoreResults(stores)}`
       : `\n\nبحثتَ فعلياً بالمتاجر ولم تجد متجراً مطابقاً بهذا الاسم على دكانجي. أخبر العميل بصدق أنك لم تجده حالياً على المنصة واقترح تصفّح الموقع أو التأكد من الاسم. لا تختلق رابطاً أو عنواناً أبداً، ولا تستخدم أي معلومة عن متجر من معرفتك العامة خارج دكانجي — إن لم تصلك هنا فهو غير موجود على المنصة.`;
+  }
+  // Generic "عندكم مطاعم؟"/"شو محلات موجودة؟" asks (user's explicit spec:
+  // "عندما يسأل عن مطاعم او محلات فقط ردّ عليه بأسماء موجودة على دكانجي"):
+  // only fires when THIS message carries no other real search content — a
+  // named search ("بدي مطعم شاورما") already goes through searchStoresForAi
+  // above via its surviving term "شاورما" and must not be overridden here.
+  if (!productSearchTerms(cleanText).length) {
+    const categoryAsk = detectCategoryAsk(cleanText);
+    if (categoryAsk !== undefined) {
+      const catResult = await listStoresByCategory(categoryAsk);
+      system += catResult.sample.length
+        ? `\n\nالعميل يسأل بشكل عام عن مطاعم/محلات موجودة على دكانجي (لا اسماً محدَّداً) — إليك قائمة حقيقية من الكتالوج الحالي (العدد الكلي المطابق: ${catResult.total}). **اذكر في ردّك فقط الأسماء الواردة حرفياً في هذه القائمة، بنصّها تماماً، مع روابطها.** ممنوع منعاً باتاً ذكر أي اسم مطعم أو محل آخر من معرفتك العامة أو مما تظنّ أنه موجود على دكانجي، حتى لو بدا اسماً واقعياً أو مألوفاً أو شائعاً كنمط تسمية (مثل «بيت الشام» أو «مندي اليمن») — إن لم يكن الاسم حرفياً في القائمة أدناه فلا تذكره أبداً:\n${formatCategoryStoreList(catResult)}`
+        : `\n\nالعميل يسأل عن مطاعم/محلات من هذه الفئة تحديداً ولا يوجد حالياً أي متجر مطابق على دكانجي. أخبره بذلك بصدق، ولا تخترع اسماً.`;
+    }
   }
   // Facts that must never be "sometimes I know this, sometimes I don't" — see
   // "Live counters + contact numbers" above. Always included: cheap, and this
