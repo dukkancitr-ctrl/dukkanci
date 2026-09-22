@@ -1102,10 +1102,11 @@ async function maybeGreetOrAway(wa_id, timestamp) {
 // static welcome/away message.
 const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عملاء لمنصّة دكانجي — سوق الحي الإلكتروني في إسطنبول يجمع متاجر ومطاعم وبقالات الحيّ للطلب مع التوصيل أو الاستلام.
 أسلوبك: ردّ بإيجاز ووضوح وودّ (جملتان إلى ثلاث كحد أقصى)، وبنفس لغة العميل (عربية غالباً، وقد تكون تركية أو إنجليزية).
-تساعد في: كيفية الطلب، التوصيل والاستلام ومناطقه ورسومه، تصفّح المتاجر والأقسام، العروض، وانضمام التجار، والأسئلة العامة عن المنصة.
+تساعد في: كيفية الطلب، التوصيل والاستلام ومناطقه ورسومه، تصفّح المتاجر والمنتجات والأقسام، العروض، وانضمام التجار، والأسئلة العامة عن المنصة.
 إرشادات مهمة:
 - للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
 - لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
+- عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر ورابطه) وشارك رابط المتجر مباشرة بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
 - لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
 - لا تطلب أبداً بيانات حساسة (أرقام بطاقات، كلمات مرور، رموز).
 - للشكاوى أو الأمور المعقّدة التي تحتاج تدخّلاً بشرياً، اعتذر بلطف وأخبر العميل أن فريق دكانجي سيتواصل معه قريباً.
@@ -1125,6 +1126,181 @@ async function retrieveKnowledge(query) {
     if (!good.length) return "";
     return good.map((c, i) => `[${i + 1}] ${String(c.content).slice(0, 700)}`).join("\n\n");
   } catch (e) { return ""; }
+}
+
+// ───────────────────────── Real product search for the AI ──────────────────
+// Before this, the WhatsApp AI would announce "سأبحث لك الآن…" and then always
+// fail — it had no product-search capability at all (confirmed live, 2026-09
+// WhatsApp audit: every "search" attempt in the transcript came back empty even
+// for products that genuinely exist in the catalog, e.g. "خبز مصري" at صفا
+// الشام). This is a server-side port of the Flutter app's
+// core/utils/arabic.dart + StoreRepository.searchProducts — itself a port of
+// the website's app.js normalizeAr()/getMatchingProducts — so all three
+// surfaces agree on what "matches". See [[flutter-product-search]].
+const AR_AMBIGUOUS_AFTER_NORMALIZE = new Set(["ا", "ه", "ي", "و"]);
+const AR_LETTER_OR_DIGIT_RE = /[\p{L}\p{N}]/u;
+function normalizeArabic(input) {
+  return String(input == null ? "" : input)
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ـ/g, "")
+    .replace(/[ً-ْ]/g, "") // harakat/diacritics
+    .replace(/\s+/g, " ")
+    .trim();
+}
+// Filler words that carry no product identity, stripped before search so "اريد
+// خبز مصري" searches "خبز مصري" — not all four words AND-ed together, which
+// would almost never match a real product's name/category. Written in natural
+// spelling and normalized once at load, so this doesn't need to track every
+// hamza/ta-marbuta fold by hand.
+const SEARCH_STOPWORDS = new Set([
+  "اريد", "أريد", "نريد", "ابحث", "ابحثي", "دور", "دوري", "فتش", "بحث", "انت", "أنت",
+  "بدي", "بدك", "بدنا", "حابب", "حاب", "حابة", "ممكن", "لو", "سمحت", "سمحتوا", "هل",
+  "من", "في", "على", "عن", "الى", "إلى", "مع", "هذا", "هذه", "ذلك", "تلك", "انا", "أنا",
+  "لدي", "عندي", "عندك", "عندكم", "كيف", "متى", "وين", "فين", "كم", "اي", "أي", "ما",
+  "ماهو", "ماهي", "هو", "هي", "يوجد", "متوفر", "متوفرة", "توجد", "شراء", "اشتري",
+  "اشتريت", "نشتري", "مرحبا", "مرحباً", "السلام", "عليكم", "وعليكم", "طيب", "يعني",
+  "او", "أو", "ايضا", "أيضاً", "كمان", "بس", "فقط", "لي", "لك", "له", "لها", "قدر",
+  "تقدر", "تقدرو", "ياريت", "عايز", "عايزة", "محتاج", "محتاجة", "الرجاء", "رجاء",
+  "يتوفر", "تتوفر", "وما", "سعر", "سعره", "بسعر", "اسعار", "الاسعار", "بكام", "كام",
+  "شقد", "قديش", "وزن"
+].map(normalizeArabic));
+// Free-text WhatsApp messages carry sentence punctuation ("؟"/"!"/"،" etc.)
+// stuck directly onto the last word with no space ("الملوك؟") — normalizeArabic
+// only strips harakat, not general punctuation, so matchesAllTerms would then
+// miss an otherwise-exact product because the stored name has no "؟". A
+// dedicated search-box query (what this algorithm was designed for) never has
+// this problem; a conversational sentence pulled from chat history always might.
+function productSearchTerms(query) {
+  const stripped = normalizeArabic(query)
+    .replace(/[؟!,.،؛:"'`()[\]{}«»…\-–—]/g, " ")
+    .replace(/\s+/g, " ").trim();
+  return stripped.split(" ").filter(t => {
+    if (t.length < 2) return false;
+    // Check the definite-article-stripped form too ("السعر"→"سعر") so the
+    // stopword list doesn't need every "ال"-prefixed variant written out by
+    // hand — but keep the ORIGINAL term (with "ال") for the actual search, in
+    // case it's a real content word like "الملوك" in "شاي الملوك".
+    const bareAl = t.length > 2 && t.startsWith("ال") ? t.slice(2) : t;
+    // Same idea for the "و" ("and") conjunction, which informal Arabic writes
+    // glued straight onto the next word with no space ("وبكام" = و + بكام) —
+    // confirmed live: this exact miss made a real "شاي الملوك" search return
+    // zero (the AND-set included the unstripped "وبكام", which matches no
+    // product). Only used to decide whether to DROP the term entirely (when
+    // its bare form is a stopword); a real content word starting with "و"
+    // ("ورق عنب") is never stripped for the actual search, since its bare form
+    // ("رق") isn't itself a recognized stopword.
+    const bareWaw = t.length > 1 && t.startsWith("و") ? t.slice(1) : t;
+    return !SEARCH_STOPWORDS.has(t) && !SEARCH_STOPWORDS.has(bareAl) && !SEARCH_STOPWORDS.has(bareWaw);
+  });
+}
+function matchesAllTerms(haystack, terms) {
+  if (!terms.length) return false;
+  const hay = normalizeArabic(haystack);
+  return terms.every(t => hay.includes(t));
+}
+// Builds a deliberate SUPERSET ilike pattern for one normalized term: every
+// letter that normalization folds (ا/ه/ي/و) becomes `_` (matches exactly one
+// stored char, whatever it was spelled as — ه must still match a stored ة),
+// and every character is `*`-joined (absorbs stripped tatweel/harakat — "حمص"
+// must still reach a stored "حـمـص"). Non-letter/digit input also becomes `_`,
+// which both handles punctuation and keeps user text safe inside PostgREST's
+// comma/paren-delimited `or=(...)` syntax.
+function arabicIlikePattern(term) {
+  let out = "*";
+  for (const ch of term) {
+    const safe = AR_AMBIGUOUS_AFTER_NORMALIZE.has(ch) || !AR_LETTER_OR_DIGIT_RE.test(ch) ? "_" : ch;
+    out += safe + "*";
+  }
+  return out;
+}
+// Candidate rows for `terms` — every term required (repeated PostgREST `or=`
+// params AND together), matched against name OR category. Deliberately a
+// superset; caller re-checks exactly via matchesAllTerms against the real
+// (un-normalized) stored text.
+async function fetchProductCandidates(terms, limit) {
+  if (!terms.length) return [];
+  const params = ["select=id,store_id,name,category,price,old_price,unit,price_on_request,available", "available=eq.true", `limit=${limit}`];
+  for (const term of terms) {
+    const pattern = encodeURIComponent(arabicIlikePattern(term));
+    params.push(`or=(name.ilike.${pattern},category.ilike.${pattern})`);
+  }
+  const rows = await sbGet(`products?${params.join("&")}`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Real product search for the WhatsApp AI. Tries every remaining content word
+// first (most precise); if that's too strict and returns nothing, loosens to
+// just the first word — Arabic noun phrases put the head noun first ("خبز
+// مصري" = bread, then the adjective), so it's the more useful single term to
+// fall back to. Returns up to `limit` real rows from real, approved stores, or
+// [] — never invents a result. Store-visibility gate mirrors the predicate
+// already used elsewhere in this file (line ~1846/2274): approval_status null
+// or "approved" only.
+async function searchProductsForAi(query, limit = 5) {
+  try {
+    const allTerms = productSearchTerms(query).slice(0, 4); // cap — a long sentence shouldn't AND forever
+    if (!allTerms.length) return [];
+    let candidates = await fetchProductCandidates(allTerms, 200);
+    let exact = candidates.filter(p => matchesAllTerms(`${p.name} ${p.category || ""}`, allTerms));
+    if (!exact.length && allTerms.length > 1) {
+      const loose = [allTerms[0]];
+      candidates = await fetchProductCandidates(loose, 200);
+      exact = candidates.filter(p => matchesAllTerms(`${p.name} ${p.category || ""}`, loose));
+    }
+    if (!exact.length) return [];
+    const storeIds = [...new Set(exact.map(p => p.store_id).filter(Boolean))];
+    if (!storeIds.length) return [];
+    const storeRows = await sbGet(`stores?id=in.(${storeIds.join(",")})&select=id,name,slug,approval_status`);
+    const storeById = new Map((Array.isArray(storeRows) ? storeRows : []).map(s => [s.id, s]));
+    const visible = exact.filter(p => {
+      const s = storeById.get(p.store_id);
+      return s && (!s.approval_status || s.approval_status === "approved");
+    });
+    return visible.slice(0, limit).map(p => {
+      const s = storeById.get(p.store_id);
+      return {
+        name: p.name, category: p.category || null,
+        price: p.price_on_request ? null : Number(p.price) || null, unit: p.unit || null,
+        store: s.name, storeUrl: `${SITE_URL}/store/${s.slug || s.id}`
+      };
+    });
+  } catch (e) { return []; }
+}
+function formatProductResults(products) {
+  return products.map(p => {
+    const priceStr = p.price != null ? `${money(p.price)}${p.unit ? "/" + p.unit : ""}` : "السعر عند الطلب";
+    return `- ${p.name}${p.category ? " (" + p.category + ")" : ""} — ${priceStr} — متجر ${p.store} — ${p.storeUrl}`;
+  }).join("\n");
+}
+// Ordered candidate query strings to try, cheapest/most-specific first — the
+// caller (aiReply) searches each in turn and stops at the first with results,
+// so a self-sufficient message never pays for the extra ones:
+//  1. the current message, if it has real search content of its own.
+//  2. the current message combined with the customer's last message that had
+//     search content — covers a short follow-up that only makes sense with
+//     what it's a follow-up TO (live example, 2026-09 audit: "عندكم زيت زيتون
+//     اصلي" → "شقد السعر التنكة" — "التنكة" alone matches nothing, combined it
+//     correctly widens to the same olive-oil results).
+//  3. that prior message alone — covers "ابحث انت"/"دور عليه" replies that
+//     carry no product name at all (live example: "اريد خبز مصري" → "ابحث انت").
+function searchQueryCandidates(currentText, priorMessages) {
+  const out = [];
+  const ownContent = productSearchTerms(currentText).length > 0;
+  if (ownContent) out.push(currentText);
+  let lastWithContent = null;
+  for (let i = priorMessages.length - 1; i >= 0; i--) {
+    const m = priorMessages[i];
+    if (m.role === "user" && productSearchTerms(m.content).length) { lastWithContent = m.content; break; }
+  }
+  if (lastWithContent) {
+    if (ownContent) out.push(`${lastWithContent} ${currentText}`);
+    out.push(lastWithContent);
+  }
+  return out;
 }
 
 // ── Phase 1 order-creation helpers (see CLAUDE.md fix log, 2026-07-16) ──────
@@ -1377,12 +1553,25 @@ async function aiReply(text, wa_id, timestamp) {
     }
   } catch (e) { /* no history → stateless reply */ }
   const cleanText = String(text == null ? "" : text).slice(0, 2000);
+  // Real product search (see "Real product search for the AI" above) BEFORE
+  // pushing this turn, so the candidates can look at prior turns cleanly.
+  const searchCandidates = searchQueryCandidates(cleanText, messages);
   messages.push({ role: "user", content: cleanText });
   // Ground the answer in the knowledge base (RAG) when relevant chunks exist.
   let system = AI_SYSTEM;
   const ctx = await retrieveKnowledge(cleanText);
   if (ctx) {
     system = AI_SYSTEM + `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${ctx}`;
+  }
+  if (searchCandidates.length) {
+    let products = [];
+    for (const q of searchCandidates) {
+      products = await searchProductsForAi(q);
+      if (products.length) break;
+    }
+    system += products.length
+      ? `\n\nنتائج بحث حقيقية من كتالوج دكانجي الحالي — اعتمد عليها حرفياً، لا تُضف عليها ولا تُغيّرها:\n${formatProductResults(products)}`
+      : `\n\nبحثتَ فعلياً في كتالوج دكانجي الآن ولم تجد أي منتج مطابق. أخبر العميل بصدق أنك لم تجد نتيجة مطابقة حالياً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج.`;
   }
   try {
     return await aiGateway.complete("whatsapp_autoreply", {
@@ -1737,7 +1926,7 @@ function buildStoreOrderText(order, opts) {
 }
 
 // Same facts, flattened for a WhatsApp template. The 13 values below map 1:1 to
-// {{1}}..{{11}} of the template named in WHATSAPP_TEMPLATE_STORE_FULL — create it
+// {{1}}..{{13}} of the template named in WHATSAPP_TEMPLATE_STORE_FULL — create it
 // in WhatsApp Manager (category Utility, language Arabic) with EXACTLY this body,
 // then set the env var to its name:
 //
