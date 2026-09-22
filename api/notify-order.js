@@ -962,9 +962,35 @@ const REPLY_DELIVERY = `🚚 التوصيل في دكانجي:\n• يُحسب �
 const REPLY_OFFERS = `🎁 لمشاهدة أحدث العروض والخصومات، افتح قسم «العروض» في الموقع:\n${SITE_URL}\nتتجدّد العروض باستمرار فتابعنا! ✨`;
 const REPLY_STORES = `🏪 لتصفّح المتاجر والأقسام المتوفرة قرب عنوانك، افتح:\n${SITE_URL}\nمطاعم وبقالات ومتاجر متنوّعة بين يديك. 🛍️`;
 const REPLY_SUPPORT = `💬 نحن هنا لمساعدتك! اكتب استفسارك في رسالة وسيردّ عليك فريق دعم دكانجي في أقرب وقت.\nويمكنك تصفّح الأسئلة الشائعة على: ${SITE_URL}`;
-const REPLY_MERCHANT = `🤝 يسعدنا انضمامك كتاجر في دكانجي!\nأرسل لنا اسم متجرك ونوع نشاطه ومنطقته، وسيتواصل معك فريقنا لإتمام الإضافة وبدء استقبال الطلبات. 🚀`;
+// Was: "أرسل لنا اسم متجرك ونوع نشاطه ومنطقته" — the bot then just sat on
+// whatever the merchant typed back in free text; nobody ever read those
+// replies as a lead (2026-09 WhatsApp audit: 11 real merchant messages, zero
+// follow-up, one merchant explicitly asked "ممكن تفاصيل" and got refused).
+// Hand off straight to a human number instead of collecting details the bot
+// can't act on — paired with notifyMerchantLead() below, which pings that
+// same number immediately with the merchant's own WhatsApp number so it's an
+// actionable lead, not a dead-end transcript.
+const REPLY_MERCHANT = `🤝 يسعدنا انضمامك كتاجر في دكانجي!\nللمتابعة المباشرة وإتمام إضافة متجرك (أو أي استفسار عن لوحة تحكم متجرك)، تواصل مع فريق التجار على واتساب:\n+90 552 800 02 20 📞`;
+// Catches free text like "بدي اضيف متجري"/"كيف أضيف محلي"/"عندي مطعم بدي انضم"
+// — not just the exact icebreaker button text or the /merchant command, both
+// of which already map to REPLY_MERCHANT via ICEBREAKER_REPLIES/COMMAND_REPLIES
+// below. Deliberately narrow (requires an explicit join/add-store verb near a
+// store-ish noun) to avoid false-firing on customers just asking about a store.
+const MERCHANT_INTEREST_RE = /(انضم(?:ام|ي)?|اضاف[ةه]\s*متجر|أ?ضيف\s*متجر[يى]?|أضم\s*متجري|تسجيل\s*متجر|بدي\s*(?:اضيف|انضم)|عندي\s*(?:محل|متجر|مطعم).{0,20}(?:بدي|أريد|كيف)|كيف\s*أ?ضيف\s*(?:متجري|محلي)|صاحب\s*متجر|شراكة\s*(?:مع|معكم))/i;
 const REPLY_WELCOME = `أهلاً بك في دكانجي! 🛍️\nسوق الحي بين يديك — متاجر ومطاعم وبقالات حيّك في إسطنبول.\nكيف نساعدك؟ اكتب «/» لرؤية الخيارات السريعة، أو أخبرنا باستفسارك وسيردّ فريقنا. 🌟`;
 const REPLY_AWAY = `شكراً لتواصلك مع دكانجي! 🌙\nفريقنا خارج أوقات العمل حالياً (نعمل يومياً ٩ صباحاً–١١ مساءً بتوقيت إسطنبول)، وسنردّ فور بدء الدوام.\nوللطلب في أي وقت، الموقع متاح على مدار الساعة: ${SITE_URL}`;
+// Voice notes got zero reply at all (not even a bad one) — describeMessage()
+// only labels them "[رسالة صوتية]" and the old flow never branched on that
+// type, so it silently fell through (2026-09 audit: "2+ merchants sent voice
+// notes, got no coherent reply"). No transcription pipeline exists yet, so
+// this is an honest fallback — ask them to type — rather than pretending to
+// have understood audio we never touched.
+const REPLY_VOICE = `🎙️ استلمنا رسالتك الصوتية، لكن لا أستطيع الاستماع إليها حالياً.\nيرجى كتابة استفسارك نصاً وسأجيبك فوراً، أو انتظر قليلاً وسيتواصل معك أحد فريقنا. 🙏`;
+// iOS has no native app (Google Play/Android only) but the site installs as a
+// full PWA on iPhone — 3 separate iOS complaints in the 2026-09 audit got no
+// guidance at all toward that option.
+const REPLY_IOS = `📱 تطبيق دكانجي للآيفون:\nحالياً تطبيقنا الرسمي متاح فقط على Google Play (أندرويد)، لكن يمكنك تثبيت الموقع كتطبيق كامل على آيفون مباشرة:\n1) افتح ${SITE_URL} من متصفح Safari.\n2) اضغط زر المشاركة (مربع بسهم لأعلى) ثم «إضافة إلى الشاشة الرئيسية».\nستحصل على أيقونة وتجربة استخدام كاملة بلا الحاجة لمتجر التطبيقات. 🍏`;
+const IOS_INTEREST_RE = /(اي\s*فون|آيفون|ايفون|iphone|ios\b|أبل|apple).{0,25}(تطبيق|تحميل|تنزيل|تثبيت|app)|(تطبيق|تحميل|تنزيل|تثبيت|app).{0,25}(اي\s*فون|آيفون|ايفون|iphone|ios\b)/i;
 
 const COMMAND_REPLIES = {
   "/order": REPLY_ORDER, "/track": REPLY_TRACK, "/delivery": REPLY_DELIVERY,
@@ -1010,22 +1036,31 @@ const STRUCTURED_COMPLAINT_RE = /^\s*لدي\s*مشكلة\s*:/i;
 // escalated; two customers churned after a cancel request went unanswered.
 // (?<!ب) excludes the unrelated بالغ/بالغة/بالغي root ("severe"/"adult"/"reach")
 // which would otherwise substring-match — Arabic has no \w-aware \b to lean on.
-const CANCEL_OR_DELETE_RE = /(?<!ب)[إا]ل(?:ا)?غ(?:اء|ي|و)|cancel(?:led|ling|ing)?\b|حذف\s*(?:ال)?حساب|delete\s*(?:my\s*)?account/i;
+// Split into two reasons (was one "cancel" bucket): account deletion is a real,
+// destructive, irreversible action — it must never be automated from an
+// unauthenticated chat message (see project safety policy), so it gets its own
+// reason + a distinct acknowledgment (below) that sets the right expectation
+// ("a person will handle this") instead of implying either action happens on
+// its own.
+const CANCEL_ONLY_RE = /(?<!ب)[إا]ل(?:ا)?غ(?:اء|ي|و)|cancel(?:led|ling|ing)?\b/i;
+const DELETE_ACCOUNT_RE = /حذف\s*(?:ال)?حساب|delete\s*(?:my\s*)?account/i;
 // A delay/stuck complaint only counts paired with something order-shaped — bare
 // "متأخر"/"تأخر"/"متوقف" alone is too broad (e.g. "الموقع متوقف") to safely
 // auto-escalate on its own. "متوقف" covers the real churned-customer phrasing
 // "الطلب متوقف" that "متأخر" alone missed (2026-09 WhatsApp audit).
 const DELAY_COMPLAINT_RE = /(طلب.{0,15}(متأخ?ر|تأخ[رّ]|متوقف)|(متأخ?ر|تأخ[رّ]|متوقف).{0,15}طلب)/i;
-// Returns the matched escalation REASON ("human"/"complaint"/"cancel"/"delay"),
-// or null when nothing matches — a reason string (not a boolean) so callers can
-// tell admins *why* a thread escalated, while `if (wantsHuman(text))` still
-// works unchanged (non-empty string is truthy, null is falsy).
+// Returns the matched escalation REASON
+// ("human"/"complaint"/"cancel"/"delete_account"/"delay"), or null when
+// nothing matches — a reason string (not a boolean) so callers can tell
+// admins *why* a thread escalated, while `if (wantsHuman(text))` still works
+// unchanged (non-empty string is truthy, null is falsy).
 function wantsHuman(text) {
   const t = String(text || "").trim();
   if (!t) return null;
   if (HUMAN_REQUEST_RE.test(t)) return "human";
   if (STRUCTURED_COMPLAINT_RE.test(t)) return "complaint";
-  if (CANCEL_OR_DELETE_RE.test(t)) return "cancel";
+  if (DELETE_ACCOUNT_RE.test(t)) return "delete_account";
+  if (CANCEL_ONLY_RE.test(t)) return "cancel";
   if (DELAY_COMPLAINT_RE.test(t)) return "delay";
   return null;
 }
@@ -1045,8 +1080,19 @@ async function setThreadFlags(wa_id, patch) {
 const ESCALATION_REASON_LABEL = {
   human: "طلب التحدث مع موظف",
   complaint: "شكوى عبر نموذج الدعم",
-  cancel: "طلب إلغاء طلب / حذف حساب",
+  cancel: "طلب إلغاء طلب",
+  delete_account: "طلب حذف حساب",
   delay: "شكوى تأخّر طلب"
+};
+// Reason-specific acknowledgment sent to the CUSTOMER right after escalating
+// (was one generic "تمام 🙌 بحوّلك لموظف..." for every reason). Account
+// deletion especially needs its own wording: it must never read as "done" or
+// "will be done automatically" — deletion stays a human-only action (project
+// safety policy), this message only sets that expectation honestly.
+const ESCALATION_ACK_REPLY = {
+  delete_account: "تلقّينا طلبك بحذف الحساب 🗑️\nهذا الإجراء يحتاج تنفيذاً يدوياً من فريقنا لضمان سلامة بياناتك، وسيتواصل معك أحد الموظفين قريباً لإتمامه. ابقَ معنا.",
+  cancel: "تمام 🙌 استلمنا طلب الإلغاء وحوّلناه لموظف من فريق دكانجي ليتابع معك فوراً. ابقَ معنا وسيردّ عليك قريباً.",
+  default: "تمام 🙌 بحوّلك لموظف من فريق دكانجي يتابع معك. ابقَ معنا وسيردّ عليك قريباً."
 };
 async function notifyAdminsEscalation(wa_id, name, reason) {
   const reasonLabel = ESCALATION_REASON_LABEL[reason] || "طلب التحدث مع موظف";
@@ -1450,6 +1496,23 @@ async function rawAdminAlert(c, text) {
   }
 }
 
+// Fires the moment a merchant-interest message is detected (icebreaker,
+// /merchant command, or free text matching MERCHANT_INTEREST_RE) — the old
+// flow just replied with static text and left the merchant's own message
+// sitting in the inbox as the only "lead record" (2026-09 audit: 11 real
+// merchants messaged in, zero got followed up). Self-contained (calls cfg()
+// itself, same as sendAutoReply) and sends ONLY to MERCHANT_SUPPORT_WA — not
+// the full adminPhones list — per the user's explicit spec. Never throws.
+async function notifyMerchantLead(waId, name) {
+  const c = cfg();
+  if (!c.token || !c.phoneId) return;
+  const to = toE164(MERCHANT_SUPPORT_WA, c.cc);
+  if (!to) return;
+  const label = name ? `${name} (+${waId})` : `+${waId}`;
+  const text = `🆕 تاجر جديد يرغب بالانضمام إلى دكانجي\nرقم واتساب التاجر: ${label}\nيرجى التواصل معه للمتابعة. 🤝`;
+  try { await sendWhatsapp(c, to, { text }); } catch (e) {}
+}
+
 async function sendOrderWhatsapp(c, order, store, priceFlag) {
   const storeName = (store && store.name) || "متجرك";
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
@@ -1730,6 +1793,17 @@ async function ingestWebhook(body) {
         // insert succeeded but stored nothing (a duplicate webhook retry) so we
         // never reply twice; if storage is unavailable we still reply.
         const dup = ins && ins.ok && Array.isArray(ins.rows) && ins.rows.length === 0;
+        // Voice notes got zero reply at all before (describeMessage() only ever
+        // labeled them "[رسالة صوتية]" in the stored log; nothing branched on
+        // that type) — 2026-09 audit found 2+ merchants sending voice notes and
+        // getting silence. No transcription pipeline exists, so this is an
+        // honest static fallback, parallel to the text branch below.
+        if (!dup && d.type === "audio" && m.from) {
+          const flags = await getThreadFlags(m.from);
+          if (!flags.ai_paused) {
+            try { await sendAutoReply(m.from, REPLY_VOICE); } catch (e) {}
+          }
+        }
         if (!dup && d.type === "text" && m.from) {
           const flags = await getThreadFlags(m.from);
           // Human escalation: explicit request, a structured «لدي مشكلة:» support
@@ -1741,13 +1815,30 @@ async function ingestWebhook(body) {
             if (!flags.needs_human) {
               await setThreadFlags(m.from, { ai_paused: true, needs_human: true, last_escalated_at: new Date().toISOString() });
               await notifyAdminsEscalation(m.from, nameByWa[m.from], escalationReason);
-              try { await sendAutoReply(m.from, "تمام 🙌 بحوّلك لموظف من فريق دكانجي يتابع معك. ابقَ معنا وسيردّ عليك قريباً."); } catch (e) {}
+              const ack = ESCALATION_ACK_REPLY[escalationReason] || ESCALATION_ACK_REPLY.default;
+              try { await sendAutoReply(m.from, ack); } catch (e) {}
             }
             continue; // already-escalated repeats → stay silent (human will reply)
           }
           // A human is handling this thread → the AI stays quiet.
           if (flags.ai_paused) continue;
           const reply = autoReplyFor(d.body);
+          // Merchant-interest lead: redirect the merchant to a human number AND
+          // ping that same number with the merchant's own WhatsApp number so
+          // it's an actionable lead, not just a reply the merchant reads and a
+          // dead-end transcript admins never see (2026-09 audit: 11 real
+          // merchant messages, zero follow-up). Covers both the exact
+          // icebreaker/"/merchant" command (already resolves to REPLY_MERCHANT
+          // via autoReplyFor above) and free-text interest.
+          if (reply === REPLY_MERCHANT || MERCHANT_INTEREST_RE.test(d.body)) {
+            try { await sendAutoReply(m.from, REPLY_MERCHANT); } catch (e) {}
+            try { await notifyMerchantLead(m.from, nameByWa[m.from]); } catch (e) {}
+            continue;
+          }
+          if (IOS_INTEREST_RE.test(d.body)) {
+            try { await sendAutoReply(m.from, REPLY_IOS); } catch (e) {}
+            continue;
+          }
           if (reply) {
             try { await sendAutoReply(m.from, reply); } catch (e) {}     // command / ice breaker → static
           } else {
