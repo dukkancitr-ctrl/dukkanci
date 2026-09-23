@@ -1562,7 +1562,7 @@ const STORE_CATEGORY_KEYWORDS = [
   { re: /مكسرات|بهارات/i, categories: ["مكسرات وبهارات", "بن ومكسرات"] },
   { re: /عصائر|عصير/i, categories: ["عصائر"] },
   { re: /مياه\s*معدني[ةه]/i, categories: ["المياه المعدنية"] },
-  { re: /مطبخ\s*منزلي|مطابخ\s*منزلي[ةه]/i, categories: ["مطابخ منزلية"] },
+  { re: /مطبخ\s*(?:منزلي|سحابي)|مطابخ\s*(?:منزلي|سحابي)[ةه]?/i, categories: ["مطابخ سحابية"] },
   { re: /مواد\s*غذائي[ةه]\s*متخصص[ةه]/i, categories: ["مواد غذائية متخصصة"] },
   // Generic "any store/shop" ask with no specific category or name attached.
   { re: /محل(?:ات)?|متجر|متاجر|دكاكين/i, categories: null }
@@ -1976,7 +1976,7 @@ async function aiReply(text, wa_id, timestamp) {
   // category list unconditionally (whenever a category keyword is present)
   // and telling the model explicitly to prefer it settles that conflict.
   // Also still the fix for "مطبخ منزلي": its plural mismatch ("مطبخ" is
-  // never a substring of the stored "مطابخ منزلية") made the old search
+  // never a substring of the stored "مطابخ سحابية") made the old search
   // always return empty for it, with no fallback at all.
   const categoryAsk = detectCategoryAsk(cleanText);
   if (categoryAsk !== undefined) {

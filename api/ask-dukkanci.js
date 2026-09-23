@@ -11,7 +11,7 @@ const gw = require("../lib/ai-gateway");
 
 // Must match the real category set used platform-wide (app.js HOME_CATEGORIES) — the model is
 // told to choose ONLY from this list so it can never invent a category that doesn't exist.
-const KNOWN_CATEGORIES = ["سوبر ماركت", "مطاعم", "ملاحم", "حلويات", "مكسرات وبهارات", "بن ومكسرات", "عصائر", "مواد غذائية متخصصة", "مطابخ منزلية"];
+const KNOWN_CATEGORIES = ["سوبر ماركت", "مطاعم", "ملاحم", "حلويات", "مكسرات وبهارات", "بن ومكسرات", "عصائر", "مواد غذائية متخصصة", "مطابخ سحابية"];
 
 // A conversation is capped at this many clarifying questions before the model is forced to
 // finalize with whatever it has — prevents an endless back-and-forth from ever reaching the

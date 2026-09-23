@@ -744,7 +744,7 @@ function mapDbProduct(r) {
     // Traceability link back to the shared supermarket image bank ("مخزن الصور
     // المشترك") this product was imported from, if any — see catalog_products.
     catalogProductId: r.catalog_product_id ?? null,
-    // Home-kitchen ("مطابخ منزلية") advance-order requirement in hours (0/24/48).
+    // Home-kitchen ("مطابخ سحابية") advance-order requirement in hours (0/24/48).
     advanceHours: Number(r.advance_hours) || 0
   };
 }
@@ -2879,7 +2879,7 @@ const HOME_CATEGORIES = [
   ["بن ومكسرات", "/assets/photos/store-coffee.jpg", "أجود أنواع البنّ والقهوة"],
   ["عصائر", "/assets/photos/store-juice.jpg", "عصائر طازجة ومشروبات"],
   ["مواد غذائية متخصصة", "/assets/photos/store-specialty-food.jpg", "عسل طبيعي ومنتجات النحل"],
-  ["مطابخ منزلية", "/assets/photos/store-home-kitchen-placeholder.svg", "أدوات ومستلزمات المطبخ"],
+  ["مطابخ سحابية", "/assets/photos/store-home-kitchen-placeholder.svg", "أدوات ومستلزمات المطبخ"],
   ["المياه المعدنية", "/assets/photos/store-mineral-water.jpg", "مياه نقية توصلك لباب بيتك"]
 ];
 // The editable homepage categories. From site_settings.categories.items when
@@ -2911,7 +2911,7 @@ function homeCategoriesOrdered() {
 function storeCategoryNames() {
   return categoriesList().filter(c => !c.hidden).map(c => c.name).filter(Boolean);
 }
-// Home-kitchen ("مطابخ منزلية") stores get an extra per-product prep-time
+// Home-kitchen ("مطابخ سحابية") stores get an extra per-product prep-time
 // field — these small home-based kitchens often need real advance notice
 // (24-48h) to prepare an order, unlike a stocked supermarket/restaurant.
 function isHomeKitchenStore(store) {
@@ -11908,7 +11908,7 @@ const CATEGORY_MERCHANT_PITCH = {
   "ملاحم": "ملحمتك",
   "عصائر": "محل عصائرك",
   "مكسرات وبهارات": "محلك للمكسرات والبهارات",
-  "مطابخ منزلية": "مطبخك المنزلي"
+  "مطابخ سحابية": "مطبخك السحابي"
 };
 
 // Main-category landing page for /category/<slug>: stores in the category + a
