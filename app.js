@@ -3245,12 +3245,12 @@ function renderHomeDistrictSwitcher() {
 const HOME_INPAGE_CATS = [
   { name: "الكل", icon: "✨" },
   { name: "مطاعم", icon: "🍽️" },
+  { name: "مطابخ سحابية", icon: "🍳" },
   { name: "سوبر ماركت", icon: "🛒" },
   { name: "ملاحم", icon: "🥩" },
   { name: "حلويات", icon: "🍰" },
   { name: "بن ومكسرات", icon: "☕" },
-  { name: "المياه المعدنية", icon: "💧" },
-  { name: "مطابخ سحابية", icon: "🍳" }
+  { name: "المياه المعدنية", icon: "💧" }
 ];
 
 function renderHomeInPageCatTabs() {
