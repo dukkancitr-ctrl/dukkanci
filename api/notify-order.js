@@ -232,6 +232,117 @@ function cronOk(req, q, c) {
   return adminOk({ headers: req.headers, query: q });
 }
 
+// ── System health cron ──────────────────────────────────────────────────────
+// A periodic Vercel Cron hits /api/notify-order?action=system-health-cron.
+// This is DIFFERENT from the existing rawAdminAlert() calls inside
+// sendOrderWhatsapp (which only fire when ONE order's notification fails
+// completely): those are per-order and only run when an order is actually
+// placed. This one is a standing heartbeat that looks for PATTERN-level
+// breakage — the WhatsApp token/number itself rejected by Meta, or every
+// recent order-alert/OTP send failing outright — the kind of outage that can
+// sit silent for hours if order volume happens to be low.
+// Alerts go out over TWO independent channels (WhatsApp via rawAdminAlert +
+// browser push via pushToSubscriptions) so a dead WhatsApp token can't also
+// silence the alert about itself — push has its own failure modes (VAPID,
+// no active admin subscription) but they are unrelated to Meta's token.
+// KNOWN GAP, disclosed rather than hidden: if WHATSAPP_TOKEN/WHATSAPP_PHONE_
+// NUMBER_ID are wiped from Vercel entirely (not just expired/rejected),
+// rawAdminAlert() cannot send anything either — there is no channel in this
+// codebase fully independent of both WhatsApp and this app's own runtime
+// (no email/SMS integration exists). Push is the only fallback in that case.
+// De-duplicated via a site_settings row: a standing problem pings once, then
+// again every HEALTH_REMIND_AFTER_MS while it persists, not every cron tick.
+const HEALTH_LOOKBACK_MS = 3 * 60 * 60 * 1000;     // 3h window for failure-rate checks
+const HEALTH_REMIND_AFTER_MS = 3 * 60 * 60 * 1000; // re-ping every 3h while unresolved
+const HEALTH_MIN_SAMPLE = 3;                       // ignore a lone straggler — need a real pattern
+
+// Cheap, read-only Graph call (no message sent) that proves the token AND
+// phone number are actually accepted by Meta right now — stronger evidence
+// than env-var presence, which says nothing about revocation/restriction.
+async function probeWhatsappChannel(c) {
+  if (!c.token || !c.phoneId) {
+    return { ok: false, code: "wa_not_configured", detail: "WHATSAPP_TOKEN أو WHATSAPP_PHONE_NUMBER_ID غير مضبوطين على الخادم" };
+  }
+  try {
+    const r = await fetch(`${GRAPH}/${c.version}/${c.phoneId}?fields=id`, { headers: { Authorization: `Bearer ${c.token}` } });
+    if (r.ok) return { ok: true };
+    const data = await r.json().catch(() => ({}));
+    const msg = (data && data.error && data.error.message) || JSON.stringify(data).slice(0, 200);
+    return { ok: false, code: "wa_token_rejected", detail: `Meta رفض التوكن/رقم واتساب (HTTP ${r.status}): ${msg}` };
+  } catch (e) {
+    return { ok: false, code: "wa_probe_error", detail: `تعذّر الوصول لواجهة Meta: ${e.message}` };
+  }
+}
+
+// Counts definitively-succeeded vs definitively-failed rows for a
+// marketing_event_logs destination since `since`. Rows still "accepted" are
+// awaiting the webhook's delivery verdict and are excluded on purpose — not
+// yet a known outcome, so they must not count as either success or failure.
+async function alertFailureRate(destination, since) {
+  const rows = await sbGet(`marketing_event_logs?destination=eq.${encodeURIComponent(destination)}&created_at=gte.${encodeURIComponent(since)}&select=status`) || [];
+  let good = 0, bad = 0;
+  for (const r of rows) {
+    if (r.status === "sent" || r.status === "delivered" || r.status === "read") good++;
+    else if (r.status === "send_failed" || r.status === "failed") bad++;
+  }
+  return { total: rows.length, good, bad };
+}
+
+async function loadHealthAlertState() {
+  const rows = await sbGet(`site_settings?key=eq.system_health_alert&select=value`) || [];
+  return (rows[0] && rows[0].value) || { signature: "", lastAlertAt: null };
+}
+async function saveHealthAlertState(value) {
+  await sbWrite("POST", "site_settings?on_conflict=key", { key: "system_health_alert", value, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+}
+
+async function runSystemHealthCron(c) {
+  const issues = [];
+  try {
+    const probe = await probeWhatsappChannel(c);
+    if (!probe.ok) issues.push({ code: probe.code, text: `🔴 قناة واتساب معطّلة: ${probe.detail}` });
+
+    const since = new Date(Date.now() - HEALTH_LOOKBACK_MS).toISOString();
+    const orderAlerts = await alertFailureRate("whatsapp_order_alert", since);
+    if (orderAlerts.good + orderAlerts.bad >= HEALTH_MIN_SAMPLE && orderAlerts.good === 0) {
+      issues.push({ code: "order_alerts_failing", text: `🔴 كل إشعارات الطلبات فشلت خلال آخر ٣ ساعات (${orderAlerts.bad} فشل من أصل ${orderAlerts.total} محاولة) — تحقّق من الطلبات يدوياً من لوحة التحكم` });
+    }
+    const otpAlerts = await alertFailureRate("whatsapp_otp", since);
+    if (otpAlerts.good + otpAlerts.bad >= HEALTH_MIN_SAMPLE && otpAlerts.good === 0) {
+      issues.push({ code: "otp_failing", text: `🔴 كل رموز تحقّق تأكيد الطلب فشلت خلال آخر ٣ ساعات (${otpAlerts.bad} من ${otpAlerts.total}) — الزبائن قد لا يستطيعون إتمام الطلب` });
+    }
+  } catch (e) {
+    issues.push({ code: "health_check_crashed", text: `🔴 تعطّل فحص صحة النظام نفسه: ${String((e && e.message) || e).slice(0, 200)}` });
+  }
+
+  const state = await loadHealthAlertState().catch(() => ({ signature: "", lastAlertAt: null }));
+  const signature = issues.map(i => i.code).sort().join(",");
+  const now = Date.now();
+  let fired = false;
+
+  if (!signature) {
+    if (state.signature) {
+      await rawAdminAlert(c, "✅ دكانجي: عاد نظام الإشعارات للعمل الطبيعي بعد عطل سابق.");
+      try { await pushToSubscriptions("role=eq.admin", { title: "✅ دكانجي", body: "عاد نظام الإشعارات للعمل الطبيعي.", url: "/", tag: "system-health" }); } catch (e) {}
+      await saveHealthAlertState({ signature: "", lastAlertAt: now });
+      fired = true;
+    }
+  } else {
+    const isNew = signature !== state.signature;
+    const dueForReminder = !isNew && state.lastAlertAt && (now - new Date(state.lastAlertAt).getTime() >= HEALTH_REMIND_AFTER_MS);
+    if (isNew || dueForReminder) {
+      const header = `🚨 دكانجي — تحذير نظام (${new Date().toLocaleString("ar", { timeZone: "Europe/Istanbul" })})\n\n`;
+      const bodyText = issues.map(i => i.text).join("\n\n");
+      await rawAdminAlert(c, header + bodyText + "\n\nيتطلّب تدخّلاً يدوياً.");
+      try { await pushToSubscriptions("role=eq.admin", { title: "🚨 تحذير نظام دكانجي", body: issues.map(i => i.text).join(" • ").slice(0, 180), url: "/", tag: "system-health" }); } catch (e) {}
+      await saveHealthAlertState({ signature, lastAlertAt: now, firstAlertAt: isNew ? now : (state.firstAlertAt || now) });
+      fired = true;
+    }
+  }
+
+  return { ok: true, issues: issues.map(i => i.code), fired };
+}
+
 // Send a login OTP over WhatsApp using a Meta AUTHENTICATION template. The code
 // goes in the body param AND the copy-code/URL button param (adjust to match the
 // approved template named in WHATSAPP_TEMPLATE_OTP).
@@ -1153,7 +1264,7 @@ const AI_SYSTEM = `أنت «مساعد دكانجي»، مساعد خدمة عم
 - للطلب وجّه العميل إلى الموقع https://www.dukkanci.com.tr ليختار المتجر والمنتجات ويكمل الطلب. رسوم التوصيل تُحسب حسب المسافة وتظهر بدقّة عند إتمام الطلب، والاستلام من المتجر مجاني.
 - لا تعرف تفاصيل طلب معيّن أو حالته أو بيانات الحساب أو الدفع. إن سُئلت عن حالة طلب اطلب رقمه (مثل DK-1234567) وأخبر العميل أن الفريق سيتابع، أو وجّهه إلى «طلباتي» في الموقع.
 - عند سؤال العميل عن منتج (توفره/سعره/أي متجر يبيعه): إن وصلتك «نتائج بحث حقيقية بالمنتجات» أسفل هذه التعليمات فاعتمد عليها حرفياً (الاسم والسعر والمتجر). **شارك رابط المنتج المباشر لكل نتيجة دائماً (وليس رابط المتجر العام فقط)** بثقة — هو معلومة عامة منشورة على الموقع، لا داعي للتردد أو الرفض. إن وجدت النتائج المنتج نفسه في أكثر من متجر، رشّح للعميل كل متجر يبيعه (لا تكتفِ بأول نتيجة فقط) مع رابط المنتج المباشر الخاص بكل واحد منها، حتى يختار العميل الأقرب أو الأنسب له. إن وصلتك رسالة أن البحث لم يجد نتيجة، فقلها للعميل بصدق فوراً واقترح تصفّح الموقع أو إعادة صياغة اسم المنتج. لا تقل أبداً «سأبحث الآن» أو أي وعد بالبحث لاحقاً — البحث الفعلي يتم قبل ردّك دائماً، فردّك الأول هو نتيجته.
-- عند سؤال العميل بشكل عام عن مطاعم/محلات موجودة (بلا اسم محدَّد، مثل «عندكم مطاعم؟» أو «شو في محلات؟»): إن وصلتك قائمة حقيقية بمتاجر/مطاعم دكانجي أسفل هذه التعليمات فاذكر أسماءها **حرفياً كما وردت** مع روابطها بثقة — لا تكتفِ بجملة عامة بلا أسماء حقيقية. **ممنوع تماماً ذكر أي اسم مطعم/محل من معرفتك العامة أو تخمينك، حتى لو بدا اسماً حقيقياً ومنطقياً ومطابقاً لأسلوب تسمية شائع (مثل «بيت الشام» أو «مندي اليمن»)** — إن لم يرد الاسم حرفياً في تلك القائمة فهو غير مؤكَّد ولا يجوز ذكره أبداً.
+- عند سؤال العميل بشكل عام عن مطاعم/محلات موجودة (بلا اسم محدَّد، مثل «عندكم مطاعم؟» أو «شو في محلات؟» أو «بدي محل عصائر» أو «عندكم مطبخ منزلي؟»): إن وصلتك قائمة حقيقية بمتاجر/مطاعم دكانجي أسفل هذه التعليمات فاذكر أسماءها **حرفياً كما وردت** مع روابطها بثقة — لا تكتفِ بجملة عامة بلا أسماء حقيقية. **ميّز بدقة بين فئات المتاجر ولا تخلطها أبداً**: إن سأل عن مطعم فلا تقترح سوبرماركت أو محل عصائر أو مطبخاً منزلياً، وإن سأل عن محل عصائر أو مطبخ منزلي أو سوبرماركت فاذكر فقط متاجر من نفس تلك الفئة تحديداً — القائمة التي تصلك مصنَّفة مسبقاً بدقة، فاعتمد عليها كما هي دون افتراض أن متجراً من فئة أخرى قد يبيع هذه الفئة أيضاً. **ممنوع تماماً ذكر أي اسم مطعم/محل من معرفتك العامة أو تخمينك، حتى لو بدا اسماً حقيقياً ومنطقياً ومطابقاً لأسلوب تسمية شائع (مثل «بيت الشام» أو «مندي اليمن»)** — إن لم يرد الاسم حرفياً في تلك القائمة فهو غير مؤكَّد ولا يجوز ذكره أبداً.
 - عند سؤال العميل عن متجر بالاسم (رابطه، عنوانه، ساعاته، هل هو موجود): إن وصلتك «نتائج بحث حقيقية بالمتاجر» فاعتمد عليها حرفياً وشارك الرابط والعنوان مباشرة بثقة — اسم المتجر ورابطه وعنوانه وساعاته وعدد متاجر المنصة **كلها معلومات عامة منشورة على الموقع بلا استثناء**، فلا ترفض مشاركتها أو تتردد فيها أبداً مهما بدت شخصية الطلب. كذلك أرقام واتساب الدعم والبريد الإلكتروني أسفل «حقائق عامة حيّة» — شاركها كما وردت حرفياً، ولا تخترع رقماً من عندك أبداً إن لم يصلك في هذا القسم.
 - **مصدر الحقيقة الوحيد لأي رابط أو منتج أو متجر هو ما يصلك حرفياً تحت «نتائج بحث حقيقية» في هذه الرسالة — لا معرفتك العامة عن العالم الخارجي أو عن دكانجي إطلاقاً.** إن لم يصلك اسم متجر أو رابطه هنا فهذا يعني أنه غير موجود على المنصة أو أن البحث لم يجده الآن — لا تُنشئ رابط dukkanci.com.tr ولا أي رابط آخر من عندك أبداً مهما بدا الاسم منطقياً أو مألوفاً لك، ولا تستخدم أي معلومة تعرفها عن مطعم/متجر حقيقي من مصادر خارج دكانجي (كخرائط جوجل مثلاً) حتى لو صادف أنها صحيحة واقعياً — العميل يثق أن كل رابط تعطيه هو رابط دكانجي حقيقي.
 - لا تختلق أسعاراً أو أرقاماً أو أوقاتاً أو وعوداً؛ إن لم تكن متأكداً قل ذلك ووجّه العميل للفريق.
@@ -1818,9 +1929,9 @@ async function aiReply(text, wa_id, timestamp) {
   if (ctx) {
     system = AI_SYSTEM + `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${ctx}`;
   }
+  let products = [];
+  let stores = [];
   if (searchCandidates.length) {
-    let products = [];
-    let stores = [];
     for (const q of searchCandidates) {
       products = await searchProductsForAi(q);
       if (products.length) break;
@@ -1843,19 +1954,27 @@ async function aiReply(text, wa_id, timestamp) {
       ? `\n\nنتائج بحث حقيقية بالمتاجر — اعتمد عليها حرفياً وشارك الرابط بثقة (معلومة عامة منشورة على الموقع):\n${formatStoreResults(stores)}`
       : `\n\nبحثتَ فعلياً بالمتاجر ولم تجد متجراً مطابقاً بهذا الاسم على دكانجي. أخبر العميل بصدق أنك لم تجده حالياً على المنصة واقترح تصفّح الموقع أو التأكد من الاسم. لا تختلق رابطاً أو عنواناً أبداً، ولا تستخدم أي معلومة عن متجر من معرفتك العامة خارج دكانجي — إن لم تصلك هنا فهو غير موجود على المنصة.`;
   }
-  // Generic "عندكم مطاعم؟"/"شو محلات موجودة؟" asks (user's explicit spec:
-  // "عندما يسأل عن مطاعم او محلات فقط ردّ عليه بأسماء موجودة على دكانجي"):
-  // only fires when THIS message carries no other real search content — a
-  // named search ("بدي مطعم شاورما") already goes through searchStoresForAi
-  // above via its surviving term "شاورما" and must not be overridden here.
-  if (!productSearchTerms(cleanText).length) {
-    const categoryAsk = detectCategoryAsk(cleanText);
-    if (categoryAsk !== undefined) {
-      const catResult = await listStoresByCategory(categoryAsk);
-      system += catResult.sample.length
-        ? `\n\nالعميل يسأل بشكل عام عن مطاعم/محلات موجودة على دكانجي (لا اسماً محدَّداً) — إليك قائمة حقيقية من الكتالوج الحالي (العدد الكلي المطابق: ${catResult.total}). **اذكر في ردّك فقط الأسماء الواردة حرفياً في هذه القائمة، بنصّها تماماً، مع روابطها.** ممنوع منعاً باتاً ذكر أي اسم مطعم أو محل آخر من معرفتك العامة أو مما تظنّ أنه موجود على دكانجي، حتى لو بدا اسماً واقعياً أو مألوفاً أو شائعاً كنمط تسمية (مثل «بيت الشام» أو «مندي اليمن») — إن لم يكن الاسم حرفياً في القائمة أدناه فلا تذكره أبداً:\n${formatCategoryStoreList(catResult)}`
-        : `\n\nالعميل يسأل عن مطاعم/محلات من هذه الفئة تحديداً ولا يوجد حالياً أي متجر مطابق على دكانجي. أخبره بذلك بصدق، ولا تخترع اسماً.`;
-    }
+  // Generic/category asks ("عندكم مطاعم؟", "بدي محل عصائر", "عندكم مطبخ
+  // منزلي؟") — user's explicit spec: pick stores strictly from the SAME
+  // category, never mixed. Runs whenever the raw text names a category —
+  // NOT gated on stores.length being empty anymore. It used to be, but that
+  // let a real mixing bug through live: "عندكم عصائر؟" found the real juice
+  // shop (اورانج - تركيا) via the old substring store search AND, separately,
+  // a juice-named MENU ITEM sold by an unrelated restaurant via product
+  // search — with both present the model answered using the restaurant's
+  // product instead of the correct dedicated juice shop, exactly the
+  // category-mixing the user is asking to stop. Injecting the authoritative
+  // category list unconditionally (whenever a category keyword is present)
+  // and telling the model explicitly to prefer it settles that conflict.
+  // Also still the fix for "مطبخ منزلي": its plural mismatch ("مطبخ" is
+  // never a substring of the stored "مطابخ منزلية") made the old search
+  // always return empty for it, with no fallback at all.
+  const categoryAsk = detectCategoryAsk(cleanText);
+  if (categoryAsk !== undefined) {
+    const catResult = await listStoresByCategory(categoryAsk);
+    system += catResult.sample.length
+      ? `\n\nالعميل يسأل عن نوع محدَّد من المتاجر على دكانجي (مطعم/سوبرماركت/محل عصائر/مطبخ منزلي/إلخ) — إليك قائمة حقيقية من نفس الفئة تحديداً من الكتالوج الحالي (العدد الكلي المطابق: ${catResult.total}). **هذه القائمة هي المصدر الوحيد الموثوق للإجابة عن "أي متجر ينتمي لهذه الفئة" — لا تخلط فئات مختلفة أبداً، وحتى لو ظهرت لك نتائج بحث منتجات من متجر آخر لا ينتمي لهذه الفئة (مثال: مطعم يبيع عصيراً كصنف في قائمته)، لا تستنتج من ذلك أن ذلك المتجر هو محل عصائر أو ينتمي لهذه الفئة — اعتمد فقط على القائمة التالية لتحديد نوع المتجر:**\n${formatCategoryStoreList(catResult)}\n**اذكر في ردّك فقط الأسماء الواردة حرفياً في هذه القائمة، بنصّها تماماً، مع روابطها.** ممنوع منعاً باتاً ذكر أي اسم مطعم أو محل آخر من معرفتك العامة أو مما تظنّ أنه موجود على دكانجي، حتى لو بدا اسماً واقعياً أو مألوفاً أو شائعاً كنمط تسمية (مثل «بيت الشام» أو «مندي اليمن») — إن لم يكن الاسم حرفياً في القائمة أعلاه فلا تذكره أبداً.`
+      : `\n\nالعميل يسأل عن مطاعم/محلات من هذه الفئة تحديداً ولا يوجد حالياً أي متجر مطابق على دكانجي. أخبره بذلك بصدق، ولا تخترع اسماً ولا تقترح متجراً من فئة مختلفة على أنه يبيع هذه الفئة — حتى لو وجدت نتيجة منتج من متجر آخر يحمل اسماً مشابهاً، فذلك لا يجعله متجراً من هذه الفئة.`;
   }
   // Facts that must never be "sometimes I know this, sometimes I don't" — see
   // "Live counters + contact numbers" above. Always included: cheap, and this
@@ -2337,6 +2456,12 @@ module.exports = async (req, res) => {
     if (q.action === "subscription-cron") {
       if (!cronOk(req, q, c)) return res.status(403).json({ error: "unauthorized" });
       return res.status(200).json(await runSubscriptionCron(c));
+    }
+
+    // System health heartbeat — Vercel Cron invokes this over GET (see vercel.json).
+    if (q.action === "system-health-cron") {
+      if (!cronOk(req, q, c)) return res.status(403).json({ error: "unauthorized" });
+      return res.status(200).json(await runSystemHealthCron(c));
     }
 
     // PUBLIC: Meta Commerce product feed for one store (spec §13). Meta fetches
@@ -3170,6 +3295,13 @@ module.exports = async (req, res) => {
   if (pq.action === "subscription-cron") {
     if (!cronOk(req, pq, c)) return res.status(403).json({ error: "unauthorized" });
     return res.status(200).json(await runSubscriptionCron(c));
+  }
+
+  // System health heartbeat — mirrors the GET route above so a manual/admin
+  // POST trigger works too (same dual-registration pattern as subscription-cron).
+  if (pq.action === "system-health-cron") {
+    if (!cronOk(req, pq, c)) return res.status(403).json({ error: "unauthorized" });
+    return res.status(200).json(await runSystemHealthCron(c));
   }
 
   // Checkout phone verification — STEP 1: generate a 6-digit code and WhatsApp it

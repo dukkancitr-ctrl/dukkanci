@@ -16,6 +16,7 @@
   },
   "crons": [
     { "path": "/api/notify-order?action=subscription-cron", "schedule": "0 6 * * *" },
+    { "path": "/api/notify-order?action=system-health-cron", "schedule": "*/15 * * * *" },
     { "path": "/api/ai?action=syn-cron", "schedule": "*/2 * * * *" }
   ],
   "redirects": [
