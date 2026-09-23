@@ -3249,7 +3249,8 @@ const HOME_INPAGE_CATS = [
   { name: "ملاحم", icon: "🥩" },
   { name: "حلويات", icon: "🍰" },
   { name: "بن ومكسرات", icon: "☕" },
-  { name: "المياه المعدنية", icon: "💧" }
+  { name: "المياه المعدنية", icon: "💧" },
+  { name: "مطابخ سحابية", icon: "🍳" }
 ];
 
 function renderHomeInPageCatTabs() {
