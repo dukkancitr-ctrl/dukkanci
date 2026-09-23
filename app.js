@@ -263,7 +263,8 @@ const initialDeliverySettings = {
   ...bludanmarketDeliverySettings,
   ...galatawaterDeliverySettings,
   ...krepmaDeliverySettings,
-  101: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
+  101: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 },
+  117: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
 
 function loadCustomerAddresses() {
