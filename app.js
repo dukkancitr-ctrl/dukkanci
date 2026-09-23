@@ -387,6 +387,13 @@ const state = {
   deliveryQuote: null,
   checkoutLocation: null,
   checkoutSelectedAddressId: null,
+  // Signature (storeId|addressId|fee) of the delivery quote the customer has
+  // already seen and explicitly confirmed in the pre-order popup. Any change to
+  // the address or the computed fee produces a different signature, so the popup
+  // reappears — this is what stops a stale confirmation from silently covering a
+  // NEW, unseen fee. In-memory only (never persisted): a fresh page load must
+  // always re-confirm.
+  deliveryFeeConfirmedKey: null,
   merchantTab: "overview",
   merchantAnalytics: null, // per-store tracking report (null=unloaded, {loading}|{report}|{error})
   merchantAnalyticsFilter: { range: 30 },
@@ -1442,6 +1449,12 @@ function orderProgress(status) {
   };
   return map[status] || { steps: 1, color: "gray" };
 }
+// Statuses a CUSTOMER may still self-cancel from "طلباتي" — mirrors the
+// server-side allow-list in api/notify-order.js (customer-cancel-order). Once a
+// courier is already dispatched ("خرج للتوصيل") or the order is terminal,
+// self-service cancellation stops and the customer has to reach the store
+// directly (further along than this, cancelling wastes a real trip).
+const CUSTOMER_CANCELLABLE_STATUSES = ["طلب جديد", "بانتظار الدفع", "تم القبول", "قيد التجهيز", "جاهز للاستلام"];
 function formatOrderDate(iso) {
   if (!iso) return "";
   try { return new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)); }
@@ -4802,7 +4815,7 @@ function renderCustomerOrders() {
         ${prog.steps > 0 && prog.steps < 5 ? `<div class="tracking-steps">
           ${steps.map((step, index) => `<div class="${index < prog.steps ? "done" : ""}"><span>${index < prog.steps ? icon("check") : ""}</span><small>${step}</small></div>`).join("")}
         </div>` : ""}
-        <div class="customer-order__bottom"><strong>${money(order.total)}</strong><div>${canConfirm ? `<button class="primary-button compact" data-action="confirm-receipt" data-id="${order.id}">${icon("check")} تأكيد الاستلام</button>` : ""}<button class="text-button" data-action="customer-order-details" data-id="${order.id}">${icon("eye")} التفاصيل</button><button class="secondary-button compact" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div></div>
+        <div class="customer-order__bottom"><strong>${money(order.total)}</strong><div>${canConfirm ? `<button class="primary-button compact" data-action="confirm-receipt" data-id="${order.id}">${icon("check")} تأكيد الاستلام</button>` : ""}<button class="text-button" data-action="customer-order-details" data-id="${order.id}">${icon("eye")} التفاصيل</button>${CUSTOMER_CANCELLABLE_STATUSES.includes(order.status) ? `<button class="text-button danger" data-action="cancel-order" data-id="${order.id}">${icon("close")} إلغاء</button>` : ""}<button class="secondary-button compact" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div></div>
       </article>`;
     }).join("")}
   </div>`;
@@ -5395,7 +5408,7 @@ function loadMerchantNotifications(force) {
     .finally(() => { state._merchantNotifsLoading = false; render(); });
 }
 
-const NOTIF_TYPE_ICON = { new_order: "receipt", image_enhanced: "stars" };
+const NOTIF_TYPE_ICON = { new_order: "receipt", image_enhanced: "stars", order_cancelled: "close" };
 
 function openMerchantNotifications() {
   const list = state._merchantNotifs || [];
@@ -12268,7 +12281,7 @@ function openCustomerOrderDetails(orderId) {
       return `<article>${product ? `<img src="${escAttr(product.image)}" alt="${escAttr(item.name)}">` : ""}<div><strong>${escAttr(item.name)}</strong>${item.options ? `<small>${escAttr(item.options)}</small>` : ""}</div><span>${(item.qty || 1).toLocaleString("ar")} × ${money(item.price)}</span></article>`;
     }).join("")}</div>
     <div class="customer-order-modal__summary"><span><small>قيمة المنتجات</small><strong>${money(order.total - deliveryFee)}</strong></span><span><small>${isDelivery ? "رسوم التوصيل" : "الاستلام"}</small><strong>${isDelivery ? money(deliveryFee) : "مجاناً"}</strong></span><span class="total"><small>الإجمالي</small><strong>${money(order.total)}</strong></span></div>
-    <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إغلاق</button><button class="primary-button" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div>
+    <div class="modal-actions"><button class="secondary-button" data-action="close-modal">إغلاق</button>${CUSTOMER_CANCELLABLE_STATUSES.includes(order.status) ? `<button class="danger-button" data-action="cancel-order" data-id="${order.id}">${icon("close")} إلغاء الطلب</button>` : ""}<button class="primary-button" data-action="reorder" data-id="${order.id}">${icon("bag")} إعادة الطلب</button></div>
   `, "customer-order-modal");
 }
 
@@ -12301,6 +12314,53 @@ function reorderCustomerOrder(orderId) {
     <p>تحتوي سلتك على منتجات حالية. لإعادة هذا الطلب سنستبدلها بمنتجات الطلب السابق.</p>
     <div class="modal-actions"><button class="secondary-button" data-action="close-modal">الاحتفاظ بالسلة</button><button class="danger-button" data-action="confirm-reorder" data-id="${orderId}">استبدال وإعادة الطلب</button></div>
   `, "confirm-modal");
+}
+
+// Customer self-cancel: asks for an (optional) reason, then hits the server
+// (customer-cancel-order) which is the ONLY thing that can actually reach the
+// store — WhatsApp delivery needs the service-role token, so this can't be a
+// direct Supabase write the way confirm-receipt is.
+function openCancelOrderModal(orderId) {
+  const order = (state.myOrders || []).find(item => item.id === orderId);
+  if (!order) return;
+  const store = getStore(order.storeId);
+  showModal(`
+    <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+    <div class="conflict-modal-icon">${icon("close")}</div>
+    <h2>إلغاء الطلب <span dir="ltr">${escAttr(orderId)}</span>؟</h2>
+    <p>سيصل إشعار فوري إلى <strong>${esc(store ? store.name : "المتجر")}</strong> بإلغاء طلبك. اكتب السبب إن أحببت — يساعد المتجر على الفهم ولا يمنعك من الطلب مجدداً لاحقاً.</p>
+    <div class="cart-note"><label for="cancel-order-reason">سبب الإلغاء (اختياري)</label><textarea id="cancel-order-reason" maxlength="500" placeholder="مثال: العنوان بعيد جداً عن المتجر، غيّرت رأيي، طلبت بالخطأ..."></textarea></div>
+    <div class="modal-actions"><button class="secondary-button" data-action="close-modal">تراجع</button><button class="danger-button" data-action="confirm-cancel-order" data-id="${escAttr(orderId)}">${icon("close")} تأكيد إلغاء الطلب</button></div>
+  `, "confirm-modal");
+}
+
+async function submitCancelOrder(orderId, reason) {
+  const order = (state.myOrders || []).find(item => item.id === orderId)
+    || (state.orders || []).find(item => item.id === orderId);
+  const phone = (order && order.customerPhone) || state.customerProfile.phone || state.verifiedPhone || "";
+  try {
+    const r = await fetch("/api/notify-order?action=customer-cancel-order", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: orderId, phone, reason: reason || "" })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) {
+      const msg = data.error === "not_cancellable"
+        ? "تعذّر إلغاء الطلب — تجاوز مرحلة يمكن إلغاؤها منها، تواصل مع المتجر مباشرة"
+        : (data.error === "unauthorized" ? "تعذّر التحقق من هذا الطلب" : "تعذّر إلغاء الطلب، حاول مجدداً أو تواصل مع المتجر");
+      showToast(msg);
+      return false;
+    }
+    if (order) order.status = "ملغى";
+    saveState();
+    closeModal();
+    render();
+    showToast("تم إلغاء طلبك وإعلام المتجر بذلك", "success");
+    return true;
+  } catch (e) {
+    showToast("تعذّر إلغاء الطلب — تحقّق من اتصالك وحاول مجدداً");
+    return false;
+  }
 }
 
 // ─────────── Turkish administrative address system (İl / İlçe / Mahalle-Köy) ───────────
@@ -14448,6 +14508,12 @@ document.addEventListener("click", event => {
     window.DUKKANCI_TRACKING?.track("InitiateCheckout", { ids: state.cart.map(i => i.productId), value: t.subtotal, count: state.cart.length });
     navigate("checkout");
   }
+  if (action === "confirm-delivery-fee") {
+    state.deliveryFeeConfirmedKey = target.dataset.key || null;
+    closeModal();
+    const form = document.getElementById("checkout-form");
+    if (form) { if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }
+  }
   if (action === "modal-quantity-plus" || action === "modal-quantity-minus") {
     const el = document.getElementById("modal-quantity");
     const next = Math.max(1, Number(el.textContent) + (action.endsWith("plus") ? 1 : -1));
@@ -14528,6 +14594,17 @@ document.addEventListener("click", event => {
   if (action === "customer-order-details") openCustomerOrderDetails(target.dataset.id);
   if (action === "reorder") reorderCustomerOrder(target.dataset.id);
   if (action === "confirm-reorder") applyCustomerReorder(target.dataset.id);
+  if (action === "cancel-order") openCancelOrderModal(target.dataset.id);
+  if (action === "confirm-cancel-order") {
+    const reasonEl = document.getElementById("cancel-order-reason");
+    const reason = (reasonEl?.value || "").trim();
+    const btn = target;
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = "جارٍ الإلغاء...";
+    submitCancelOrder(btn.dataset.id, reason).then(ok => {
+      if (!ok) { btn.disabled = false; btn.innerHTML = label; }
+    });
+  }
   if (action === "add-address") openAddressModal();
   if (action === "edit-address") openAddressModal(target.dataset.id);
   if (action === "open-address-picker") openAddressPickerModal();
@@ -16526,6 +16603,34 @@ document.addEventListener("submit", async event => {
       showToast(totals.quote?.exceedsMaxDistance ? "العنوان خارج نطاق توصيل هذا المتجر" : "تعذر حساب التوصيل لهذا العنوان");
       return;
     }
+    // Root-cause fix for customers cancelling AFTER placing an order because the
+    // delivery fee turned out higher than expected (the address was farther than
+    // they realized) — merchants reported this repeatedly. Distance-based fees are
+    // the variable/surprising case (fixed-fee and zone stores already show one
+    // predictable number in step 1), so block once per distinct store+address+fee
+    // combination with an explicit confirm popup instead of leaving the fee as one
+    // line among many in the order summary. Re-submitting the SAME form (OTP retry,
+    // a flaky network) does not re-show it — only a genuinely different address or
+    // a changed fee does, via the signature comparison below.
+    if (!isPickup && deliverySettings.mode === "distance") {
+      const feeConfirmKey = `${state.cart[0].storeId}|${els.address.value}|${totals.quote.fee}`;
+      if (state.deliveryFeeConfirmedKey !== feeConfirmKey) {
+        const confirmStore = getStore(state.cart[0].storeId);
+        showModal(`
+          <button class="modal-close" data-action="close-modal">${icon("close")}</button>
+          <div class="conflict-modal-icon">${icon("bike")}</div>
+          <h2>تأكيد رسوم التوصيل</h2>
+          <p>هذه تكلفة توصيل طلبك من <strong>${esc(confirmStore ? confirmStore.name : "المتجر")}</strong> إلى عنوانك — راجعها قبل إرسال الطلب.</p>
+          ${renderDeliveryQuoteDetails(confirmStore, totals.quote)}
+          <div class="cart-price-line"><span>المجموع الفرعي</span><strong>${money(totals.subtotal)}</strong></div>
+          ${totals.discount > 0 ? `<div class="cart-price-line cart-discount"><span>خصم</span><strong>−${money(totals.discount)}</strong></div>` : ""}
+          <div class="cart-price-line"><span>رسوم التوصيل</span><strong>${money(totals.delivery)}</strong></div>
+          <div class="cart-total"><span>الإجمالي</span><strong>${money(totals.total)}</strong></div>
+          <div class="modal-actions"><button class="secondary-button" data-action="close-modal">تراجع وتعديل العنوان</button><button class="primary-button" data-action="confirm-delivery-fee" data-key="${escAttr(feeConfirmKey)}">تأكيد ومتابعة الطلب ${icon("arrowLeft")}</button></div>
+        `, "confirm-modal");
+        return;
+      }
+    }
     // Persist contact to the profile so it prefills next time and ties orders together.
     state.customerProfile = { ...state.customerProfile, name: contactName, phone: contactPhone };
     // Feature 2: apply the coupon discount to the charged total (free-delivery is
@@ -16663,6 +16768,7 @@ document.addEventListener("submit", async event => {
       state.deliveryQuote = null;
       state.checkoutLocation = null;
       state.checkoutSelectedAddressId = null;
+      state.deliveryFeeConfirmedKey = null;
       saveState(); updateCartBadges();
       // The cart became an order — retire the snapshot so this customer is never
       // sent a "you left something in your cart" reminder for what they just bought.
@@ -17379,7 +17485,11 @@ function stopNewOrderRing() {
 }
 
 // Statuses that need no further merchant action (no reminder for these).
-const TERMINAL_ORDER_STATUSES = ["مكتمل", "مرفوضة", "تم التوصيل", "ملغي", "بانتظار الدفع"];
+// "ملغى" is the canonical spelling used everywhere else (orderProgress,
+// statusClass, statusMessage) — "ملغي" is kept alongside it only for any
+// historical row that predates that spelling; a cancelled order must never
+// keep counting as an "open order" badge.
+const TERMINAL_ORDER_STATUSES = ["مكتمل", "مرفوضة", "تم التوصيل", "ملغى", "ملغي", "بانتظار الدفع"];
 let _merchantOrderWatch = null;
 let _pendingReminderAt = 0;
 const _baselinedStores = new Set(); // stores whose backlog we've already absorbed

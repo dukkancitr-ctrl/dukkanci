@@ -447,6 +447,15 @@ function cfg() {
     tplStoreFull: env("WHATSAPP_TEMPLATE_STORE_FULL"),
     tplCustomer: env("WHATSAPP_TEMPLATE_CUSTOMER"),
     tplStatus: env("WHATSAPP_TEMPLATE_STATUS") || "order_status_update",
+    // Optional dedicated template for the customer-initiated cancellation alert
+    // sent to the STORE (see the customer-cancel-order action below). Unset by
+    // default — until it exists and is approved in WhatsApp Manager, that alert
+    // falls back to free text (deliverable only inside the store's 24h service
+    // window) plus the always-on dashboard bell + browser push, same
+    // optional-upgrade pattern as tplStoreFull above. Suggested approved body to
+    // create in Meta, 3 variables (order id, customer name, reason-or-fallback):
+    // "🚫 تم إلغاء الطلب {{1}} من قِبل الزبون {{2}}. السبب: {{3}}"
+    tplCancel: env("WHATSAPP_TEMPLATE_CANCEL"),
     // Admin recipients — get a copy of every new order regardless of whether the
     // store has a working number. NOT the platform's own sending number: WhatsApp
     // Cloud API cannot deliver a message from a number to itself, so this must be
@@ -3745,6 +3754,97 @@ module.exports = async (req, res) => {
     await logAudit(orderStoreId, isAdmin ? "admin" : "merchant", "order_status", "order", orderId,
       prevStatus ? { status: prevStatus } : null, { status: newStatus });
     return res.status(200).json({ ok: true });
+  }
+
+  // Customer: cancel THEIR OWN order, for any reason, from "طلباتي" — no admin
+  // or merchant session exists at this point, so authorization is the same
+  // phone-key match the customer-orders GET already relies on (whoever knows the
+  // order's phone number can act on it; unchanged trust model, now also a write).
+  // A dedicated server action (not a direct Supabase write like confirm-receipt)
+  // because notifying the STORE over WhatsApp needs the service-role token.
+  if (pq.action === "customer-cancel-order") {
+    const orderId = String(body.id || "").trim();
+    const phone = String(body.phone || "").replace(/\D/g, "");
+    const reason = String(body.reason || "").replace(/\s+/g, " ").trim().slice(0, 500);
+    if (!orderId || !phone) return res.status(400).json({ error: "id and phone required" });
+    // Same throttle as the read-side lookup — a write endpoint keyed by phone
+    // match needs it even more (probing order ids here doesn't just leak data,
+    // it can cancel a real customer's real order).
+    const ipKey = "cancel:" + clientIp(req);
+    if (await loginThrottleBlocked(ipKey)) return res.status(429).json({ error: "too-many-requests" });
+    recordLoginFailure(ipKey, ORDERS_LOOKUP_MAX).catch(() => {});
+    const rows = await sbGet(`orders?id=eq.${encodeURIComponent(orderId)}&select=*&limit=1`);
+    const row = Array.isArray(rows) && rows[0];
+    if (!row) return res.status(404).json({ error: "order not found" });
+    const dd = (row.delivery_details && typeof row.delivery_details === "object") ? row.delivery_details : {};
+    const ownerKey = phoneKey(dd.phone || dd.phoneKey || "");
+    if (!ownerKey || phoneKey(phone) !== ownerKey) return res.status(403).json({ error: "unauthorized" });
+    // Once a courier is already out ("خرج للتوصيل") or the order is terminal,
+    // self-service cancellation stops — mirrors CUSTOMER_CANCELLABLE_STATUSES in
+    // app.js; keep both lists in sync if either changes.
+    const CANCELLABLE = ["طلب جديد", "بانتظار الدفع", "تم القبول", "قيد التجهيز", "جاهز للاستلام"];
+    if (!CANCELLABLE.includes(row.status)) {
+      return res.status(409).json({ error: "not_cancellable", status: row.status });
+    }
+    const prevStatus = row.status;
+    const patch = await sbWrite("PATCH", `orders?id=eq.${encodeURIComponent(orderId)}`, {
+      status: "ملغى",
+      delivery_details: { ...dd, cancellation: { reason: reason || null, cancelledBy: "customer", cancelledAt: new Date().toISOString(), previousStatus: prevStatus } }
+    }, "return=minimal");
+    if (!patch.ok) return res.status(502).json({ error: "cancel failed", detail: patch.rows });
+    await sbWrite("POST", "order_status_history", [{
+      order_id: orderId, status: "ملغى", note: reason || null, changed_by: "customer"
+    }], "return=minimal").catch(() => {});
+    await logAudit(Number(row.store_id) || null, "customer", "order_cancel", "order", orderId,
+      { status: prevStatus }, { status: "ملغى", reason: reason || null });
+
+    // Tell the store: dashboard bell (guaranteed, no Meta dependency) + browser
+    // push (if subscribed) always; WhatsApp free text only when their 24h window
+    // is open, else the approved template once WHATSAPP_TEMPLATE_CANCEL is set —
+    // same reliability chain sendOrderWhatsapp uses for new orders, minus the
+    // guaranteed-template step until that template exists.
+    const storeId = Number(row.store_id) || null;
+    let store = null;
+    try {
+      const s = await sbGet(`stores?id=eq.${storeId}&select=name,whatsapp,phone&limit=1`);
+      store = Array.isArray(s) && s[0];
+    } catch (e) {}
+    const storeName = (store && store.name) || "متجرك";
+    const customerName = row.customer || "الزبون";
+    const cancelTitle = "🚫 تم إلغاء الطلب من قبل الزبون";
+    const cancelBody = `الطلب ${orderId} من ${customerName}${reason ? ` — السبب: ${reason}` : " (بدون سبب مذكور)"}`;
+    await notifyMerchant(storeId, "order_cancelled", cancelTitle, cancelBody, "order", orderId);
+    try {
+      await pushToSubscriptions(`or=(store_id.eq.${storeId},role.eq.admin)`, { title: cancelTitle, body: cancelBody, url: "/", tag: "order-" + orderId });
+    } catch (e) {}
+    let whatsapp = { skipped: true, reason: "whatsapp not configured" };
+    try {
+      if (c.token && c.phoneId) {
+        const storeTo = store ? toE164(store.whatsapp || store.phone, c.cc) : "";
+        if (storeTo) {
+          // flatParam: WhatsApp templates reject any parameter containing a
+          // newline/tab/4+ spaces (same rule buildStoreOrderParams enforces) — a
+          // customer's free-typed reason can easily include one (multi-line
+          // textarea), which would otherwise silently break every cancel alert
+          // that reaches this branch. The free-text fallback below keeps the
+          // raw multi-line reason since Meta has no such restriction there.
+          const params = [flatParam(orderId, 40), flatParam(customerName, 80), flatParam(reason || "لم يُذكر سبب", 300)];
+          const text = `🚫 *تم إلغاء طلب*\n\nرقم الطلب: ${orderId}\nالزبون: ${customerName}\n${reason ? `السبب: ${reason}` : "لم يُذكر سبب"}\n\nراجع لوحة تحكم متجرك لمزيد من التفاصيل.`;
+          if (c.tplCancel) whatsapp = { ...(await sendWhatsapp(c, storeTo, { template: c.tplCancel, params })), via: "template" };
+          else if (await serviceWindowOpen(storeTo)) whatsapp = { ...(await sendWhatsapp(c, storeTo, { text })), via: "text" };
+          else whatsapp = { skipped: true, reason: "window closed and no cancel template configured", windowClosed: true };
+          await logOrderAlertSend(orderId, "store", storeTo, whatsapp);
+        } else {
+          whatsapp = { skipped: true, reason: "store has no whatsapp/phone" };
+        }
+        // Admins get the same copy every new order sends them — same trust level
+        // as rawAdminAlert (their own number keeps its window open by design).
+        const adminText = `🚫 إلغاء طلب — ${storeName}\nالطلب ${orderId} — الزبون ${customerName}\n${reason ? `السبب: ${reason}` : "لم يُذكر سبب"}`;
+        await rawAdminAlert(c, adminText);
+      }
+    } catch (e) {}
+
+    return res.status(200).json({ ok: true, id: orderId, status: "ملغى", whatsapp });
   }
 
   // POST from Meta = delivery statuses / inbound messages. Store + ack.
