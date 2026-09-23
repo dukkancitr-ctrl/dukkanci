@@ -117,7 +117,8 @@ const STORE_SLUGS = {
   114: "bludan-market-fatih",
   115: "rewa-water-esenyurt",
   116: "krepma-basaksehir",
-  117: "tanour-bakery-esenyurt"
+  117: "tanour-bakery-esenyurt",
+  118: "sema-market-esenyurt"
 };
 
 // Reverse: slug -> id.
