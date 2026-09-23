@@ -3362,9 +3362,10 @@ function renderHome() {
   if (state.homeDistrictFilter && state.homeDistrictFilter !== "الكل") {
     allApproved = allApproved.filter(s => (s.address || "").includes(state.homeDistrictFilter) || (s.description || "").includes(state.homeDistrictFilter) || (s.name || "").includes(state.homeDistrictFilter) || (s.region || "").includes(state.homeDistrictFilter));
   }
-  let featuredStores = collapseBranchGroups(allApproved.filter(store => store.featured));
-  if (!featuredStores.length) featuredStores = collapseBranchGroups(allApproved).slice(0, 12);
+  // Every approved store is listed (branches collapsed); featured ones lead, the rest follow.
+  let featuredStores = collapseBranchGroups(allApproved);
   if (state.userLocation) featuredStores = featuredStores.slice().sort(compareStoresByDistance);
+  featuredStores = [...featuredStores.filter(s => s.featured), ...featuredStores.filter(s => !s.featured)];
   featuredStores = sortStoresByPaidPriority(featuredStores);
 
   const timeCtx = getTimeOfDayContext();
