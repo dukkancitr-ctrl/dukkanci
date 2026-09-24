@@ -1116,7 +1116,20 @@ const COMMAND_REPLIES = {
   "/order": REPLY_ORDER, "/track": REPLY_TRACK, "/delivery": REPLY_DELIVERY,
   "/offers": REPLY_OFFERS, "/stores": REPLY_STORES, "/support": REPLY_SUPPORT, "/merchant": REPLY_MERCHANT
 };
+// Keys must match the ice-breaker button text set in WhatsApp Manager
+// (Phone numbers → Settings → Conversation starters) character for character.
+// Current buttons first, then the retired ones — customers may still see cached
+// old buttons — and emoji-less variants in case Meta strips the emoji.
 const ICEBREAKER_REPLIES = {
+  "🍽️ جوعان! أريد أن أطلب الآن": REPLY_ORDER,
+  "جوعان! أريد أن أطلب الآن": REPLY_ORDER,
+  "🛵 هل توصّلون إلى منطقتي؟ وكم الرسوم؟": REPLY_DELIVERY,
+  "هل توصّلون إلى منطقتي؟ وكم الرسوم؟": REPLY_DELIVERY,
+  "⏱️ طلبي تأخر، أين وصل؟": REPLY_TRACK,
+  "طلبي تأخر، أين وصل؟": REPLY_TRACK,
+  "🏪 عندي متجر وأريد البيع على دكانجي": REPLY_MERCHANT,
+  "عندي متجر وأريد البيع على دكانجي": REPLY_MERCHANT,
+  // retired
   "كيف أطلب من دكانجي؟": REPLY_ORDER,
   "ما هي مناطق التوصيل والرسوم؟": REPLY_DELIVERY,
   "أين وصل طلبي؟": REPLY_TRACK,
