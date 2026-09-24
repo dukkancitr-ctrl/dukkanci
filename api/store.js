@@ -3,7 +3,7 @@
 // product links so Google discovers and crawls each product. The SPA hydrates
 // over this and keeps the live tab in sync during in-app navigation.
 const { STORE_SLUGS, STORE_SLUG_TO_ID } = require("../store-slugs.js");
-const { resolveStoreSlug } = require("../lib/store-slug.js");
+const { resolveStoreSlug, autoStoreSlug } = require("../lib/store-slug.js");
 // Origin to fetch the static shell from. Defaults to the SAME host serving this
 // request (no dependency on any fixed/old domain); override with SSR_SHELL_ORIGIN.
 const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
@@ -37,6 +37,20 @@ module.exports = async (req, res) => {
     const bySlug = await sbGet(`stores?slug=eq.${encodeURIComponent(raw)}&select=id&limit=1`);
     if (bySlug && bySlug[0]) id = bySlug[0].id;
   }
+  // Legacy auto-generated URLs (`/store/store-102`, `/store/<latin-name>-102`)
+  // from before the store had a clean slug. Google still holds them and they
+  // were served as noindex → lost ranking (Search Console, 2026-09-24). Resolve
+  // the trailing id, accept only if the prefix really is that store's old auto
+  // slug, then 301 to the clean canonical below.
+  let legacy = false;
+  if (!id && raw) {
+    const m = raw.match(/^(.*)-(\d+)$/);
+    if (m) {
+      const rows = await sbGet(`stores?id=eq.${m[2]}&select=id,name&limit=1`);
+      const row = rows && rows[0];
+      if (row && (m[1] === "store" || raw === autoStoreSlug(row.name, row.id))) { id = row.id; legacy = true; }
+    }
+  }
   let html = "";
   try {
     const shellOrigin = SHELL_ENV || `https://${req.headers.host || ""}`;
@@ -47,10 +61,11 @@ module.exports = async (req, res) => {
     return res.status(302).end();
   }
 
-  let store = null, products = [];
+  let store = null, products = [], exists = false;
   if (id) {
     const rows = await sbGet(`stores?id=eq.${id}&select=name,slug,description,image,cover_image,address,phone,lat,lng,category,approval_status&limit=1`);
     store = rows && rows[0];
+    exists = !!store;
     if (store && store.approval_status && store.approval_status !== "approved") store = null;
     if (store) {
       const p = await sbGet(`products?store_id=eq.${id}&select=name,slug&available=eq.true&slug=not.is.null&order=id&limit=300`);
@@ -60,6 +75,11 @@ module.exports = async (req, res) => {
 
   if (store && store.name) {
     const slug = resolveStoreSlug({ id, name: store.name, slug: store.slug }, STORE_SLUGS);
+    if (legacy && slug && slug !== raw) {
+      res.setHeader("Location", `/store/${encodeURIComponent(slug)}`);
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600");
+      return res.status(301).end();
+    }
     const title = `دكانجي - ${store.name}`;
     const desc = (store.description || "اطلب من متاجر ومطاعم حيك في إسطنبول بسهولة — توصيل سريع من سوق الحي.").slice(0, 200);
     let img = store.cover_image || store.image || "/assets/dukkanci-app-icon-512.png";
@@ -108,5 +128,9 @@ module.exports = async (req, res) => {
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300, must-revalidate");
-  res.status(200).send(html);
+  // A store row that doesn't exist at all (deleted stores like yemen-chef /
+  // sham-grill, or junk URLs) is a real 404 so Google drops it. Pending or
+  // rejected stores keep 200 + noindex — the direct link is how a pending store
+  // is reviewed before approval.
+  res.status(exists ? 200 : 404).send(html);
 };

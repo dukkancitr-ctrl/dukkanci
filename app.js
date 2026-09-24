@@ -10340,7 +10340,51 @@ function renderProductPage(slugOrId) {
         </div>
       </div>
     </section>
+    ${productPageStoreBlock(product, store, storeSeg)}
   `;
+}
+
+// محتوى صفحة المنتج كان اسماً ووصفاً وسعراً فقط (~250 حرفاً) بينما الهيدر
+// والفوتر المشتركان أكبر منه بأضعاف، فاعتبر غوغل ٥٢٢ صفحة منتج «مكررة» واختار
+// لها صفحة منتج آخر لا علاقة له كنسخة أصلية (Search Console، 2026-09-24).
+// هذه الكتلة تضيف محتوى حقيقياً خاصاً بكل منتج: بيانات متجره وروابط لمنتجات
+// أخرى من نفس المتجر (نفس القسم أولاً). يجب أن تبقى مطابقة لما يرسمه
+// api/product.js في المصدر كي لا يرى الزاحف محتويين مختلفين.
+function productPageRelated(product, limit = 12) {
+  // أقرب الجيران بالمعرّف داخل نفس القسم أولاً (لا «أول ١٢») — نفس منطق
+  // api/product.js، فتختلف الروابط من صفحة لأخرى حتى في متجر بألف منتج.
+  const pid = Number(product.id);
+  return products
+    .filter(p => p.storeId === product.storeId && p.id !== product.id && p.available !== false && p.slug)
+    .map(p => ({ p, d: Math.abs(Number(p.id) - pid) + (product.category && p.category === product.category ? 0 : 1e9) }))
+    .sort((a, b) => a.d - b.d).slice(0, limit).map(x => x.p);
+}
+
+function productPageStoreBlock(product, store, storeSeg) {
+  if (!store) return "";
+  const related = productPageRelated(product);
+  const facts = [
+    store.category ? `<li><strong>القسم:</strong> ${esc(store.category)}</li>` : "",
+    store.address ? `<li><strong>العنوان:</strong> ${esc(store.address)}</li>` : "",
+    store.hours ? `<li><strong>أوقات العمل:</strong> ${esc(store.hours)}</li>` : ""
+  ].join("");
+  const cards = related.map(p => {
+    const price = p.priceOnRequest || !p.price ? "السعر عند الطلب" : money(p.price);
+    const img = isPlaceholderImage(p.image) ? "" : `<img src="${escAttr(p.image)}" alt="${escAttr(p.name)}" loading="lazy">`;
+    return `<a class="related-product" href="/product/${escAttr(p.slug || p.id)}">${img}<span class="related-product__name">${esc(p.name)}</span><span class="related-product__price">${price}</span></a>`;
+  }).join("");
+  return `
+    <section class="section product-page-extra">
+      <div class="container">
+        <div class="product-store-card">
+          <h2>عن ${esc(store.name)}</h2>
+          ${store.description ? `<p>${esc(store.description)}</p>` : ""}
+          ${facts ? `<ul class="product-store-facts">${facts}</ul>` : ""}
+          <a class="secondary-button" href="/store/${storeSeg}">كل منتجات ${esc(store.name)}</a>
+        </div>
+        ${cards ? `<h2 class="related-products-title">منتجات أخرى من ${esc(store.name)}</h2><div class="related-products">${cards}</div>` : ""}
+      </div>
+    </section>`;
 }
 
 // ═══════════════════ «دليل دكانجي» — /dalil و /dalil/compare ═══════════════════

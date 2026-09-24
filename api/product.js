@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
     const rows = await sbGet(`products?${filter}&select=id,name,price,price_on_request,store_id,available,image,description,category,slug&limit=1`);
     product = rows && rows[0];
     if (product && product.store_id) {
-      const s = await sbGet(`stores?id=eq.${product.store_id}&select=name,slug,address,approval_status&limit=1`);
+      const s = await sbGet(`stores?id=eq.${product.store_id}&select=name,slug,address,description,category,hours,approval_status&limit=1`);
       store = s && s[0];
       // A product's own store might not be approved yet (pending review) — the
       // store page itself already noindexes in that case (api/store.js), so the
@@ -70,6 +70,33 @@ module.exports = async (req, res) => {
       synonyms = sy[0].synonyms.map(s => String(s == null ? "" : s).trim()).filter(Boolean).slice(0, 12);
     }
   } catch (e) { /* synonyms are optional */ }
+
+  // Other products from the same store (same category first) — gives every
+  // product page unique, crawlable content + internal links. Without it Google
+  // saw ~250 chars of product text against a shared shell and folded 522 product
+  // pages into unrelated "canonicals" (Search Console, 2026-09-24). Mirrors
+  // productPageStoreBlock() in app.js so source and rendered DOM agree.
+  let related = [];
+  try {
+    // Nearest neighbours by id (not "first 12"), so in a 1,000-product store
+    // each page links a different set instead of all sharing one block.
+    const pid = Number(product.id);
+    const catF = product.category ? `&category=eq.${encodeURIComponent(product.category)}` : "";
+    const base = `products?store_id=eq.${product.store_id}&available=eq.true&slug=not.is.null&select=id,name,slug,price,price_on_request,category`;
+    const [after, before] = await Promise.all([
+      sbGet(`${base}${catF}&id=gt.${pid}&order=id.asc&limit=12`),
+      sbGet(`${base}${catF}&id=lt.${pid}&order=id.desc&limit=12`)
+    ]);
+    let pool = (after || []).concat(before || []);
+    if (pool.length < 12 && catF) {
+      const more = await sbGet(`${base}&id=neq.${pid}&order=id&limit=40`);
+      const seen = new Set(pool.map(p => p.id));
+      pool = pool.concat((more || []).filter(p => !seen.has(p.id)));
+    }
+    related = pool
+      .map(p => ({ p, d: Math.abs(Number(p.id) - pid) + (p.category === product.category ? 0 : 1e9) }))
+      .sort((a, b) => a.d - b.d).slice(0, 12).map(x => x.p);
+  } catch (e) { /* related list is optional */ }
 
   const storeName = store && store.name ? store.name : "دكانجي";
   const storeSlug = resolveStoreSlug({ id: product.store_id, name: storeName, slug: store && store.slug }, STORE_SLUGS);
@@ -109,7 +136,32 @@ module.exports = async (req, res) => {
     + `<p>${esc(desc)}</p>`
     + `<p><strong>${esc(priceLine)}</strong></p>`
     + synLine
-    + `<p><a href="/store/${esc(storeSlug)}">${esc(storeName)}</a></p></article>`;
+    + `<p><a href="/store/${esc(storeSlug)}">${esc(storeName)}</a></p></article>`
+    + `<section class="ssr-product-store"><h2>عن ${esc(storeName)}</h2>`
+    + (store.description ? `<p>${esc(store.description)}</p>` : "")
+    + `<ul>`
+    + (store.category ? `<li>القسم: ${esc(store.category)}</li>` : "")
+    + (store.address ? `<li>العنوان: ${esc(store.address)}</li>` : "")
+    + (store.hours ? `<li>أوقات العمل: ${esc(store.hours)}</li>` : "")
+    + `</ul>`
+    + (related.length
+      ? `<h2>منتجات أخرى من ${esc(storeName)}</h2><ul>` + related.map(p => {
+          const pv = Number(p.price) || 0;
+          const pl = p.price_on_request || !pv ? "السعر عند الطلب" : `${pv} ل.ت`;
+          return `<li><a href="/product/${esc(p.slug)}">${esc(p.name)}</a> — ${esc(pl)}</li>`;
+        }).join("") + `</ul>`
+      : "")
+    + `</section>`;
+
+  const crumbs = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "دكانجي", item: `${SITE}/` },
+      { "@type": "ListItem", position: 2, name: storeName, item: `${SITE}/store/${storeSlug}` },
+      { "@type": "ListItem", position: 3, name: product.name, item: canonical }
+    ]
+  };
 
   html = html
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${T}</title>`)
@@ -121,7 +173,7 @@ module.exports = async (req, res) => {
     .replace(/(<meta\s+property="og:type"\s+content=")[^"]*(">)/, `$1product$2`)
     .replace(/(<meta\s+property="og:url"\s+content=")[^"]*(">)/, `$1${C}$2`)
     .replace(/(<meta\s+name="twitter:card"\s+content="[^"]*">)/, `$1\n    <link rel="canonical" href="${C}">`)
-    .replace(/<\/head>/, `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`)
+    .replace(/<\/head>/, `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n  <script type="application/ld+json">${JSON.stringify(crumbs)}</script>\n</head>`)
     .replace('<main id="app" tabindex="-1"></main>', `<main id="app" tabindex="-1">${body}</main>`);
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");

@@ -10798,6 +10798,24 @@ tbody tr:hover {
 @media (max-width: 720px) {
   .product-page-grid { grid-template-columns: 1fr; }
 }
+/* صفحة المنتج: بيانات المتجر + منتجات أخرى من نفس المتجر (محتوى فريد لكل صفحة) */
+.product-page-extra { padding-top: 0; }
+.product-store-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin-bottom: 28px; }
+.product-store-card h2 { margin: 0 0 8px; font-size: 20px; }
+.product-store-card p { margin: 0 0 12px; color: var(--muted); line-height: 1.7; }
+.product-store-facts { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.product-store-facts strong { color: var(--ink); }
+.related-products-title { font-size: 20px; margin: 0 0 14px; }
+.related-products { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.related-product { display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 10px; color: var(--ink); text-decoration: none; min-width: 0; }
+.related-product:hover { border-color: var(--green-800); }
+.related-product img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; background: #f3f3f3; }
+.related-product__name { font-size: 14px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.related-product__price { font-size: 14px; color: var(--green-800); font-weight: 700; }
+@media (max-width: 640px) {
+  .related-products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .product-store-card { padding: 16px; }
+}
 
 /* =====================================================================
    Admin WhatsApp inbox (المحادثات tab) + admin password gate
