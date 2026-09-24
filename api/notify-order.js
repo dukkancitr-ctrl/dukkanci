@@ -1722,6 +1722,39 @@ async function notifyMerchantLead(waId, name) {
   try { await sendWhatsapp(c, to, { text }); } catch (e) {}
 }
 
+// ─── Merchant-campaign replies ─────────────────────────────────────────────
+// 2026-09-24: after the «دعوة متاجر» template campaign, 23 of 24 replies were the
+// businesses' OWN auto-responders («شكراً لك على تواصلك…», «Thank you for
+// contacting…»). The customer AI answered every one of them («لم أتمكن من العثور
+// على متجر … على دكانجي»), and even the single real human reply got a store list.
+// Numbers that just received a merchant campaign are therefore handled here,
+// before the customer AI can touch them.
+const BUSINESS_AUTOREPLY_RE = /(شكر(?:ا|اً|ًا)?\s*(?:لك|لكم)\s*على\s*(?:تواصل|رسالت)|شكر(?:ا|اً)?\s*لتواصلكم|(?:اهلا|أهلا|أهلاً)\s*و?\s*سهلا|احفظ\s*رقمنا|لسنا\s*متوفر|thank\s*you\s*for\s*(?:contacting|choosing)|thanks?\s*you\s*for\s*choosing|hoş\s*geldiniz|iletişime\s*geçtiğiniz|teşekkür\s*ederiz|out\s*of\s*office|we\s*will\s*(?:get\s*back|contact)|customer\s*service\s*will)/i;
+const REPLY_MERCHANT_AUTO_AR = `أهلاً بكم 🌷 معكم فريق دكانجي، منصة المتاجر والمطاعم العربية في إسطنبول.\nوصلتنا رسالتكم الآلية، وهذه رسالة من فريق حقيقي: ندعوكم لإضافة متجركم إلى دكانجي مجاناً 🎁\n✔ صفحة خاصة بمتجركم مفهرسة على غوغل، ويصلكم زبائن جدد\n✔ الطلبات تصلكم فوراً على واتساب ولوحة تحكم بسيطة\n✔ بدون عمولة، والأسعار بيدكم\n✔ نضيف منتجاتكم عنكم من كتالوج واتساب خلال يوم\nاكتبوا لنا «مهتم» ويتواصل معكم فريقنا، أو راسلونا مباشرة على 05528000220 🤝`;
+const REPLY_MERCHANT_AUTO_EN = `Hello 🌷 We're the Dukkanci team, the Arab restaurants & markets platform in Istanbul. We'd love to list your business for free: your own Google-indexed page, instant WhatsApp order alerts, zero commission — and we can import your menu/catalog for you. Reply "interested" or reach us on 05528000220 🤝`;
+const REPLY_MERCHANT_AUTO_TR = `Merhaba 🌷 Dukkanci ekibiyiz; İstanbul'daki Arap mutfağı ve marketleri buluşturan bir platform. İşletmenizi ücretsiz ekliyoruz: Google'da görünen özel bir mağaza sayfası, siparişler anında WhatsApp'a, komisyon yok. Menü/kataloğunuzu biz aktarırız. Detaylar için: 05528000220 🤝`;
+const REPLY_MERCHANT_ACK = `شكراً لردكم 🌷 أبلغنا فريق التجار وسيتواصل معكم قريباً لإضافة متجركم إلى دكانجي. للتواصل المباشر: 05528000220 🤝`;
+
+function merchantAutoReplyText(body) {
+  const t = String(body || "");
+  if (/[şğıİçöüŞĞÇÖÜ]|hoş\s*geldiniz|teşekkür|iletişim/i.test(t)) return REPLY_MERCHANT_AUTO_TR;
+  if (!/[؀-ۿ]/.test(t) && /[A-Za-z]/.test(t)) return REPLY_MERCHANT_AUTO_EN;
+  return REPLY_MERCHANT_AUTO_AR;
+}
+
+// True when this number was sent a merchant-invitation campaign message in the
+// last 72h (recipient row `sent` + campaign template name mentions merchant/join).
+async function isMerchantCampaignTarget(waId) {
+  try {
+    const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+    const recips = await sbGet(`wa_campaign_recipients?phone=eq.${encodeURIComponent(waId)}&status=eq.sent&sent_at=gte.${encodeURIComponent(since)}&select=campaign_id&limit=5`);
+    const ids = [...new Set((recips || []).map(r => r.campaign_id).filter(Boolean))];
+    if (!ids.length) return false;
+    const camps = await sbGet(`wa_campaigns?id=in.(${ids.map(encodeURIComponent).join(",")})&select=template_name`);
+    return (camps || []).some(c => /merchant|join/i.test(c.template_name || ""));
+  } catch (e) { return false; }
+}
+
 async function sendOrderWhatsapp(c, order, store, priceFlag) {
   const storeName = (store && store.name) || "متجرك";
   const storeTo = toE164(store && (store.whatsapp || store.phone), c.cc);
@@ -2050,6 +2083,22 @@ async function ingestWebhook(body) {
               try { await sendAutoReply(m.from, ack); } catch (e) {}
             }
             continue; // already-escalated repeats → stay silent (human will reply)
+          }
+          // Merchant-invitation campaign recipients (see BUSINESS_AUTOREPLY_RE): never
+          // hand them to the customer AI. A business's own auto-responder gets the
+          // pitch once; a real human reply is escalated to the merchant team.
+          if (!flags.needs_human && await isMerchantCampaignTarget(m.from)) {
+            if (BUSINESS_AUTOREPLY_RE.test(d.body)) {
+              if (!flags.ai_paused) {
+                await setThreadFlags(m.from, { ai_paused: true, needs_human: false });
+                try { await sendAutoReply(m.from, merchantAutoReplyText(d.body)); } catch (e) {}
+              }
+            } else {
+              await setThreadFlags(m.from, { ai_paused: true, needs_human: true, last_escalated_at: new Date().toISOString() });
+              try { await sendAutoReply(m.from, REPLY_MERCHANT_ACK); } catch (e) {}
+              try { await notifyMerchantLead(m.from, nameByWa[m.from]); } catch (e) {}
+            }
+            continue;
           }
           // A human is handling this thread → the AI stays quiet.
           if (flags.ai_paused) continue;
