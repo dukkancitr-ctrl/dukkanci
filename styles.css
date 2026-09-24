@@ -15272,3 +15272,23 @@ button:focus-visible, a:focus-visible {
   .app-download-band__icon { width: 76px; height: 76px; }
   .app-download-band__body h2 { font-size: 20px; }
 }
+
+/* ─── Campaign template library + contacts file import ─── */
+.tpl-picker{display:grid;gap:10px;grid-column:1/-1}
+.tpl-picker__bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.tpl-picker__bar small{color:var(--muted)}
+.tpl-preview{border:1px solid var(--line);border-radius:14px;background:#f7f4ef;padding:14px;display:grid;gap:10px}
+.tpl-preview[hidden]{display:none}
+.tpl-preview__meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tpl-preview__bubble{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.12);max-width:460px;line-height:1.8;font-weight:500}
+.tpl-preview__hdr{font-weight:700;margin-bottom:6px}
+.tpl-preview__media{background:#eee;border-radius:8px;padding:14px;margin-bottom:8px;font-size:13px;color:var(--muted)}
+.tpl-preview__body{white-space:pre-wrap}
+.tpl-preview__ftr{margin-top:8px;font-size:12px;color:var(--muted)}
+.tpl-preview__btns{display:flex;flex-wrap:wrap;gap:8px}
+.tpl-preview__btn{background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px 12px;font-size:13px}
+.tpl-preview mark{background:#fff3c4;border-radius:4px;padding:0 3px}
+.tpl-preview mark.is-empty{background:#ffd9d4}
+.tpl-manual summary{cursor:pointer;color:var(--green-800);font-weight:700}
+.tpl-manual__body{display:grid;gap:8px;margin-top:10px}
+.contacts-file input[type=file]{padding:10px;border:2px dashed var(--line);border-radius:12px;background:#fff}

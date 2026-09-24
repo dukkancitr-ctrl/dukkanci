@@ -487,6 +487,43 @@ async function sendBatch(campaignId) {
   return { ok: true, sent, failed, done: allDone, sentToday: sentToday + sent };
 }
 
+// ─── Template library (pre-saved Meta templates) ───────────────────────────
+// Stored in site_settings.wa_templates so the admin can pick a template and see
+// its full content (body/header/footer/buttons/variables) before sending —
+// instead of searching Meta and copying names by hand.
+const TEMPLATES_KEY = "wa_templates";
+
+function normalizeMetaTemplate(t) {
+  const comps = Array.isArray(t.components) ? t.components : [];
+  const out = { name: t.name, language: t.language || "ar", category: t.category || "", status: t.status || "", source: "meta",
+    header: null, body: "", footer: "", buttons: [], bodyParams: 0, buttonUrlVar: false };
+  for (const c of comps) {
+    const type = String(c.type || "").toUpperCase();
+    if (type === "HEADER") out.header = { format: String(c.format || "TEXT").toUpperCase(), text: c.text || "" };
+    else if (type === "BODY") out.body = c.text || "";
+    else if (type === "FOOTER") out.footer = c.text || "";
+    else if (type === "BUTTONS") {
+      out.buttons = (c.buttons || []).map(b => ({ type: String(b.type || "").toUpperCase(), text: b.text || "", url: b.url || "", phone: b.phone_number || "" }));
+    }
+  }
+  const nums = [...out.body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map(m => +m[1]);
+  out.bodyParams = nums.length ? Math.max(...nums) : 0;
+  out.buttonUrlVar = out.buttons.some(b => b.type === "URL" && /\{\{\s*1\s*\}\}/.test(b.url));
+  return out;
+}
+
+async function loadTemplateLibrary() {
+  const rows = await sbGet(`site_settings?key=eq.${TEMPLATES_KEY}&select=value`);
+  const v = rows && rows[0] && rows[0].value;
+  return { templates: Array.isArray(v && v.templates) ? v.templates : [], synced_at: (v && v.synced_at) || null };
+}
+
+async function saveTemplateLibrary(lib) {
+  return sbWrite("POST", "site_settings?on_conflict=key",
+    { key: TEMPLATES_KEY, value: lib, updated_at: new Date().toISOString() },
+    "resolution=merge-duplicates,return=minimal");
+}
+
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 module.exports = async (req, res) => {
@@ -546,6 +583,10 @@ module.exports = async (req, res) => {
       const rows = await sbGetAll("wa_optout?select=phone,reason,created_at&order=created_at.desc", 5000);
       const total = await sbCount("wa_optout");
       return res.json({ ok: true, optouts: rows, total: total == null ? rows.length : total });
+    }
+    if (action === "templates-list") {
+      const lib = await loadTemplateLibrary();
+      return res.json({ ok: true, ...lib });
     }
     if (action === "template-inspect") {
       const { template_name } = req.query;
@@ -670,6 +711,58 @@ module.exports = async (req, res) => {
       return res.json({ ok: true });
     }
 
+    // Pull every template (with full content) from Meta and store it locally.
+    // Manually-saved templates (source:"manual", e.g. still in review) are kept
+    // unless Meta now returns the same name+language.
+    if (action === "templates-sync") {
+      const token = env("WHATSAPP_TOKEN");
+      const wabaId = env("WHATSAPP_WABA_ID") || "1365756035460473";
+      const version = env("WHATSAPP_API_VERSION") || "v21.0";
+      if (!token) return res.status(500).json({ error: "WHATSAPP_TOKEN غير مضبوط" });
+      const metaTpls = [];
+      let next = `https://graph.facebook.com/${version}/${wabaId}/message_templates?limit=100&fields=name,status,language,category,components`;
+      for (let i = 0; i < 20 && next; i++) {
+        const r = await fetch(next, { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return res.status(502).json({ error: (d.error && d.error.message) || "تعذّر جلب القوالب من Meta" });
+        (d.data || []).forEach(t => metaTpls.push(normalizeMetaTemplate(t)));
+        next = d.paging && d.paging.next ? d.paging.next : null;
+      }
+      const old = await loadTemplateLibrary();
+      const key = t => `${t.name}|${t.language}`;
+      const have = new Set(metaTpls.map(key));
+      const keep = old.templates.filter(t => t.source === "manual" && !have.has(key(t)));
+      const templates = [...metaTpls, ...keep].sort((a, b) => a.name.localeCompare(b.name));
+      const w = await saveTemplateLibrary({ templates, synced_at: new Date().toISOString() });
+      if (!w.ok) return res.status(500).json({ error: "تعذّر حفظ القوالب" });
+      return res.json({ ok: true, count: metaTpls.length, kept_manual: keep.length, templates });
+    }
+    // Save a template by hand (e.g. one still awaiting Meta review) so its text
+    // is visible in the picker before it is approved.
+    if (action === "template-save") {
+      const t = body.template || {};
+      const name = String(t.name || "").trim().slice(0, 100);
+      if (!/^[a-z0-9_]+$/.test(name)) return res.status(400).json({ error: "اسم القالب: أحرف إنجليزية صغيرة وأرقام و_ فقط" });
+      const text = String(t.body || "").slice(0, 1100);
+      if (!text.trim()) return res.status(400).json({ error: "نص القالب مطلوب" });
+      const norm = normalizeMetaTemplate({ name, language: String(t.language || "ar").slice(0, 10), category: String(t.category || "MARKETING").toUpperCase(), status: String(t.status || "PENDING").toUpperCase(),
+        components: [ { type: "BODY", text }, ...(t.footer ? [{ type: "FOOTER", text: String(t.footer).slice(0, 60) }] : []) ] });
+      norm.source = "manual";
+      const lib = await loadTemplateLibrary();
+      const templates = lib.templates.filter(x => !(x.name === norm.name && x.language === norm.language));
+      templates.push(norm);
+      templates.sort((a, b) => a.name.localeCompare(b.name));
+      const w = await saveTemplateLibrary({ templates, synced_at: lib.synced_at });
+      if (!w.ok) return res.status(500).json({ error: "تعذّر حفظ القالب" });
+      return res.json({ ok: true, templates });
+    }
+    if (action === "template-delete") {
+      const lib = await loadTemplateLibrary();
+      const templates = lib.templates.filter(x => !(x.name === body.name && x.language === body.language && x.source === "manual"));
+      const w = await saveTemplateLibrary({ templates, synced_at: lib.synced_at });
+      if (!w.ok) return res.status(500).json({ error: "تعذّر الحذف" });
+      return res.json({ ok: true, templates });
+    }
     if (action === "create") {
       const { name, template_name, template_lang, template_params, audience_type, contact_group, note, button_url_param: bup, header_image_url: hiu } = body;
       if (!name || !template_name) return res.status(400).json({ error: "name و template_name مطلوبان" });

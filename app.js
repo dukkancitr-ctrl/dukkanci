@@ -425,6 +425,7 @@ const state = {
   adminThreadFilter: null,   // null=all | "pinned" | a WA_LABELS key
   _waListSig: null,          // thread-list fingerprint (skip needless poll rebuilds)
   adminCampaigns: null,
+  waTemplates: null,
   adminCampaignForm: null,   // null | "open" | "contacts"
   adminCampaignActive: null,
   adminContacts: null,       // { total, preview[], groups[] }
@@ -9447,6 +9448,11 @@ function adminCampaigns() {
           اسم المجموعة <small>(مثال: عملاء 2024، قاعدة صفا، متابعو انستغرام)</small>
           <input id="contacts-group-name" placeholder="اسم المجموعة" maxlength="60">
         </label>
+        <label class="contacts-file">
+          أو ارفع ملف Excel / CSV <small>(يُستخرج كل رقم هاتف من كل الخلايا تلقائياً — .xlsx .xls .csv)</small>
+          <input id="contacts-file-input" type="file" accept=".xlsx,.xls,.csv,.txt">
+          <small id="contacts-file-status" class="muted-hint"></small>
+        </label>
         <label>
           الصق الأرقام هنا <small>(رقم لكل سطر أو مفصولة بفواصل — أي تنسيق يُقبَل)</small>
           <textarea id="contacts-textarea" rows="7" dir="ltr" placeholder="0501234567&#10;+90 532 111 22 33&#10;905001112233&#10;..."></textarea>
@@ -9509,9 +9515,32 @@ function adminCampaigns() {
         <label>اسم الحملة <small>(داخلي فقط)</small>
           <input id="cf-name" placeholder="مثال: عروض رمضان 2026" maxlength="80">
         </label>
-        <label>اسم القالب <small>(approved في Meta — مثال: <code>platform_promo</code>)</small>
-          <input id="cf-tpl" placeholder="template_name" dir="ltr" maxlength="60">
-        </label>
+        <div class="tpl-picker">
+          <label>القالب
+            <select id="cf-tpl-select">
+              <option value="">— اختر قالباً محفوظاً —</option>
+              ${(state.waTemplates ? state.waTemplates.templates : []).map(t => `<option value="${escAttr(t.name + "|" + t.language)}" ${t.status === "APPROVED" ? "" : "disabled"}>${esc(t.name)} · ${esc(t.language)} · ${esc(tplStatusLabel(t.status))}</option>`).join("")}
+              <option value="__custom">✎ إدخال اسم قالب يدوياً…</option>
+            </select>
+          </label>
+          <div class="tpl-picker__bar">
+            <button type="button" class="secondary-button compact" data-action="tpl-sync">↻ مزامنة القوالب من Meta</button>
+            <small>${state.waTemplates ? (state.waTemplates.synced_at ? "آخر مزامنة: " + new Date(state.waTemplates.synced_at).toLocaleString("ar") : "لم تُجرَ مزامنة بعد") : "جارٍ تحميل القوالب…"} · القوالب غير المعتمدة تظهر معطّلة</small>
+          </div>
+          <input id="cf-tpl" type="hidden" value="">
+          <div id="cf-tpl-preview" class="tpl-preview" hidden></div>
+          <details class="tpl-manual">
+            <summary>+ حفظ قالب يدوياً (قالب قيد المراجعة في Meta مثلاً)</summary>
+            <div class="tpl-manual__body">
+              <input id="tm-name" placeholder="اسم القالب (مثال: merchant_welcome_v2)" dir="ltr" maxlength="100">
+              <select id="tm-lang"><option value="ar">ar</option><option value="tr">tr</option><option value="en_US">en_US</option></select>
+              <select id="tm-status"><option value="PENDING">قيد المراجعة</option><option value="APPROVED">معتمد</option></select>
+              <textarea id="tm-body" rows="5" placeholder="نص القالب — استخدم {{1}} {{2}} للمتغيرات"></textarea>
+              <input id="tm-footer" placeholder="التذييل (اختياري)" maxlength="60">
+              <button type="button" class="secondary-button compact" data-action="tpl-save-manual">حفظ القالب</button>
+            </div>
+          </details>
+        </div>
         <label>لغة القالب
           <select id="cf-lang">
             <option value="ar" selected>عربي (ar)</option>
@@ -9627,6 +9656,112 @@ function adminCampaigns() {
       </ul>
     </section>
   `;
+}
+
+function tplStatusLabel(st) {
+  return ({ APPROVED: "معتمد", PENDING: "قيد المراجعة", IN_APPEAL: "قيد الاستئناف", REJECTED: "مرفوض", PAUSED: "موقوف", DISABLED: "معطّل", PENDING_DELETION: "قيد الحذف" })[st] || st || "—";
+}
+
+async function loadWaTemplates() {
+  try {
+    const d = await campaignApi("templates-list");
+    state.waTemplates = { templates: d.templates || [], synced_at: d.synced_at || null };
+  } catch (e) { state.waTemplates = { templates: [], synced_at: null }; }
+  render();
+}
+
+function currentWaTemplate() {
+  const v = document.getElementById("cf-tpl-select")?.value || "";
+  if (!v || v === "__custom" || !state.waTemplates) return null;
+  const [name, language] = v.split("|");
+  return state.waTemplates.templates.find(t => t.name === name && t.language === language) || null;
+}
+
+// Full read-only preview of the chosen template: header, body with the typed
+// variables substituted, footer and buttons — so nothing has to be looked up in Meta.
+function renderTemplatePreview() {
+  const box = document.getElementById("cf-tpl-preview");
+  if (!box) return;
+  const t = currentWaTemplate();
+  if (!t) { box.hidden = true; box.innerHTML = ""; return; }
+  const vals = (document.getElementById("cf-params")?.value || "").split(",").map(x => x.trim());
+  const fill = txt => esc(txt || "").replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => vals[n - 1] ? `<mark>${esc(vals[n - 1])}</mark>` : `<mark class="is-empty">{{${n}}}</mark>`);
+  const hdr = t.header ? (t.header.format === "TEXT" ? `<div class="tpl-preview__hdr">${fill(t.header.text)}</div>` : `<div class="tpl-preview__media">🖼 هيدر ${t.header.format === "IMAGE" ? "صورة" : t.header.format === "VIDEO" ? "فيديو" : "مستند"} — أدخل الرابط في حقل «رابط صورة الهيدر» أدناه</div>`) : "";
+  const btns = (t.buttons || []).map(b => `<span class="tpl-preview__btn">${b.type === "URL" ? "🔗" : b.type === "PHONE_NUMBER" ? "📞" : "↩"} ${esc(b.text)}${b.url ? ` <small dir="ltr">${esc(b.url)}</small>` : ""}</span>`).join("");
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="tpl-preview__meta"><span class="status-pill ${t.status === "APPROVED" ? "is-ok" : ""}">${esc(tplStatusLabel(t.status))}</span><small>${esc(t.category || "")} · ${esc(t.language)}${t.source === "manual" ? " · محفوظ يدوياً" : ""}</small></div>
+    <div class="tpl-preview__bubble">${hdr}<div class="tpl-preview__body">${fill(t.body)}</div>${t.footer ? `<div class="tpl-preview__ftr">${esc(t.footer)}</div>` : ""}</div>
+    ${btns ? `<div class="tpl-preview__btns">${btns}</div>` : ""}
+    <p class="muted-hint">${t.bodyParams ? `يحتاج <b>${t.bodyParams}</b> متغير(ات) في حقل «معاملات جسم القالب» (مفصولة بفاصلة).` : "لا متغيرات نصية — اترك حقل المعاملات فارغاً."}${t.buttonUrlVar ? " الزر يحتاج لاحقة رابط." : ""}</p>`;
+}
+
+function applyTemplateSelection() {
+  const sel = document.getElementById("cf-tpl-select");
+  const tplInput = document.getElementById("cf-tpl");
+  if (!sel || !tplInput) return;
+  if (sel.value === "__custom") {
+    const custom = window.prompt("اكتب اسم القالب كما هو في Meta:", tplInput.value || "");
+    tplInput.value = (custom || "").trim();
+    if (!tplInput.value) sel.value = "";
+    renderTemplatePreview();
+    return;
+  }
+  const t = currentWaTemplate();
+  tplInput.value = t ? t.name : "";
+  if (t) {
+    const langSel = document.getElementById("cf-lang");
+    if (langSel) {
+      if (![...langSel.options].some(o => o.value === t.language)) langSel.add(new Option(t.language, t.language));
+      langSel.value = t.language;
+    }
+    const pin = document.getElementById("cf-params");
+    if (pin && !pin.value && t.bodyParams) pin.placeholder = Array.from({ length: t.bodyParams }, (_, i) => "قيمة " + (i + 1)).join(", ");
+  }
+  renderTemplatePreview();
+}
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const sc = document.createElement("script");
+    sc.src = src; sc.onload = resolve; sc.onerror = () => reject(new Error("load"));
+    document.head.appendChild(sc);
+  });
+}
+
+// Reads an Excel/CSV file in the browser, pulls every phone-like value from every
+// cell (digits only, 10-15 long) and puts them in the paste box — the server then
+// normalises (+90) and de-duplicates on upload, exactly as for pasted numbers.
+async function importContactsFile(file) {
+  const status = document.getElementById("contacts-file-status");
+  const setStatus = t => { if (status) status.textContent = t; };
+  setStatus("جارٍ قراءة الملف…");
+  try {
+    let cells = [];
+    if (/\.(txt|csv)$/i.test(file.name)) {
+      cells = (await file.text()).split(/[\n\r,;\t]+/);
+    } else {
+      await loadScriptOnce("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+      const wb = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+      wb.SheetNames.forEach(n => {
+        window.XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: "" }).forEach(row => row.forEach(c => cells.push(String(c))));
+      });
+    }
+    const seen = new Set(), nums = [];
+    cells.forEach(c => {
+      const d = String(c).replace(/[^\d+]/g, "").replace(/^\+/, "");
+      if (d.length >= 10 && d.length <= 15 && !seen.has(d)) { seen.add(d); nums.push(d); }
+    });
+    if (!nums.length) { setStatus("لم يُعثر على أرقام هاتف في الملف"); return; }
+    const ta = document.getElementById("contacts-textarea");
+    if (ta) ta.value = nums.join("\n");
+    const gn = document.getElementById("contacts-group-name");
+    if (gn && !gn.value.trim()) gn.value = file.name.replace(/\.[^.]+$/, "").slice(0, 60);
+    setStatus(`تم استخراج ${nums.length.toLocaleString("ar")} رقم من «${file.name}» — راجعها ثم اضغط «رفع وحفظ»`);
+  } catch (e) {
+    setStatus("تعذّرت قراءة الملف — تأكد أنه Excel أو CSV سليم");
+  }
 }
 
 async function loadContacts(group = "") {
@@ -14977,7 +15112,35 @@ document.addEventListener("click", event => {
   if (action === "admin-metric") { state.adminAnalyticsMetric = target.dataset.metric === "orders" ? "orders" : "revenue"; render(); }
   if (action === "admin-order-status") { state.adminOrderStatus = target.dataset.status || "all"; render(); }
   // ── Campaign actions ──
-  if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); }
+  if (action === "campaign-new") { state.adminCampaignForm = "open"; render(); if (!state.waTemplates) loadWaTemplates(); }
+  if (action === "tpl-sync") {
+    showToast("جارٍ مزامنة القوالب من Meta...", "");
+    campaignApi("templates-sync", { method: "POST", body: {} })
+      .then(d => {
+        if (!d.ok) { showToast(d.error || "تعذّرت المزامنة", "error"); return; }
+        state.waTemplates = { templates: d.templates || [], synced_at: new Date().toISOString() };
+        showToast(`تمت المزامنة: ${d.count} قالب من Meta`, "success");
+        const keep = document.getElementById("cf-tpl-select")?.value;
+        render();
+        const sel = document.getElementById("cf-tpl-select"); if (sel && keep) { sel.value = keep; applyTemplateSelection(); }
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
+  if (action === "tpl-save-manual") {
+    const t = {
+      name: document.getElementById("tm-name")?.value.trim(),
+      language: document.getElementById("tm-lang")?.value || "ar",
+      status: document.getElementById("tm-status")?.value || "PENDING",
+      body: document.getElementById("tm-body")?.value || "",
+      footer: document.getElementById("tm-footer")?.value.trim()
+    };
+    campaignApi("template-save", { method: "POST", body: { template: t } })
+      .then(d => {
+        if (!d.ok) { showToast(d.error || "تعذّر حفظ القالب", "error"); return; }
+        state.waTemplates = { templates: d.templates || [], synced_at: (state.waTemplates && state.waTemplates.synced_at) || null };
+        showToast("تم حفظ القالب", "success");
+        render();
+      }).catch(() => showToast("خطأ في الاتصال", "error"));
+  }
   if (action === "campaign-form-close") { state.adminCampaignForm = null; render(); }
   if (action === "campaign-create") {
     const name      = document.getElementById("cf-name")?.value.trim();
@@ -15665,6 +15828,8 @@ document.addEventListener("keydown", event => {
 });
 
 document.addEventListener("change", event => {
+  if (event.target.id === "cf-tpl-select") { applyTemplateSelection(); return; }
+  if (event.target.id === "contacts-file-input") { const f = event.target.files && event.target.files[0]; if (f) importContactsFile(f); return; }
   // Store picker for the store_customers segment — changing it re-resolves the
   // segment server-side so the live audience count reflects the chosen store.
   if (event.target.id === "notif-store-param") {
@@ -15906,6 +16071,7 @@ document.addEventListener("change", event => {
 });
 
 document.addEventListener("input", event => {
+  if (event.target.id === "cf-params") { renderTemplatePreview(); return; }
   if (event.target.id === "cart-note") {
     state.cartNote = event.target.value;
     return;
