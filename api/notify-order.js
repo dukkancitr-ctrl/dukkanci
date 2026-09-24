@@ -1350,6 +1350,9 @@ const SEARCH_STOPWORDS = new Set([
   "تقدر", "تقدرو", "ياريت", "عايز", "عايزة", "محتاج", "محتاجة", "الرجاء", "رجاء",
   "يتوفر", "تتوفر", "وما", "سعر", "سعره", "بسعر", "اسعار", "الاسعار", "بكام", "كام",
   "شقد", "قديش", "وزن", "شو", "ايش", "شنو",
+  // "Where do I order X?" colloquial request verbs — they poisoned the strict
+  // AND-set ("وين اطلب شاورما؟" → no results → the model then INVENTED stores).
+  "اطلب", "اطلبي", "نطلب", "بطلب", "اطلبه", "اطلبها", "اشوف", "شوف", "ابغى", "ابغا", "ابي", "ودي", "اجيب", "اجلب",
   // "Find it" colloquial verbs ("وين اجده؟" = "where do I find it?") — confirmed
   // live these poison the strict AND-set exactly like the imperative "بحث"
   // family above already handled: "اجده" survives possessive-suffix stripping
@@ -1948,6 +1951,74 @@ async function checkOrderPriceSanity(order) {
 // from the same number in the last hour skips the embedding+completion calls
 // (the quiet greet/away fallback still applies). Fails open on any DB error —
 // a rate-limiter must never be the reason a real customer's message is dropped.
+// ─── Conversation-aware replies (2026-09-24) ───────────────────────────────
+// The AI used to see only the last 8 rows of whatsapp_messages. Campaign
+// templates (sent through the campaign sender) are NOT stored there, so after an
+// invitation campaign the bot had no idea Dukkanci had already written to the
+// contact — it answered as if to a stranger, contradicted the campaign, or
+// repeated the pitch. loadCampaignHistory() re-inserts those template messages
+// (with their real text from the synced template library) into the history.
+let _tplBodyCache = { at: 0, map: {} };
+async function campaignTemplateBodies() {
+  if (Date.now() - _tplBodyCache.at < 5 * 60 * 1000) return _tplBodyCache.map;
+  const map = {};
+  try {
+    const rows = await sbGet("site_settings?key=eq.wa_templates&select=value");
+    const list = rows && rows[0] && rows[0].value && rows[0].value.templates;
+    (Array.isArray(list) ? list : []).forEach(t => { if (t && t.name && t.body) map[t.name] = t.body; });
+  } catch (e) {}
+  _tplBodyCache = { at: Date.now(), map };
+  return map;
+}
+async function loadCampaignHistory(waId) {
+  try {
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    const recips = await sbGet(`wa_campaign_recipients?phone=eq.${encodeURIComponent(waId)}&status=eq.sent&sent_at=gte.${encodeURIComponent(since)}&select=campaign_id,sent_at&order=sent_at.desc&limit=5`);
+    if (!Array.isArray(recips) || !recips.length) return [];
+    const ids = [...new Set(recips.map(r => r.campaign_id).filter(Boolean))];
+    const camps = await sbGet(`wa_campaigns?id=in.(${ids.map(encodeURIComponent).join(",")})&select=id,name,template_name`) || [];
+    const byId = Object.fromEntries(camps.map(c => [c.id, c]));
+    const bodies = await campaignTemplateBodies();
+    return recips.map(r => {
+      const c = byId[r.campaign_id] || {};
+      const body = bodies[c.template_name] || "";
+      return {
+        direction: "out",
+        created_at: r.sent_at,
+        body: `[رسالة ترويجية أرسلتها دكانجي عبر حملة واتساب «${c.name || ""}»]${body ? "\n" + body : ` (قالب ${c.template_name || ""})`}`
+      };
+    });
+  } catch (e) { return []; }
+}
+const AI_CONTEXT_RULES = `
+
+سياق المحادثة (مهم جداً): الرسائل السابقة في هذه المحادثة تشمل كل ما قالته دكانجي لهذا الرقم قبل الآن — سواء ردّ آلي منك أو موظف بشري من فريق دكانجي أو رسالة ترويجية أُرسلت عبر حملة واتساب (تبدأ بـ «[رسالة ترويجية أرسلتها دكانجي…]»). يجب أن يكون ردك متكاملاً معها: ابنِ على آخر ما طُرح، لا تكرر ما قيل سابقاً، ولا تناقض وعداً أو معلومة ذكرها موظف بشري، ولا تعرّف بنفسك من جديد إن سبق التعارف. إن سبقت دعوة هذا الرقم للانضمام كتاجر فتعامل معه كتاجر مهتم لا كزبون يطلب طعاماً. إن كانت رسالته رداً آلياً من نشاط تجاري («شكراً لتواصلك معنا…») فلا تجب عنها كأنها سؤال.`;
+const AI_MERCHANT_SYSTEM = `أنت مساعد فريق التجار في دكانجي — سوق إلكتروني لمتاجر ومطاعم وبقالات إسطنبول العربية. تحادث صاحب متجر أو مطعم مهتماً بالانضمام إلى دكانجي (وصلته دعوة من فريقنا). هدفك أن تجيب بدقة وحماس هادئ وتوصله لخطوة الانضمام.
+حقائق يمكنك الاعتماد عليها:
+- دكانجي منصة طلبات محلية للمطاعم والمتاجر العربية في إسطنبول، وأُطلقت خطة توسع جديدة تشمل بورصا وأنقرة وغازي عنتاب — يمكن إضافة متاجر هذه المدن الآن.
+- المزايا: صفحة خاصة بالمتجر مفهرسة على غوغل؛ الطلبات تصل فوراً على واتساب ولوحة تحكم؛ بدون عمولة على المبيعات؛ التاجر يحدد أسعاره ورسوم التوصيل (تُحسب حسب المسافة)؛ ننقل المنتجات والصور والأسعار من كتالوج واتساب أو المنيو بأنفسنا مجاناً؛ تقييمات حقيقية من زبائن اشتروا فعلاً؛ ظهور في صفحة العروض والأقسام؛ موقع وتطبيق سهلان للزبون.
+- لبدء الإضافة نحتاج: رابط الكتالوج أو المنيو (أو صورته)، موقع المتجر، ساعات العمل، ورقم واتساب الطلبات؛ ونجهز الصفحة خلال يوم تقريباً ثم نسلّم بيانات لوحة التحكم.
+- رقم فريق التجار المباشر (واتساب/اتصال): 05528000220.
+قواعد: ردّ قصير (٢–٤ أسطر) ودّي ومحترم وبنفس لغة الطرف الآخر (عربية غالباً، أو تركية/إنجليزية). اختم بخطوة تالية واحدة واضحة. لا تذكر أسعار اشتراكات أو مدداً مجانية أو عروضاً إلا إن وردت في «معلومات من قاعدة معرفة دكانجي» أسفل هذه التعليمات؛ وإلا قل بلطف إن الفريق سيوضح التفاصيل ووجّهه للرقم أعلاه. لا تختلق أي رقم أو وعد. لا تطلب بيانات حساسة. إن أبدى غضباً أو شكوى معقدة فاعتذر ووجّهه للفريق. أجب بالرسالة النهائية فقط.`;
+
+// Hard guard against fabricated links: any dukkanci.com.tr URL in an AI reply
+// must appear verbatim in the (real) search results injected into the system
+// prompt, or be one of the fixed public pages. 2026-09-24: the model invented
+// store links ("/store/shawarma-king") for a question the search had failed on,
+// even with an explicit "never invent" instruction.
+const SAFE_SITE_PATHS = new Set(["", "/", "/merchants", "/merchant", "/stores", "/offers", "/dalil", "/ask-dukkanci", "/regions", "/contact", "/faq", "/terms", "/why-dukkanci", "/app", "/join"]);
+function guardDukkanciUrls(reply, systemPrompt) {
+  if (!reply) return reply;
+  const urls = String(reply).match(/https?:\/\/(?:www\.)?dukkanci\.com\.tr[^\s)\]>»"'،,]*/g) || [];
+  for (const raw of urls) {
+    const url = raw.replace(/[.!?؟]+$/, "");
+    let path = "";
+    try { path = new URL(url).pathname.replace(/\/+$/, ""); } catch (e) { path = ""; }
+    if (SAFE_SITE_PATHS.has(path) || (systemPrompt && systemPrompt.includes(url))) continue;
+    return "لم أستطع التأكد من هذا الطلب الآن — يمكنك تصفّح المتاجر والمنتجات مباشرة على https://www.dukkanci.com.tr أو كتابة اسم المنتج/المتجر بوضوح وسأبحث لك مرة أخرى 🌷";
+  }
+  return reply;
+}
 async function aiReplyThrottled(wa_id) {
   try {
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -1956,7 +2027,7 @@ async function aiReplyThrottled(wa_id) {
   } catch (e) { return false; }
 }
 
-async function aiReply(text, wa_id, timestamp) {
+async function aiReply(text, wa_id, timestamp, opts = {}) {
   // Routed through the AI Gateway: the active provider/model for the
   // whatsapp_autoreply feature is read from ai_feature_config. If no provider is
   // configured yet, the gateway falls back to OPENAI_API_KEY so behaviour is
@@ -1965,24 +2036,37 @@ async function aiReply(text, wa_id, timestamp) {
   const messages = [];
   try {
     const ts = timestamp ? new Date(Number(timestamp) * 1000).toISOString() : new Date().toISOString();
-    const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&created_at=lt.${encodeURIComponent(ts)}&select=direction,body&order=created_at.desc&limit=8`);
+    const rows = await sbGet(`whatsapp_messages?wa_id=eq.${encodeURIComponent(wa_id)}&created_at=lt.${encodeURIComponent(ts)}&select=direction,body,created_at&order=created_at.desc&limit=14`);
     if (Array.isArray(rows)) {
-      rows.reverse().forEach(r => {
+      // Merge in campaign template messages (not stored in whatsapp_messages).
+      const campaignMsgs = (await loadCampaignHistory(wa_id)).filter(c => c.created_at < ts);
+      const merged = [...rows, ...campaignMsgs].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 16);
+      merged.reverse().forEach(r => {
         const content = String(r.body || "").slice(0, 1000);
         if (content) messages.push({ role: r.direction === "in" ? "user" : "assistant", content });
       });
     }
   } catch (e) { /* no history → stateless reply */ }
   const cleanText = String(text == null ? "" : text).slice(0, 2000);
+  const nowIst = new Date().toLocaleString("ar", { timeZone: "Europe/Istanbul", dateStyle: "full", timeStyle: "short" });
+  if (opts.merchant) {
+    messages.push({ role: "user", content: cleanText });
+    let msys = AI_MERCHANT_SYSTEM + AI_CONTEXT_RULES + `\n\nالوقت الآن (إسطنبول): ${nowIst}`;
+    const mctx = await retrieveKnowledge(cleanText);
+    if (mctx) msys += `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها في الأرقام والتفاصيل:\n${mctx}`;
+    try {
+      return await aiGateway.complete("whatsapp_autoreply", { system: msys, messages, maxTokens: 400, temperature: 0.4, timeoutMs: 8000 });
+    } catch (e) { return null; }
+  }
   // Real product search (see "Real product search for the AI" above) BEFORE
   // pushing this turn, so the candidates can look at prior turns cleanly.
   const searchCandidates = searchQueryCandidates(cleanText, messages);
   messages.push({ role: "user", content: cleanText });
   // Ground the answer in the knowledge base (RAG) when relevant chunks exist.
-  let system = AI_SYSTEM;
+  let system = AI_SYSTEM + AI_CONTEXT_RULES + `\n\nالوقت الآن (إسطنبول): ${nowIst}`;
   const ctx = await retrieveKnowledge(cleanText);
   if (ctx) {
-    system = AI_SYSTEM + `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${ctx}`;
+    system = system + `\n\nمعلومات من قاعدة معرفة دكانجي — اعتمد عليها أولاً للإجابة، وإن لم تجد الجواب فيها فاعتذر بلطف أو صعّد لموظف، ولا تختلق:\n${ctx}`;
   }
   let products = [];
   let stores = [];
@@ -2037,9 +2121,10 @@ async function aiReply(text, wa_id, timestamp) {
   const facts = await getLiveFacts();
   system += `\n\nحقائق عامة حيّة عن دكانجي — اعتمد عليها دائماً بثقة عند سؤالك عنها، فهي معلومات عامة منشورة على الموقع:\n${formatLiveFacts(facts)}`;
   try {
-    return await aiGateway.complete("whatsapp_autoreply", {
+    const reply = await aiGateway.complete("whatsapp_autoreply", {
       system, messages, maxTokens: 500, temperature: 0.4, timeoutMs: 8000
     });
+    return guardDukkanciUrls(reply, system);
   } catch (e) {
     return null;
   }
@@ -2100,17 +2185,31 @@ async function ingestWebhook(body) {
           // Merchant-invitation campaign recipients (see BUSINESS_AUTOREPLY_RE): never
           // hand them to the customer AI. A business's own auto-responder gets the
           // pitch once; a real human reply is escalated to the merchant team.
-          if (!flags.needs_human && await isMerchantCampaignTarget(m.from)) {
+          if (await isMerchantCampaignTarget(m.from)) {
             if (BUSINESS_AUTOREPLY_RE.test(d.body)) {
               if (!flags.ai_paused) {
                 await setThreadFlags(m.from, { ai_paused: true, needs_human: false });
                 try { await sendAutoReply(m.from, merchantAutoReplyText(d.body)); } catch (e) {}
               }
-            } else {
-              await setThreadFlags(m.from, { ai_paused: true, needs_human: true, last_escalated_at: new Date().toISOString() });
-              try { await sendAutoReply(m.from, REPLY_MERCHANT_ACK); } catch (e) {}
-              try { await notifyMerchantLead(m.from, nameByWa[m.from]); } catch (e) {}
+              continue;
             }
+            // A real person answered the invitation. First time: flag the lead for
+            // the merchant team. Afterwards the merchant-mode AI keeps the
+            // conversation going (with the full history incl. the campaign text)
+            // until a human agent replies from the panel (that pauses the AI).
+            const firstTime = !flags.needs_human;
+            if (firstTime) {
+              await setThreadFlags(m.from, { ai_paused: false, needs_human: true, last_escalated_at: new Date().toISOString() });
+              try { await notifyMerchantLead(m.from, nameByWa[m.from]); } catch (e) {}
+            } else if (flags.ai_paused) {
+              continue; // a human agent is handling it
+            }
+            let mai = null;
+            if (!(await aiReplyThrottled(m.from))) {
+              try { mai = await aiReply(d.body, m.from, m.timestamp, { merchant: true }); } catch (e) {}
+            }
+            const out = mai || (firstTime ? REPLY_MERCHANT_ACK : null);
+            if (out) { try { await sendAutoReply(m.from, out); } catch (e) {} }
             continue;
           }
           // A human is handling this thread → the AI stays quiet.
