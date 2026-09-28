@@ -34,7 +34,7 @@ const stores = [
   }
 ];
 
-stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, semamarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore, ayhamStore, salsabeelStore, bludanmarketStore, galatawaterStore, krepmaStore);
+stores.push(...alsultanBranches, zaitouneStore, ...zaitouneBranches, ezzedineStore, sallouraStore, nourStore, tihamaStore, afganStore, samStore, kadyStore, alwadiStore, kadibyStore, azalStore, abouStore, bitehausStore, ...alagarBranches, khawaliStore, ademsefStore, babtomaStore, orangeStore, ...anasBranches, yemenmandyStore, alfursanStore, safaStore, rodyStore, krepchefStore, beytStore, mandishebamStore, sarujaStore, pasapizzeriaStore, biryaniStore, bhaleebStore, yumyStore, bludanFatihStore, bludanStore, sajStore, albaraaStore, meatmootStore, barakaStore, hawamahallStore, mandialyemenStore, filistinkunefesiStore, ...wingiBranches, albarakaStore, istanbulchickenStore, reyhanStore, nahlStore, alahdabStore, rumanStore, goldenmixStore, babalyemenStore, beyazitStore, alnoorStore, felukaStore, beitbeyrutStore, wekalaStore, two2beesStore, charcochickenStore, fatihalkhairStore, qalaatalshamStore, friyszoneStore, zamzamStore, beythalepStore, alataetStore, omarmarketStore, semamarketStore, bigtavukStore, abdulhamitStore, paradiceStore, turkwazStore, ibnalwazeerStore, friendstrStore, shamogluStore, chikiwikiStore, ayhamStore, salsabeelStore, bludanmarketStore, galatawaterStore, krepmaStore, ghasaqStore);
 
 const products = [];
 
@@ -117,6 +117,7 @@ products.push(...salsabeelProducts);
 products.push(...bludanmarketProducts);
 products.push(...galatawaterProducts);
 products.push(...krepmaProducts);
+products.push(...ghasaqProducts);
 
 // Publishing rules — enforced for BOTH the bundled fallback and the cloud catalog.
 // Never publish a product that is (1) unavailable, (2) has no real image (empty or a
@@ -265,6 +266,7 @@ const initialDeliverySettings = {
   ...bludanmarketDeliverySettings,
   ...galatawaterDeliverySettings,
   ...krepmaDeliverySettings,
+  ...ghasaqDeliverySettings,
   101: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 },
   117: { mode: "distance", fixedFee: 35, ratePerKm: 20, prepMinutes: 30, maxRoundTripKm: 120 }
 };
