@@ -180,6 +180,17 @@ class AppStrings {
   static const checkoutDeliveryFeeNote = 'يتواصل معك المتجر عبر واتساب لتأكيد رسوم التوصيل';
   static const checkoutSubtotal = 'المجموع الفرعي';
 
+  // رسوم التوصيل — يحسبها الخادم من إعدادات المتجر الفعلية (لا يحسبها التطبيق بنفسه)
+  static const checkoutDeliveryFee = 'رسوم التوصيل';
+  static const deliveryFeeFree = 'مجاني';
+  static const deliveryQuoteLoading = 'جارٍ حساب رسوم التوصيل…';
+  static const deliveryQuoteFailed = 'تعذّر حساب رسوم التوصيل، تحقّق من الاتصال ثم أعد المحاولة';
+  static const deliveryQuoteNoLocation = 'حدّد موقع عنوانك على الخريطة لنحسب رسوم التوصيل';
+  static const deliveryQuoteRetry = 'إعادة الحساب';
+  static const deliveryOutOfRange = 'عنوانك خارج نطاق توصيل هذا المتجر';
+  static const deliveryFeeIncludedNote = 'رسوم التوصيل محسوبة حسب المسافة وتظهر لك قبل التأكيد';
+  static String deliveryDistanceKm(String km) => '$km كم';
+
   // OTP
   static const enterPhone = 'رقم الهاتف';
   static const sendOtp = 'إرسال رمز التحقق';

@@ -7,6 +7,7 @@ import '../core/auth/auth_repository.dart';
 import '../core/cache/secure_storage.dart';
 import '../features/banners/data/banner_repository.dart';
 import '../features/banners/domain/app_banner.dart';
+import '../features/checkout/data/delivery_quote_repository.dart';
 import '../features/checkout/data/order_repository.dart';
 import '../features/stores/data/store_repository.dart';
 import '../features/stores/domain/store.dart';
@@ -65,6 +66,12 @@ final suggestedProductsProvider = FutureProvider.autoDispose<List<Product>>((ref
 
 final orderRepositoryProvider = Provider<OrderRepository>((ref) {
   return OrderRepository(ref.read(apiClientProvider));
+});
+
+/// Delivery price for a store + address, computed by the SERVER from the
+/// store's real settings (see delivery_quote_repository.dart).
+final deliveryQuoteRepositoryProvider = Provider<DeliveryQuoteRepository>((ref) {
+  return DeliveryQuoteRepository(ref.read(apiClientProvider));
 });
 
 final bannerRepositoryProvider = Provider<BannerRepository>((ref) => BannerRepository());

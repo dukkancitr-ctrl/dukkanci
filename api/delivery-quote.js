@@ -1,94 +1,15 @@
-function validPoint(point) {
-  return Number.isFinite(Number(point?.lat))
-    && Number.isFinite(Number(point?.lng))
-    && Math.abs(Number(point.lat)) <= 90
-    && Math.abs(Number(point.lng)) <= 180;
-}
+const delivery = require("../lib/delivery");
 
-function haversineKm(origin, destination) {
-  const toRadians = value => value * Math.PI / 180;
-  const earthRadius = 6371;
-  const deltaLat = toRadians(destination.lat - origin.lat);
-  const deltaLng = toRadians(destination.lng - origin.lng);
-  const a = Math.sin(deltaLat / 2) ** 2
-    + Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(deltaLng / 2) ** 2;
-  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Delivery-fee policy: a 150 ل.ت minimum (nearest/shortest trip), and anything
-// above is rounded UP to the next multiple of 50 (160 → 200). Keep in sync with
-// normalizeDeliveryFee() in app.js.
+// Two modes, one endpoint:
 //
-// minFee = the store's own minimum (deliverySettings.minFee, 0..1000). null/""/NaN
-// mean "unset" → 150 (Number(null) is 0 and must never be read as "no minimum").
-function resolveMinFee(minFee) {
-  if (minFee == null || minFee === "" || !Number.isFinite(Number(minFee))) return 150;
-  return Math.min(1000, Math.max(0, Number(minFee)));
-}
-function normalizeDeliveryFee(rawFee, minFee) {
-  return Math.max(resolveMinFee(minFee), Math.ceil((rawFee || 0) / 50) * 50);
-}
-
-function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provider, minFee) {
-  const roundTripKm = oneWayKm * 2;
-  const rawFee = Math.round(roundTripKm * ratePerKm);
-  return {
-    oneWayKm,
-    roundTripKm,
-    routeMinutes,
-    rawFee,
-    fee: normalizeDeliveryFee(rawFee, minFee),
-    minFee: resolveMinFee(minFee),
-    provider,
-    exceedsMaxDistance: roundTripKm > maxRoundTripKm
-  };
-}
-
-function fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee) {
-  const oneWayKm = Math.max(0.5, haversineKm(origin, destination) * 1.28);
-  const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
-  return finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, "estimate", minFee);
-}
-
-async function googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee) {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const googleResponse = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,status,condition"
-      },
-      body: JSON.stringify({
-        origins: [{ waypoint: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } } }],
-        destinations: [{ waypoint: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } } }],
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE"
-      })
-    });
-    if (!googleResponse.ok) throw new Error(`Google Routes returned ${googleResponse.status}`);
-    const routes = await googleResponse.json();
-    const route = routes.find(item => item.condition === "ROUTE_EXISTS" && item.distanceMeters);
-    if (!route) throw new Error("No route found");
-    return finalizeQuote(
-      route.distanceMeters / 1000,
-      Math.max(1, Math.ceil(Number.parseFloat(route.duration) / 60)),
-      ratePerKm,
-      maxRoundTripKm,
-      "google",
-      minFee
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
+//  1. { storeId, destination:{lat,lng}, addressText? }  — AUTHORITATIVE.
+//     The store's coordinates, per-km rate, fixed fee, max distance and named
+//     zones are all read from the database, so a client that can't see the
+//     website's bundled settings (the mobile app) gets the same price the
+//     website charges. This is what the app's checkout uses.
+//
+//  2. { origin, destination, ratePerKm, maxRoundTripKm } — legacy contract used
+//     by the website checkout (it already knows the store's settings). Unchanged.
 module.exports = async (request, response) => {
   response.setHeader("Cache-Control", "no-store");
 
@@ -98,7 +19,30 @@ module.exports = async (request, response) => {
   }
 
   const body = request.body || {};
-  if (!validPoint(body.origin) || !validPoint(body.destination)) {
+
+  if (body.storeId != null) {
+    try {
+      const q = await delivery.quoteForStore({
+        storeId: body.storeId,
+        destination: body.destination,
+        addressText: typeof body.addressText === "string" ? body.addressText.slice(0, 600) : ""
+      });
+      if (!q.ok) {
+        const map = {
+          store_not_found: [404, "المتجر غير موجود."],
+          no_destination: [400, "يلزم إرسال موقع صحيح للعميل."]
+        };
+        const [status, error] = map[q.code] || [400, "تعذّر حساب التوصيل."];
+        return response.status(status).json({ error, code: q.code });
+      }
+      return response.status(200).json(q);
+    } catch (error) {
+      console.error("delivery-quote (store mode) failed:", error.message);
+      return response.status(502).json({ error: "تعذّر حساب رسوم التوصيل الآن.", code: "quote_failed" });
+    }
+  }
+
+  if (!delivery.validPoint(body.origin) || !delivery.validPoint(body.destination)) {
     return response.status(400).json({ error: "يلزم إرسال موقع صحيح للمتجر والعميل." });
   }
 
@@ -106,16 +50,9 @@ module.exports = async (request, response) => {
   const destination = { lat: Number(body.destination.lat), lng: Number(body.destination.lng) };
   const ratePerKm = Math.min(40, Math.max(10, Number(body.ratePerKm) || 15));
   const maxRoundTripKm = Math.min(200, Math.max(5, Number(body.maxRoundTripKm) || 60));
-  const minFee = resolveMinFee(body.minFee);   // store-specific minimum; absent → 150
 
-  try {
-    return response.status(200).json(
-      await googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee)
-    );
-  } catch (error) {
-    console.error("Google Routes fallback:", error.message);
-    return response.status(200).json(
-      fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee)
-    );
-  }
+  // Store-specific minimum (deliverySettings.minFee); absent/null/"" → platform default 150.
+  const minFee = delivery.resolveMinFee(body.minFee);
+
+  return response.status(200).json(await delivery.roadQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee));
 };

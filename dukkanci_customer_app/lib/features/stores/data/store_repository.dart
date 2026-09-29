@@ -8,6 +8,38 @@ import '../../products/domain/product.dart';
 /// Reads directly from Supabase `stores`/`products` — same tables, same RLS
 /// policies the website reads from (see supabase_bootstrap.dart for why).
 class StoreRepository {
+  // Per-km delivery rate by store id, read from site_settings.deliverySettings —
+  // the single source of truth shared with the website and the server (see
+  // lib/delivery.js). Cached briefly: it changes only when a merchant edits it.
+  Map<int, double>? _ratesCache;
+  DateTime? _ratesAt;
+
+  Future<Map<int, double>> _fetchDeliveryRates() async {
+    final cached = _ratesCache;
+    final at = _ratesAt;
+    if (cached != null && at != null && DateTime.now().difference(at) < const Duration(minutes: 5)) return cached;
+    try {
+      final row = await supabase.from('site_settings').select('value').eq('key', 'deliverySettings').maybeSingle();
+      final value = row?['value'];
+      final out = <int, double>{};
+      if (value is Map) {
+        value.forEach((k, v) {
+          final id = int.tryParse('$k');
+          if (id == null || v is! Map || v['mode'] == 'fixed') return;
+          final rate = (v['ratePerKm'] as num?)?.toDouble();
+          if (rate != null) out[id] = rate;
+        });
+      }
+      _ratesCache = out;
+      _ratesAt = DateTime.now();
+      return out;
+    } catch (e) {
+      // Cosmetic label only: on failure show nothing rather than a wrong number.
+      debugPrint('StoreRepository: delivery rates unavailable: $e');
+      return cached ?? const {};
+    }
+  }
+
   Future<List<Store>> fetchApprovedStores({String? category}) async {
     try {
       var query = supabase.from('stores').select();
@@ -15,13 +47,15 @@ class StoreRepository {
         query = query.eq('category', category);
       }
       final rows = await query.order('id');
+      final rates = await _fetchDeliveryRates();
       // Parse row-by-row: one malformed row (a merchant typing into a free-form
       // field the model reads strictly) must skip only that store, never throw
       // away every store on the platform.
       final stores = <Store>[];
       for (final r in rows as List) {
         try {
-          final s = Store.fromJson(Map<String, dynamic>.from(r as Map));
+          final map = Map<String, dynamic>.from(r as Map);
+          final s = Store.fromJson(map, ratePerKm: rates[(map['id'] as num?)?.toInt()]);
           if (s.isPubliclyVisible) stores.add(s);
         } catch (e) {
           debugPrint('StoreRepository: skipped unparseable store row ${(r as Map?)?['id']}: $e');
@@ -41,7 +75,9 @@ class StoreRepository {
           ? await supabase.from('stores').select().eq('id', asId).maybeSingle()
           : await supabase.from('stores').select().eq('slug', slugOrId).maybeSingle();
       if (row == null) return null;
-      return Store.fromJson(Map<String, dynamic>.from(row));
+      final rates = await _fetchDeliveryRates();
+      final map = Map<String, dynamic>.from(row);
+      return Store.fromJson(map, ratePerKm: rates[(map['id'] as num?)?.toInt()]);
     } catch (e, st) {
       debugPrint('StoreRepository.fetchStoreBySlugOrId failed: $e\n$st');
       throw Failure.network();

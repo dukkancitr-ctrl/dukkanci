@@ -58,6 +58,19 @@ class OrderDraft {
   final String? notes;
   final DateTime createdAt;
 
+  /// Delivery charged on top of the products subtotal (0 for pickup / free
+  /// delivery). [total] already INCLUDES it — the customer sees and confirms
+  /// products + delivery on the checkout screen before sending.
+  final double deliveryFee;
+
+  /// Snapshot of the server quote (`delivery_details.quote`): fee + distance.
+  final Map<String, dynamic>? deliveryQuote;
+
+  /// The customer's door pin (GPS / map), sent so the server prices from the
+  /// same point the app quoted and the merchant gets a Google Maps link.
+  final double? destinationLat;
+  final double? destinationLng;
+
   const OrderDraft({
     required this.id,
     required this.storeId,
@@ -73,7 +86,13 @@ class OrderDraft {
     required this.paymentMethod,
     this.notes,
     required this.createdAt,
+    this.deliveryFee = 0,
+    this.deliveryQuote,
+    this.destinationLat,
+    this.destinationLng,
   });
+
+  bool get hasDestination => !isPickup && destinationLat != null && destinationLng != null;
 
   List<Map<String, dynamic>> get lineItemsJson => items
       .map((i) => {
@@ -114,17 +133,22 @@ class OrderDraft {
         'scheduleTime': '',
         'closedWhenOrdered': false,
         'createdAt': createdAt.toIso8601String(),
-        'deliveryQuote': null,
+        'deliveryQuote': isPickup ? null : deliveryQuote,
+        if (hasDestination) 'addressLat': destinationLat,
+        if (hasDestination) 'addressLng': destinationLng,
       };
 
   /// Body for the AUTHORITATIVE, tamper-proof order creation —
   /// POST /api/notify-order?action=create-order. The server reprices every line
   /// item from the products table (so the client can't dictate the total),
   /// enforces store open/approved/subscription + min-order, and both saves the
-  /// order and sends the WhatsApp notifications. Delivery is 0 here (this app
-  /// doesn't charge delivery upfront — the store confirms it over WhatsApp, so
-  /// total == subtotal, matching the checkout screen). Line items carry the real
-  /// selection INDEXES (not labels) so variant/addon surcharges reprice correctly.
+  /// order and sends the WhatsApp notifications. Delivery: this app used to send
+  /// 0 ("the store confirms it over WhatsApp"), so app orders reached the store
+  /// with NO delivery cost at all (DK-0661634416 / DK-0662089943). The checkout
+  /// now shows the server quote and sends it; for `source: android_app` the
+  /// server re-prices delivery itself and ignores this number, so it can't drift
+  /// or be tampered with. Line items carry the real selection INDEXES (not
+  /// labels) so variant/addon surcharges reprice correctly.
   Map<String, dynamic> toCreateOrderBody() => {
         'idempotencyKey': id,
         'storeId': storeId,
@@ -140,7 +164,10 @@ class OrderDraft {
                   'notes': i.notes ?? '',
                 })
             .toList(),
-        'clientDeliveryFee': 0,
+        'clientDeliveryFee': isPickup ? 0 : deliveryFee,
+        if (hasDestination) 'destination': {'lat': destinationLat, 'lng': destinationLng},
+        if (hasDestination) 'addressLat': destinationLat,
+        if (hasDestination) 'addressLng': destinationLng,
         'address': isPickup ? '' : addressText,
         'addressDetails': isPickup ? '' : addressDetails,
         'structuredAddress': isPickup ? null : structuredAddress,
@@ -161,7 +188,10 @@ class OrderDraft {
         'time': 'الآن',
         'items': items.length,
         'delivery_details': {
-          'quote': null,
+          'quote': isPickup ? null : deliveryQuote,
+          'deliveryFee': isPickup ? null : deliveryFee,
+          if (hasDestination) 'addressLat': destinationLat,
+          if (hasDestination) 'addressLng': destinationLng,
           'phone': contactPhone,
           'phoneKey': contactPhone.replaceAll(RegExp(r'\D'), ''),
           'fulfillment': isPickup ? 'pickup' : 'delivery',

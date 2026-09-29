@@ -17,6 +17,8 @@ import '../../cart/application/cart_controller.dart';
 import '../../notifications/application/cart_sync_service.dart';
 import '../../notifications/data/device_registrar.dart';
 import '../../stores/presentation/store_screen.dart';
+import '../data/delivery_quote_repository.dart';
+import '../domain/delivery_quote.dart';
 import '../domain/order.dart';
 
 /// Reference layout: a 3-step "Menu → Cart → Checkout" progress header,
@@ -25,12 +27,16 @@ import '../domain/order.dart';
 /// deliberately NOT reproduced: the "Direct / Standard / Scheduled" tiered
 /// delivery-speed options (Dukkanci has one flat per-km rate — no fast-track
 /// service, no scheduling backend, `scheduleDay`/`scheduleTime` are always
-/// sent empty per app.js's own real payload shape) and a computed
-/// "incl. fees and tax" total with a fake discount strikethrough (delivery
-/// fee isn't computed client-side — spec gap, see [[flutter-v2-android-app]]
-/// — so the total shown is honestly just the subtotal, with a caption
-/// explaining the store confirms delivery cost over WhatsApp, which is how
-/// the platform actually works).
+/// sent empty per app.js's own real payload shape) and a fake discount
+/// strikethrough.
+///
+/// Delivery cost: this screen used to show ONLY the products subtotal with a
+/// note that "the store will confirm the delivery fee on WhatsApp", so every
+/// app order reached the store with no delivery cost (DK-0661634416 /
+/// DK-0662089943, 2026-09-29). The fee is now requested from the SERVER
+/// (POST /api/delivery-quote {storeId, destination}), which prices it from the
+/// store's real settings — the same number the website charges — shown as its
+/// own line and included in the total before the customer confirms.
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
 
@@ -74,6 +80,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   // screen anymore, so a delivery address is always well-structured.
   SavedAddress? _selectedAddress;
 
+  // Delivery price for (this store, selected address), from the server. Recomputed
+  // whenever the address, the fulfilment mode or the cart's store changes.
+  // `_quoteSeq` discards the answer of a slower, superseded request so a stale
+  // quote can never overwrite the one for the address now on screen.
+  DeliveryQuote? _quote;
+  bool _quoteLoading = false;
+  String? _quoteError;
+  int _quoteSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -82,15 +97,74 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     // being asked again. Never overwrites (fields start empty on a fresh
     // checkout screen anyway; the guard just documents the intent).
     final addresses = ref.read(addressesControllerProvider);
-    if (addresses.isEmpty) return;
-    final preferred = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
-    _applyAddress(preferred);
+    if (addresses.isNotEmpty) {
+      final preferred = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
+      _applyAddress(preferred);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshQuote();
+    });
   }
 
   void _applyAddress(SavedAddress address) {
     _selectedAddress = address;
     if (address.recipientName.isNotEmpty) _nameController.text = address.recipientName;
     if (address.recipientPhone.isNotEmpty) _phoneController.text = address.recipientPhone;
+  }
+
+  /// A different address was chosen/edited: apply it and re-quote delivery.
+  void _selectAddress(SavedAddress address) {
+    setState(() => _applyAddress(address));
+    _refreshQuote();
+  }
+
+  /// Asks the server what delivery costs from this store to the selected
+  /// address. Pickup / no address → nothing to quote.
+  Future<void> _refreshQuote() async {
+    final cart = ref.read(cartControllerProvider);
+    final address = _selectedAddress;
+    if (_isPickup || cart.storeId == null || address == null) {
+      setState(() {
+        _quote = null;
+        _quoteError = null;
+        _quoteLoading = false;
+      });
+      return;
+    }
+    final seq = ++_quoteSeq;
+    setState(() {
+      _quoteLoading = true;
+      _quoteError = null;
+    });
+    try {
+      final q = await ref.read(deliveryQuoteRepositoryProvider).quote(
+            storeId: cart.storeId!,
+            lat: address.lat,
+            lng: address.lng,
+            addressText: address.fullAddressTr,
+          );
+      if (!mounted || seq != _quoteSeq) return;
+      setState(() {
+        _quote = q;
+        _quoteLoading = false;
+      });
+    } catch (e) {
+      if (!mounted || seq != _quoteSeq) return;
+      setState(() {
+        _quote = null;
+        _quoteLoading = false;
+        _quoteError = e is DeliveryQuoteException && e.reason == DeliveryQuoteFailure.noLocation
+            ? AppStrings.deliveryQuoteNoLocation
+            : AppStrings.deliveryQuoteFailed;
+      });
+    }
+  }
+
+  /// Delivery actually charged for [cart] — 0 for pickup, the server quote
+  /// (free-delivery threshold applied) otherwise.
+  double _deliveryFeeFor(CartState cart) {
+    if (_isPickup) return 0;
+    return _quote?.feeFor(cart.subtotal) ?? 0;
   }
 
   /// "إضافة عنوان التوصيل" / "تغيير العنوان" — with no saved addresses yet,
@@ -102,7 +176,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final addresses = ref.read(addressesControllerProvider);
     if (addresses.isEmpty) {
       final created = await context.push<SavedAddress>(AppRoutes.addressForm);
-      if (created != null && mounted) setState(() => _applyAddress(created));
+      if (created != null && mounted) _selectAddress(created);
       return;
     }
     final result = await showModalBottomSheet<Object>(
@@ -114,10 +188,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     if (!mounted || result == null) return;
     if (identical(result, _addNewAddressSentinel)) {
       final created = await context.push<SavedAddress>(AppRoutes.addressForm);
-      if (created != null && mounted) setState(() => _applyAddress(created));
+      if (created != null && mounted) _selectAddress(created);
       return;
     }
-    if (result is SavedAddress) setState(() => _applyAddress(result));
+    if (result is SavedAddress) _selectAddress(result);
   }
 
   /// Pencil icon on the selected-address card — corrects the *same* address
@@ -128,7 +202,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final current = _selectedAddress;
     if (current == null) return;
     final updated = await context.push<SavedAddress>(AppRoutes.addressForm, extra: current);
-    if (updated != null && mounted) setState(() => _applyAddress(updated));
+    if (updated != null && mounted) _selectAddress(updated);
   }
 
   @override
@@ -255,6 +329,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       setState(() => _error = 'يرجى إدخال عنوان التوصيل');
       return;
     }
+    // Never send a delivery order the customer hasn't seen priced: that is exactly
+    // how orders used to reach the store with no delivery cost at all.
+    if (!_isPickup) {
+      if (_quoteLoading) {
+        setState(() => _error = AppStrings.deliveryQuoteLoading);
+        return;
+      }
+      final q = _quote;
+      if (q == null) {
+        setState(() => _error = _quoteError ?? AppStrings.deliveryQuoteFailed);
+        _refreshQuote();
+        return;
+      }
+      if (q.exceedsMaxDistance) {
+        setState(() => _error = AppStrings.deliveryOutOfRange);
+        return;
+      }
+    }
 
     final auth = ref.read(authRepositoryProvider);
     final alreadyVerified = await auth.isPhoneAlreadyVerified(phone);
@@ -326,11 +418,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (!_isPickup && _leaveAtDoor) 'يرجى ترك الطلب عند الباب دون الحاجة لمقابلتي',
     ];
     final selected = _selectedAddress;
+    final deliveryFee = _deliveryFeeFor(cart);
     final draft = OrderDraft(
       id: _orderId!,
       storeId: cart.storeId!,
       items: cart.items,
-      total: cart.subtotal,
+      total: cart.subtotal + deliveryFee,
+      deliveryFee: deliveryFee,
+      deliveryQuote: (_isPickup || _quote == null) ? null : _quote!.toJson(deliveryFee),
+      destinationLat: _isPickup ? null : selected?.lat,
+      destinationLng: _isPickup ? null : selected?.lng,
       contactName: name,
       contactPhone: phone,
       isPickup: _isPickup,
@@ -400,9 +497,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   title: 'طريقة الاستلام',
                   child: Row(
                     children: [
-                      Expanded(child: _FulfillmentTile(label: 'توصيل', icon: Icons.delivery_dining_rounded, selected: !_isPickup, onTap: () => setState(() => _isPickup = false))),
+                      Expanded(child: _FulfillmentTile(label: 'توصيل', icon: Icons.delivery_dining_rounded, selected: !_isPickup, onTap: () { setState(() => _isPickup = false); _refreshQuote(); })),
                       const SizedBox(width: AppSpacing.md),
-                      Expanded(child: _FulfillmentTile(label: 'استلام من المتجر', icon: Icons.store_rounded, selected: _isPickup, onTap: () => setState(() => _isPickup = true))),
+                      Expanded(child: _FulfillmentTile(label: 'استلام من المتجر', icon: Icons.store_rounded, selected: _isPickup, onTap: () { setState(() => _isPickup = true); _refreshQuote(); })),
                     ],
                   ),
                 ),
@@ -507,6 +604,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           _CheckoutSummaryBar(
             subtotal: cart.subtotal,
+            isPickup: _isPickup,
+            deliveryFee: _deliveryFeeFor(cart),
+            quote: _quote,
+            quoteLoading: _quoteLoading,
+            quoteError: _quoteError,
+            onRetryQuote: _refreshQuote,
             submitting: _submitting,
             buttonLabel: _awaitingOtp ? AppStrings.verify : AppStrings.placeOrder,
             onSubmit: _submit,
@@ -648,18 +751,53 @@ class _PaymentTile extends StatelessWidget {
 class _CheckoutSummaryBar extends StatelessWidget {
   const _CheckoutSummaryBar({
     required this.subtotal,
+    required this.isPickup,
+    required this.deliveryFee,
+    required this.quote,
+    required this.quoteLoading,
+    required this.quoteError,
+    required this.onRetryQuote,
     required this.submitting,
     required this.buttonLabel,
     required this.onSubmit,
   });
 
   final double subtotal;
+  final bool isPickup;
+  final double deliveryFee;
+  final DeliveryQuote? quote;
+  final bool quoteLoading;
+  final String? quoteError;
+  final VoidCallback onRetryQuote;
   final bool submitting;
   final String buttonLabel;
   final VoidCallback onSubmit;
 
+  String _money(double v) => '${v.toStringAsFixed(0)} ${AppStrings.currencySuffix}';
+
+  /// "8.2 كم" — one-way road distance the fee is based on (shown so the customer
+  /// can see WHY the delivery costs what it does).
+  String? get _distanceHint {
+    final km = quote?.oneWayKm;
+    if (km == null) return null;
+    return AppStrings.deliveryDistanceKm(km.toStringAsFixed(1));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final q = quote;
+    final blocked = !isPickup && (quoteLoading || q == null || q.exceedsMaxDistance);
+    final total = subtotal + (isPickup ? 0 : deliveryFee);
+
+    Widget deliveryValue() {
+      if (quoteLoading) {
+        return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
+      }
+      if (q == null) return const Text('—', style: AppTextStyles.body);
+      if (q.exceedsMaxDistance) return const Text(AppStrings.deliveryOutOfRange, style: TextStyle(color: AppColors.danger));
+      return Text(deliveryFee <= 0 ? AppStrings.deliveryFeeFree : _money(deliveryFee), style: AppTextStyles.body);
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -677,11 +815,31 @@ class _CheckoutSummaryBar extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(AppStrings.checkoutSubtotal, style: AppTextStyles.bodyMuted),
-                  Text('${subtotal.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.body),
+                  Text(_money(subtotal), style: AppTextStyles.body),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(AppStrings.checkoutDeliveryFeeNote, style: AppTextStyles.caption),
+              if (!isPickup) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _distanceHint == null ? AppStrings.checkoutDeliveryFee : '${AppStrings.checkoutDeliveryFee} · $_distanceHint',
+                      style: AppTextStyles.bodyMuted,
+                    ),
+                    deliveryValue(),
+                  ],
+                ),
+                if (quoteError != null && !quoteLoading) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Expanded(child: Text(quoteError!, style: AppTextStyles.caption.copyWith(color: AppColors.danger))),
+                      TextButton(onPressed: onRetryQuote, child: const Text(AppStrings.deliveryQuoteRetry)),
+                    ],
+                  ),
+                ],
+              ],
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
@@ -690,13 +848,13 @@ class _CheckoutSummaryBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(AppStrings.cartTotal, style: AppTextStyles.caption),
-                      Text('${subtotal.toStringAsFixed(0)} ${AppStrings.currencySuffix}', style: AppTextStyles.price),
+                      Text(_money(total), style: AppTextStyles.price),
                     ],
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: submitting ? null : onSubmit,
+                      onPressed: submitting || blocked ? null : onSubmit,
                       child: submitting
                           ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : Text(buttonLabel),

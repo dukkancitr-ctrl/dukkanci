@@ -87,7 +87,11 @@ class Store {
   /// results than before, only more.
   bool hasAnyOffer(Set<int> discountedStoreIds) => hasOffer || discountedStoreIds.contains(id);
 
-  factory Store.fromJson(Map<String, dynamic> json) {
+  /// [ratePerKm] is the store's per-km delivery rate from the delivery settings
+  /// (site_settings.deliverySettings) — NOT the `stores.delivery` column, which
+  /// holds the store's FIXED fee (30/35/40). That column used to be shown as
+  /// "35 ₺/كم" on nearly every store card, a per-km price no store charges.
+  factory Store.fromJson(Map<String, dynamic> json, {double? ratePerKm}) {
     final paymentMethodsJson = json['payment_methods'];
     final categorySettingsJson = json['category_settings'];
     final rawTime = (json['time'] as String?)?.trim();
@@ -101,7 +105,7 @@ class Store {
       logoImage: resolveAssetUrl(json['logo_image'] as String?),
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
-      deliveryFeePerKm: (json['delivery'] as num?)?.toDouble(),
+      deliveryFeePerKm: ratePerKm,
       minOrder: (json['min_order'] as num?)?.toDouble(),
       etaLabel: (rawTime == null || rawTime.isEmpty) ? null : rawTime,
       lat: (json['lat'] as num?)?.toDouble(),

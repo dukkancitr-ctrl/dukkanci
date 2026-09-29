@@ -18,6 +18,7 @@
 
 const crypto = require("crypto");
 const aiGateway = require("../lib/ai-gateway"); // unified AI provider layer
+const deliveryLib = require("../lib/delivery"); // DB-backed delivery pricing (shared with api/delivery-quote)
 
 const GRAPH = "https://graph.facebook.com";
 const PUB_URL = "https://tzcqnqzltrjemdnkzpzn.supabase.co";
@@ -2285,6 +2286,9 @@ function normalizeOrder(body) {
       // the merchant alert can show a full, deliverable address. All optional —
       // older clients that omit them simply produce a shorter message.
       deliveryFee: dd.deliveryFee ?? (dd.quote && dd.quote.fee != null ? Number(dd.quote.fee) : null),
+      // Server-computed fee for orders whose client priced no delivery (published
+      // mobile app). NOT part of `total`; shown to the merchant separately.
+      estimatedDeliveryFee: dd.estimatedDeliveryFee ?? null,
       subtotal: dd.subtotal ?? null, discount: Number(dd.discount) || 0, creditUsed: Number(dd.creditUsed) || 0,
       addressDetails: dd.addressDetails || "", fullAddressTr: dd.fullAddressTr || "",
       structuredAddress: dd.structuredAddress || null,
@@ -2300,6 +2304,7 @@ function normalizeOrder(body) {
     payment: o.payment || "", lineItems: Array.isArray(o.lineItems) ? o.lineItems : [],
     scheduleDay: o.scheduleDay || "", scheduleTime: o.scheduleTime || "",
     deliveryFee: (o.deliveryQuote && o.deliveryQuote.fee != null) ? Number(o.deliveryQuote.fee) : null,
+    estimatedDeliveryFee: null,
     subtotal: null, discount: 0, creditUsed: 0,
     addressDetails: o.addressDetails || "", fullAddressTr: o.fullAddressTr || "",
     structuredAddress: o.structuredAddress || null,
@@ -2458,9 +2463,17 @@ function moneyLines(order) {
   const splits = (hasFee && fee > 0) || discount > 0 || credit > 0;
   if (Number.isFinite(sub) && sub > 0 && splits) out.push(`🧮 مجموع المنتجات: ${money(sub)}`);
   if (hasFee) out.push(`🚚 رسوم التوصيل: ${fee > 0 ? money(fee) : "مجاني"}`);
+  // Orders from the published mobile app carry NO delivery in their total (the app
+  // told the customer "the store will confirm the fee"). The server prices it from
+  // the store's real settings so the merchant no longer has to guess: shown apart
+  // from the total, because the customer was NOT charged it in the app.
+  const est = knownNumber(order.estimatedDeliveryFee);
+  const hasEst = order.fulfillment !== "pickup" && !hasFee && Number.isFinite(est) && est > 0;
+  if (hasEst) out.push(`🚚 رسوم التوصيل (تقدير الموقع، غير مشمولة في الإجمالي): ${money(est)}`);
   if (discount > 0) out.push(`🏷️ خصم الكوبون: -${money(discount)}`);
   if (credit > 0) out.push(`👛 رصيد مستخدم: -${money(credit)}`);
   out.push(`💰 الإجمالي المطلوب من الزبون: ${money(order.total)}`);
+  if (hasEst) out.push(`🧾 المستحق مع التوصيل: ${money((Number(order.total) || 0) + est)} — أكّد رسوم التوصيل مع الزبون`);
   return out;
 }
 
@@ -2588,8 +2601,10 @@ function buildStoreOrderParams(order, opts) {
     // Subtotal / delivery fee: "—" when this order simply has no record of them
     // (pickup, or placed before the fee was persisted) rather than a false zero.
     flatParam(knownNumber(order.subtotal) > 0 ? money(order.subtotal) : "—", 40),
-    flatParam(isPickup || !Number.isFinite(knownNumber(order.deliveryFee)) ? "—"
-      : (knownNumber(order.deliveryFee) > 0 ? money(order.deliveryFee) : "مجاني"), 40),
+    flatParam(isPickup ? "—"
+      : Number.isFinite(knownNumber(order.deliveryFee))
+        ? (knownNumber(order.deliveryFee) > 0 ? money(order.deliveryFee) : "مجاني")
+        : (knownNumber(order.estimatedDeliveryFee) > 0 ? `${money(order.estimatedDeliveryFee)} (تقدير، غير مشمولة)` : "—"), 40),
     flatParam(money(order.total), 40),
     flatParam(order.payment || "—", 80),
     flatParam(extras || "لا توجد", 300),
@@ -3145,7 +3160,30 @@ module.exports = async (req, res) => {
         // legitimately computed long-route fee (20 ل.ت/كم × 32 km round trip = 650):
         // the customer confirmed 650 in the fee popup but the order was saved and
         // billed at 500. 5000 covers the largest configurable route (200 km × 40).
-        if (body.clientDeliveryFee != null) {
+        // Mobile app: the SERVER is the only authority on the delivery price. The
+        // published app used to send clientDeliveryFee:0 (it had no way to price
+        // delivery), which this path then trusted — so every app order was saved
+        // with a free delivery the customer never agreed to and the store never
+        // expected (DK-0661634416 / DK-0662089943). The price now comes from the
+        // database settings via lib/delivery, exactly what the app displayed.
+        let appQuote = null;
+        if (String(body.source || "") === "android_app") {
+          const sa = (body.structuredAddress && typeof body.structuredAddress === "object") ? body.structuredAddress : {};
+          const appDest = deliveryLib.validPoint(dest) ? dest : { lat: sa.lat, lng: sa.lng };
+          try {
+            appQuote = await deliveryLib.quoteForStore({
+              storeId, destination: appDest,
+              addressText: [body.address, body.addressDetails, body.fullAddressTr].filter(Boolean).join(" ")
+            });
+          } catch (e) { appQuote = null; }
+        }
+        if (appQuote && appQuote.ok) {
+          if (appQuote.exceedsMaxDistance) {
+            return res.status(409).json({ error: "العنوان خارج نطاق توصيل هذا المتجر", code: "out_of_range" });
+          }
+          delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(appQuote.fee) || 0));
+          if (appQuote.oneWayKm != null) deliveryMeta = { oneWayKm: appQuote.oneWayKm, roundTripKm: appQuote.roundTripKm };
+        } else if (body.clientDeliveryFee != null) {
           delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(body.clientDeliveryFee) || 0));
         } else if (ds.mode === "fixed") {
           delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(ds.fixedFee) || 0));
@@ -3202,6 +3240,9 @@ module.exports = async (req, res) => {
 
       const orderId = await nextOrderId();
       const nowIso = new Date().toISOString();
+      // A real pin is a finite, non-zero number. `Number(null)` is 0, which the old
+      // isFinite check accepted — a missing pin was stored as latitude 0.
+      const pin = v => (Number.isFinite(Number(v)) && Number(v) !== 0) ? Number(v) : null;
       const orderRow = {
         id: orderId, store_id: storeId, customer, total, status: "طلب جديد", time: "الآن",
         items: totalQty,
@@ -3216,8 +3257,8 @@ module.exports = async (req, res) => {
           structuredAddress: body.structuredAddress || null, fullAddressTr: String(body.fullAddressTr || "").slice(0, 600),
           // Map pin of the customer's door (see customerMapsLink) — kept as a
           // number or null so a malformed client value can't poison the row.
-          addressLat: Number.isFinite(Number(body.addressLat)) ? Number(body.addressLat) : null,
-          addressLng: Number.isFinite(Number(body.addressLng)) ? Number(body.addressLng) : null,
+          addressLat: pin(body.addressLat) ?? pin(body.destination && body.destination.lat) ?? pin(body.structuredAddress && body.structuredAddress.lat),
+          addressLng: pin(body.addressLng) ?? pin(body.destination && body.destination.lng) ?? pin(body.structuredAddress && body.structuredAddress.lng),
           lineItems, notes: String(body.notes || "").slice(0, 500), substitution: String(body.substitution || "").slice(0, 200),
           payment: String(body.payment || "نقداً عند التسليم").slice(0, 60),
           scheduleDay: String(body.scheduleDay || "").slice(0, 40), scheduleTime: String(body.scheduleTime || "").slice(0, 40),
@@ -3875,6 +3916,7 @@ module.exports = async (req, res) => {
       total: row.total, fulfillment: dd.fulfillment || "delivery", address: dd.address || "", payment: dd.payment || "",
       lineItems: dd.lineItems || [], scheduleDay: dd.scheduleDay || "", scheduleTime: dd.scheduleTime || "",
       deliveryFee: dd.deliveryFee ?? (dd.quote && dd.quote.fee != null ? Number(dd.quote.fee) : null),
+      estimatedDeliveryFee: dd.estimatedDeliveryFee ?? null,
       subtotal: dd.subtotal ?? null, discount: Number(dd.discount) || 0, creditUsed: Number(dd.creditUsed) || 0,
       addressDetails: dd.addressDetails || "", fullAddressTr: dd.fullAddressTr || "",
       structuredAddress: dd.structuredAddress || null,
@@ -4529,6 +4571,37 @@ module.exports = async (req, res) => {
   const order = normalizeOrder(body);
   if (!order.id || !order.storeId) return res.status(400).json({ error: "order id/storeId required" });
 
+  // Delivery price for clients that priced none. The published mobile app's
+  // checkout has no delivery calculation at all: it sends no quote and shows the
+  // customer only the products subtotal, so the order used to reach the store with
+  // NO delivery figure (DK-0661634416 / DK-0662089943, 2026-09-29). Price it here
+  // from the store's real settings and the customer's GPS pin. It is recorded as
+  // `estimatedDeliveryFee`, NOT added to `total`: the customer confirmed the
+  // products-only amount on screen, so the merchant is shown the fee separately
+  // and confirms it with the customer, exactly as the app told them to expect.
+  let estFee = null, estMeta = null, pinLat = null, pinLng = null;
+  try {
+    const b0 = body || {};
+    if (order.fulfillment !== "pickup" && order.deliveryFee == null) {
+      const sa = (b0.structuredAddress && typeof b0.structuredAddress === "object") ? b0.structuredAddress : {};
+      const lat = Number(b0.addressLat ?? sa.lat), lng = Number(b0.addressLng ?? sa.lng);
+      if (deliveryLib.validPoint({ lat, lng })) {
+        pinLat = lat; pinLng = lng;
+        const q = await deliveryLib.quoteForStore({
+          storeId: order.storeId, destination: { lat, lng },
+          addressText: [order.address, order.addressDetails, order.fullAddressTr].filter(Boolean).join(" ")
+        });
+        if (q.ok) {
+          estMeta = { oneWayKm: q.oneWayKm ?? null, roundTripKm: q.roundTripKm ?? null, ratePerKm: q.ratePerKm ?? null,
+            provider: q.provider, mode: q.mode, exceedsMaxDistance: !!q.exceedsMaxDistance };
+          if (!q.exceedsMaxDistance && Number(q.fee) > 0) estFee = Number(q.fee);
+        }
+      }
+    }
+  } catch (e) { try { console.warn("[order-delivery-estimate] " + order.id + ": " + e.message); } catch (_) {} }
+  if (estFee != null) order.estimatedDeliveryFee = estFee;
+  if (pinLat != null && (order.addressLat == null || order.addressLng == null)) { order.addressLat = pinLat; order.addressLng = pinLng; }
+
   // Authoritative order write. The checkout page ALSO writes the order straight to
   // Supabase from the browser (pushOrderCloud) with the anon key — but that request
   // races the customer backgrounding/closing the tab right after the success screen
@@ -4581,8 +4654,10 @@ module.exports = async (req, res) => {
         fullAddressTr: b.fullAddressTr || "",
         // Map pin of the customer's door, so the merchant alert (and a later
         // re-send from the dashboard) can link straight to Google Maps.
-        addressLat: b.addressLat ?? null,
-        addressLng: b.addressLng ?? null,
+        addressLat: b.addressLat ?? pinLat,
+        addressLng: b.addressLng ?? pinLng,
+        estimatedDeliveryFee: estFee,
+        estimatedDelivery: estMeta,
         lineItems: order.lineItems || [],
         notes: b.notes || "",
         substitution: b.substitution || "",
