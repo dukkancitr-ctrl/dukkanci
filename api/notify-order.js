@@ -1691,6 +1691,8 @@ function haversineKm(origin, destination) {
 function normalizeDeliveryFee(rawFee) {
   return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
 }
+// Ceiling for a delivery fee accepted from the checkout (see create-order).
+const MAX_DELIVERY_FEE = 5000;
 
 async function nextOrderId() {
   for (let i = 0; i < 5; i++) {
@@ -3132,14 +3134,18 @@ module.exports = async (req, res) => {
         const dest = body.destination || {};
         // Delivery pricing lives client-side by design (named-zone / nationwide /
         // distance logic + localStorage shadow — see delivery-settings-localstorage).
-        // When the checkout sends its computed fee, record it as-is (clamped 0..500);
-        // only fall back to the server fixed/distance estimate for callers that omit
-        // it. Product PRICES are always repriced from the DB above, so this keeps the
-        // core anti-tamper guarantee while not regressing any store's delivery rules.
+        // When the checkout sends its computed fee, record it as-is (clamped to a
+        // sane ceiling); only fall back to the server fixed/distance estimate for
+        // callers that omit it. Product PRICES are always repriced from the DB above,
+        // so this keeps the core anti-tamper guarantee while not regressing any
+        // store's delivery rules. The ceiling was 500, which silently TRUNCATED any
+        // legitimately computed long-route fee (20 ل.ت/كم × 32 km round trip = 650):
+        // the customer confirmed 650 in the fee popup but the order was saved and
+        // billed at 500. 5000 covers the largest configurable route (200 km × 40).
         if (body.clientDeliveryFee != null) {
-          delivery = Math.min(500, Math.max(0, Number(body.clientDeliveryFee) || 0));
+          delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(body.clientDeliveryFee) || 0));
         } else if (ds.mode === "fixed") {
-          delivery = Math.min(500, Math.max(0, Number(ds.fixedFee) || 0));
+          delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(ds.fixedFee) || 0));
         } else if (Number.isFinite(Number(store.lat)) && Number.isFinite(Number(store.lng))
           && Number.isFinite(Number(dest.lat)) && Number.isFinite(Number(dest.lng))) {
           const ratePerKm = Math.min(40, Math.max(10, Number(ds.ratePerKm) || 15));
@@ -3155,7 +3161,7 @@ module.exports = async (req, res) => {
           delivery = normalizeDeliveryFee(Math.round(roundTripKm * ratePerKm));
           deliveryMeta = { oneWayKm, roundTripKm };
         } else {
-          delivery = Math.min(500, Math.max(0, Number(ds.clientFee) || 0));
+          delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(ds.clientFee) || 0));
         }
         if (store.free_delivery_threshold != null && subtotal >= Number(store.free_delivery_threshold)) delivery = 0;
       }
@@ -4244,6 +4250,36 @@ module.exports = async (req, res) => {
     const current = (rows && rows[0] && rows[0].value && typeof rows[0].value === "object") ? rows[0].value : {};
     if (zones.length) current[String(storeId)] = zones; else delete current[String(storeId)];
     const r = await sbWrite("POST", "site_settings?on_conflict=key", { key: "namedZones", value: current, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+    if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
+    return res.status(200).json({ ok: true, value: current });
+  }
+
+  // Merchant/Admin: save the delivery PRICING settings (per-km rate, fixed fee,
+  // distance on/off, prep time, max round-trip) for ONE store into the shared
+  // `deliverySettings` site-setting. Before this existed the merchant form only
+  // wrote these to the merchant's own browser (localStorage), so a store owner who
+  // "saved" 25 ل.ت/كم still charged every customer the bundled default — the
+  // customer-facing fee never matched the price the store set. Same auth and
+  // read-modify-write shape as save-store-zones (a partial client view can't wipe
+  // another store's entry); only whitelisted, range-clamped fields are stored.
+  if (pq.action === "save-store-delivery") {
+    const storeId = Number(body.storeId);
+    if (!storeId) return res.status(400).json({ error: "storeId required" });
+    const isAdmin = adminOk({ headers: req.headers, query: pq });
+    if (!isAdmin && !merchantOk(req, storeId)) return res.status(403).json({ error: "unauthorized" });
+    const raw = (body.settings && typeof body.settings === "object") ? body.settings : {};
+    const clean = {};
+    if (raw.mode === "distance" || raw.mode === "fixed") clean.mode = raw.mode;
+    const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
+    const fixedFee = num(raw.fixedFee, 0, 5000);        if (fixedFee != null && raw.fixedFee !== undefined) clean.fixedFee = fixedFee;
+    const ratePerKm = num(raw.ratePerKm, 10, 40);       if (ratePerKm != null && raw.ratePerKm !== undefined) clean.ratePerKm = ratePerKm;
+    const prepMinutes = num(raw.prepMinutes, 5, 120);   if (prepMinutes != null && raw.prepMinutes !== undefined) clean.prepMinutes = prepMinutes;
+    const maxRoundTripKm = num(raw.maxRoundTripKm, 5, 200); if (maxRoundTripKm != null && raw.maxRoundTripKm !== undefined) clean.maxRoundTripKm = maxRoundTripKm;
+    if (!Object.keys(clean).length) return res.status(400).json({ error: "no valid settings" });
+    const rows = await sbGet("site_settings?key=eq.deliverySettings&select=value");
+    const current = (rows && rows[0] && rows[0].value && typeof rows[0].value === "object") ? rows[0].value : {};
+    current[String(storeId)] = { ...(current[String(storeId)] || {}), ...clean };
+    const r = await sbWrite("POST", "site_settings?on_conflict=key", { key: "deliverySettings", value: current, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
     if (!r.ok) return res.status(502).json({ error: "save failed", detail: r.rows || r.error });
     return res.status(200).json({ ok: true, value: current });
   }

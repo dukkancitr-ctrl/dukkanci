@@ -1584,6 +1584,24 @@ async function loadSiteSettings() {
       });
     }
     // Admin force-hidden product ids -> re-derive the storefront list (panels use allProducts).
+    // Store-owner delivery pricing (per-km rate, fixed fee, max distance, prep time,
+    // distance on/off) saved via save-store-delivery. Applied on top of the bundled
+    // <slug>-data.js values AND the browser's frozen localStorage copy — cloud wins,
+    // so what the merchant set is what every customer is actually charged. Only the
+    // whitelisted numeric/mode fields are read; noFeeFloor/nationwide/zones stay as is.
+    if (map.deliverySettings && typeof map.deliverySettings === "object") {
+      Object.entries(map.deliverySettings).forEach(([sid, cfg]) => {
+        const id = Number(sid);
+        if (!id || !cfg || typeof cfg !== "object") return;
+        const patch = {};
+        if (cfg.mode === "distance" || cfg.mode === "fixed") patch.mode = cfg.mode;
+        ["fixedFee", "ratePerKm", "prepMinutes", "maxRoundTripKm"].forEach(k => {
+          if (cfg[k] != null && Number.isFinite(Number(cfg[k]))) patch[k] = Number(cfg[k]);
+        });
+        state.deliverySettings[id] = { ...(state.deliverySettings[id] || initialDeliverySettings[id] || DEFAULT_DELIVERY_SETTINGS), ...patch };
+      });
+      state.deliveryQuote = null;
+    }
     HIDDEN_PRODUCTS = new Set((((map.hiddenProducts && map.hiddenProducts.ids) || [])).map(Number));
     MOST_ORDERED_PRODUCTS = new Set((((map.mostOrdered && map.mostOrdered.ids) || [])).map(Number));
     if (allProducts.length) { const kept = applyPublishingRules(allProducts); products.length = 0; kept.forEach(p => products.push(p)); }
@@ -2243,6 +2261,29 @@ function activeDeliveryQuote(store, address) {
 }
 
 function deliveryPriceLabel(store) {
+// Persist the store owner's delivery pricing (rate/fee/max/prep/mode) through the
+// merchant/admin-gated endpoint — see save-store-delivery in api/notify-order.js.
+// Without this the values lived only in the editing browser's localStorage and never
+// reached a single customer.
+function saveStoreDeliveryCloud(storeId, settings) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.adminKey) headers["x-admin-token"] = state.adminKey;
+  if (state.merchantPwAuth && state.merchantPwAuth.token) headers["x-merchant-token"] = state.merchantPwAuth.token;
+  if (!headers["x-admin-token"] && !headers["x-merchant-token"]) return;
+  fetch("/api/notify-order?action=save-store-delivery", {
+    method: "POST", headers,
+    body: JSON.stringify({ storeId, settings })
+  }).then(r => {
+    if (r.status === 403) { if (state.adminKey) lockAdmin(); else handleMerchantSessionExpired(); throw new Error("unauthorized"); }
+    if (!r.ok) throw new Error(`request failed (${r.status})`);
+    return r.json().catch(() => ({}));
+  }).then(data => {
+    if (data && data.value && typeof data.value === "object") {
+      state.siteSettings = { ...state.siteSettings, deliverySettings: data.value };
+    }
+  }).catch(() => showToast("تعذّر حفظ أسعار التوصيل على الخادم — لن تظهر للعملاء حتى تُحفظ", ""));
+}
+
   const settings = getDeliverySettings(store.id);
   if (!settings) return "حسب المسافة";
   return settings.mode === "distance" ? `حسب المسافة · ${money(settings.ratePerKm)}/كم` : money(settings.fixedFee);
@@ -4690,7 +4731,7 @@ function renderStorePage(id) {
               <span>${icon("map")}</span>
               <div>
                 <strong>توصيل محسوب تلقائياً حسب موقعك</strong>
-                <p>المسافة ذهاباً وإياباً × ${money(deliverySettings.ratePerKm)} لكل كيلومتر.</p>
+                <p>المسافة ذهاباً وإياباً × ${money(deliverySettings.ratePerKm)} لكل كيلومتر${deliverySettings.noFeeFloor ? "" : " — بحد أدنى 150 ل.ت وتقريب لأعلى 50"}.</p>
               </div>
               ${defaultQuote ? `<b>${formatDistance(defaultQuote.roundTripKm)} · ${money(defaultQuote.fee)}</b>` : '<b>حدد موقعك لإظهار السعر</b>'}
             </div>
@@ -6407,7 +6448,7 @@ function merchantStore() {
           <label class="delivery-toggle"><input type="checkbox" name="distanceEnabled" ${deliverySettings.mode === "distance" ? "checked" : ""}><span></span><b>${deliverySettings.mode === "distance" ? "مفعّل" : "غير مفعّل"}</b></label>
         </div>
         <div class="distance-settings-fields ${deliverySettings.mode === "distance" ? "active" : ""}">
-          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="40" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 40 ليرة.</small></label>
+          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="40" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 40 ليرة. يُطبَّق على العميل حدٌّ أدنى 150 ل.ت وتقريب لأعلى 50 (مثلاً 83 ← 150، 154 ← 200)، فالسعر النهائي قد يزيد عن المسافة × السعر.</small></label>
           <label><span>مدة تجهيز الطلب</span><div class="input-with-unit"><input name="prepMinutes" type="number" min="5" max="120" step="5" value="${deliverySettings.prepMinutes}"><b>دقيقة</b></div></label>
           <label><span>أقصى مسافة ذهاباً وإياباً</span><div class="input-with-unit"><input name="maxRoundTripKm" type="number" min="5" max="200" value="${deliverySettings.maxRoundTripKm}"><b>كم</b></div></label>
           <div class="delivery-formula-preview"><small>مثال مباشر</small><strong><span id="delivery-example-distance">20</span> كم × <span id="delivery-example-rate">${deliverySettings.ratePerKm}</span> ل.ت = <b id="delivery-example-total">${20 * deliverySettings.ratePerKm} ل.ت</b></strong></div>
@@ -17211,17 +17252,26 @@ document.addEventListener("submit", async event => {
     const zones = [];
     for (let zi = 0; form.has(`zone-label-${zi}`); zi++) {
       const label = (form.get(`zone-label-${zi}`) || "").toString().trim();
-      const match = (form.get(`zone-match-${zi}`) || "").toString().split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      // "tr" casing, matching estimateDeliveryQuote(): plain toLowerCase() turns Turkish
+      // "İ" into "i" + U+0307 (combining dot), which never equals the tr-lowercased
+      // address text — so any keyword containing İ (e.g. "Esenyurt / İstanbul") was
+      // saved already dead and its zone silently never applied.
+      const match = (form.get(`zone-match-${zi}`) || "").toString().split(",").map(s => s.trim().toLocaleLowerCase("tr")).filter(Boolean);
       const fee = Math.max(0, Number(form.get(`zone-fee-${zi}`)) || 0);
       if (label && match.length) zones.push({ label, match, fee });
     }
-    state.deliverySettings[storeId] = {
+    // Baseline = what CUSTOMERS currently get (bundled/default + cloud), NOT the
+    // merchant's own localStorage copy: a merchant who "saved" a rate before this
+    // fix sees it pre-filled from their browser, so diffing against local state would
+    // show no change and never send the value they believe they already set.
+    const cloudPrev = (state.siteSettings.deliverySettings || {})[String(storeId)] || {};
+    const prevDelivery = { ...(initialDeliverySettings[storeId] || DEFAULT_DELIVERY_SETTINGS), ...cloudPrev };
+    const nextDelivery = {
       mode: form.get("distanceEnabled") === "on" ? "distance" : "fixed",
       fixedFee: Math.max(0, Number(form.get("fixedFee")) || 0),
       ratePerKm,
       prepMinutes: Math.min(120, Math.max(5, Number(form.get("prepMinutes")) || 20)),
-      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60)),
-      namedZones: zones
+      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60))
     };
     saveNamedZonesCloud(storeId, zones);
     state.deliveryQuote = null;
@@ -17251,6 +17301,16 @@ document.addEventListener("submit", async event => {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || data.ok === false) {
+    // Keep flags the form doesn't edit (noFeeFloor, nationwideFlatFee) — the old code
+    // replaced the whole object and silently dropped them on every save.
+    state.deliverySettings[storeId] = { ...(state.deliverySettings[storeId] || initialDeliverySettings[storeId] || {}), ...nextDelivery, namedZones: zones };
+    // Persist to the cloud so customers are charged what the store set. Only fields
+    // the merchant actually CHANGED are sent: the form is pre-filled with the current
+    // effective values, so sending everything would freeze today's platform defaults
+    // into the cloud for a merchant who only edited their opening hours.
+    const deliveryChanges = {};
+    Object.keys(nextDelivery).forEach(k => { if (nextDelivery[k] !== prevDelivery[k]) deliveryChanges[k] = nextDelivery[k]; });
+    if (Object.keys(deliveryChanges).length) saveStoreDeliveryCloud(storeId, deliveryChanges);
         if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
         showToast("تعذّر إرسال الشكوى — حاول مرة أخرى", "");
         return;
