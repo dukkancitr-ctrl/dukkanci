@@ -1595,8 +1595,8 @@ async function loadSiteSettings() {
         if (!id || !cfg || typeof cfg !== "object") return;
         const patch = {};
         if (cfg.mode === "distance" || cfg.mode === "fixed") patch.mode = cfg.mode;
-        ["fixedFee", "ratePerKm", "prepMinutes", "maxRoundTripKm"].forEach(k => {
-          if (cfg[k] != null && Number.isFinite(Number(cfg[k]))) patch[k] = Number(cfg[k]);
+        ["fixedFee", "ratePerKm", "prepMinutes", "maxRoundTripKm", "minFee"].forEach(k => {
+          if (cfg[k] != null && cfg[k] !== "" && Number.isFinite(Number(cfg[k]))) patch[k] = Number(cfg[k]);
         });
         state.deliverySettings[id] = { ...(state.deliverySettings[id] || initialDeliverySettings[id] || DEFAULT_DELIVERY_SETTINGS), ...patch };
       });
@@ -2135,8 +2135,23 @@ function compareStoresByDistance(a, b) {
 
 // Delivery-fee policy: a 150 ل.ت minimum (covers the nearest/shortest trip),
 // and anything above is rounded UP to the next multiple of 50 (160 → 200).
-function normalizeDeliveryFee(rawFee) {
-  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+// The 150 minimum is the platform default; a store can set its own via
+// deliverySettings.minFee (merchant form → save-store-delivery). null/""/NaN mean
+// "not set" → 150 (Number(null) is 0, which would silently mean "no minimum").
+const DELIVERY_MIN_FEE_DEFAULT = 150;
+function deliveryMinFee(settings) {
+  const v = settings && settings.minFee;
+  if (v == null || v === "" || !Number.isFinite(Number(v))) return DELIVERY_MIN_FEE_DEFAULT;
+  return Math.min(1000, Math.max(0, Number(v)));
+}
+function normalizeDeliveryFee(rawFee, minFee = DELIVERY_MIN_FEE_DEFAULT) {
+  return Math.max(minFee, Math.ceil((rawFee || 0) / 50) * 50);
+}
+// Short customer-facing wording of the pricing policy ("" for a no-floor store).
+function deliveryFeePolicyText(settings) {
+  if (settings && settings.noFeeFloor) return "";
+  const min = deliveryMinFee(settings);
+  return min > 0 ? `بحد أدنى ${min} ل.ت وتقريب لأعلى 50` : "بتقريب لأعلى 50";
 }
 
 function estimateDeliveryQuote(store, address) {
@@ -2201,7 +2216,8 @@ function estimateDeliveryQuote(store, address) {
     routeMinutes,
     estimatedMinutes: settings.prepMinutes + routeMinutes,
     rawFee,
-    fee: settings.noFeeFloor ? rawFee : normalizeDeliveryFee(rawFee),
+    fee: settings.noFeeFloor ? rawFee : normalizeDeliveryFee(rawFee, deliveryMinFee(settings)),
+    minFee: settings.noFeeFloor ? 0 : deliveryMinFee(settings),
     ratePerKm: settings.ratePerKm,
     provider: "estimate",
     exceedsMaxDistance
@@ -4731,7 +4747,7 @@ function renderStorePage(id) {
               <span>${icon("map")}</span>
               <div>
                 <strong>توصيل محسوب تلقائياً حسب موقعك</strong>
-                <p>المسافة ذهاباً وإياباً × ${money(deliverySettings.ratePerKm)} لكل كيلومتر${deliverySettings.noFeeFloor ? "" : " — بحد أدنى 150 ل.ت وتقريب لأعلى 50"}.</p>
+                <p>المسافة ذهاباً وإياباً × ${money(deliverySettings.ratePerKm)} لكل كيلومتر${deliverySettings.noFeeFloor ? "" : ` — ${deliveryFeePolicyText(deliverySettings)}`}.</p>
               </div>
               ${defaultQuote ? `<b>${formatDistance(defaultQuote.roundTripKm)} · ${money(defaultQuote.fee)}</b>` : '<b>حدد موقعك لإظهار السعر</b>'}
             </div>
@@ -6448,7 +6464,8 @@ function merchantStore() {
           <label class="delivery-toggle"><input type="checkbox" name="distanceEnabled" ${deliverySettings.mode === "distance" ? "checked" : ""}><span></span><b>${deliverySettings.mode === "distance" ? "مفعّل" : "غير مفعّل"}</b></label>
         </div>
         <div class="distance-settings-fields ${deliverySettings.mode === "distance" ? "active" : ""}">
-          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="40" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 40 ليرة. يُطبَّق على العميل حدٌّ أدنى 150 ل.ت وتقريب لأعلى 50 (مثلاً 83 ← 150، 154 ← 200)، فالسعر النهائي قد يزيد عن المسافة × السعر.</small></label>
+          <label><span>سعر الكيلومتر ذهاباً وإياباً</span><div class="input-with-unit"><input name="ratePerKm" type="number" min="10" max="40" step="1" value="${deliverySettings.ratePerKm}"><b>ل.ت / كم</b></div><small>القيمة المسموحة من 10 إلى 40 ليرة. يُقرَّب الرسم النهائي لأعلى إلى أقرب 50 ويُطبَّق الحد الأدنى في الحقل التالي (مثلاً 154 ← 200)، فقد يزيد عن المسافة × السعر.</small></label>
+          <label><span>الحد الأدنى لرسم التوصيل</span><div class="input-with-unit"><input name="minFee" type="number" min="0" max="1000" step="10" value="${deliverySettings.noFeeFloor ? 0 : deliveryMinFee(deliverySettings)}"><b>ل.ت</b></div><small>أقل رسم يدفعه العميل مهما قصرت المسافة (الافتراضي 150، ومن 0 إلى 1000). اجعله 0 لتفعيل تسعير بلا حد أدنى.</small></label>
           <label><span>مدة تجهيز الطلب</span><div class="input-with-unit"><input name="prepMinutes" type="number" min="5" max="120" step="5" value="${deliverySettings.prepMinutes}"><b>دقيقة</b></div></label>
           <label><span>أقصى مسافة ذهاباً وإياباً</span><div class="input-with-unit"><input name="maxRoundTripKm" type="number" min="5" max="200" value="${deliverySettings.maxRoundTripKm}"><b>كم</b></div></label>
           <div class="delivery-formula-preview"><small>مثال مباشر</small><strong><span id="delivery-example-distance">20</span> كم × <span id="delivery-example-rate">${deliverySettings.ratePerKm}</span> ل.ت = <b id="delivery-example-total">${20 * deliverySettings.ratePerKm} ل.ت</b></strong></div>
@@ -10110,9 +10127,11 @@ function renderDeliveryQuoteDetails(store, quote, status = "") {
       </div>
       <div class="delivery-equation">${(() => {
         const raw = quote.rawFee ?? quote.fee;
+        const qMin = Number.isFinite(Number(quote.minFee)) ? Number(quote.minFee) : deliveryMinFee(settings);
+        const policy = qMin > 0 ? `الحد الأدنى ${qMin} وتقريب لأعلى 50` : "تقريب لأعلى 50";
         return raw === quote.fee
           ? `${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = <strong>${money(quote.fee)}</strong>`
-          : `${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = ${money(raw)} → <strong>${money(quote.fee)}</strong> <small>(الحد الأدنى 150 وتقريب لأعلى 50)</small>`;
+          : `${formatDistance(quote.roundTripKm)} × ${money(quote.ratePerKm)} = ${money(raw)} → <strong>${money(quote.fee)}</strong> <small>(${policy})</small>`;
       })()}</div>
     </div>
   `;
@@ -13178,7 +13197,8 @@ async function requestDeliveryQuote() {
         origin: getStoreLocation(store.id),
         destination: { lat: address.lat, lng: address.lng },
         ratePerKm: settings.ratePerKm,
-        maxRoundTripKm: settings.maxRoundTripKm
+        maxRoundTripKm: settings.maxRoundTripKm,
+        minFee: settings.noFeeFloor ? 0 : deliveryMinFee(settings)
       })
     });
     if (!response.ok) throw new Error("تعذر حساب المسار");
@@ -13189,6 +13209,7 @@ async function requestDeliveryQuote() {
       storeId: store.id,
       addressId: address.id,
       ratePerKm: settings.ratePerKm,
+      minFee: settings.noFeeFloor ? 0 : deliveryMinFee(settings),
       estimatedMinutes: settings.prepMinutes + quote.routeMinutes
     };
     updateCheckoutPricing();
@@ -17271,7 +17292,9 @@ document.addEventListener("submit", async event => {
       fixedFee: Math.max(0, Number(form.get("fixedFee")) || 0),
       ratePerKm,
       prepMinutes: Math.min(120, Math.max(5, Number(form.get("prepMinutes")) || 20)),
-      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60))
+      maxRoundTripKm: Math.min(200, Math.max(5, Number(form.get("maxRoundTripKm")) || 60)),
+      // Blank = platform default (150); an explicit 0 is a real "no minimum" choice.
+      minFee: (() => { const raw = (form.get("minFee") ?? "").toString().trim(); return raw === "" || !Number.isFinite(Number(raw)) ? DELIVERY_MIN_FEE_DEFAULT : Math.min(1000, Math.max(0, Math.round(Number(raw)))); })()
     };
     saveNamedZonesCloud(storeId, zones);
     state.deliveryQuote = null;
@@ -17309,7 +17332,11 @@ document.addEventListener("submit", async event => {
     // effective values, so sending everything would freeze today's platform defaults
     // into the cloud for a merchant who only edited their opening hours.
     const deliveryChanges = {};
-    Object.keys(nextDelivery).forEach(k => { if (nextDelivery[k] !== prevDelivery[k]) deliveryChanges[k] = nextDelivery[k]; });
+    Object.keys(nextDelivery).forEach(k => {
+      // minFee is compared against the EFFECTIVE minimum (unset === 150), not undefined.
+      const before = k === "minFee" ? deliveryMinFee(prevDelivery) : prevDelivery[k];
+      if (nextDelivery[k] !== before) deliveryChanges[k] = nextDelivery[k];
+    });
     if (Object.keys(deliveryChanges).length) saveStoreDeliveryCloud(storeId, deliveryChanges);
         if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitLabel; }
         showToast("تعذّر إرسال الشكوى — حاول مرة أخرى", "");

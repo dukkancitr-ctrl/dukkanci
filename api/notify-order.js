@@ -1688,8 +1688,11 @@ function haversineKm(origin, destination) {
     + Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(deltaLng / 2) ** 2;
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
-function normalizeDeliveryFee(rawFee) {
-  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+// `minFee` is the store's own minimum (deliverySettings.minFee, 0..1000); unset/null/""
+// means the platform default 150 (Number(null) is 0 — never read null as "no minimum").
+function normalizeDeliveryFee(rawFee, minFee) {
+  const mf = (minFee == null || minFee === "" || !Number.isFinite(Number(minFee))) ? 150 : Math.min(1000, Math.max(0, Number(minFee)));
+  return Math.max(mf, Math.ceil((rawFee || 0) / 50) * 50);
 }
 // Ceiling for a delivery fee accepted from the checkout (see create-order).
 const MAX_DELIVERY_FEE = 5000;
@@ -3158,7 +3161,7 @@ module.exports = async (req, res) => {
           if (roundTripKm > maxRoundTripKm) {
             return res.status(409).json({ error: "العنوان خارج نطاق توصيل هذا المتجر", code: "out_of_range" });
           }
-          delivery = normalizeDeliveryFee(Math.round(roundTripKm * ratePerKm));
+          delivery = normalizeDeliveryFee(Math.round(roundTripKm * ratePerKm), ds.minFee);
           deliveryMeta = { oneWayKm, roundTripKm };
         } else {
           delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(ds.clientFee) || 0));
@@ -4275,6 +4278,12 @@ module.exports = async (req, res) => {
     const ratePerKm = num(raw.ratePerKm, 10, 40);       if (ratePerKm != null && raw.ratePerKm !== undefined) clean.ratePerKm = ratePerKm;
     const prepMinutes = num(raw.prepMinutes, 5, 120);   if (prepMinutes != null && raw.prepMinutes !== undefined) clean.prepMinutes = prepMinutes;
     const maxRoundTripKm = num(raw.maxRoundTripKm, 5, 200); if (maxRoundTripKm != null && raw.maxRoundTripKm !== undefined) clean.maxRoundTripKm = maxRoundTripKm;
+    // Per-store minimum delivery fee (the platform default is 150). null/"" are NOT
+    // stored: Number(null) is 0, which would silently turn "unset" into "no minimum".
+    if (raw.minFee != null && raw.minFee !== "") {
+      const minFee = num(raw.minFee, 0, 1000);
+      if (minFee != null) clean.minFee = Math.round(minFee);
+    }
     if (!Object.keys(clean).length) return res.status(400).json({ error: "no valid settings" });
     const rows = await sbGet("site_settings?key=eq.deliverySettings&select=value");
     const current = (rows && rows[0] && rows[0].value && typeof rows[0].value === "object") ? rows[0].value : {};

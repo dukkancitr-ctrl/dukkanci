@@ -18,11 +18,18 @@ function haversineKm(origin, destination) {
 // Delivery-fee policy: a 150 ل.ت minimum (nearest/shortest trip), and anything
 // above is rounded UP to the next multiple of 50 (160 → 200). Keep in sync with
 // normalizeDeliveryFee() in app.js.
-function normalizeDeliveryFee(rawFee) {
-  return Math.max(150, Math.ceil((rawFee || 0) / 50) * 50);
+//
+// minFee = the store's own minimum (deliverySettings.minFee, 0..1000). null/""/NaN
+// mean "unset" → 150 (Number(null) is 0 and must never be read as "no minimum").
+function resolveMinFee(minFee) {
+  if (minFee == null || minFee === "" || !Number.isFinite(Number(minFee))) return 150;
+  return Math.min(1000, Math.max(0, Number(minFee)));
+}
+function normalizeDeliveryFee(rawFee, minFee) {
+  return Math.max(resolveMinFee(minFee), Math.ceil((rawFee || 0) / 50) * 50);
 }
 
-function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provider) {
+function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provider, minFee) {
   const roundTripKm = oneWayKm * 2;
   const rawFee = Math.round(roundTripKm * ratePerKm);
   return {
@@ -30,21 +37,22 @@ function finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, provid
     roundTripKm,
     routeMinutes,
     rawFee,
-    fee: normalizeDeliveryFee(rawFee),
+    fee: normalizeDeliveryFee(rawFee, minFee),
+    minFee: resolveMinFee(minFee),
     provider,
     exceedsMaxDistance: roundTripKm > maxRoundTripKm
   };
 }
 
-function fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm) {
+function fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee) {
   const oneWayKm = Math.max(0.5, haversineKm(origin, destination) * 1.28);
   const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
-  return finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, "estimate");
+  return finalizeQuote(oneWayKm, routeMinutes, ratePerKm, maxRoundTripKm, "estimate", minFee);
 }
 
-async function googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm) {
+async function googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm);
+  if (!apiKey) return fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -73,7 +81,8 @@ async function googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm) 
       Math.max(1, Math.ceil(Number.parseFloat(route.duration) / 60)),
       ratePerKm,
       maxRoundTripKm,
-      "google"
+      "google",
+      minFee
     );
   } finally {
     clearTimeout(timeout);
@@ -97,15 +106,16 @@ module.exports = async (request, response) => {
   const destination = { lat: Number(body.destination.lat), lng: Number(body.destination.lng) };
   const ratePerKm = Math.min(40, Math.max(10, Number(body.ratePerKm) || 15));
   const maxRoundTripKm = Math.min(200, Math.max(5, Number(body.maxRoundTripKm) || 60));
+  const minFee = resolveMinFee(body.minFee);   // store-specific minimum; absent → 150
 
   try {
     return response.status(200).json(
-      await googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm)
+      await googleRouteQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee)
     );
   } catch (error) {
     console.error("Google Routes fallback:", error.message);
     return response.status(200).json(
-      fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm)
+      fallbackQuote(origin, destination, ratePerKm, maxRoundTripKm, minFee)
     );
   }
 };

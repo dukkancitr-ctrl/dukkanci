@@ -1,4 +1,4 @@
-const CACHE = "dukkanci-v331";
+const CACHE = "dukkanci-v333";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -59,7 +59,7 @@ const APP_SHELL = [
   "/galatawater-data.js?v=12",
   "/krepma-data.js?v=3",
   "/ghasaq-data.js?v=1",
-  "/app.js?v=397",
+  "/app.js?v=399",
   "/manifest.json",
   "/assets/dukkanci-logo.png?v=91",
   "/assets/photos/ezzedine/cover.jpg",
