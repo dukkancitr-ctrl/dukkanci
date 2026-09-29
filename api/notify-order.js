@@ -1697,6 +1697,9 @@ function normalizeDeliveryFee(rawFee, minFee) {
 }
 // Ceiling for a delivery fee accepted from the checkout (see create-order).
 const MAX_DELIVERY_FEE = 5000;
+// One pricing tier: the observed difference between the browser's Google route and the
+// server's own route call for the same address (a 200 vs 250 flip).
+const DELIVERY_FEE_TOLERANCE = 50;
 
 async function nextOrderId() {
   for (let i = 0; i < 5; i++) {
@@ -3147,6 +3150,11 @@ module.exports = async (req, res) => {
 
       let delivery = 0;
       let deliveryMeta = null;
+      // Set only for website-style callers that sent their own fee: the value is checked
+      // against the server's price AFTER the free-delivery rules below have run.
+      let feeCheck = null;
+      let deliveryWaived = false;       // free by the store/global threshold
+      let couponFreeDelivery = false;   // free by a validated coupon
       if (fulfillment !== "pickup") {
         const ds = body.deliverySettings || {};
         const dest = body.destination || {};
@@ -3166,23 +3174,44 @@ module.exports = async (req, res) => {
         // with a free delivery the customer never agreed to and the store never
         // expected (DK-0661634416 / DK-0662089943). The price now comes from the
         // database settings via lib/delivery, exactly what the app displayed.
-        let appQuote = null;
-        if (String(body.source || "") === "android_app") {
-          const sa = (body.structuredAddress && typeof body.structuredAddress === "object") ? body.structuredAddress : {};
-          const appDest = deliveryLib.validPoint(dest) ? dest : { lat: sa.lat, lng: sa.lng };
-          try {
-            appQuote = await deliveryLib.quoteForStore({
-              storeId, destination: appDest,
-              addressText: [body.address, body.addressDetails, body.fullAddressTr].filter(Boolean).join(" ")
-            });
-          } catch (e) { appQuote = null; }
-        }
-        if (appQuote && appQuote.ok) {
-          if (appQuote.exceedsMaxDistance) {
+        // EVERY caller is now priced by the server from the database settings
+        // (lib/delivery). The checkout's own number (`clientDeliveryFee`) used to be
+        // taken verbatim, so anyone could POST 0 and get free delivery, and the
+        // store's own price was never enforced. The client number is now only used to
+        // pin down what the customer confirmed — see the fee guard after the coupon.
+        const isApp = String(body.source || "") === "android_app";
+        const sa = (body.structuredAddress && typeof body.structuredAddress === "object") ? body.structuredAddress : {};
+        // The customer's map pin: `destination` (API callers), else addressLat/Lng
+        // (website), else structuredAddress (mobile app).
+        const asPoint = (lat, lng) => ({ lat: Number(lat), lng: Number(lng) });
+        const quoteDest = deliveryLib.validPoint(dest) ? asPoint(dest.lat, dest.lng)
+          : deliveryLib.validPoint(asPoint(body.addressLat, body.addressLng)) ? asPoint(body.addressLat, body.addressLng)
+          : asPoint(sa.lat, sa.lng);
+        let srvQuote = null;
+        try {
+          srvQuote = await deliveryLib.quoteForStore({
+            storeId, destination: quoteDest,
+            addressText: [body.address, body.addressDetails, body.fullAddressTr].filter(Boolean).join(" ")
+          });
+        } catch (e) { srvQuote = null; }
+        if (srvQuote && srvQuote.ok) {
+          if (srvQuote.exceedsMaxDistance) {
             return res.status(409).json({ error: "العنوان خارج نطاق توصيل هذا المتجر", code: "out_of_range" });
           }
-          delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(appQuote.fee) || 0));
-          if (appQuote.oneWayKm != null) deliveryMeta = { oneWayKm: appQuote.oneWayKm, roundTripKm: appQuote.roundTripKm };
+          const serverFee = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(srvQuote.fee) || 0));
+          if (srvQuote.oneWayKm != null) deliveryMeta = { oneWayKm: srvQuote.oneWayKm, roundTripKm: srvQuote.roundTripKm };
+          if (isApp || body.clientDeliveryFee == null) {
+            delivery = serverFee;
+          } else {
+            const clientFee = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(body.clientDeliveryFee) || 0));
+            feeCheck = { serverFee, clientFee, provider: srvQuote.provider || srvQuote.mode || null };
+            delivery = clientFee;   // finalised by the guard below once free-delivery rules are known
+          }
+        } else if (srvQuote && srvQuote.code === "no_destination") {
+          // Distance pricing with no usable pin: the fee can't be verified, so the
+          // client's number must NOT be trusted (omitting the pin would otherwise be a
+          // way around the check). The website/app always send a pin for these stores.
+          return res.status(400).json({ error: "تعذّر تحديد موقع التوصيل على الخريطة — أعد اختيار العنوان وحاول مجدداً", code: "delivery_location_required" });
         } else if (body.clientDeliveryFee != null) {
           delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(body.clientDeliveryFee) || 0));
         } else if (ds.mode === "fixed") {
@@ -3204,7 +3233,17 @@ module.exports = async (req, res) => {
         } else {
           delivery = Math.min(MAX_DELIVERY_FEE, Math.max(0, Number(ds.clientFee) || 0));
         }
-        if (store.free_delivery_threshold != null && subtotal >= Number(store.free_delivery_threshold)) delivery = 0;
+        // Free-delivery threshold: per-store value, else the global default in
+        // site_settings.delivery_config — the same order the checkout uses
+        // (freeDeliveryThreshold() in app.js), so a legitimately free order that the
+        // client priced at 0 is never mistaken for a tampered fee.
+        let freeThreshold = store.free_delivery_threshold != null ? Number(store.free_delivery_threshold) : null;
+        if (freeThreshold == null) {
+          const cfgRows = await sbGet("site_settings?key=eq.delivery_config&select=value");
+          const g = cfgRows && cfgRows[0] && cfgRows[0].value ? Number(cfgRows[0].value.free_delivery_threshold) : NaN;
+          if (Number.isFinite(g) && g > 0) freeThreshold = g;
+        }
+        if (freeThreshold != null && subtotal >= freeThreshold) { delivery = 0; deliveryWaived = true; }
       }
 
       let discount = 0;
@@ -3217,9 +3256,30 @@ module.exports = async (req, res) => {
         const data = rpc.ok ? rpc.rows : null;
         if (data && data.valid) {
           discount = Number(data.discount) || 0;
-          if (data.freeDelivery) delivery = 0;
+          // validate_coupon reports a free-delivery coupon as discount_type:"free_delivery"
+          // (it has never returned a `freeDelivery` key), so checking only that key meant a
+          // valid free-delivery coupon was never honoured here — it only "worked" because
+          // the client's own 0 fee was trusted. Accept both shapes.
+          if (data.freeDelivery || data.discount_type === "free_delivery") { delivery = 0; couponFreeDelivery = true; }
           couponCode = rawCoupon;
         }
+      }
+
+      // Delivery-fee guard (website-style callers). The server price is the truth; the
+      // customer's confirmed number is honoured only inside one 50 ل.ت tier — the
+      // measured noise between the browser's Google route and the server's own call.
+      //  - client far BELOW the server price → tampering or a stale checkout: refuse
+      //    with the expected fee so the page can re-confirm (never silently overcharge);
+      //  - client far ABOVE → charge the store's real price (never more than it set).
+      if (feeCheck && !deliveryWaived && !couponFreeDelivery) {
+        const { serverFee, clientFee } = feeCheck;
+        if (clientFee < serverFee - DELIVERY_FEE_TOLERANCE) {
+          return res.status(409).json({
+            error: `تغيّر رسم التوصيل لهذا العنوان إلى ${serverFee} ل.ت — راجع الرسوم وأعد إرسال الطلب`,
+            code: "delivery_fee_changed", expectedFee: serverFee
+          });
+        }
+        delivery = clientFee > serverFee + DELIVERY_FEE_TOLERANCE ? serverFee : clientFee;
       }
 
       // Wallet credit: the client may request spending store credit, but NEVER
@@ -3252,6 +3312,8 @@ module.exports = async (req, res) => {
           // dashboard both read the fee from here now.
           quote: fulfillment === "pickup" ? null : { ...(deliveryMeta || {}), fee: delivery },
           subtotal, deliveryFee: delivery,
+          // Audit: what the server priced vs what the checkout sent (website callers).
+          deliveryFeeCheck: feeCheck ? { serverFee: feeCheck.serverFee, clientFee: feeCheck.clientFee, charged: delivery } : null,
           phone: customerPhone, phoneKey: customerPhone.replace(/\D/g, ""),
           fulfillment, address: String(body.address || "").slice(0, 300), addressDetails: String(body.addressDetails || "").slice(0, 300),
           structuredAddress: body.structuredAddress || null, fullAddressTr: String(body.fullAddressTr || "").slice(0, 600),
