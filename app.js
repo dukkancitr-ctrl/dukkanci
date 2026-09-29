@@ -2288,10 +2288,94 @@ function saveNamedZonesCloud(storeId, zones) {
   }).catch(() => showToast("تعذّر الحفظ السحابي لمناطق التوصيل", ""));
 }
 
+// Identifies WHICH question a delivery quote answers: store, the address coordinates and the
+// pricing knobs that change the fee. A stored quote is only trusted while this still
+// matches, so an edited address or a merchant changing the per-km rate can never leave a
+// stale fee on screen. (Quotes stored without a key keep the old store+address matching.)
+function deliveryQuoteKey(store, address, settings) {
+  const s = settings || getDeliverySettings(store.id);
+  return [store.id, address?.id, address?.lat, address?.lng, s.ratePerKm, s.maxRoundTripKm, s.noFeeFloor ? 0 : deliveryMinFee(s)].join("|");
+}
+
 function activeDeliveryQuote(store, address) {
   const quote = state.deliveryQuote;
-  if (quote && quote.storeId === store.id && String(quote.addressId) === String(address?.id)) return quote;
+  if (quote && quote.storeId === store.id && String(quote.addressId) === String(address?.id)
+      && (!quote.quoteKey || quote.quoteKey === deliveryQuoteKey(store, address))) return quote;
   return estimateDeliveryQuote(store, address);
+}
+
+// ── Real road quote for the CART ──────────────────────────────────────────────────────
+// The cart used to show only estimateDeliveryQuote() (straight line x a calibrated factor)
+// while checkout asks Google for the real route, so the customer could see one number and
+// pay another (measured: the two differ by 50-100 ل.ت in about a third of cases even after
+// calibrating the factor). When the cart renders for a distance-priced store with an
+// address, fetch the SAME quote checkout would ask for and use it, so cart == checkout.
+// The route is the shortest one and traffic-unaware (lib/delivery.js), so the answer does
+// not change with the time of day and is safe to cache for the session.
+const cartRoadQuoteCache = new Map();          // quoteKey -> { quote, at }
+const cartRoadQuoteMemo = { key: null, status: "", at: 0 };
+const CART_ROAD_QUOTE_TTL_MS = 30 * 60 * 1000;
+const CART_ROAD_QUOTE_RETRY_MS = 60 * 1000;
+
+function cartRoadQuoteContext() {
+  if (!state.cart.length) return null;
+  const store = getStore(state.cart[0].storeId);
+  const address = getDefaultAddress();
+  if (!store || !address || !address.lat || !address.lng) return null;
+  const settings = getDeliverySettings(store.id);
+  if (settings.mode !== "distance") return null;
+  // Named zones, nationwide shipping and fixed fees are already exact locally.
+  const local = estimateDeliveryQuote(store, address);
+  if (!local || local.provider !== "estimate") return null;
+  return { store, address, settings, key: deliveryQuoteKey(store, address, settings) };
+}
+
+function cartRoadQuoteLoading() {
+  const ctx = cartRoadQuoteContext();
+  return !!ctx && cartRoadQuoteMemo.key === ctx.key && cartRoadQuoteMemo.status === "loading";
+}
+
+function primeCartRoadQuote() {
+  const ctx = cartRoadQuoteContext();
+  if (!ctx) return;
+  const { store, address, settings, key } = ctx;
+  const held = state.deliveryQuote;
+  if (held && held.quoteKey === key && held.provider === "google") return;   // already have it
+  const hit = cartRoadQuoteCache.get(key);
+  if (hit && Date.now() - hit.at < CART_ROAD_QUOTE_TTL_MS) { state.deliveryQuote = hit.quote; return; }
+  const memo = cartRoadQuoteMemo;
+  if (memo.key === key && (memo.status === "loading" || ((memo.status === "failed" || memo.status === "estimate") && Date.now() - memo.at < CART_ROAD_QUOTE_RETRY_MS))) return;
+  memo.key = key; memo.status = "loading"; memo.at = Date.now();
+  const minFee = settings.noFeeFloor ? 0 : deliveryMinFee(settings);
+  const repaint = () => { if (cartDrawer.classList.contains("open")) renderCart(); };
+  fetch("/api/delivery-quote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      origin: getStoreLocation(store.id),
+      destination: { lat: address.lat, lng: address.lng },
+      ratePerKm: settings.ratePerKm,
+      maxRoundTripKm: settings.maxRoundTripKm,
+      minFee
+    })
+  }).then(r => { if (!r.ok) throw new Error("quote failed"); return r.json(); }).then(q => {
+    const ok = q && ["fee", "roundTripKm", "routeMinutes"].every(k => Number.isFinite(Number(q[k]))) && typeof q.exceedsMaxDistance === "boolean";
+    if (!ok) throw new Error("bad quote");
+    // Only a genuine road quote is worth keeping: when the server had to fall back to its own
+    // estimate the local number is the same thing, and the checkout will ask again. Remember
+    // that answer briefly so repainting the drawer does not fire the same request in a loop.
+    if (q.provider !== "google") { memo.status = "estimate"; memo.at = Date.now(); return repaint(); }
+    memo.status = "done";
+    const quote = { ...q, storeId: store.id, addressId: address.id, ratePerKm: settings.ratePerKm, minFee, quoteKey: key, estimatedMinutes: settings.prepMinutes + q.routeMinutes };
+    cartRoadQuoteCache.set(key, { quote, at: Date.now() });
+    // Apply only if the cart still asks the same question (address / store may have changed).
+    const now = cartRoadQuoteContext();
+    if (now && now.key === key) state.deliveryQuote = quote;
+    repaint();
+  }).catch(() => {
+    if (memo.key === key) { memo.status = "failed"; memo.at = Date.now(); }
+    repaint();
+  });
 }
 
 function deliveryPriceLabel(store) {
@@ -12501,12 +12585,23 @@ function renderCart() {
   // localStorage — drop it here instead of crashing the drawer.
   const liveCart = state.cart.filter(item => getProduct(item.productId));
   if (liveCart.length !== state.cart.length) { state.cart = liveCart; saveState(); updateCartBadges(); }
+  primeCartRoadQuote();
   const totals = cartTotals(getDefaultAddress()?.id);
   if (!state.cart.length) {
     cartDrawer.innerHTML = `<div class="drawer-head"><div><h2>سلة التسوق</h2><span>0 منتجات</span></div><button data-action="close-drawers">${icon("close")}</button></div>${renderEmpty("سلتك تنتظر اختياراتك", "تصفح متاجر الحي وأضف ما تحتاجه بسهولة.", "تصفح المتاجر", "stores")}`;
     return;
   }
   const store = getStore(state.cart[0].storeId);
+  const distanceMode = getDeliverySettings(store.id).mode === "distance";
+  const roadQuote = totals.quote && totals.quote.provider === "google";
+  const deliveryText = totals.freeDelivery ? "مجاني 🎉"
+    : totals.quote && totals.quote.exceedsMaxDistance ? "خارج نطاق التوصيل"
+    : !distanceMode ? money(totals.delivery)
+    : !totals.quote ? "يُحدَّد حسب عنوانك"
+    : roadQuote ? `${money(totals.delivery)} <small>حسب الطريق</small>` : `${money(totals.delivery)} تقديرياً`;
+  const distanceNote = roadQuote ? "حُسب السعر حسب مسار الطريق إلى عنوانك."
+    : cartRoadQuoteLoading() ? "جارٍ حساب مسار الطريق إلى عنوانك…"
+    : "يُثبت السعر حسب عنوانك ومسار الطريق عند إتمام الطلب.";
   cartDrawer.innerHTML = `
     <div class="drawer-head"><div><h2>سلة التسوق</h2><span>${state.cart.reduce((sum, item) => sum + item.quantity, 0)} منتجات</span></div><button data-action="close-drawers">${icon("close")}</button></div>
     <div class="cart-store">${storeAvatar(store)}<div><small>طلبك من</small><strong>${esc(store.name)}</strong></div><button data-action="open-store" data-id="${store.id}">عرض المتجر</button></div>
@@ -12518,9 +12613,9 @@ function renderCart() {
     <div class="cart-footer">
       <div class="cart-price-line"><span>المجموع الفرعي</span><strong>${money(totals.subtotal)}</strong></div>
       ${totals.discount > 0 ? `<div class="cart-price-line cart-discount"><span>خصم${state.coupon ? ` (${escAttr(state.coupon.code)})` : ""}</span><strong>−${money(totals.discount)}</strong></div>` : ""}
-      <div class="cart-price-line"><span>التوصيل</span><strong>${totals.freeDelivery ? "مجاني 🎉" : (getDeliverySettings(store.id).mode === "distance" ? `${money(totals.delivery)} تقديرياً` : money(totals.delivery))}</strong></div>
-      ${getDeliverySettings(store.id).mode === "distance" ? `<p class="distance-cart-note">${icon("map")} يُثبت السعر حسب عنوانك ومسار الطريق عند إتمام الطلب.</p>` : ""}
-      <div class="cart-total"><span>الإجمالي التقريبي</span><strong>${money(totals.total)}</strong></div>
+      <div class="cart-price-line"><span>التوصيل</span><strong>${deliveryText}</strong></div>
+      ${distanceMode ? `<p class="distance-cart-note">${icon("map")} ${distanceNote}</p>` : ""}
+      <div class="cart-total"><span>${roadQuote ? "الإجمالي" : "الإجمالي التقريبي"}</span><strong>${money(totals.total)}</strong></div>
       ${totals.subtotal < store.minOrder ? `<p class="minimum-alert">أضف ${money(store.minOrder - totals.subtotal)} للوصول إلى الحد الأدنى للطلب.</p>` : ""}
       ${freeDeliveryNudge(store, totals)}
       <button class="primary-button full large" data-action="checkout" ${totals.subtotal < store.minOrder ? "disabled" : ""}>متابعة إتمام الطلب ${icon("arrowLeft")}</button>
@@ -13229,6 +13324,12 @@ async function requestDeliveryQuote() {
     return;
   }
   const requestKey = `${store.id}:${address.id}:${address.lat}:${address.lng}`;
+  const quoteKey = deliveryQuoteKey(store, address, settings);
+  // The cart already asked Google for this exact question (same store, address coordinates
+  // and pricing knobs): reuse that answer so cart and checkout show the identical number
+  // and Google is billed once.
+  const held = state.deliveryQuote;
+  if (held && held.quoteKey === quoteKey && held.provider === "google") { updateCheckoutPricing(); return; }
   state.deliveryQuoteRequestKey = requestKey;
   updateCheckoutPricing("loading");
   try {
@@ -13256,6 +13357,7 @@ async function requestDeliveryQuote() {
       addressId: address.id,
       ratePerKm: settings.ratePerKm,
       minFee: settings.noFeeFloor ? 0 : deliveryMinFee(settings),
+      quoteKey,
       estimatedMinutes: settings.prepMinutes + quote.routeMinutes
     };
     updateCheckoutPricing();
