@@ -6,7 +6,7 @@
 // الصفحة هي المحور الذي يربطها جميعاً، وهي أيضاً المرشَّح الذي يستطيع غوغل أن
 // يعرضه كرابط فرعي باسم «المتاجر حسب المنطقة».
 const { DALIL_REGIONS, DALIL_REGION_FALLBACK, dalilRegionFor } = require("../dalil-regions.js");
-const { SITE, esc, fetchShell, applyMeta, send, shellFallback, sbGet, breadcrumbLd } = require("../lib/ssr-shell.js");
+const { SITE, esc, fetchShell, applyMeta, send, shellFallback, sbGet, breadcrumbLd, storesCountText } = require("../lib/ssr-shell.js");
 
 const TITLE = "المتاجر حسب المنطقة — مطاعم ومتاجر حيّك في إسطنبول | دكانجي";
 const DESC = "اختر منطقتك في إسطنبول — إسنيورت، باشاك شهير، بيليك دوزو، الفاتح، أفجلار وغيرها — وتصفّح المتاجر والمطاعم العربية القريبة منك على دكانجي.";
@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
   const otherCount = counts.get(DALIL_REGION_FALLBACK.slug) || 0;
 
   const regionLi = r =>
-    `<li><a href="/dalil?region=${esc(r.slug)}">متاجر ومطاعم ${esc(r.label)}</a> — ${esc(r.count)} متجراً</li>`;
+    `<li><a href="/dalil?region=${esc(r.slug)}">متاجر ومطاعم ${esc(r.label)}</a> — ${esc(storesCountText(r.count))}</li>`;
 
   const body = `<article class="ssr-regions container">
     <h1>المتاجر حسب المنطقة</h1>
@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
 
     <h2>اختر منطقتك</h2>
     <ul>${listed.map(regionLi).join("")}</ul>
-    ${otherCount ? `<p>بالإضافة إلى ${esc(otherCount)} متجراً في <a href="/stores">مناطق أخرى من إسطنبول</a>.</p>` : ""}
+    ${otherCount ? `<p>بالإضافة إلى ${esc(storesCountText(otherCount, true))} في <a href="/stores">مناطق أخرى من إسطنبول</a>.</p>` : ""}
 
     <h2>لماذا الطلب من متجر منطقتك؟</h2>
     <ul>

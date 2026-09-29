@@ -10738,7 +10738,7 @@ function renderDalilPage(sub) {
         </div>
         ${d.sort === "top" ? `<p class="dalil-note">${icon("shield")} حتى لا يتصدّر متجرٌ بعدد تقييمات قليل جداً، يتقدّم في الترتيب من لديه ${minRev} تقييم Google فأكثر.</p>` : ""}
         ${d.sort === "near" && !state.userLocation ? `<div class="dalil-locate-banner">${icon("pin")} <span>للترتيب حسب الأقرب إليك فعلياً، حدّد موقعك أولاً.</span><button class="secondary-button compact" data-action="location">تحديد موقعي</button></div>` : ""}
-        <div class="result-summary"><strong>${list.length}</strong><span>${list.length === 1 ? "نتيجة" : "نتيجة"} في الدليل${ratedCount ? ` · ${ratedCount} متجراً بتقييم Google موثّق` : ""}</span></div>
+        <div class="result-summary"><strong>${list.length}</strong><span>${list.length === 1 ? "نتيجة" : "نتيجة"} في الدليل${ratedCount ? ` · ${storesCountText(ratedCount)} بتقييم Google موثّق` : ""}</span></div>
         ${list.length
           ? `<div class="dalil-grid">${list.map(s => dalilStoreCard(s, productHitIds)).join("")}</div>`
           : renderEmpty("لا توجد نتائج مطابقة", "جرّب كلمة أبسط، أو أزل بعض الفلاتر.", "عرض كل الدليل", "dalil")}
@@ -10860,11 +10860,11 @@ function renderRegionsPage() {
             <span class="region-card__icon">${icon("pin")}</span>
             <span class="region-card__body">
               <b>${esc(r.label)}</b>
-              <small>${r.count} ${r.count === 1 ? "متجر" : "متجراً"}</small>
+              <small>${storesCountText(r.count)}</small>
             </span>
           </a>`).join("")}
       </div>` : renderEmpty("لم تُحمَّل المناطق بعد", "جارٍ تحميل المتاجر — أعد المحاولة بعد لحظات.", "تصفّح كل المتاجر", "stores")}
-      ${otherCount ? `<p class="dalil-note">${icon("shield")} بالإضافة إلى ${otherCount} متجراً في مناطق أخرى من إسطنبول — تجدها ضمن <a href="/stores">كل المتاجر</a>.</p>` : ""}
+      ${otherCount ? `<p class="dalil-note">${icon("shield")} بالإضافة إلى ${storesCountText(otherCount, true)} في مناطق أخرى من إسطنبول — تجدها ضمن <a href="/stores">كل المتاجر</a>.</p>` : ""}
       <div class="dalil-foot-links">
         <a href="/stores">اطلب من المتاجر</a>
         <a href="/offers">عروض دكانجي</a>
@@ -10988,12 +10988,22 @@ function renderAboutPage() {
       </section>
     </div>`;
 }
+// أرقام التواصل الحقيقية نفسها المعروضة في فوتر الموقع وفي قشرة /contact (api/contact.js).
+const CUSTOMER_SUPPORT_WA = "905551000630";
+function prettyTrPhone(digits) {
+  const d = String(digits || "").replace(/\D/g, "");
+  return /^90\d{10}$/.test(d) ? `+90 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8, 10)} ${d.slice(10)}` : (d ? `+${d}` : "");
+}
 function renderContactPage() {
   const sitePhone = (state.siteSettings && state.siteSettings.contactPhone) || "";
-  const siteWa = (state.siteSettings && state.siteSettings.contactWa) || sitePhone;
+  const customerWa = String((state.siteSettings && state.siteSettings.contactWa) || sitePhone || CUSTOMER_SUPPORT_WA).replace(/\D/g, "");
+  const waLink = (wa, text) => `<a href="https://wa.me/${wa}" target="_blank" rel="noopener" class="primary-button" style="display:inline-flex;gap:8px">${icon("whatsapp")} ${text}</a>`;
   return renderStaticPage("تواصل معنا", "phone", [
-    "للاستفسارات العامة أو الشراكات التجارية، تواصل معنا عبر واتساب.",
-    siteWa ? `<a href="https://wa.me/${siteWa.replace(/\D/g,"")}" target="_blank" rel="noopener" class="primary-button" style="display:inline-flex;gap:8px">${icon("whatsapp")} تواصل عبر واتساب</a>` : "سيتوفر رقم التواصل قريباً.",
+    "للاستفسارات العامة أو الشراكات التجارية، تواصل معنا عبر واتساب أو البريد الإلكتروني.",
+    `<strong>خدمة العملاء</strong><br>لأي سؤال عن طلبك أو عن متجر على المنصة، راسلنا على واتساب: <bdi dir="ltr">${prettyTrPhone(customerWa)}</bdi>`,
+    waLink(customerWa, "تواصل مع خدمة العملاء"),
+    `<strong>أصحاب المتاجر</strong><br>للانضمام إلى دكانجي أو للاستفسار عن لوحة المتجر، راسلنا على واتساب: <bdi dir="ltr">${prettyTrPhone(SUPPORT_WA)}</bdi>`,
+    waLink(SUPPORT_WA, "تواصل مع فريق المتاجر"),
     "بريدنا الإلكتروني: <a href='mailto:info@dukkanci.com.tr'>info@dukkanci.com.tr</a>"
   ]);
 }
@@ -12378,8 +12388,12 @@ function render() {
     terms: renderTermsPage,
     "why-dukkanci": renderWhyDukkanciPage,
     "ask-dukkanci": renderAskDukkanciPage,
-    dalil: () => renderDalilPage(id)
+    dalil: () => renderDalilPage(id),
+    "index.html": renderHome
   };
+  // Unknown paths are not silently the home page: show "not found" (updateHead
+  // already marks every non-listed route noindex).
+  if (!routes[route]) document.title = "الصفحة غير موجودة | دكانجي";
   // Preserve an in-progress text field across this re-render. The async boot
   // data-refreshes (site-settings, integrations, and the ~7600-product catalog
   // load) each fire render() in the first seconds after load, rebuilding
@@ -12393,7 +12407,7 @@ function render() {
       && (_focused.tagName === "INPUT" || _focused.tagName === "TEXTAREA"))
     ? { id: _focused.id, value: _focused.value, start: _focused.selectionStart, end: _focused.selectionEnd }
     : null;
-  app.innerHTML = (routes[route] || renderHome)();
+  app.innerHTML = (routes[route] || renderNotFound)();
   if (_preserve) {
     const el = document.getElementById(_preserve.id);
     if (el) {
@@ -12424,6 +12438,9 @@ function render() {
   // when the async full-catalog fetch completes.
   const navKey = route + "/" + (id || "");
   if (navKey !== state._lastNavKey) {
+    // A modal opened on the previous page (e.g. the join-as-merchant form) must not
+    // survive Back/link navigation and sit on top of an unrelated page.
+    closeModal();
     window.scrollTo({ top: 0, behavior: "instant" });
     state._lastNavKey = navKey;
     // Entering "طلباتي" → refresh order statuses from the cloud (once per visit, so
@@ -13098,7 +13115,7 @@ function openProductModal(id) {
       <form class="product-details" id="product-form" data-id="${product.id}">
         <span class="product-breadcrumb">${esc(store.name)} · ${esc(product.category)}</span>
         <h2>${esc(product.name)}</h2>
-        <div class="product-status"><span class="${product.available ? "available" : "not-available"}">${product.available ? "متوفر" : "غير متوفر"}</span><span>${icon("star")} 4.8 (42 تقييماً)</span></div>
+        <div class="product-status"><span class="${product.available ? "available" : "not-available"}">${product.available ? "متوفر" : "غير متوفر"}</span>${!store.newStore && Number(store.reviews) > 0 ? `<span>${icon("star")} ${store.rating} (${store.reviews} تقييم للمتجر)</span>` : ""}</div>
         <p>${esc(product.description)}</p>
         <div class="modal-price">${product.priceOnRequest ? `<strong>السعر عند الطلب</strong>` : `<strong id="modal-unit-price">${money(product.price)}</strong>${product.unit ? `<span>/ ${product.unit}</span>` : ""}${(!product.options.length && product.oldPrice) ? `<del>${money(product.oldPrice)}</del>` : ""}`}</div>
         ${product.options.map((option, optionIndex) => `
@@ -13203,6 +13220,10 @@ async function requestDeliveryQuote() {
     });
     if (!response.ok) throw new Error("تعذر حساب المسار");
     const quote = await response.json();
+    // A reply without numeric fee/km/minutes would render "NaN ل.ت" in the total — treat it
+    // like a failed request so the local estimate below is used instead.
+    const quoteOk = quote && ["fee", "roundTripKm", "routeMinutes"].every(k => Number.isFinite(Number(quote[k]))) && typeof quote.exceedsMaxDistance === "boolean";
+    if (!quoteOk) throw new Error("ردّ غير صالح من مسار الرسوم");
     if (state.deliveryQuoteRequestKey !== requestKey) return;
     state.deliveryQuote = {
       ...quote,
@@ -17658,6 +17679,14 @@ function arCount(n, one, two, few, many) {
   if (n === 2) return two;
   if (n >= 3 && n <= 10) return `${arDigits(n)} ${few}`;
   return `${arDigits(n)} ${many}`;
+}
+
+// Same rule as arCount but keeps Latin digits (the store pages use them) and
+// supports the genitive dual ("إلى متجرين") for prepositional contexts.
+function storesCountText(n, genitive) {
+  if (n === 1) return "متجر واحد";
+  if (n === 2) return genitive ? "متجرين" : "متجران";
+  return `${n} ${n <= 10 ? "متاجر" : "متجراً"}`;
 }
 
 function notifRelativeTime(iso) {

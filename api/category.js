@@ -5,6 +5,7 @@
 const { STORE_SLUGS } = require("../store-slugs.js");
 const { CATEGORY_SLUGS } = require("../category-slugs.js");
 const { resolveStoreSlug } = require("../lib/store-slug.js");
+const { storesCountText } = require("../lib/ssr-shell.js");
 // Origin for the static shell — same host as the request by default; override with SSR_SHELL_ORIGIN.
 const SHELL_ENV = (process.env.SSR_SHELL_ORIGIN || "").replace(/\/+$/, "");
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.dukkanci.com.tr").replace(/\/+$/, "");
@@ -55,7 +56,7 @@ module.exports = async (req, res) => {
   }
 
   const title = `${catText} | دكانجي`;
-  const desc = `تصفّح ${catText} في إسطنبول على دكانجي: ${stores.length} متجراً، اطلب أونلاين بتوصيل سريع.`.slice(0, 200);
+  const desc = `تصفّح ${catText} في إسطنبول على دكانجي: ${storesCountText(stores.length)}، اطلب أونلاين بتوصيل سريع.`.slice(0, 200);
   const canonical = `${SITE}/category/${slug}`;
   const T = esc(title), D = esc(desc), C = esc(canonical);
 
