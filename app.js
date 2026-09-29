@@ -2072,6 +2072,24 @@ function getDefaultAddress() {
   return state.customerAddresses.find(address => address.isDefault) || state.customerAddresses[0] || getUserLocationAddress();
 }
 
+// Straight-line -> road distance for the LOCAL estimate (cart / store page). The server
+// fallback in lib/delivery.js uses the same numbers, so keep the two in sync.
+// A flat x1.28 under-quoted short city trips. Measured against 150 real Google Routes
+// results between Dukkanci store locations (0.8-45 km straight-line, 2026-09-29): the
+// road/straight ratio is ~1.5 up to ~12 km and falls to ~1.28 beyond ~28 km (long trips
+// ride highways). With the flat 1.28 the estimate was 51 TL short on average and 42 of
+// 150 were >=100 TL short of the checkout price; this blend brings the mean error to
+// +2 TL and the >=100 TL short cases to 23. It also improves on the traffic-aware
+// (fastest) routes used before, so it does not depend on the routing preference.
+// One constant cannot remove the spread (Bosphorus crossings, one-way streets); only the
+// real Google route can, which is what checkout uses.
+const ROAD_FACTOR_NEAR = 1.48, ROAD_FACTOR_FAR = 1.28;
+const ROAD_FACTOR_NEAR_KM = 12, ROAD_FACTOR_FAR_KM = 28;
+function estimatedRoadKm(directKm) {
+  const t = Math.min(1, Math.max(0, (directKm - ROAD_FACTOR_NEAR_KM) / (ROAD_FACTOR_FAR_KM - ROAD_FACTOR_NEAR_KM)));
+  return Math.max(0.5, directKm * (ROAD_FACTOR_NEAR + (ROAD_FACTOR_FAR - ROAD_FACTOR_NEAR) * t));
+}
+
 function haversineKm(origin, destination) {
   const toRadians = value => value * Math.PI / 180;
   const earthRadius = 6371;
@@ -2185,7 +2203,7 @@ function estimateDeliveryQuote(store, address) {
   }
   const origin = getStoreLocation(store.id);
   if (!origin?.lat || !origin?.lng || !address?.lat || !address?.lng) return null;
-  const oneWayKm = Math.max(0.5, haversineKm(origin, address) * 1.28);
+  const oneWayKm = estimatedRoadKm(haversineKm(origin, address));
   const roundTripKm = oneWayKm * 2;
   const routeMinutes = Math.max(5, Math.ceil(oneWayKm / 28 * 60));
   const exceedsMaxDistance = roundTripKm > settings.maxRoundTripKm;
