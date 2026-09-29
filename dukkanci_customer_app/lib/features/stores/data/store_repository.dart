@@ -15,10 +15,19 @@ class StoreRepository {
         query = query.eq('category', category);
       }
       final rows = await query.order('id');
-      return (rows as List)
-          .map((r) => Store.fromJson(Map<String, dynamic>.from(r as Map)))
-          .where((s) => s.isPubliclyVisible)
-          .toList();
+      // Parse row-by-row: one malformed row (a merchant typing into a free-form
+      // field the model reads strictly) must skip only that store, never throw
+      // away every store on the platform.
+      final stores = <Store>[];
+      for (final r in rows as List) {
+        try {
+          final s = Store.fromJson(Map<String, dynamic>.from(r as Map));
+          if (s.isPubliclyVisible) stores.add(s);
+        } catch (e) {
+          debugPrint('StoreRepository: skipped unparseable store row ${(r as Map?)?['id']}: $e');
+        }
+      }
+      return stores;
     } catch (e, st) {
       debugPrint('StoreRepository.fetchApprovedStores failed: $e\n$st');
       throw Failure.network();

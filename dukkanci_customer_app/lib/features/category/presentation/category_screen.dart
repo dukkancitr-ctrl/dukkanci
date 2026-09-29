@@ -24,7 +24,10 @@ class CategoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final storesAsync = ref.watch(approvedStoresProvider);
-    final cat = HomeCategory.byKey(categoryKey);
+    // resolve (not byKey): generated `raw:<category>` keys for categories the
+    // curated list doesn't know yet must open their own store list, not fall
+    // through to "all stores" under the wrong title.
+    final cat = HomeCategory.resolve(categoryKey);
     final title = switch (categoryKey) {
       'offers' => AppStrings.railOffers,
       'popular' => AppStrings.railPopular,

@@ -61,10 +61,10 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
               ),
             );
           }
-          final presentCategories = HomeCategory.all.where((c) => stores.any(c.matches)).toList();
+          final presentCategories = HomeCategory.forStores(stores);
           final filtered = _selectedCategoryKey == null
               ? stores
-              : stores.where((s) => HomeCategory.byKey(_selectedCategoryKey!)?.matches(s) ?? true).toList();
+              : stores.where((s) => HomeCategory.resolve(_selectedCategoryKey!)?.matches(s) ?? true).toList();
           return Column(
             children: [
               if (presentCategories.length > 1)

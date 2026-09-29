@@ -259,7 +259,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final results = _filtered;
     final showingLanding = _query.isEmpty && _activeFilters.isEmpty;
     final recentSearches = ref.read(localCacheProvider).recentSearches;
-    final categories = _allStores == null ? const <HomeCategory>[] : HomeCategory.all.where((c) => _allStores!.any(c.matches)).toList();
+    final categories = _allStores == null ? const <HomeCategory>[] : HomeCategory.forStores(_allStores!);
 
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.navSearch)),

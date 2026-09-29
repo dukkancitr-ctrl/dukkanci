@@ -253,7 +253,7 @@ class _HomeBody extends StatelessWidget {
       );
     }
 
-    final categories = HomeCategory.all.where((c) => stores.any(c.matches)).toList();
+    final categories = HomeCategory.forStores(stores);
     final offers = stores.where((s) => s.hasAnyOffer(discountedStoreIds)).toList();
     final popular = [...stores]
       ..sort((a, b) {

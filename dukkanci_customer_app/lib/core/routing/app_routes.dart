@@ -19,7 +19,9 @@ class AppRoutes {
   /// A curated store listing: a real category key ("restaurants", "sweets"…)
   /// or a synthetic one ("offers", "popular", "all"). See CategoryScreen.
   static const category = '/category/:key';
-  static String categoryPath(String key) => '/category/$key';
+  // Encoded: generated category keys carry the raw Arabic name
+  // (`raw:المياه المعدنية`); go_router decodes pathParameters back.
+  static String categoryPath(String key) => '/category/${Uri.encodeComponent(key)}';
 
   static const storeDetail = '/store/:slugOrId';
   static const productDetail = '/store/:slugOrId/product/:productId';
