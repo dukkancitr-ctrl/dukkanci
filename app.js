@@ -319,6 +319,14 @@ function runDeliveryMigrations() {
       if (saved["115"]) delete saved["115"];
       done.galatawaterNoFeeFloor = true; changed = true;
     }
+    // سلسبيل (113) وروا (115) أُعيدا لإعدادات التوصيل القياسية لكل المتاجر (2026-09-29):
+    // حُذف شحن «كل الولايات» (nationwideFlatFee) من سلسبيل، ومجمعات «السعر شامل التوصيل»
+    // (namedZones) وإعفاء الحد الأدنى (noFeeFloor) من روا. النسخ المجمَّدة في المتصفحات
+    // تحمل الحقول القديمة، فتُحذف مرة واحدة كي تصل القيم المجمَّعة الجديدة.
+    if (!done.standardDelivery113and115) {
+      ["113", "115"].forEach(key => { if (saved[key]) { delete saved[key]; changed = true; } });
+      done.standardDelivery113and115 = true; changed = true;
+    }
     if (changed) {
       localStorage.setItem("dukkanci-delivery-settings", JSON.stringify(saved));
       localStorage.setItem(KEY, JSON.stringify(done));
@@ -3001,7 +3009,9 @@ function sortProductsByPaidPriority(list) {
 // فعلياً منه — شرط قرب حقيقي لا أولوية دائمة كـPAID_PRIORITY_STORE_IDS. يُطبَّق
 // فقط في العرض الافتراضي "الأنسب لك" (لا يتجاوز فرزاً صريحاً اختاره الزائر)،
 // وتحت المتاجر المدفوعة دائماً (لا يغيّر التزام الدفع القائم).
-const PROXIMITY_PRIORITY_RULES = [{ storeId: 115, maxKm: 2 }];
+// 2026-09-29: أُزيلت أولوية روا (115) بطلب المستخدم — كل المتاجر تُعامَل بالتساوي.
+// الآلية باقية عامة، والقائمة فارغة فلا أثر لها.
+const PROXIMITY_PRIORITY_RULES = [];
 function proximityPriorityRank(store) {
   const rule = PROXIMITY_PRIORITY_RULES.find(r => r.storeId === store.id);
   if (!rule) return 1;
@@ -3021,7 +3031,8 @@ function sortStoresByProximityPriority(list) {
 // فرز بعد التوقّف المبكر على أول 60 نتيجة كان سيُسقطه صامتاً قبل وصول الفحص
 // إليه أصلاً على أي بحث شائع (تحقّق حي: صفر نتيجة روا لبحث "مياه" قبل هذا
 // الإصلاح رغم التطابق الفعلي).
-const WATER_SEARCH_PRIORITY_STORE_IDS = [115];
+// 2026-09-29: أُزيلت أولوية روا (115) في البحث بطلب المستخدم — القائمة فارغة فلا أثر لها.
+const WATER_SEARCH_PRIORITY_STORE_IDS = [];
 // STORE cards shown alongside search results on /stores —
 // only reorders stores that already matched the search text (getFilteredStores
 // filters first), never injects a non-matching store.
