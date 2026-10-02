@@ -7,6 +7,7 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/distance_badge.dart';
 import '../../../../core/widgets/press_scale.dart';
 import '../../../../core/widgets/status_badge.dart';
 import '../../../favorites/application/favorites_controller.dart';
@@ -24,6 +25,7 @@ class StoreRail extends StatelessWidget {
     this.trailing,
     this.onSeeAll,
     this.highlightOffer = false,
+    this.distancesKm,
   });
 
   final String title;
@@ -32,6 +34,10 @@ class StoreRail extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onSeeAll;
   final bool highlightOffer;
+
+  /// Store id → straight-line km from the customer. When given, each card shows
+  /// its distance (the nearby rail); omitted for every other rail.
+  final Map<int, double>? distancesKm;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +87,12 @@ class StoreRail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 2, AppSpacing.lg, 20),
             itemCount: stores.length,
             separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
-            itemBuilder: (context, i) => StoreRailCard(store: stores[i], width: cardWidth, highlightOffer: highlightOffer),
+            itemBuilder: (context, i) => StoreRailCard(
+              store: stores[i],
+              width: cardWidth,
+              highlightOffer: highlightOffer,
+              distanceKm: distancesKm?[stores[i].id],
+            ),
           ),
         ),
       ],
@@ -93,11 +104,12 @@ class StoreRail extends StatelessWidget {
 /// visual language as the grid [StoreCard], never a placeholder rating/ETA
 /// (spec section 10).
 class StoreRailCard extends ConsumerWidget {
-  const StoreRailCard({super.key, required this.store, required this.width, this.highlightOffer = false});
+  const StoreRailCard({super.key, required this.store, required this.width, this.highlightOffer = false, this.distanceKm});
 
   final Store store;
   final double width;
   final bool highlightOffer;
+  final double? distanceKm;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -145,6 +157,8 @@ class StoreRailCard extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    if (distanceKm != null)
+                      Positioned(bottom: AppSpacing.sm, left: AppSpacing.sm, child: DistanceBadge(km: distanceKm!)),
                     if (showOffer)
                       Positioned(
                         bottom: AppSpacing.sm,

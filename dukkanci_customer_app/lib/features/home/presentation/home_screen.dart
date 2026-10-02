@@ -8,6 +8,7 @@ import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/nearby_stores.dart';
 import '../../../core/widgets/press_scale.dart';
 import '../../../core/widgets/shimmer_box.dart';
 import '../../../core/widgets/state_views.dart';
@@ -33,7 +34,8 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final storesAsync = ref.watch(approvedStoresProvider);
-    final locationLabel = ref.watch(locationControllerProvider)?.label;
+    final location = ref.watch(locationControllerProvider);
+    final locationLabel = location?.label;
     // عدّاد غير المقروء يسقط لصفر عند التحميل أو الفشل، فلا يمكن لخدمة
     // الإشعارات أن تُسقط الصفحة الرئيسية أو تعطّل تحميلها.
     final unreadNotifications = ref.watch(unreadNotificationsCountProvider);
@@ -62,6 +64,7 @@ class HomeScreen extends ConsumerWidget {
                 data: (stores) => SliverToBoxAdapter(
                   child: _HomeBody(
                     stores: stores,
+                    location: location,
                     discountedStoreIds: ref.watch(discountedStoreIdsProvider).value ?? const <int>{},
                     offerProducts: offerProducts,
                     suggestedProducts: suggestedProducts,
@@ -192,12 +195,17 @@ class _HomeHeader extends StatelessWidget {
 class _HomeBody extends StatelessWidget {
   const _HomeBody({
     required this.stores,
+    required this.location,
     required this.discountedStoreIds,
     required this.offerProducts,
     required this.suggestedProducts,
   });
 
   final List<Store> stores;
+
+  /// The customer's chosen/GPS location — drives the «متاجر قريبة منك الآن» rail.
+  /// Null until they pick one (the splash normally forces that on first launch).
+  final SelectedLocation? location;
 
   /// Stores with a genuinely discounted product — the `has_offer` flag alone
   /// misses several (see [Store.hasAnyOffer]). Watched by the parent so this
@@ -288,6 +296,16 @@ class _HomeBody extends StatelessWidget {
     final storeNames = {for (final s in stores) s.id: s.name};
     final openCount = stores.where((s) => s.open).length;
 
+    // «قريبة منك»: the nearest stores by real straight-line distance from the
+    // customer's location, nearest first. This rail used to be the top-rated
+    // stores (the `popular` list), so a customer in Esenyurt saw Fatih and
+    // Başakşehir stores 14–22 km away. With no saved location there is nothing
+    // honest to call "near you", so fall back to the top-rated list under its
+    // own title plus a prompt to set the location.
+    final here = location;
+    final nearest = here == null ? const <StoreDistance>[] : nearestStores(stores, here.lat, here.lng, limit: 12);
+    final hasNearby = nearest.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -308,12 +326,14 @@ class _HomeBody extends StatelessWidget {
           onTap: (c) => context.push(AppRoutes.categoryPath(c.key)),
         ),
         const SizedBox(height: AppSpacing.xl),
+        if (!hasNearby) const _LocationPrompt(),
         StoreRail(
-          title: AppStrings.railNearby,
-          subtitle: AppStrings.railNearbySub,
+          title: hasNearby ? AppStrings.railNearby : AppStrings.railPopular,
+          subtitle: hasNearby ? AppStrings.railNearbySub : AppStrings.railPopularSub,
           trailing: _OpenCountPill(count: openCount),
-          stores: popular.take(12).toList(),
-          onSeeAll: () => context.push(AppRoutes.categoryPath('popular')),
+          stores: hasNearby ? [for (final n in nearest) n.store] : popular.take(12).toList(),
+          distancesKm: hasNearby ? {for (final n in nearest) n.store.id: n.km} : null,
+          onSeeAll: () => context.push(AppRoutes.categoryPath(hasNearby ? 'nearby' : 'popular')),
         ),
         const SizedBox(height: AppSpacing.xl),
         if (offerProducts.isNotEmpty) ...[
@@ -361,6 +381,48 @@ class _HomeBody extends StatelessWidget {
         ],
         const SizedBox(height: AppSpacing.xxl),
       ],
+    );
+  }
+}
+
+/// Shown above the rail when there is no saved location — taps through to the
+/// same picker as the header chip, so the nearby rail can switch on.
+class _LocationPrompt extends StatelessWidget {
+  const _LocationPrompt();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+      child: PressScale(
+        onTap: () => context.push(AppRoutes.locationPicker),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.green50,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on_rounded, color: AppColors.green800),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(AppStrings.nearbyPromptTitle, style: AppTextStyles.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(AppStrings.nearbyPromptBody, style: AppTextStyles.caption),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(AppStrings.nearbyPromptCta, style: AppTextStyles.label.copyWith(color: AppColors.green800)),
+              const Icon(Icons.chevron_left_rounded, size: 18, color: AppColors.green800),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

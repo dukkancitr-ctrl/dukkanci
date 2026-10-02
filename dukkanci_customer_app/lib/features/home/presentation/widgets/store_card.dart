@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/localization/app_strings.dart';
+import '../../../../core/widgets/distance_badge.dart';
 import '../../../../core/widgets/press_scale.dart';
 import '../../../../core/widgets/status_badge.dart';
 import '../../../favorites/application/favorites_controller.dart';
@@ -13,10 +14,13 @@ import '../../../stores/domain/store.dart';
 /// Every field here is real store data — never a placeholder rating or ETA
 /// (spec section 10: "ممنوع عرض وقت توصيل أو تقييم غير حقيقي").
 class StoreCard extends ConsumerWidget {
-  const StoreCard({super.key, required this.store, required this.onTap});
+  const StoreCard({super.key, required this.store, required this.onTap, this.distanceKm});
 
   final Store store;
   final VoidCallback onTap;
+
+  /// Straight-line km from the customer — set only on the nearby list.
+  final double? distanceKm;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,6 +75,8 @@ class StoreCard extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (distanceKm != null)
+                    Positioned(bottom: AppSpacing.sm, left: AppSpacing.sm, child: DistanceBadge(km: distanceKm!)),
                   if (store.offer != null && store.offer!.trim().isNotEmpty)
                     Positioned(
                       bottom: AppSpacing.sm,

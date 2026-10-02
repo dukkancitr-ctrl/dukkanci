@@ -71,7 +71,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
       );
       if (!mounted) return;
       ref.read(locationControllerProvider.notifier).set(
-            SelectedLocation(lat: position.latitude, lng: position.longitude, label: 'موقعي الحالي'),
+            SelectedLocation(lat: position.latitude, lng: position.longitude, label: SelectedLocation.gpsLabel),
           );
       context.go(AppRoutes.home);
     } catch (e) {

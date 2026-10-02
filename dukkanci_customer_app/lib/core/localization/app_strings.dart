@@ -39,7 +39,13 @@ class AppStrings {
   static const railPopular = 'الأكثر رواجاً';
   static const allStores = 'كل المتاجر';
   static const railNearby = 'متاجر قريبة منك الآن';
-  static const railNearbySub = 'اختيارات يحبها الجيران';
+  static const railNearbySub = 'مرتّبة من الأقرب إلى الأبعد حسب موقعك';
+  // بلا موقع محفوظ لا نملك ما نقول عنه «قريب» — يُعرض الأعلى تقييماً بعنوان صادق
+  // مع دعوة لتحديد الموقع، بدل ادّعاء قرب لا نعرفه.
+  static const railPopularSub = 'الأعلى تقييماً من عملائنا';
+  static const nearbyPromptTitle = 'حدّد موقعك لنعرض لك الأقرب';
+  static const nearbyPromptBody = 'نرتّب لك المتاجر من الأقرب إلى الأبعد بحسب مكانك.';
+  static const nearbyPromptCta = 'تحديد الموقع';
   static const railTodayOffers = 'عروض اليوم';
   static const railTodayOffersSub = 'خصومات مختارة من متاجر الحي، تتجدد باستمرار';
   static const railSuggested = 'منتجات مقترحة لك';
