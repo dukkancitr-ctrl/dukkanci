@@ -447,24 +447,7 @@ class _SearchResults extends StatelessWidget {
         else
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                childAspectRatio: 0.72,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final store = stores[i];
-                  return StoreCard(
-                    store: store,
-                    onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
-                  );
-                },
-                childCount: stores.length,
-              ),
-            ),
+            sliver: StoreCardGrid(stores: stores),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
       ],
@@ -727,24 +710,7 @@ class _SearchLanding extends StatelessWidget {
         else
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                childAspectRatio: 0.72,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final store = results[i];
-                  return StoreCard(
-                    store: store,
-                    onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
-                  );
-                },
-                childCount: results.length,
-              ),
-            ),
+            sliver: StoreCardGrid(stores: results),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
       ],

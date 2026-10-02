@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -10,6 +12,59 @@ import '../../../../core/widgets/press_scale.dart';
 import '../../../../core/widgets/status_badge.dart';
 import '../../../favorites/application/favorites_controller.dart';
 import '../../../stores/domain/store.dart';
+
+/// A two-column list of [StoreCard]s whose row height FOLLOWS THE CONTENT.
+///
+/// This replaces the `SliverGrid` / `GridView` with `childAspectRatio: 0.72`
+/// the category and search screens used. A fixed aspect ratio can't fit this
+/// card: the meta chips (rating, ETA, per-km fee) wrap onto one, two or three
+/// lines depending on the store and on the user's font size, so on a 173dp-wide
+/// card a store with all three chips overflowed by 17px and its bottom line was
+/// clipped. Each row here is an [IntrinsicHeight] pair, so it is exactly as tall
+/// as the taller of its two cards (the shorter one stretches to match, as grid
+/// cells do) — never clipped at any text scale, and no dead space beyond that.
+///
+/// Tapping a card opens the store's page, which is what every list of stores in
+/// the app does, so it's built in rather than passed by each caller.
+class StoreCardGrid extends StatelessWidget {
+  const StoreCardGrid({super.key, required this.stores, this.distancesKm});
+
+  final List<Store> stores;
+
+  /// Store id → straight-line km from the customer (the "nearby" list); omitted
+  /// elsewhere.
+  final Map<int, double>? distancesKm;
+
+  Widget _cell(BuildContext context, Store store) => StoreCard(
+        store: store,
+        distanceKm: distancesKm?[store.id],
+        onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverList.separated(
+      itemCount: (stores.length + 1) ~/ 2,
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
+      itemBuilder: (context, row) {
+        final first = stores[row * 2];
+        final second = row * 2 + 1 < stores.length ? stores[row * 2 + 1] : null;
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _cell(context, first)),
+              const SizedBox(width: AppSpacing.md),
+              // An odd last store leaves its neighbour empty rather than
+              // stretching to full width.
+              Expanded(child: second == null ? const SizedBox.shrink() : _cell(context, second)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// Every field here is real store data — never a placeholder rating or ETA
 /// (spec section 10: "ممنوع عرض وقت توصيل أو تقييم غير حقيقي").

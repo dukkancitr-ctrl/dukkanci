@@ -92,9 +92,15 @@ class MetaChip extends StatelessWidget {
         children: [
           Icon(icon, size: 13, color: AppColors.muted),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(fontFamily: 'IBMPlexSansArabic', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.muted),
+          // Flexible + ellipsis: a long label (or a large system font) must
+          // shrink inside the card instead of overflowing its edge.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: 'IBMPlexSansArabic', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.muted),
+            ),
           ),
         ],
       ),

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../app/providers.dart';
 import '../../../core/localization/app_strings.dart';
-import '../../../core/routing/app_routes.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/nearby_stores.dart';
 import '../../../core/utils/store_priority.dart';
@@ -106,23 +104,13 @@ class CategoryScreen extends ConsumerWidget {
           if (list.isEmpty) {
             return const AppEmptyView(message: AppStrings.noResults, icon: Icons.storefront_outlined);
           }
-          return GridView.builder(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.md,
-              crossAxisSpacing: AppSpacing.md,
-              childAspectRatio: 0.72,
-            ),
-            itemCount: list.length,
-            itemBuilder: (context, i) {
-              final store = list[i];
-              return StoreCard(
-                store: store,
-                distanceKm: distances[store.id],
-                onTap: () => context.push(AppRoutes.storeDetailPath(store.slug ?? store.id.toString())),
-              );
-            },
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                sliver: StoreCardGrid(stores: list, distancesKm: distances.isEmpty ? null : distances),
+              ),
+            ],
           );
         },
       ),
