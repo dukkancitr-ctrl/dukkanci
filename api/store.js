@@ -63,7 +63,7 @@ module.exports = async (req, res) => {
 
   let store = null, products = [], exists = false;
   if (id) {
-    const rows = await sbGet(`stores?id=eq.${id}&select=name,slug,description,image,cover_image,address,phone,lat,lng,category,approval_status&limit=1`);
+    const rows = await sbGet(`stores?id=eq.${id}&select=name,slug,description,image,cover_image,address,phone,lat,lng,category,approval_status,google_rating,google_reviews_count&limit=1`);
     store = rows && rows[0];
     exists = !!store;
     if (store && store.approval_status && store.approval_status !== "approved") store = null;
@@ -102,6 +102,18 @@ module.exports = async (req, res) => {
     if (store.address) jsonLd.address = { "@type": "PostalAddress", streetAddress: store.address, addressCountry: "TR" };
     if (store.phone) jsonLd.telephone = store.phone;
     if (store.lat != null && store.lng != null) jsonLd.geo = { "@type": "GeoCoordinates", latitude: store.lat, longitude: store.lng };
+    // Real aggregate rating sourced from the store's Google Business profile.
+    // Surfaced so Google can show review stars in search results (rich snippet).
+    const gRating = Number(store.google_rating), gCount = Number(store.google_reviews_count);
+    if (gRating >= 1 && gRating <= 5 && gCount > 0) {
+      jsonLd.aggregateRating = {
+        "@type": "AggregateRating",
+        ratingValue: gRating,
+        reviewCount: gCount,
+        bestRating: 5,
+        worstRating: 1
+      };
+    }
 
     // In-source product links (crawl graph). The SPA replaces this on hydration.
     const links = products.map(p => `<li><a href="/product/${esc(p.slug)}">${esc(p.name)}</a></li>`).join("");
