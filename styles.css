@@ -15310,3 +15310,11 @@ button:focus-visible, a:focus-visible {
 .tpl-manual summary{cursor:pointer;color:var(--green-800);font-weight:700}
 .tpl-manual__body{display:grid;gap:8px;margin-top:10px}
 .contacts-file input[type=file]{padding:10px;border:2px dashed var(--line);border-radius:12px;background:#fff}
+
+/* Admin inbox: manual one-time OTP popup (رمز تحقق يدوي) */
+.manual-otp { text-align: center; padding: 8px 4px 2px; }
+.manual-otp h2 { margin: 0 0 6px; font-size: 20px; }
+.manual-otp p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+.manual-otp__code { margin: 14px auto; padding: 12px 18px; max-width: 240px; border: 2px dashed var(--orange); border-radius: 14px; background: var(--orange-soft); color: var(--ink); font-size: 34px; font-weight: 800; letter-spacing: 8px; user-select: all; }
+.manual-otp__note { background: var(--cream); border-radius: 10px; padding: 10px 12px; line-height: 1.6; }
+.manual-otp .primary-button { margin-top: 12px; }

@@ -9310,6 +9310,7 @@ function adminChatPaneHTML() {
     <button class="wa-tool ${data.pinned ? "active" : ""}" data-action="wa-pin" data-wa="${waEsc}" data-pinned="${data.pinned ? 1 : 0}" title="${data.pinned ? "إلغاء التثبيت" : "تثبيت في الأعلى"}">📌 ${data.pinned ? "مثبّتة" : "تثبيت"}</button>
     <span class="wa-tool-sep">التصنيف:</span>
     ${Object.entries(WA_LABELS).map(([k, v]) => `<button class="wa-label-pick ${data.label === k ? "active" : ""}" data-action="wa-label" data-wa="${waEsc}" data-label="${k}" style="--c:${v.color};--bg:${v.bg}">${v.name}</button>`).join("")}
+    <button class="wa-tool" data-action="wa-issue-otp" data-wa="${waEsc}" title="للعميل الذي لا يصله رمز التحقق: رمز لهذا الرقم فقط، لمرة واحدة، صالح 10 دقائق">🔑 إصدار رمز تحقق</button>
   </div>`;
   // The composer is ALWAYS shown so the team can always reply. Outside WhatsApp's
   // 24h customer-care window a free-text message may be rejected by Meta, so we show
@@ -15884,6 +15885,30 @@ document.addEventListener("click", event => {
     adminApi("set-label", { method: "POST", body: { wa, label: next } })
       .then(() => loadAdminThreads(true))
       .catch(() => showToast("تعذّر تصنيف المحادثة", ""));
+  }
+  if (action === "wa-issue-otp") {
+    const wa = target.dataset.wa;
+    if (!wa || !confirm(`إصدار رمز تحقق يدوي للرقم +${wa}؟\nالرمز يعمل لهذا الرقم فقط، لمرة واحدة، لمدة 10 دقائق، ويلغي أي رمز سابق.`)) return;
+    target.disabled = true;
+    adminApi("admin-issue-otp", { method: "POST", body: { phone: wa } })
+      .then(data => {
+        if (!data || !data.code) throw new Error("no code");
+        const note = data.sentAsText
+          ? "أُرسل الرمز للعميل في هذه المحادثة. اطلب منه إدخاله في صفحة الطلب دون الضغط على «إعادة الإرسال»."
+          : "لم يُرسل تلقائياً (لم يراسلنا العميل خلال آخر 24 ساعة). انسخ الرمز وأرسله له بأي طريقة، واطلب منه إدخاله دون الضغط على «إعادة الإرسال».";
+        showModal(`<button class="modal-close" data-action="close-modal" aria-label="إغلاق">${icon("close")}</button>
+          <div class="manual-otp">
+            <h2>رمز التحقق اليدوي</h2>
+            <p dir="ltr">+${escAttr(data.phone || wa)}</p>
+            <div class="manual-otp__code" dir="ltr">${escAttr(data.code)}</div>
+            <p>صالح لمدة ${Number(data.expiresInMin) || 10} دقائق ولمرة واحدة فقط.</p>
+            <p class="manual-otp__note">${note}</p>
+            <button class="primary-button full" data-action="close-modal">تم</button>
+          </div>`, "manual-otp-modal");
+        if (data.sentAsText) loadAdminThread(wa, true);
+      })
+      .catch(() => showToast("تعذّر إصدار الرمز", ""))
+      .finally(() => { target.disabled = false; });
   }
   if (action === "wa-resume-ai") {
     const wa = target.dataset.wa;

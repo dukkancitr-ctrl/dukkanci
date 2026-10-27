@@ -4557,7 +4557,7 @@ module.exports = async (req, res) => {
   }
 
   // Admin inbox writes (password-gated).
-  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai" || pq.action === "set-pin" || pq.action === "set-label") {
+  if (pq.action === "login" || pq.action === "reply" || pq.action === "mark-read" || pq.action === "resume-ai" || pq.action === "set-pin" || pq.action === "set-label" || pq.action === "admin-issue-otp") {
     // M1: throttle the admin password login by client IP (the mint endpoint is the
     // only brute-forceable one; the other actions already require a valid session).
     const adminThrottleKey = pq.action === "login" ? "admin:" + clientIp(req) : null;
@@ -4596,6 +4596,50 @@ module.exports = async (req, res) => {
       if (!wa) return res.status(400).json({ error: "wa required" });
       await setThreadFlags(wa, { ai_paused: false, needs_human: false });
       return res.status(200).json({ ok: true });
+    }
+
+    // Manual OTP for a customer whose WhatsApp never receives the auth TEMPLATE
+    // (seen 2026-10-27: 905013229292 got our free text but 6 template codes stayed
+    // "sent"). NOT a master code: bound to ONE phone, single use (verify burns it),
+    // 10-min expiry, written to the same order_otps row the checkout/login verify
+    // reads. Also blocks the customer's own resend for 60s so it isn't overwritten
+    // straight away. If the 24h window is open the code is sent as free text too;
+    // the code is always returned so the agent can relay it another way. Audited in
+    // marketing_event_logs (own destination so the OTP health check ignores it).
+    if (pq.action === "admin-issue-otp") {
+      const phone = toE164(body.phone || body.wa || "", c.cc);
+      if (!phone || phone.length < 11) return res.status(400).json({ error: "bad_phone" });
+      const now = Date.now();
+      const rows = await sbGet(`order_otps?phone=eq.${encodeURIComponent(phone)}&select=sends,window_start`);
+      const row = rows && rows[0];
+      const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+      const w = await sbWrite("POST", "order_otps?on_conflict=phone", {
+        phone, code_hash: otpHash(phone, code), expires_at: new Date(now + 10 * 60_000).toISOString(),
+        attempts: 0, sends: (row && row.sends) || 0, window_start: (row && row.window_start) || new Date(now).toISOString(),
+        last_sent_at: new Date(now).toISOString(), verified_at: null, updated_at: new Date(now).toISOString()
+      }, "resolution=merge-duplicates,return=minimal");
+      if (!w.ok) return res.status(502).json({ error: "save failed" });
+      let sentAsText = false;
+      if (c.token && c.phoneId && await serviceWindowOpen(phone)) {
+        const text = `رمز التحقق الخاص بك في دكانجي: ${code}\nصالح لمدة 10 دقائق ولمرة واحدة. لا تشاركه مع أحد.`;
+        const sent = await sendWhatsapp(c, phone, { text });
+        sentAsText = !!sent.ok;
+        // The chat log keeps a masked copy — codes are never stored in clear.
+        await sbWrite("POST", "whatsapp_messages", {
+          wa_id: phone, direction: "out", body: "🔑 رمز تحقق يدوي (مخفي)", msg_type: "text",
+          wam_id: sent.id || null, status: sent.ok ? "sent" : "failed",
+          error: sent.ok ? null : JSON.stringify(sent.error || "").slice(0, 500)
+        }, "return=minimal");
+        if (sent.ok) { try { await setThreadFlags(phone, { ai_paused: true, needs_human: false }); } catch (e) {} }
+      }
+      try {
+        await sbWrite("POST", "marketing_event_logs", [{
+          event_id: crypto.randomUUID(), event_name: "otp_manual_issue", destination: "otp_manual_issue",
+          payload_json: { phone_tail: phone.slice(-4), sent_as_text: sentAsText, by: "admin" },
+          status: "issued"
+        }], "return=minimal");
+      } catch (e) {}
+      return res.status(200).json({ ok: true, code, phone, expiresInMin: 10, sentAsText });
     }
 
     if (pq.action === "mark-read") {
